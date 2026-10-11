@@ -82,6 +82,26 @@ fn paths(page: &PlacedPage) -> Vec<PathItem> {
         .collect()
 }
 
+fn floating_shape(simple: &str, point: &str, horizontal: &str, vertical: &str) -> DocxBuilder {
+    DocxBuilder::strict().body(&format!(
+        "<w:p><w:r><w:drawing><wp:anchor simplePos=\"{simple}\" relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">\
+         <wp:simplePos {point}/>{horizontal}{vertical}<wp:extent cx=\"914400\" cy=\"914400\"/><wp:wrapSquare wrapText=\"bothSides\"/>\
+         <wp:docPr id=\"1\" name=\"box\"/><a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/wordprocessingShape\">\
+         <wps:wsp><wps:cNvSpPr/><wps:spPr><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val=\"00FF00\"/></a:solidFill></wps:spPr>\
+         <wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r><w:r><w:t>Wrapped text</w:t></w:r></w:p>"
+    ))
+}
+
+#[test]
+fn simple_position_takes_precedence_over_relative_position() {
+    let page = placed(floating_shape("1", "x=\"190500\" y=\"285750\"",
+        "<wp:positionH relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionH>",
+        "<wp:positionV relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionV>"));
+    let path = paths(&page).into_iter().next().expect("shape");
+    assert!((path.x - 20.0).abs() < 0.01);
+    assert!((path.y - 30.0).abs() < 0.01);
+}
+
 #[test]
 fn a_cropped_picture_draws_the_whole_picture_behind_a_clip() {
     let body = "<w:p><w:r><w:drawing><wp:inline><wp:extent cx=\"914400\" cy=\"914400\"/>\

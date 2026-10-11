@@ -476,9 +476,11 @@ fn parse_math_run_properties(parser: &mut PartParser<'_>) -> Result<MathRunPrope
             XmlEvent::StartElement { name, attrs } => match name.local() {
                 "lit" => {
                     properties.literal = math_leaf(parser, &attrs, math_on_off)?;
+                    properties.literal_value = Some(properties.literal);
                 }
                 "nor" => {
                     properties.normal = math_leaf(parser, &attrs, math_on_off)?;
+                    properties.normal_value = Some(properties.normal);
                 }
                 "scr" => {
                     properties.script = Some(parse_enum(
@@ -497,6 +499,14 @@ fn parse_math_run_properties(parser: &mut PartParser<'_>) -> Result<MathRunPrope
                         MathStyle::from_strict,
                         MathStyle::Italic,
                     )?);
+                }
+                "aln"
+                    if math_val(&attrs).is_none_or(|value| {
+                        matches!(value.as_str(), "0" | "1" | "true" | "false" | "on" | "off")
+                    }) =>
+                {
+                    properties.alignment_point =
+                        math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
                 }
                 "aln" | "defJc" => {
                     properties.alignment = Some(parse_enum(
@@ -1785,8 +1795,8 @@ fn parse_eq_array(
 fn parse_eq_array_properties(
     parser: &mut PartParser<'_>,
     base_justification: &mut Option<MathVerticalAlign>,
-    max_distance: &mut Option<i32>,
-    object_distance: &mut Option<i32>,
+    max_distance: &mut Option<bool>,
+    object_distance: &mut Option<bool>,
     row_spacing_rule: &mut Option<String>,
     row_spacing: &mut Option<i32>,
     control: &mut Option<Box<crate::model::props::RunProperties>>,
@@ -1803,8 +1813,12 @@ fn parse_eq_array_properties(
                         MathVerticalAlign::Unset,
                     )?);
                 }
-                "maxDist" => *max_distance = math_leaf(parser, &attrs, math_int)?,
-                "objDist" => *object_distance = math_leaf(parser, &attrs, math_int)?,
+                "maxDist" => {
+                    *max_distance = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?
+                }
+                "objDist" => {
+                    *object_distance = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?
+                }
                 "rSpRule" => {
                     *row_spacing_rule = math_val(&attrs);
                     parser.skip_element()?;
@@ -2055,7 +2069,7 @@ fn parse_group_chr_properties(
                         "m:groupChrPr/m:pos",
                         &attrs,
                         MathPosition::from_strict,
-                        MathPosition::Top,
+                        MathPosition::Bottom,
                     )?);
                 }
                 "vertJc" => {
@@ -2187,6 +2201,8 @@ fn parse_border_box(
     scope: &mut MathScope,
     location: strict_ooxml_core::error::SourceLocation,
 ) -> Result<BorderBox> {
+    let mut hide_edges = [None; 4];
+    let mut strikes = [None; 4];
     let mut alignment = None;
     let mut spacing = None;
     let mut shadow = false;
@@ -2205,6 +2221,8 @@ fn parse_border_box(
                     match name.local() {
                         "borderBoxPr" => parse_border_box_properties(
                             parser,
+                            &mut hide_edges,
+                            &mut strikes,
                             &mut alignment,
                             &mut spacing,
                             &mut shadow,
@@ -2233,6 +2251,8 @@ fn parse_border_box(
             }
         }
         Ok(BorderBox {
+            hide_edges,
+            strikes,
             alignment,
             spacing,
             shadow,
@@ -2247,6 +2267,8 @@ fn parse_border_box(
 /// Parses the children of `m:borderBoxPr` (its start element has been consumed).
 fn parse_border_box_properties(
     parser: &mut PartParser<'_>,
+    hide_edges: &mut [Option<bool>; 4],
+    strikes: &mut [Option<bool>; 4],
     alignment: &mut Option<MathAlignment>,
     spacing: &mut Option<i32>,
     shadow: &mut bool,
@@ -2256,6 +2278,25 @@ fn parse_border_box_properties(
     loop {
         match parser.next_event()? {
             XmlEvent::StartElement { name, attrs } => match name.local() {
+                "hideTop" | "hideBot" | "hideLeft" | "hideRight" => {
+                    let index = match name.local() {
+                        "hideTop" => 0,
+                        "hideBot" => 1,
+                        "hideLeft" => 2,
+                        _ => 3,
+                    };
+                    hide_edges[index] =
+                        math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
+                }
+                "strikeH" | "strikeV" | "strikeBLTR" | "strikeTLBR" => {
+                    let index = match name.local() {
+                        "strikeH" => 0,
+                        "strikeV" => 1,
+                        "strikeBLTR" => 2,
+                        _ => 3,
+                    };
+                    strikes[index] = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
+                }
                 "algn" => {
                     *alignment = Some(parse_enum(
                         parser,

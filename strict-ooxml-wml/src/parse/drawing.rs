@@ -687,6 +687,7 @@ impl PartParser<'_> {
             Some(location.clone()),
         );
         Ok(Some(LockedCanvas {
+            graphics: self.parse_locked_canvas_graphics(&markup).map(Box::new),
             markup: std::sync::Arc::<str>::from(markup),
             images,
             location,
@@ -719,7 +720,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `pic:pic`.
-    fn parse_picture(&mut self) -> Result<Picture> {
+    pub(crate) fn parse_picture(&mut self) -> Result<Picture> {
         self.nested(|parser| {
             let mut picture = Picture {
                 name: None,
@@ -735,18 +736,26 @@ impl PartParser<'_> {
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
-                        if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "nvPicPr" {
+                        if (is_ns(&name, PICTURE_STRICT_NS) || is_ns(&name, DRAWINGML_STRICT_NS))
+                            && name.local() == "nvPicPr"
+                        {
                             let (nv_id, name, descr) =
                                 parser.parse_nv_pic_pr(&mut picture.markup)?;
                             picture.nv_id = nv_id;
                             picture.name = name;
                             picture.descr = descr;
-                        } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "blipFill" {
+                        } else if (is_ns(&name, PICTURE_STRICT_NS)
+                            || is_ns(&name, DRAWINGML_STRICT_NS))
+                            && name.local() == "blipFill"
+                        {
                             picture.markup.blip_fill = parser.plain_attr_pairs(&attrs);
                             let (blip, src_rect) = parser.parse_blip_fill(&mut picture.markup)?;
                             picture.blip = blip;
                             picture.src_rect = src_rect;
-                        } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "spPr" {
+                        } else if (is_ns(&name, PICTURE_STRICT_NS)
+                            || is_ns(&name, DRAWINGML_STRICT_NS))
+                            && name.local() == "spPr"
+                        {
                             picture.bw_mode =
                                 plain_attr(&attrs, "bwMode").map(|value| parser.intern(value));
                             let (extent, xfrm) = parser.parse_sp_pr(&mut picture.markup)?;
@@ -784,7 +793,10 @@ impl PartParser<'_> {
                         name: element,
                         attrs,
                     } => {
-                        if is_ns(&element, PICTURE_STRICT_NS) && element.local() == "cNvPr" {
+                        if (is_ns(&element, PICTURE_STRICT_NS)
+                            || is_ns(&element, DRAWINGML_STRICT_NS))
+                            && element.local() == "cNvPr"
+                        {
                             nv_id = plain_attr(&attrs, "id").and_then(|value| value.parse().ok());
                             name = plain_attr(&attrs, "name").map(|value| parser.intern(value));
                             descr = plain_attr(&attrs, "descr").map(|value| parser.intern(value));
@@ -1493,6 +1505,44 @@ impl PartParser<'_> {
                     XmlEvent::StartElement { name, attrs } => {
                         if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "pathLst" {
                             parser.parse_path_list(&mut geometry)?;
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS)
+                            && matches!(name.local(), "avLst" | "gdLst")
+                        {
+                            let guides = if name.local() == "avLst" {
+                                &mut geometry.adjustments
+                            } else {
+                                &mut geometry.guides
+                            };
+                            parser.nested(|parser| {
+                                loop {
+                                    match parser.next_event()? {
+                                        XmlEvent::StartElement { name, attrs } => {
+                                            if is_ns(&name, DRAWINGML_STRICT_NS)
+                                                && name.local() == "gd"
+                                            {
+                                                if let (Some(name), Some(formula)) = (
+                                                    plain_attr(&attrs, "name"),
+                                                    plain_attr(&attrs, "fmla"),
+                                                ) {
+                                                    guides.push((
+                                                        parser.intern(name),
+                                                        parser.intern(formula),
+                                                    ));
+                                                }
+                                            }
+                                            parser.skip_element()?;
+                                        }
+                                        XmlEvent::EndElement { .. } => break,
+                                        XmlEvent::Eof => {
+                                            return Err(
+                                                parser.invalid("unexpected end of geometry guides")
+                                            )
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                Ok(())
+                            })?;
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "rect" {
                             if let [Some(l), Some(t), Some(r), Some(b)] = ["l", "t", "r", "b"]
                                 .map(|side| plain_attr(&attrs, side).map(|v| parser.intern(v)))
@@ -1560,38 +1610,76 @@ impl PartParser<'_> {
         self.nested(|parser| {
             loop {
                 match parser.next_event()? {
-                    XmlEvent::StartElement { name, .. } => {
+                    XmlEvent::StartElement { name, attrs } => {
                         if !is_ns(&name, DRAWINGML_STRICT_NS) {
                             parser.skip_element()?;
                             continue;
                         }
-                        match name.local() {
-                            "moveTo" => {
-                                let point = parser.parse_first_point()?;
-                                path.commands.push(PathCommand::MoveTo {
-                                    x: point.0,
-                                    y: point.1,
-                                });
-                            }
-                            "lnTo" => {
-                                let point = parser.parse_first_point()?;
-                                path.commands.push(PathCommand::LineTo {
-                                    x: point.0,
-                                    y: point.1,
-                                });
-                            }
-                            "cubicBezTo" => {
-                                let points = parser.parse_points()?;
-                                if let [(x1, y1), (x2, y2), (x, y), ..] = *points.as_slice() {
-                                    path.commands.push(PathCommand::CubicBezTo {
-                                        x1,
-                                        y1,
-                                        x2,
-                                        y2,
-                                        x,
-                                        y,
-                                    });
+                        let kind = name.local();
+                        match kind {
+                            "moveTo" | "lnTo" | "cubicBezTo" | "quadBezTo" => {
+                                let mut values = Vec::new();
+                                loop {
+                                    match parser.next_event()? {
+                                        XmlEvent::StartElement { name, attrs } => {
+                                            if is_ns(&name, DRAWINGML_STRICT_NS)
+                                                && name.local() == "pt"
+                                            {
+                                                if let (Some(x), Some(y)) = (
+                                                    plain_attr(&attrs, "x"),
+                                                    plain_attr(&attrs, "y"),
+                                                ) {
+                                                    values.push(parser.intern(x));
+                                                    values.push(parser.intern(y));
+                                                }
+                                            }
+                                            parser.skip_element()?;
+                                        }
+                                        XmlEvent::EndElement { .. } => break,
+                                        XmlEvent::Eof => {
+                                            return Err(
+                                                parser.invalid("unexpected end of path command")
+                                            )
+                                        }
+                                        _ => {}
+                                    }
                                 }
+                                let numeric: Option<Vec<i64>> =
+                                    values.iter().map(|v| v.parse().ok()).collect();
+                                let command = match (kind, numeric.as_deref()) {
+                                    ("moveTo", Some([x, y])) => {
+                                        PathCommand::MoveTo { x: *x, y: *y }
+                                    }
+                                    ("lnTo", Some([x, y])) => PathCommand::LineTo { x: *x, y: *y },
+                                    ("cubicBezTo", Some([x1, y1, x2, y2, x, y])) => {
+                                        PathCommand::CubicBezTo {
+                                            x1: *x1,
+                                            y1: *y1,
+                                            x2: *x2,
+                                            y2: *y2,
+                                            x: *x,
+                                            y: *y,
+                                        }
+                                    }
+                                    _ => PathCommand::Parametric {
+                                        kind: parser.intern(kind),
+                                        values,
+                                    },
+                                };
+                                path.commands.push(command);
+                            }
+                            "arcTo" => {
+                                let values = ["wR", "hR", "stAng", "swAng"]
+                                    .into_iter()
+                                    .map(|key| {
+                                        parser.intern(plain_attr(&attrs, key).unwrap_or("0"))
+                                    })
+                                    .collect();
+                                path.commands.push(PathCommand::Parametric {
+                                    kind: parser.intern(kind),
+                                    values,
+                                });
+                                parser.skip_element()?;
                             }
                             "close" => {
                                 path.commands.push(PathCommand::Close);
@@ -1601,42 +1689,11 @@ impl PartParser<'_> {
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
-                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of path")),
+                    _ => {}
                 }
             }
             Ok(())
-        })
-    }
-
-    /// Parses the first `a:pt` of the current element.
-    fn parse_first_point(&mut self) -> Result<(i64, i64)> {
-        let points = self.parse_points()?;
-        Ok(points.first().copied().unwrap_or((0, 0)))
-    }
-
-    /// Parses all `a:pt` children of the current element.
-    fn parse_points(&mut self) -> Result<Vec<(i64, i64)>> {
-        self.nested(|parser| {
-            let mut points = Vec::new();
-            loop {
-                match parser.next_event()? {
-                    XmlEvent::StartElement { name, attrs } => {
-                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "pt" {
-                            let x = plain_attr(&attrs, "x").and_then(|v| v.trim().parse().ok());
-                            let y = plain_attr(&attrs, "y").and_then(|v| v.trim().parse().ok());
-                            if let (Some(x), Some(y)) = (x, y) {
-                                points.push((x, y));
-                            }
-                        }
-                        parser.skip_element()?;
-                    }
-                    XmlEvent::EndElement { .. } => break,
-                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of point list")),
-                }
-            }
-            Ok(points)
         })
     }
 
@@ -2253,6 +2310,7 @@ impl PartParser<'_> {
     /// Parses `wp:docPr` attributes.
     fn parse_doc_pr(&mut self, attrs: &[Attr]) -> DocPr {
         DocPr {
+            hidden: optional_bool_attr(attrs, "hidden"),
             id: plain_attr(attrs, "id").and_then(|value| value.trim().parse().ok()),
             name: plain_attr(attrs, "name").map(|value| self.intern(value)),
             descr: plain_attr(attrs, "descr").map(|value| self.intern(value)),

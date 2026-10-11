@@ -17,9 +17,103 @@ use strict_ooxml_wml::model::Document;
 
 use crate::layout::border::ResolvedBorder;
 
+thread_local! {
+    static COLOR_MAPPINGS: std::cell::RefCell<Vec<Option<strict_ooxml_wml::model::settings::ColorSchemeMapping>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+pub(crate) struct ColorMappingGuard;
+impl Drop for ColorMappingGuard {
+    fn drop(&mut self) {
+        COLOR_MAPPINGS.with(|mappings| {
+            mappings.borrow_mut().pop();
+        });
+    }
+}
+
+/// Scope the document's colour mapping across layout and nested style calls.
+pub(crate) fn color_mapping(document: &Document) -> ColorMappingGuard {
+    COLOR_MAPPINGS.with(|mappings| {
+        mappings
+            .borrow_mut()
+            .push(document.settings.color_scheme_mapping.clone())
+    });
+    ColorMappingGuard
+}
+
+fn mapped_color(reference: &str) -> String {
+    COLOR_MAPPINGS.with(|mappings| {
+        let mappings = mappings.borrow();
+        let Some(Some(mapping)) = mappings.last() else {
+            return reference.to_owned();
+        };
+        let value = match reference {
+            "background1" | "bg1" => &mapping.background_1,
+            "background2" | "bg2" => &mapping.background_2,
+            "text1" | "tx1" => &mapping.text_1,
+            "text2" | "tx2" => &mapping.text_2,
+            "accent1" => &mapping.accent_1,
+            "accent2" => &mapping.accent_2,
+            "accent3" => &mapping.accent_3,
+            "accent4" => &mapping.accent_4,
+            "accent5" => &mapping.accent_5,
+            "accent6" => &mapping.accent_6,
+            "hyperlink" | "hlink" => &mapping.hyperlink,
+            "followedHyperlink" | "folHlink" => &mapping.followed_hyperlink,
+            _ => return reference.to_owned(),
+        };
+        value.as_deref().unwrap_or(reference).to_owned()
+    })
+}
+
 /// Effective run formatting.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedRun {
+    /// A `w:bdo` container overrides intrinsic character direction.
+    pub bidi_override: bool,
+    /// Nested directional containers, outermost first.
+    pub bidi_embeddings: Vec<(usize, bool, bool)>,
+    /// Independent Latin and complex-script formatting channels.
+    pub latin_bold: bool,
+    /// Latin italic state before selecting a script channel.
+    pub latin_italic: bool,
+    /// Latin point size before selecting a script channel.
+    pub latin_size_pt: f64,
+    /// Complex-script bold state.
+    pub complex_bold: bool,
+    /// Complex-script italic state.
+    pub complex_italic: bool,
+    /// Complex-script point size.
+    pub complex_size_pt: f64,
+    /// Explicit complex-script formatting across the run.
+    pub force_complex: bool,
+    /// Footnote reference id on a generated reference marker.
+    pub footnote_id: Option<u32>,
+    /// Numbered heading level/value/format used by chapter page numbering.
+    pub chapter_heading: Option<(u8, u32, crate::notes::NumberFormat)>,
+    /// Align this run to the document grid (`w:snapToGrid`).
+    pub snap_to_grid: bool,
+    /// Balance half/full-width spaces in fixed-pitch fonts (`w:compat`).
+    pub balanced_spaces: bool,
+    /// Font programs supplied by this document.
+    pub font_programs: std::sync::Arc<crate::font::embedded::FontPrograms>,
+    /// Character-grid addition in points, before horizontal scaling.
+    pub grid_extra_pt: f64,
+    /// Language tags used by the OpenType shaper.
+    pub language: strict_ooxml_wml::model::props::Language,
+    /// Minimum font size in points at which kerning is enabled.
+    pub kerning_pt: Option<f64>,
+    /// Explicit run direction, when specified.
+    pub rtl: Option<bool>,
+    /// Cast an offset text shadow (`w:shadow`).
+    pub shadow: bool,
+    /// Raised text relief (`w:emboss`).
+    pub emboss: bool,
+    /// Sunken text relief (`w:imprint`).
+    pub imprint: bool,
+    /// Draw glyph outlines (`w:outline`).
+    pub outline: bool,
+    /// East Asian emphasis mark (`w:em`).
+    pub emphasis: Option<String>,
     /// Rotation of delivered text around its baseline origin, in degrees.
     pub rotation_deg: f64,
     /// Font family (ascii/hAnsi).
@@ -38,6 +132,8 @@ pub struct ComputedRun {
     pub italic: bool,
     /// Underline style (`w:u/@w:val`), `None` when the run is not underlined.
     pub underline: Option<Underline>,
+    /// Whether this fragment's trailing spaces receive an underline.
+    pub underline_trailing_space: bool,
     /// Underline colour (`w:u/@w:color`, `@w:themeColor`), `#rrggbb`. `None`
     /// draws the underline in the text colour.
     pub underline_color: Option<String>,
@@ -61,6 +157,8 @@ pub struct ComputedRun {
     pub position_pt: f64,
     /// Run shading fill (`w:rPr/w:shd`), `#rrggbb`.
     pub shading: Option<String>,
+    /// Border around a text fragment (`w:rPr/w:bdr`).
+    pub border: Option<ResolvedBorder>,
     /// Hidden text (`w:vanish`).
     pub vanish: bool,
     /// Complex-script face (`w:rFonts/@w:cs`). Latin and Cyrillic keep [`Self::family`].
@@ -77,7 +175,30 @@ pub struct ComputedRun {
 impl Default for ComputedRun {
     fn default() -> Self {
         Self {
+            language: Default::default(),
+            bidi_override: false,
+            bidi_embeddings: Vec::new(),
+            latin_bold: false,
+            latin_italic: false,
+            latin_size_pt: 11.0,
+            complex_bold: false,
+            complex_italic: false,
+            complex_size_pt: 11.0,
+            force_complex: false,
+            footnote_id: None,
+            chapter_heading: None,
+            snap_to_grid: true,
+            balanced_spaces: false,
+            font_programs: Default::default(),
+            grid_extra_pt: 0.0,
+            kerning_pt: None,
+            rtl: None,
             rotation_deg: 0.0,
+            shadow: false,
+            emboss: false,
+            imprint: false,
+            outline: false,
+            emphasis: None,
             family: "Calibri".to_owned(),
             family_fallback: None,
             complex_family_fallback: None,
@@ -86,6 +207,7 @@ impl Default for ComputedRun {
             bold: false,
             italic: false,
             underline: None,
+            underline_trailing_space: true,
             underline_color: None,
             strike: false,
             double_strike: false,
@@ -96,6 +218,7 @@ impl Default for ComputedRun {
             small_caps: false,
             position_pt: 0.0,
             shading: None,
+            border: None,
             vanish: false,
             complex_family: None,
             east_asia_family: None,
@@ -117,6 +240,32 @@ pub struct NumberingRef {
 /// Effective paragraph formatting plus the paragraph's default run format.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedParagraph {
+    /// Effective outline level, zero based.
+    pub outline_level: Option<u8>,
+    /// Built-in Heading N level selected for chapter page numbers.
+    pub chapter_level: Option<u8>,
+    /// Paragraph override of its container's text flow direction.
+    pub text_direction: Option<strict_ooxml_wml::model::values::TextDirection>,
+    /// Extra spacing at East Asian/letter and East Asian/digit boundaries.
+    pub auto_space_de: bool,
+    /// Extra spacing at East Asian/digit boundaries.
+    pub auto_space_dn: bool,
+    /// Align paragraph lines to the document grid.
+    pub snap_to_grid: bool,
+    /// Round the line end to the section character pitch.
+    pub adjust_right_ind: bool,
+    /// Keep this text frame from intersecting preceding frames.
+    pub suppress_overlap: bool,
+    /// Active character pitch supplied by the section, in points.
+    pub grid_character_pitch_pt: Option<f64>,
+    /// Character-unit start/end/first-line indents, in hundredths of an em.
+    pub character_indents: [Option<i32>; 3],
+    /// Allow a Latin word to break between characters (`w:wordWrap`).
+    pub word_wrap: bool,
+    /// The surrounding cell suppresses soft line wrapping (`w:noWrap`).
+    pub no_wrap: bool,
+    /// Right-to-left paragraph layout (`w:bidi`).
+    pub bidi: bool,
     /// Frame attributes after the style cascade and direct overrides.
     pub frame: Option<FrameProperties>,
     /// Alignment.
@@ -174,7 +323,20 @@ pub struct ComputedParagraph {
 impl Default for ComputedParagraph {
     fn default() -> Self {
         Self {
+            outline_level: None,
+            chapter_level: None,
+            text_direction: None,
+            character_indents: [None; 3],
+            auto_space_de: false,
+            auto_space_dn: false,
+            snap_to_grid: true,
+            adjust_right_ind: true,
+            suppress_overlap: false,
+            grid_character_pitch_pt: None,
             frame: None,
+            word_wrap: true,
+            no_wrap: false,
+            bidi: false,
             alignment: Justification::Start,
             space_before_pt: 0.0,
             space_after_pt: 0.0,
@@ -251,6 +413,7 @@ pub fn compute_paragraph(
     document: &Document,
     para: &strict_ooxml_wml::model::Paragraph,
 ) -> ComputedParagraph {
+    let _mapping = color_mapping(document);
     let mut computed = ComputedParagraph::default();
     let theme = document.theme.as_ref();
 
@@ -276,8 +439,33 @@ pub fn compute_paragraph(
         apply_paragraph_style(document, &mut computed, style_id, theme);
     }
     apply_paragraph_props_mode(&mut computed, &para.props, theme, ToggleMode::Direct);
+    computed.no_wrap = crate::table_style::current_no_wrap();
     resolve_font_hints(document, &mut computed.default_run);
     computed.style = style_id.cloned();
+    if let Some(style_id) = style_id {
+        // chapStyle selects built-in Heading N, including styles based on it.
+        let mut current = Some(style_id);
+        for _ in 0..64 {
+            let Some(id) = current else {
+                break;
+            };
+            let style = document.styles.get(id);
+            let name = style
+                .and_then(|style| style.name.as_deref())
+                .unwrap_or(id.as_str());
+            let level = [id.as_str(), name].into_iter().find_map(|name| {
+                name.to_ascii_lowercase()
+                    .strip_prefix("heading")
+                    .and_then(|suffix| suffix.trim().parse::<u8>().ok())
+                    .filter(|level| (1..=9).contains(level))
+            });
+            if let Some(level) = level {
+                computed.chapter_level = Some(level - 1);
+                break;
+            }
+            current = style.and_then(|style| style.based_on.as_ref());
+        }
+    }
     if computed.before_autospacing {
         computed.space_before_pt = AUTOSPACING_PT;
     }
@@ -286,6 +474,24 @@ pub fn compute_paragraph(
     }
     computed.border_before_pt = border_pad_pt(computed.borders.top.as_ref());
     computed.border_after_pt = border_pad_pt(computed.borders.bottom.as_ref());
+    for (index, value) in computed.character_indents.iter().enumerate() {
+        if let Some(value) = value {
+            let points = f64::from(*value) / 100.0 * computed.default_run.size_pt;
+            match index {
+                0 => computed.indent_start_pt = points,
+                1 => computed.indent_end_pt = points,
+                _ => computed.first_line_pt = points,
+            }
+        }
+    }
+    if computed.bidi {
+        std::mem::swap(&mut computed.indent_start_pt, &mut computed.indent_end_pt);
+        computed.alignment = match computed.alignment {
+            Justification::Start => Justification::End,
+            Justification::End => Justification::Start,
+            other => other,
+        };
+    }
     computed
 }
 
@@ -296,6 +502,7 @@ pub fn compute_run(
     para: &ComputedParagraph,
     run: &strict_ooxml_wml::model::Run,
 ) -> ComputedRun {
+    let _mapping = color_mapping(document);
     let theme = document.theme.as_ref();
     let mut computed = para.default_run.clone();
     if let Some(style_id) = &run.props.style {
@@ -319,6 +526,10 @@ pub fn compute_run(
 }
 
 fn resolve_font_hints(document: &Document, run: &mut ComputedRun) {
+    run.balanced_spaces = document
+        .settings
+        .compat_flags
+        .balance_single_byte_double_byte_width;
     run.family_fallback = font_hint_substitute(document, &run.family);
     run.complex_family_fallback = run
         .complex_family
@@ -328,6 +539,26 @@ fn resolve_font_hints(document: &Document, run: &mut ComputedRun) {
         .east_asia_family
         .as_deref()
         .and_then(|family| font_hint_substitute(document, family));
+}
+
+/// Advance shared by measurement and both painters for fixed-pitch spaces.
+#[must_use]
+pub fn space_advance_em(run: &ComputedRun, family: &str, ch: char, ordinary: f64) -> f64 {
+    let advance =
+        if run.balanced_spaces && crate::font::family::known_family(family) == Some("Cousine") {
+            match ch {
+                ' ' => 0.5,
+                '\u{3000}' => 1.0,
+                _ => ordinary,
+            }
+        } else {
+            ordinary
+        };
+    if run.snap_to_grid && run.size_pt > 0.0 {
+        (advance + run.grid_extra_pt / run.size_pt).max(0.0)
+    } else {
+        advance
+    }
 }
 
 fn font_hint_substitute(document: &Document, family: &str) -> Option<String> {
@@ -421,6 +652,19 @@ fn apply_paragraph_props_mode(
     theme: Option<&Theme>,
     mark: ToggleMode,
 ) {
+    apply_flag(&mut computed.bidi, props.bidi);
+    if props.text_direction.is_some() {
+        computed.text_direction = props.text_direction;
+    }
+    if props.outline_level.is_some() {
+        computed.outline_level = props.outline_level;
+    }
+    apply_flag(&mut computed.snap_to_grid, props.snap_to_grid);
+    apply_flag(&mut computed.adjust_right_ind, props.adjust_right_ind);
+    apply_flag(&mut computed.suppress_overlap, props.suppress_overlap);
+    apply_flag(&mut computed.auto_space_de, props.auto_space_de);
+    apply_flag(&mut computed.auto_space_dn, props.auto_space_dn);
+    apply_flag(&mut computed.word_wrap, props.word_wrap);
     if let Some(frame) = &props.frame {
         let inherited = computed.frame.get_or_insert_with(FrameProperties::default);
         macro_rules! overlay {
@@ -546,15 +790,30 @@ fn border_pad_pt(border: Option<&ResolvedBorder>) -> f64 {
 
 fn apply_indentation(computed: &mut ComputedParagraph, indentation: &Indentation) {
     if let Some(start) = indentation.start {
+        computed.character_indents[0] = None;
         computed.indent_start_pt = f64::from(start.value()) / 20.0;
     }
     if let Some(end) = indentation.end {
+        computed.character_indents[1] = None;
         computed.indent_end_pt = f64::from(end.value()) / 20.0;
     }
     if let Some(hanging) = indentation.hanging {
+        computed.character_indents[2] = None;
         computed.first_line_pt = -f64::from(hanging.value()) / 20.0;
     } else if let Some(first) = indentation.first_line {
+        computed.character_indents[2] = None;
         computed.first_line_pt = f64::from(first.value()) / 20.0;
+    }
+    if let Some(value) = indentation.start_chars {
+        computed.character_indents[0] = Some(value);
+    }
+    if let Some(value) = indentation.end_chars {
+        computed.character_indents[1] = Some(value);
+    }
+    if let Some(value) = indentation.hanging_chars {
+        computed.character_indents[2] = Some(value.saturating_neg());
+    } else if let Some(value) = indentation.first_line_chars {
+        computed.character_indents[2] = Some(value);
     }
 }
 
@@ -590,11 +849,45 @@ fn apply_run_props_mode(
     theme: Option<&Theme>,
     mode: ToggleMode,
 ) {
+    computed.bold = computed.latin_bold;
+    computed.italic = computed.latin_italic;
+    computed.size_pt = computed.latin_size_pt;
+    apply_toggle(&mut computed.complex_bold, props.bold_cs, mode);
+    apply_toggle(&mut computed.complex_italic, props.italic_cs, mode);
+    if let Some(size) = props.size_cs {
+        computed.complex_size_pt = f64::from(size.value()) / 2.0;
+    }
+    apply_flag(&mut computed.force_complex, props.complex_script);
     if let Some(fonts) = &props.fonts {
         apply_fonts(computed, fonts, theme);
     }
+    if let Some(language) = &props.language {
+        if language.val.is_some() {
+            computed.language.val.clone_from(&language.val);
+        }
+        if language.east_asia.is_some() {
+            computed.language.east_asia.clone_from(&language.east_asia);
+        }
+        if language.bidi.is_some() {
+            computed.language.bidi.clone_from(&language.bidi);
+        }
+    }
+    if let Some(kerning) = props.kerning {
+        computed.kerning_pt = Some(f64::from(kerning.value()) / 2.0);
+    }
+    if props.rtl != TriState::Absent {
+        computed.rtl = Some(props.rtl.is_on());
+    }
     apply_toggle(&mut computed.bold, props.bold, mode);
     apply_toggle(&mut computed.italic, props.italic, mode);
+    apply_toggle(&mut computed.shadow, props.shadow, mode);
+    apply_toggle(&mut computed.emboss, props.emboss, mode);
+    apply_toggle(&mut computed.imprint, props.imprint, mode);
+    apply_toggle(&mut computed.outline, props.outline, mode);
+    apply_flag(&mut computed.snap_to_grid, props.snap_to_grid);
+    if let Some(emphasis) = &props.emphasis {
+        computed.emphasis = (emphasis.as_ref() != "none").then(|| emphasis.to_string());
+    }
     if let Some(underline) = props.underline {
         computed.underline = (underline != Underline::None).then_some(underline);
     }
@@ -638,45 +931,20 @@ fn apply_run_props_mode(
     if let Some(shading) = &props.shading {
         computed.shading = shading_fill_color(shading, theme);
     }
+    if let Some(border) = props.borders.top.as_ref() {
+        computed.border = crate::layout::border::resolve_border(border, theme);
+    }
     if let Some(scale) = props.scale {
         // `w:w` is a percentage of the normal advance (`100` and `100%`).
         computed.char_scale = f64::from(scale) / 100.0;
     }
-    // Complex-script toggles (`w:bCs`/`w:iCs`/`w:szCs`) are a parallel channel.
-    // Direct run props: when RTL or a CS face is named, CS toggles assign (so
-    // `i=0` + `iCs` still italics). Cascade styles: never XOR Latin On with CS
-    // On from the same `rPr` — Clio style 50 has `<w:b/><w:bCs/>` plus `w:cs`
-    // and that cancel (On XOR On → Off) dropped Figure-caption bold.
-    let complex = props.rtl.is_on()
-        || props
-            .fonts
-            .as_ref()
-            .is_some_and(|fonts| fonts.complex_script.is_some());
-    if complex {
-        match mode {
-            ToggleMode::Direct => {
-                apply_toggle(&mut computed.bold, props.bold_cs, ToggleMode::Direct);
-                apply_toggle(&mut computed.italic, props.italic_cs, ToggleMode::Direct);
-                if props.size.is_none() {
-                    if let Some(size) = props.size_cs {
-                        computed.size_pt = f64::from(size.value()) / 2.0;
-                    }
-                }
-            }
-            ToggleMode::Cascade => {
-                if props.bold == TriState::Absent {
-                    apply_toggle(&mut computed.bold, props.bold_cs, mode);
-                }
-                if props.italic == TriState::Absent {
-                    apply_toggle(&mut computed.italic, props.italic_cs, mode);
-                }
-                if props.size.is_none() {
-                    if let Some(size) = props.size_cs {
-                        computed.size_pt = f64::from(size.value()) / 2.0;
-                    }
-                }
-            }
-        }
+    computed.latin_bold = computed.bold;
+    computed.latin_italic = computed.italic;
+    computed.latin_size_pt = computed.size_pt;
+    if computed.force_complex || computed.rtl == Some(true) {
+        computed.bold = computed.complex_bold;
+        computed.italic = computed.complex_italic;
+        computed.size_pt = computed.complex_size_pt;
     }
     if let Some(vert) = props.vert_align {
         computed.vert_align = vert;
@@ -730,6 +998,14 @@ pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
     } else {
         (run.family.as_str(), run.family_fallback.as_deref())
     };
+    if let Some(program) = run
+        .font_programs
+        .for_request(requested, run.bold, run.italic)
+    {
+        if program.supports(text) {
+            return program.family.clone();
+        }
+    }
     crate::font::family::known_family(requested)
         .or(fallback)
         .unwrap_or("Carlito")
@@ -838,7 +1114,7 @@ fn is_latin_or_cyrillic(ch: char) -> bool {
     )
 }
 
-fn is_complex_script(ch: char) -> bool {
+pub(crate) fn is_complex_script(ch: char) -> bool {
     matches!(
         ch,
         '\u{0590}'..='\u{08FF}'
@@ -867,7 +1143,7 @@ pub(crate) fn resolve_theme_color(
     theme: Option<&Theme>,
 ) -> Option<String> {
     let theme = theme?;
-    let (red, green, blue) = parse_hex(theme.color(reference.color.as_str())?)?;
+    let (red, green, blue) = parse_hex(theme.color(&mapped_color(reference.color.as_str()))?)?;
     let tint = reference
         .tint
         .as_deref()

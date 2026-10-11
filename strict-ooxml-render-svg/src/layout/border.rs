@@ -14,6 +14,10 @@ use super::{Item, LineItem, PathItem};
 /// One border edge after the cascade, in points.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResolvedBorder {
+    /// Draw an offset shadow behind the border.
+    pub shadow: bool,
+    /// Reverse compound border appearance from inside to outside.
+    pub frame: bool,
     /// Line style.
     pub style: BorderStyle,
     /// Width of one line (`w:sz`), in points.
@@ -52,6 +56,8 @@ pub fn resolve_border(border: &Border, theme: Option<&Theme>) -> Option<Resolved
         .map_or(0.5, |size| f64::from(size.value()) / 8.0)
         .max(0.25);
     Some(ResolvedBorder {
+        shadow: border.shadow,
+        frame: border.frame,
         style,
         width_pt,
         color,
@@ -71,6 +77,9 @@ fn band_factor(style: BorderStyle) -> f64 {
 fn lines_of(style: BorderStyle) -> &'static [(f64, f64)] {
     match style {
         BorderStyle::Double | BorderStyle::DoubleWave => &[(0.0, 1.0), (2.0, 1.0)],
+        BorderStyle::ThreeDEmboss | BorderStyle::ThreeDEngrave => {
+            &[(0.0, 0.5), (0.5, 1.0), (1.5, 0.5)]
+        }
         BorderStyle::Triple => &[(0.0, 1.0), (2.0, 1.0), (4.0, 1.0)],
         BorderStyle::ThinThickSmallGap => &[(0.0, 0.5), (1.0, 1.0)],
         BorderStyle::ThickThinSmallGap => &[(0.0, 1.0), (1.5, 0.5)],
@@ -96,6 +105,25 @@ fn dash_of(style: BorderStyle) -> Option<&'static [f64]> {
         BorderStyle::DashDotStroked => &[6.0, 2.0, 1.0, 2.0],
         _ => return None,
     })
+}
+
+fn shade_color(color: &str, light: bool) -> String {
+    let hex = color.trim_start_matches('#');
+    if hex.len() != 6 {
+        return color.to_owned();
+    }
+    let mut result = String::from("#");
+    for index in 0..3 {
+        let value = u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16).unwrap_or(0);
+        let value = if light {
+            (u16::from(value) + 255) / 2
+        } else {
+            u16::from(value) / 2
+        };
+        use std::fmt::Write as _;
+        let _ = write!(result, "{value:02x}");
+    }
+    result
 }
 
 /// Which side of the box an edge is on; the band grows away from the text.
@@ -134,12 +162,86 @@ pub fn edge_items(
     for (offset, width) in lines_of(border.style) {
         let stroke = (width * unit).max(0.5);
         // Offsets are from the outer edge of the band.
-        let from_outer = offset * unit + stroke / 2.0;
+        let from_outer = if border.frame {
+            band - offset * unit - stroke / 2.0
+        } else {
+            offset * unit + stroke / 2.0
+        };
         let position = match side {
             Side::Top | Side::Left => at - band + from_outer,
             Side::Bottom | Side::Right => at + band - from_outer,
         };
         let horizontal = matches!(side, Side::Top | Side::Bottom);
+        let color = if matches!(
+            border.style,
+            BorderStyle::ThreeDEmboss | BorderStyle::ThreeDEngrave
+        ) {
+            let light = matches!(side, Side::Top | Side::Left)
+                ^ (border.style == BorderStyle::ThreeDEngrave)
+                ^ border.frame;
+            let light = if *offset < 0.5 {
+                light
+            } else if *offset >= 1.5 {
+                !light
+            } else {
+                false
+            };
+            if *offset == 0.5 {
+                border.color.clone()
+            } else {
+                shade_color(&border.color, light)
+            }
+        } else {
+            border.color.clone()
+        };
+        if matches!(border.style, BorderStyle::Wave | BorderStyle::DoubleWave) {
+            let length = to - from;
+            let amplitude = unit * 0.5;
+            let steps = ((length / unit.max(0.5)) * 4.0).ceil().clamp(2.0, 16384.0) as usize;
+            let mut d = String::new();
+            use std::fmt::Write as _;
+            for step in 0..=steps {
+                let along = length * step as f64 / steps as f64;
+                let across = amplitude
+                    + (along / (unit * 4.0).max(1.0) * std::f64::consts::TAU).sin() * amplitude;
+                let (x, y) = if horizontal {
+                    (along, across)
+                } else {
+                    (across, along)
+                };
+                let _ = write!(
+                    d,
+                    "{}{} {} ",
+                    if step == 0 { "M" } else { "L" },
+                    crate::units::fmt_num(x),
+                    crate::units::fmt_num(y)
+                );
+            }
+            out.push(Item::Path(PathItem {
+                x: if horizontal {
+                    from
+                } else {
+                    position - amplitude
+                },
+                y: if horizontal {
+                    position - amplitude
+                } else {
+                    from
+                },
+                w: if horizontal { length } else { amplitude * 2.0 },
+                h: if horizontal { amplitude * 2.0 } else { length },
+                d,
+                fill: None,
+                paint: None,
+                stroke: Some(color),
+                stroke_w: stroke,
+                dash: None,
+                rotate_deg: 0.0,
+                flip_h: false,
+                flip_v: false,
+            }));
+            continue;
+        }
         match dash {
             None => out.push(Item::Line(if horizontal {
                 LineItem {
@@ -147,7 +249,7 @@ pub fn edge_items(
                     y1: position,
                     x2: to,
                     y2: position,
-                    color: border.color.clone(),
+                    color: color.clone(),
                     width: stroke,
                     dashed: false,
                 }
@@ -157,7 +259,7 @@ pub fn edge_items(
                     y1: from,
                     x2: position,
                     y2: to,
-                    color: border.color.clone(),
+                    color: color.clone(),
                     width: stroke,
                     dashed: false,
                 }
@@ -197,7 +299,7 @@ pub fn edge_items(
                     d: outline,
                     fill: None,
                     paint: None,
-                    stroke: Some(border.color.clone()),
+                    stroke: Some(color.clone()),
                     stroke_w: stroke,
                     dash: Some(
                         pattern
@@ -213,7 +315,23 @@ pub fn edge_items(
             }
         }
     }
-    out
+    if border.shadow {
+        let mut shadows: Vec<_> = out
+            .iter()
+            .map(|item| super::table::offset_item(item, unit * 2.0, unit * 2.0))
+            .collect();
+        for item in &mut shadows {
+            match item {
+                Item::Line(line) => line.color = "#808080".to_owned(),
+                Item::Path(path) => path.stroke = Some("#808080".to_owned()),
+                _ => {}
+            }
+        }
+        shadows.extend(out);
+        shadows
+    } else {
+        out
+    }
 }
 
 #[cfg(test)]

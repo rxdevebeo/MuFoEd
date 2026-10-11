@@ -509,6 +509,9 @@ fn document_properties(
     );
     xml.attr_opt("descr", doc_pr.as_ref().and_then(|pr| pr.descr.as_deref()));
     xml.attr_opt("title", doc_pr.as_ref().and_then(|pr| pr.title.as_deref()));
+    if let Some(hidden) = doc_pr.as_ref().and_then(|pr| pr.hidden) {
+        xml.attr("hidden", if hidden { "1" } else { "0" });
+    }
     xml.end();
 }
 
@@ -894,10 +897,19 @@ fn geometry_element(xml: &mut XmlWriter, geometry: &ShapeGeometry) {
 
 fn custom_geometry(xml: &mut XmlWriter, custom: &CustomGeometry) {
     xml.start("a:custGeom");
-    xml.start("a:avLst");
-    xml.end();
-    xml.start("a:gdLst");
-    xml.end();
+    for (tag, guides) in [
+        ("a:avLst", &custom.adjustments),
+        ("a:gdLst", &custom.guides),
+    ] {
+        xml.start(tag);
+        for (name, formula) in guides {
+            xml.start("a:gd");
+            xml.attr("name", name);
+            xml.attr("fmla", formula);
+            xml.end();
+        }
+        xml.end();
+    }
     xml.start("a:ahLst");
     xml.end();
     xml.start("a:cxnLst");
@@ -954,6 +966,33 @@ fn custom_geometry(xml: &mut XmlWriter, custom: &CustomGeometry) {
                     point(xml, "a:pt", x1, y1);
                     point(xml, "a:pt", x2, y2);
                     point(xml, "a:pt", x, y);
+                    xml.end();
+                }
+                PathCommand::Parametric {
+                    ref kind,
+                    ref values,
+                } => {
+                    let name = match kind.as_ref() {
+                        "moveTo" => "a:moveTo",
+                        "lnTo" => "a:lnTo",
+                        "cubicBezTo" => "a:cubicBezTo",
+                        "quadBezTo" => "a:quadBezTo",
+                        "arcTo" => "a:arcTo",
+                        _ => continue,
+                    };
+                    xml.start(name);
+                    if kind.as_ref() == "arcTo" {
+                        for (key, value) in ["wR", "hR", "stAng", "swAng"].iter().zip(values) {
+                            xml.attr(key, value.as_ref());
+                        }
+                    } else {
+                        for point in values.chunks_exact(2) {
+                            xml.start("a:pt");
+                            xml.attr("x", point[0].as_ref());
+                            xml.attr("y", point[1].as_ref());
+                            xml.end();
+                        }
+                    }
                     xml.end();
                 }
                 PathCommand::Close => xml.empty("a:close"),
@@ -1689,18 +1728,21 @@ mod tests {
         let mut xml = XmlWriter::new();
 
         let first = Some(DocPr {
+            hidden: None,
             id: Some(7),
             name: Some("a".into()),
             descr: None,
             title: None,
         });
         let second = Some(DocPr {
+            hidden: None,
             id: Some(7),
             name: Some("b".into()),
             descr: None,
             title: None,
         });
         let third = Some(DocPr {
+            hidden: None,
             id: Some(9),
             name: Some("c".into()),
             descr: None,
@@ -1762,6 +1804,7 @@ mod tests {
                 dist_right: None,
                 graphic_uri: None,
                 graphic: Box::new(Graphic::LockedCanvas(LockedCanvas {
+                    graphics: None,
                     markup: markup.into(),
                     images: Vec::new(),
                     location: SourceLocation::unknown(),

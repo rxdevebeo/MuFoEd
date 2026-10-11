@@ -39,6 +39,62 @@ pub struct TextDecorations {
     pub over: Vec<Item>,
 }
 
+/// Paint one enclosing border for touching fragments with identical borders.
+pub(crate) fn merge_run_borders(items: &mut [TextItem], graphics: &mut Vec<Item>) {
+    use super::border::{edge_items, Side};
+    let mut order: Vec<usize> = (0..items.len()).collect();
+    order.sort_by(|&a, &b| items[a].x.total_cmp(&items[b].x));
+    let mut start = 0;
+    while start < order.len() {
+        let first = &items[order[start]];
+        let Some(border) = first.run.border.clone() else {
+            start += 1;
+            continue;
+        };
+        if first.run.rotation_deg != 0.0 {
+            start += 1;
+            continue;
+        }
+        let px_per_pt = first.size_px / first.run.size_pt.max(0.1);
+        let mut end = start + 1;
+        let mut right = first.x + first.width;
+        while end < order.len() {
+            let next = &items[order[end]];
+            if next.run.border.as_ref() != Some(&border)
+                || next.run.rotation_deg != 0.0
+                || (next.x - right).abs() > 0.25
+            {
+                break;
+            }
+            right = next.x + next.width;
+            end += 1;
+        }
+        if end - start > 1 {
+            let space = border.space_pt * px_per_pt;
+            let left = first.x - space;
+            right += space;
+            let mut top = f64::INFINITY;
+            let mut bottom = f64::NEG_INFINITY;
+            for &index in &order[start..end] {
+                let item = &mut items[index];
+                top = top.min(item.baseline - item.size_px * BAND_TOP_EM - space);
+                bottom = bottom
+                    .max(item.baseline + item.size_px * (BAND_HEIGHT_EM - BAND_TOP_EM) + space);
+                item.run.border = None;
+            }
+            for (side, at, from, to) in [
+                (Side::Top, top, left, right),
+                (Side::Bottom, bottom, left, right),
+                (Side::Left, left, top, bottom),
+                (Side::Right, right, top, bottom),
+            ] {
+                graphics.extend(edge_items(&border, side, at, from, to, px_per_pt));
+            }
+        }
+        start = end;
+    }
+}
+
 /// Builds the decorations of one text fragment, in page px.
 #[must_use]
 pub fn text_decorations(item: &TextItem) -> TextDecorations {
@@ -66,10 +122,132 @@ pub fn text_decorations(item: &TextItem) -> TextDecorations {
         decorations.behind.push(band(highlight));
     }
 
+    let relief = |dx: f64, dy: f64, color: &str| {
+        let mut copy = item.clone();
+        copy.x += dx;
+        copy.baseline += dy;
+        copy.run.rotation_deg = 0.0;
+        copy.run.color = Some(color.to_owned());
+        copy.run.shadow = false;
+        copy.run.emboss = false;
+        copy.run.imprint = false;
+        copy.run.outline = false;
+        copy.run.emphasis = None;
+        copy.run.shading = None;
+        copy.run.highlight = None;
+        copy.run.underline = None;
+        copy.run.strike = false;
+        copy.run.double_strike = false;
+        copy.run.border = None;
+        Item::Text(copy)
+    };
+    let offset = (size * 0.06).max(0.5);
+    if run.shadow {
+        decorations.behind.push(relief(offset, offset, "#808080"));
+    }
+    if run.emboss || run.imprint {
+        let sign = if run.imprint { -1.0 } else { 1.0 };
+        decorations
+            .behind
+            .push(relief(-sign * offset, -sign * offset, "#ffffff"));
+        decorations
+            .behind
+            .push(relief(sign * offset, sign * offset, "#808080"));
+    }
+
     let text_color = run.color.clone().unwrap_or_else(|| "#000000".to_owned());
+    if let Some(mark) = run.emphasis.as_deref() {
+        let clusters: Vec<_> =
+            unicode_segmentation::UnicodeSegmentation::grapheme_indices(item.text.as_str(), true)
+                .collect();
+        let family = crate::style::chosen_family(run, &item.text);
+        let shaped = crate::font::shape_bundled_run(&item.text, &family, run);
+        let advance = item.width / clusters.len().max(1) as f64;
+        let radius = (size * 0.07).max(0.5);
+        for (index, (byte, cluster)) in clusters.iter().enumerate() {
+            if cluster.chars().all(char::is_whitespace) {
+                continue;
+            }
+            let center = shaped
+                .as_ref()
+                .and_then(|shaped| {
+                    shaped
+                        .clusters
+                        .iter()
+                        .find(|cluster| cluster.byte_start <= *byte && *byte < cluster.byte_end)
+                        .map(|cluster| {
+                            (cluster.x_em + cluster.advance_em / 2.0) * size * run.char_scale
+                                + index as f64 * crate::style::spacing_px(run, size)
+                        })
+                })
+                .unwrap_or((index as f64 + 0.5) * advance);
+            let x = item.x + center - radius;
+            let y = item.baseline
+                + if mark == "underDot" {
+                    size * 0.35
+                } else {
+                    -size * 1.1
+                };
+            let r = crate::units::fmt_num(radius);
+            let diameter = crate::units::fmt_num(2.0 * radius);
+            let d = if mark == "triangle" {
+                format!("M{r} 0 L{diameter} {diameter} L0 {diameter} Z")
+            } else {
+                // A circle expressed as cubic curves, shared by the two painters.
+                let lo = crate::units::fmt_num(radius * (1.0 - 0.552_284_75));
+                let hi = crate::units::fmt_num(radius * (1.0 + 0.552_284_75));
+                format!("M{r} 0 C{hi} 0 {diameter} {lo} {diameter} {r} C{diameter} {hi} {hi} {diameter} {r} {diameter} C{lo} {diameter} 0 {hi} 0 {r} C0 {lo} {lo} 0 {r} 0 Z")
+            };
+            decorations.over.push(Item::Path(PathItem {
+                x,
+                y,
+                w: 2.0 * radius,
+                h: 2.0 * radius,
+                d,
+                fill: (mark != "circle").then(|| text_color.clone()),
+                paint: None,
+                stroke: (mark == "circle").then(|| text_color.clone()),
+                stroke_w: radius * 0.4,
+                dash: None,
+                rotate_deg: 0.0,
+                flip_h: false,
+                flip_v: false,
+            }));
+            if mark == "comma" {
+                decorations.over.push(Item::Line(LineItem {
+                    x1: x + radius,
+                    y1: y + radius,
+                    x2: x + radius * 0.4,
+                    y2: y + radius * 2.8,
+                    color: text_color.clone(),
+                    width: radius * 0.8,
+                    dashed: false,
+                }));
+            }
+        }
+    }
+    if let Some(border) = &run.border {
+        use super::border::{edge_items, Side};
+        let px_per_pt = size / run.size_pt.max(0.1);
+        let space = border.space_pt * px_per_pt;
+        let left = item.x - space;
+        let right = item.x + item.width + space;
+        let top = item.baseline - size * BAND_TOP_EM - space;
+        let bottom = item.baseline + size * (BAND_HEIGHT_EM - BAND_TOP_EM) + space;
+        for (side, at, from, to) in [
+            (Side::Top, top, left, right),
+            (Side::Bottom, bottom, left, right),
+            (Side::Left, left, top, bottom),
+            (Side::Right, right, top, bottom),
+        ] {
+            decorations
+                .over
+                .extend(edge_items(border, side, at, from, to, px_per_pt));
+        }
+    }
     let thickness = (size * LINE_WIDTH_EM).max(MIN_LINE_WIDTH_PX);
     if let Some(style) = run.underline {
-        let width = if style == Underline::Words {
+        let width = if style == Underline::Words || !run.underline_trailing_space {
             item.width - trailing_space_width(item)
         } else {
             item.width

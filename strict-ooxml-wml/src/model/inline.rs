@@ -92,6 +92,8 @@ pub enum RunContent {
     /// The number marker inside a footnote/endnote body (`w:footnoteRef`/
     /// `w:endnoteRef`); replaced by the note's number when rendered.
     NoteRef,
+    /// Separator rule inside a note definition; true means continuation rule.
+    NoteSeparator(bool),
     /// Absolute position tab (`w:ptab`).
     ///
     /// All three attributes are `use="required"`, so this is three strings rather

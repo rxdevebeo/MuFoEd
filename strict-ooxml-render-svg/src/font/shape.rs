@@ -10,8 +10,8 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 use harfrust::{
-    BufferClusterLevel, FontRef, ShapeOptions, ShaperData, ShaperInstance, Tag, UnicodeBuffer,
-    Variation,
+    BufferClusterLevel, Direction, Feature, FontRef, ShapeOptions, ShaperData, ShaperInstance, Tag,
+    UnicodeBuffer, Variation,
 };
 
 use super::face::{resolve_face, ResolvedFace};
@@ -80,6 +80,8 @@ pub struct ShapedCluster {
 pub struct ShapedText {
     /// Face that produced the advances (same bytes SVG/PDF deliver).
     pub face: ResolvedFace,
+    /// Document program when shaping an embedded face; takes precedence over face.
+    pub program: Option<std::sync::Arc<super::embedded::FontProgram>>,
     /// Clusters in logical Unicode order. Each span satisfies `byte_start < byte_end`.
     pub clusters: Vec<ShapedCluster>,
     /// Glyphs in visual order. Logical spans are on [`Self::clusters`].
@@ -187,6 +189,92 @@ pub fn shape_bundled(text: &str, family: &str, bold: bool, italic: bool) -> Opti
     Some(shaped)
 }
 
+/// Shapes a run using its language, explicit direction and kerning threshold.
+#[must_use]
+pub fn shape_run(
+    text: &str,
+    family: &str,
+    run: &crate::style::ComputedRun,
+    provider: &dyn FontProvider,
+) -> ShapedText {
+    shape_bundled_run(text, family, run).unwrap_or_else(|| {
+        fallback_shaped(
+            text,
+            family,
+            run.bold,
+            run.italic,
+            provider,
+            if needs_complex_script(text) {
+                ShapeStatus::DegradedComplexScript
+            } else {
+                ShapeStatus::Full
+            },
+        )
+    })
+}
+
+/// Uses the same run shaping parameters during painting and font collection.
+#[must_use]
+pub fn shape_bundled_run(
+    text: &str,
+    family: &str,
+    run: &crate::style::ComputedRun,
+) -> Option<ShapedText> {
+    let program = run.font_programs.for_resource(family).cloned();
+    let face = if let Some(program) = &program {
+        ResolvedFace {
+            id: super::face::FaceId {
+                family: "OOXML",
+                bold: run.bold,
+                italic: run.italic,
+            },
+            resource_hash: super::hash_face_bytes(&program.bytes),
+            family: "OOXML",
+            bold: run.bold,
+            italic: run.italic,
+            bytes: super::face::FontBytes::Owned(std::sync::Arc::clone(&program.bytes)),
+            weight: None,
+            single: false,
+        }
+    } else {
+        resolve_face(map_family(family), run.bold, run.italic)?
+    };
+    let language = if needs_complex_script(text) {
+        run.language.bidi.as_deref().or(run.language.val.as_deref())
+    } else if text
+        .chars()
+        .any(|ch| matches!(ch, '\u{2e80}'..='\u{9fff}' | '\u{ac00}'..='\u{d7af}'))
+    {
+        run.language
+            .east_asia
+            .as_deref()
+            .or(run.language.val.as_deref())
+    } else {
+        run.language.val.as_deref()
+    };
+    let kern = run
+        .kerning_pt
+        .is_none_or(|threshold| run.size_pt >= threshold);
+    let direction = if run.bidi_override || needs_complex_script(text) {
+        run.rtl
+    } else {
+        None
+    };
+    let mut shaped = if let Some(program) = program {
+        shape_with_program_configured(text, face, language, direction, kern, Some(program))?
+    } else if language.is_none() && direction.is_none() && kern {
+        shape_with_face(text, face)?
+    } else {
+        shape_with_face_configured_cached(text, face, language, direction, kern)?
+    };
+    shaped.status = if needs_complex_script(text) {
+        ShapeStatus::DegradedComplexScript
+    } else {
+        ShapeStatus::Full
+    };
+    Some(shaped)
+}
+
 /// Maps each Unicode scalar in `text` to the cluster that owns it and that
 /// cluster's advance in em units.
 #[must_use]
@@ -264,6 +352,7 @@ struct StyleKey {
     bold: bool,
     italic: bool,
     weight_bits: Option<u32>,
+    hash: [u8; 32],
 }
 
 fn style_key(resolved: &ResolvedFace) -> StyleKey {
@@ -272,6 +361,7 @@ fn style_key(resolved: &ResolvedFace) -> StyleKey {
         bold: resolved.bold,
         italic: resolved.italic,
         weight_bits: resolved.weight.map(f32::to_bits),
+        hash: resolved.resource_hash,
     }
 }
 
@@ -279,10 +369,56 @@ thread_local! {
     static PARSED_FACES: RefCell<HashMap<StyleKey, CachedFace>> = RefCell::new(HashMap::new());
     static SHAPED_RUNS: RefCell<HashMap<StyleKey, HashMap<String, ShapedText>>> =
         RefCell::new(HashMap::new());
+    static CONFIGURED_RUNS: RefCell<HashMap<StyleKey, HashMap<ConfiguredKey, ShapedText>>> =
+        RefCell::new(HashMap::new());
+}
+
+#[derive(PartialEq, Eq, Hash)]
+struct ConfiguredKey {
+    text: String,
+    language: Option<String>,
+    rtl: Option<bool>,
+    kern: bool,
+}
+
+fn shape_with_face_configured_cached(
+    text: &str,
+    face: ResolvedFace,
+    language: Option<&str>,
+    rtl: Option<bool>,
+    kern: bool,
+) -> Option<ShapedText> {
+    let style = style_key(&face);
+    let key = ConfiguredKey {
+        text: text.to_owned(),
+        language: language.map(str::to_owned),
+        rtl,
+        kern,
+    };
+    if let Some(hit) = CONFIGURED_RUNS.with(|cache| {
+        cache
+            .borrow()
+            .get(&style)
+            .and_then(|runs| runs.get(&key).cloned())
+    }) {
+        return Some(hit);
+    }
+    let shaped = shape_with_face_configured(text, face, language, rtl, kern)?;
+    CONFIGURED_RUNS.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.len() >= 64 && !cache.contains_key(&style) {
+            cache.clear();
+        }
+        let runs = cache.entry(style).or_default();
+        if runs.len() < SHAPE_CACHE_PER_STYLE {
+            runs.insert(key, shaped.clone());
+        }
+    });
+    Some(shaped)
 }
 
 struct CachedFace {
-    font: FontRef<'static>,
+    bytes: super::face::FontBytes,
     data: ShaperData,
     instance: Option<ShaperInstance>,
 }
@@ -300,6 +436,9 @@ fn store_shaped(resolved: &ResolvedFace, text: &str, shaped: &ShapedText) {
     let key = style_key(resolved);
     SHAPED_RUNS.with(|cell| {
         let mut styles = cell.borrow_mut();
+        if styles.len() >= 64 && !styles.contains_key(&key) {
+            styles.clear();
+        }
         let runs = styles.entry(key).or_default();
         if runs.len() >= SHAPE_CACHE_PER_STYLE || runs.contains_key(text) {
             return;
@@ -313,8 +452,11 @@ fn with_parsed_face<R>(resolved: &ResolvedFace, body: impl FnOnce(&CachedFace) -
     let key = style_key(resolved);
     PARSED_FACES.with(|cell| {
         let mut faces = cell.borrow_mut();
+        if faces.len() >= 64 && !faces.contains_key(&key) {
+            faces.clear();
+        }
         if let Entry::Vacant(entry) = faces.entry(key) {
-            let font = FontRef::from_index(resolved.bytes, 0).ok()?;
+            let font = FontRef::from_index(&resolved.bytes, 0).ok()?;
             let data = ShaperData::new(&font);
             let instance = resolved.weight.map(|weight| {
                 ShaperInstance::from_variations(
@@ -326,7 +468,7 @@ fn with_parsed_face<R>(resolved: &ResolvedFace, body: impl FnOnce(&CachedFace) -
                 )
             });
             entry.insert(CachedFace {
-                font,
+                bytes: resolved.bytes.clone(),
                 data,
                 instance,
             });
@@ -339,15 +481,37 @@ fn shape_with_face(text: &str, resolved: ResolvedFace) -> Option<ShapedText> {
     if let Some(hit) = cached_shaped(&resolved, text) {
         return Some(hit);
     }
-    let shaped = shape_with_face_uncached(text, resolved)?;
+    let shaped = shape_with_face_uncached(text, resolved.clone())?;
     store_shaped(&resolved, text, &shaped);
     Some(shaped)
 }
 
 fn shape_with_face_uncached(text: &str, resolved: ResolvedFace) -> Option<ShapedText> {
+    shape_with_face_configured(text, resolved, None, None, true)
+}
+
+fn shape_with_face_configured(
+    text: &str,
+    resolved: ResolvedFace,
+    language: Option<&str>,
+    rtl: Option<bool>,
+    kern: bool,
+) -> Option<ShapedText> {
+    shape_with_program_configured(text, resolved, language, rtl, kern, None)
+}
+
+fn shape_with_program_configured(
+    text: &str,
+    resolved: ResolvedFace,
+    language: Option<&str>,
+    rtl: Option<bool>,
+    kern: bool,
+    program: Option<std::sync::Arc<super::embedded::FontProgram>>,
+) -> Option<ShapedText> {
     if text.is_empty() {
         return Some(ShapedText {
             face: resolved,
+            program,
             clusters: Vec::new(),
             glyphs: Vec::new(),
             total_advance_em: 0.0,
@@ -358,14 +522,26 @@ fn shape_with_face_uncached(text: &str, resolved: ResolvedFace) -> Option<Shaped
     buffer.push_str(text);
     buffer.set_cluster_level(BufferClusterLevel::MonotoneCharacters);
     buffer.guess_segment_properties();
+    if let Some(language) = language.and_then(|tag| tag.parse().ok()) {
+        buffer.set_language(language);
+    }
+    if let Some(rtl) = rtl {
+        buffer.set_direction(if rtl {
+            Direction::RightToLeft
+        } else {
+            Direction::LeftToRight
+        });
+    }
+    let features = [Feature::new(Tag::new(b"kern"), u32::from(kern), ..)];
     let (units, glyphs) = with_parsed_face(&resolved, |cached| {
+        let font = FontRef::from_index(&cached.bytes, 0).expect("validated cached face");
         let shaper = cached
             .data
-            .shaper(&cached.font)
+            .shaper(&font)
             .instance(cached.instance.as_ref())
             .build();
         let units = f64::from(shaper.units_per_em());
-        let glyphs = shaper.shape(buffer, ShapeOptions::new());
+        let glyphs = shaper.shape(buffer, ShapeOptions::new().features(&features));
         (units, glyphs)
     })?;
     if units <= 0.0 {
@@ -391,7 +567,9 @@ fn shape_with_face_uncached(text: &str, resolved: ResolvedFace) -> Option<Shaped
             glyph_id: u16::try_from(info.glyph_id).unwrap_or(0),
         });
     }
-    Some(assemble_shaped(resolved, text, pieces))
+    let mut shaped = assemble_shaped(resolved, text, pieces);
+    shaped.program = program;
+    Some(shaped)
 }
 
 struct RawGlyph {
@@ -493,6 +671,7 @@ fn assemble_shaped(resolved: ResolvedFace, text: &str, pieces: Vec<RawGlyph>) ->
     let total_advance_em = clusters.iter().map(|cluster| cluster.advance_em).sum();
     ShapedText {
         face: resolved,
+        program: None,
         clusters,
         glyphs,
         total_advance_em,
@@ -519,7 +698,7 @@ fn fallback_shaped(
         family: mapped,
         bold,
         italic,
-        bytes: b"",
+        bytes: super::face::FontBytes::Static(b""),
         weight: None,
         single: false,
     });
@@ -552,6 +731,7 @@ fn fallback_shaped(
     }
     ShapedText {
         face,
+        program: None,
         clusters,
         glyphs,
         total_advance_em: total,
@@ -602,7 +782,7 @@ mod tests {
         let shaped = shape_text("Title", "Calibri", false, false, &provider);
         let source = face_source("Calibri", false, false).expect("source");
         assert_eq!(shaped.face.resource_hash, source.resource_hash());
-        assert_eq!(shaped.face.bytes, source.data);
+        assert_eq!(shaped.face.bytes.as_ref(), source.data);
     }
 
     #[test]

@@ -37,6 +37,8 @@ pub struct EffectExtent {
 /// Non-visual drawing properties (`wp:docPr`).
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct DocPr {
+    /// Whether the drawing is hidden (`wp:docPr/@hidden`).
+    pub hidden: Option<bool>,
     /// Drawing object id.
     pub id: Option<u32>,
     /// Name.
@@ -220,7 +222,7 @@ pub struct ShapeStroke {
 }
 
 /// One command of a custom-geometry path (`a:custGeom`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PathCommand {
     /// `a:moveTo`.
     MoveTo {
@@ -251,6 +253,13 @@ pub enum PathCommand {
         /// End point Y.
         y: i64,
     },
+    /// A command with literal or named guide operands, retained without loss.
+    Parametric {
+        /// DrawingML local name: moveTo, lnTo, cubicBezTo, quadBezTo, or arcTo.
+        kind: Arc<str>,
+        /// Coordinates in point order; arcTo uses wR, hR, stAng, swAng.
+        values: Vec<Arc<str>>,
+    },
     /// `a:close`.
     Close,
 }
@@ -273,6 +282,10 @@ pub struct GeometryPath {
 /// A custom geometry (`a:custGeom`), possibly with several paths (AUD-49).
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct CustomGeometry {
+    /// Adjustment guides (`a:avLst`), as names and formulas in document order.
+    pub adjustments: Vec<(Arc<str>, Arc<str>)>,
+    /// Derived guides (`a:gdLst`), as names and formulas in document order.
+    pub guides: Vec<(Arc<str>, Arc<str>)>,
     /// Paths in document order; each keeps its own `w`/`h`.
     pub paths: Vec<GeometryPath>,
     /// The text rectangle (`a:rect` `l`, `t`, `r`, `b`) as written: a guide
@@ -554,6 +567,8 @@ pub struct DiagramDrawing {
 /// Transitional URI (ADR-0007; audit P2).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LockedCanvas {
+    /// Parsed child graphics for rendering, alongside the preserved markup.
+    pub graphics: Option<Box<GroupShape>>,
     /// Strict-form XML of the `lc:lockedCanvas` element, including children.
     pub markup: Arc<str>,
     /// Image relationships the markup still names, as `(source rId, part)`.

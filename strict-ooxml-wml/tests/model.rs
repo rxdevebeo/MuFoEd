@@ -610,6 +610,7 @@ fn drawing_and_run_constructors() {
         }),
         effect_extent: None,
         doc_pr: Some(DocPr {
+            hidden: None,
             id: Some(1),
             name: Some(Arc::from("n")),
             descr: None,

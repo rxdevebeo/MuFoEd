@@ -5,6 +5,7 @@
 //! single `<svg>` document per page, terminated by `\n`.
 
 pub(crate) mod chart;
+mod effects;
 mod fills;
 pub(crate) mod graphics;
 pub(crate) mod image;
@@ -43,6 +44,52 @@ pub(crate) fn render_page(page: &PlacedPage, background: bool) -> String {
 /// Writes one paint item.
 pub(crate) fn item_svg(out: &mut String, item: &Item) {
     match item {
+        Item::Group(group) => {
+            let _ = writeln!(
+                out,
+                "<g transform=\"matrix({} {} {} {} {} {})\" opacity=\"{}\">",
+                coord(group.matrix[0]),
+                coord(group.matrix[1]),
+                coord(group.matrix[2]),
+                coord(group.matrix[3]),
+                coord(group.matrix[4]),
+                coord(group.matrix[5]),
+                coord(group.opacity.clamp(0.0, 1.0))
+            );
+            if let Some([x, y, w, h]) = group.clip {
+                let _ = writeln!(out, "<svg x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" viewBox=\"{} {} {} {}\" overflow=\"hidden\">",
+                    coord(x), coord(y), coord(w), coord(h), coord(x), coord(y), coord(w), coord(h));
+            }
+            if let Some(path) = &group.clip_path {
+                let id = format!("Contour{}", out.len());
+                let mut data = String::new();
+                if group.clip_inverse {
+                    let radius = (path.w.abs() + path.h.abs()).max(1.0) * 1024.0;
+                    let _ = write!(
+                        data,
+                        "M-{} -{} H{} V{} H-{} Z ",
+                        coord(radius),
+                        coord(radius),
+                        coord(radius),
+                        coord(radius),
+                        coord(radius)
+                    );
+                }
+                data.push_str(&path.d);
+                let _ = writeln!(out, "<defs><clipPath id=\"{id}\" clipPathUnits=\"userSpaceOnUse\"><path d=\"{}\" transform=\"{}\" clip-rule=\"{}\"/></clipPath></defs><g clip-path=\"url(#{id})\">",
+                    escape_attr(&data), escape_attr(&shapes::path_transform(path)), if group.clip_inverse { "evenodd" } else { "nonzero" });
+            }
+            for child in &group.items {
+                item_svg(out, child);
+            }
+            if group.clip_path.is_some() {
+                out.push_str("</g>\n");
+            }
+            if group.clip.is_some() {
+                out.push_str("</svg>\n");
+            }
+            out.push_str("</g>\n");
+        }
         Item::Rect(rect) => shapes::rect_svg(out, rect),
         Item::Line(line) => shapes::line_svg(out, line),
         Item::Text(item) => text::text_svg(out, item),
@@ -61,10 +108,11 @@ pub(crate) fn invalid_char_warning(page: &PlacedPage) -> Option<String> {
     let removed: usize = page
         .items
         .iter()
+        .flat_map(Item::leaves)
         .map(|item| match item {
             Item::Text(text) => count_invalid(&text.text),
             Item::Image(image) => count_invalid(&image.alt),
-            Item::Rect(_) | Item::Line(_) | Item::Path(_) => 0,
+            Item::Rect(_) | Item::Line(_) | Item::Path(_) | Item::Group(_) => 0,
         })
         .sum();
     (removed > 0).then(|| {
@@ -79,22 +127,25 @@ pub(crate) fn invalid_char_warning(page: &PlacedPage) -> Option<String> {
 /// machine for a font.
 fn font_faces(page: &PlacedPage) -> String {
     let mut keys = Vec::new();
-    for item in &page.items {
+    for item in page.items.iter().flat_map(Item::leaves) {
         let Item::Text(text) = item else {
             continue;
         };
         let family = crate::style::chosen_family(&text.run, &text.text);
         let key = (family, text.run.bold, text.run.italic);
-        if !keys.contains(&key) {
-            keys.push(key);
+        if !keys
+            .iter()
+            .any(|(family, bold, italic, _)| (family, bold, italic) == (&key.0, &key.1, &key.2))
+        {
+            keys.push((key.0, key.1, key.2, text.run.clone()));
         }
     }
     if keys.is_empty() {
         return String::new();
     }
     let mut css = String::from("  <style type=\"text/css\"><![CDATA[\n");
-    for (family, bold, italic) in keys {
-        let Some(source) = crate::font::face_source(&family, bold, italic) else {
+    for (family, bold, italic, run) in keys {
+        let Some(source) = crate::font::embedded::run_face_source(&run, &family) else {
             continue;
         };
         let (mime, format) = if source.data.starts_with(b"OTTO") {

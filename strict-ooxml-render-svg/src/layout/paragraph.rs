@@ -4,7 +4,7 @@
 use std::collections::VecDeque;
 
 use strict_ooxml_wml::model::values::{
-    BreakKind, FieldCharType, LineSpacingRule, TabAlignment, TabLeader, VertAlign,
+    BreakKind, FieldCharType, LineSpacingRule, Space, TabAlignment, TabLeader, VertAlign,
 };
 use strict_ooxml_wml::model::{
     AnchorDrawing, Drawing, DrawingKind, Inline, Paragraph, Revision, Run, RunContent,
@@ -34,6 +34,8 @@ enum Seg {
     Tab,
     /// A soft line break.
     Break,
+    /// Line break that clears floating objects on the selected side.
+    ClearingBreak(strict_ooxml_wml::model::values::BreakClear),
     /// A hard page break.
     PageBreak,
     /// A hard column break.
@@ -54,12 +56,178 @@ enum Seg {
     EndnoteMarker(u32, ComputedRun),
     /// The note number marker inside a note body (`w:footnoteRef`).
     NoteNumber(ComputedRun),
+    NoteSeparator(bool, ComputedRun),
     /// A computed field result (PAGE/NUMPAGES/SECTIONPAGES/SECTION).
     FieldResult(
         crate::fields::FieldKind,
         Option<crate::notes::NumberFormat>,
         ComputedRun,
     ),
+}
+
+/// Section grid applies to layout and intrinsic measurement alike. Direct
+/// run snapToGrid overrides are applied later by the run cascade.
+fn apply_character_grid(ctx: &LayoutContext<'_>, computed: &mut ComputedParagraph) {
+    computed.default_run.font_programs = std::sync::Arc::clone(&ctx.font_programs);
+    use strict_ooxml_wml::model::values::DocGridType;
+    let section = ctx
+        .field_env
+        .get()
+        .map_or(ctx.current_section.get(), |env| {
+            env.section_index.saturating_sub(1)
+        });
+    let grid = ctx
+        .document
+        .sections
+        .get(section)
+        .and_then(|section| section.properties.doc_grid.as_ref())
+        .filter(|grid| {
+            matches!(
+                grid.grid_type,
+                Some(DocGridType::LinesAndChars | DocGridType::SnapToChars)
+            )
+        });
+    computed.default_run.grid_extra_pt = grid
+        .and_then(|grid| grid.character_space)
+        .map_or(0.0, |space| f64::from(space) / 4096.0);
+    let mut normal = ComputedParagraph::default();
+    if let Some(defaults) = ctx.document.styles.defaults() {
+        crate::style::apply_run_props(
+            &mut normal.default_run,
+            &defaults.run,
+            ctx.document.theme.as_ref(),
+        );
+    }
+    if let Some(id) = ctx
+        .document
+        .styles
+        .default_for(strict_ooxml_wml::model::values::StyleType::Paragraph)
+    {
+        // A paragraph without direct formatting selects the default style.
+        let paragraph = Paragraph {
+            props: Default::default(),
+            inlines: Vec::new(),
+            rsids: Default::default(),
+            revision: None,
+            para_id: None,
+            text_id: None,
+            location: Default::default(),
+        };
+        let _ = id;
+        normal = compute_paragraph(ctx.document, &paragraph);
+    }
+    computed.grid_character_pitch_pt =
+        grid.map(|_| normal.default_run.size_pt + computed.default_run.grid_extra_pt);
+    if !computed.snap_to_grid {
+        computed.default_run.snap_to_grid = false;
+    }
+}
+
+/// Intrinsic advances use the same flattening, scripts and objects as layout.
+pub(crate) fn intrinsic_widths(ctx: &LayoutContext<'_>, paragraph: &Paragraph) -> (f64, f64) {
+    let mut computed = compute_paragraph(ctx.document, paragraph);
+    apply_character_grid(ctx, &mut computed);
+    let mut segments = Vec::new();
+    flatten_inlines(
+        ctx,
+        &computed,
+        &paragraph.inlines,
+        0.0,
+        100_000.0,
+        &mut segments,
+        &mut FieldState::default(),
+    );
+    let mut minimum = 0.0_f64;
+    let mut maximum = 0.0_f64;
+    let mut word = 0.0_f64;
+    let mut line = 0.0_f64;
+    for segment in segments {
+        match segment {
+            Seg::Text(text, run) => {
+                line += ctx.measure(&text, &run);
+                let mut token = String::new();
+                for ch in text.chars() {
+                    let cjk = matches!(ch, '\u{2e80}'..='\u{9fff}' | '\u{ac00}'..='\u{d7af}' | '\u{f900}'..='\u{faff}');
+                    let break_space =
+                        ch.is_whitespace() && !matches!(ch, '\u{00a0}' | '\u{202f}' | '\u{feff}');
+                    if break_space || cjk {
+                        word += ctx.measure(&token, &run);
+                        minimum = minimum.max(word);
+                        word = 0.0;
+                        token.clear();
+                        if cjk {
+                            minimum = minimum.max(ctx.measure(&ch.to_string(), &run));
+                        }
+                    } else {
+                        token.push(ch);
+                        if ch == '-' || ch == '\u{200b}' {
+                            word += ctx.measure(&token, &run);
+                            minimum = minimum.max(word);
+                            word = 0.0;
+                            token.clear();
+                        }
+                    }
+                }
+                word += ctx.measure(&token, &run);
+            }
+            Seg::Image(image) => {
+                minimum = minimum.max(word).max(image.w);
+                word = 0.0;
+                line += image.w;
+            }
+            Seg::Object(_, width, _) => {
+                minimum = minimum.max(word).max(width);
+                word = 0.0;
+                line += width;
+            }
+            Seg::Math(boxed, _) | Seg::MathParagraph(boxed) => {
+                minimum = minimum.max(word).max(boxed.size.width);
+                word = 0.0;
+                line += boxed.size.width;
+            }
+            Seg::Break | Seg::ClearingBreak(_) | Seg::PageBreak | Seg::ColumnBreak => {
+                minimum = minimum.max(word);
+                maximum = maximum.max(line);
+                word = 0.0;
+                line = 0.0;
+            }
+            Seg::Tab => {
+                minimum = minimum.max(word);
+                word = 0.0;
+                line += ctx.size_px(computed.default_run.size_pt) * 4.0;
+            }
+            Seg::FootnoteMarker(id, run) => {
+                if let Some((number, format)) = ctx.note_numbers.footnote_number(id) {
+                    let width = ctx.measure(&format.format(number), &run);
+                    word += width;
+                    line += width;
+                }
+            }
+            Seg::EndnoteMarker(id, run) => {
+                if let Some((number, format)) = ctx.note_numbers.endnote_number(id) {
+                    let width = ctx.measure(&format.format(number), &run);
+                    word += width;
+                    line += width;
+                }
+            }
+            Seg::FieldResult(kind, format, run) => {
+                let marker = crate::fields::FieldMarker { kind, format };
+                let text = ctx.field_env.get().map_or_else(
+                    || {
+                        format
+                            .unwrap_or(crate::notes::NumberFormat::Decimal)
+                            .format(1)
+                    },
+                    |environment| environment.format(marker),
+                );
+                let width = ctx.measure(&text, &run);
+                word += width;
+                line += width;
+            }
+            _ => {}
+        }
+    }
+    (minimum.max(word), maximum.max(line))
 }
 
 /// A laid-out paragraph plus its surrounding spacing.
@@ -120,7 +288,161 @@ pub(crate) fn layout_paragraph(
     host: Option<(&Geometry, f64, f64)>,
     neighbors: ParagraphNeighbors,
 ) -> ParagraphFlow {
+    use strict_ooxml_wml::model::values::TextDirection;
+    let computed = compute_paragraph(ctx.document, para);
+    let section = ctx
+        .field_env
+        .get()
+        .map_or(ctx.current_section.get(), |env| {
+            env.section_index.saturating_sub(1)
+        });
+    let parent = crate::table_style::current_text_flow()
+        .map(|flow| flow.0)
+        .or_else(|| {
+            ctx.document
+                .sections
+                .get(section)
+                .and_then(|s| s.properties.text_direction)
+        })
+        .unwrap_or(TextDirection::LrTb);
+    let desired = computed.text_direction.unwrap_or(parent);
+    let angle = |direction| match direction {
+        TextDirection::BtLr => -90.0_f64,
+        TextDirection::TbRl | TextDirection::TbRlV | TextDirection::TbLrV => 90.0,
+        _ => 0.0,
+    };
+    let rotation = angle(desired) - angle(parent);
+    if rotation == 0.0 {
+        let mut flow = layout_paragraph_horizontal(
+            ctx,
+            para,
+            content_left,
+            content_width,
+            grid_line_pitch,
+            note_marker,
+            page_exclusions,
+            host,
+            neighbors,
+        );
+        if desired == TextDirection::LrTbV && parent != desired {
+            for item in &mut flow.flows {
+                if let Flow::Line(line) = item {
+                    let items = std::mem::take(&mut line.items)
+                        .into_iter()
+                        .map(Item::Text)
+                        .collect();
+                    line.graphics
+                        .extend(crate::layout::table::rotate_east_asian_items(ctx, items));
+                }
+            }
+        }
+        return flow;
+    }
+    let available = if rotation.abs() == 180.0 {
+        content_width
+    } else {
+        crate::table_style::current_text_flow()
+            .and_then(|flow| flow.1)
+            .or_else(|| {
+                host.map(|(geometry, _, y)| (geometry.height - geometry.bottom - y).max(1.0))
+            })
+            .unwrap_or_else(|| ctx.frame_anchor.get().content_height.max(content_width))
+            .max(1.0)
+    };
+    let _direction = crate::table_style::enter_text_flow(desired, Some(available));
+    let mut flow = layout_paragraph_horizontal(
+        ctx,
+        para,
+        0.0,
+        available,
+        grid_line_pitch,
+        note_marker,
+        &[],
+        None,
+        neighbors,
+    );
+    let mut items = Vec::new();
+    let mut y = 0.0;
+    for item in std::mem::take(&mut flow.flows) {
+        match item {
+            Flow::Line(mut line) => {
+                let height = line.height;
+                line.offset(0.0, y);
+                items.extend(line.items.into_iter().map(Item::Text));
+                items.extend(line.graphics);
+                y += height;
+            }
+            Flow::Image(mut image) => {
+                image.y += y;
+                y += image.h;
+                items.push(Item::Image(image));
+            }
+            Flow::Block {
+                items: block,
+                height,
+            } => {
+                items.extend(block.iter().map(|item| shift_item(item.clone(), 0.0, y)));
+                y += height;
+            }
+            Flow::TableRow(row) => {
+                items.extend(
+                    row.items
+                        .iter()
+                        .map(|item| shift_item(item.clone(), 0.0, y)),
+                );
+                y += row.height;
+            }
+            Flow::PageBreak | Flow::ColumnBreak => {}
+        }
+    }
+    if matches!(
+        desired,
+        TextDirection::TbRlV | TextDirection::TbLrV | TextDirection::LrTbV
+    ) {
+        items = crate::layout::table::rotate_east_asian_items(ctx, items);
+    }
+    let measured = crate::paint::graphics::transform_items(items, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+    let bounds = match measured.first() {
+        Some(Item::Group(group)) => group.bounds,
+        _ => [0.0; 4],
+    };
+    if rotation.abs() == 180.0 {
+        let items = crate::paint::graphics::transform_items(
+            measured,
+            [-1.0, 0.0, 0.0, -1.0, content_left + content_width, y],
+        );
+        flow.flows.push(Flow::Block { items, height: y });
+        return flow;
+    }
+    let height = bounds[2].max(0.0);
+    let (sin, cos) = rotation.to_radians().sin_cos();
+    let offset_x = if sin > 0.0 { y } else { 0.0 };
+    let offset_y = if sin < 0.0 {
+        bounds[0] + height
+    } else {
+        -bounds[0]
+    };
+    let items = crate::paint::graphics::transform_items(
+        measured,
+        [cos, sin, -sin, cos, content_left + offset_x, offset_y],
+    );
+    flow.flows.push(Flow::Block { items, height });
+    flow
+}
+
+fn layout_paragraph_horizontal(
+    ctx: &LayoutContext<'_>,
+    para: &Paragraph,
+    content_left: f64,
+    content_width: f64,
+    grid_line_pitch: Option<f64>,
+    note_marker: Option<&str>,
+    page_exclusions: &[WrapExclusion],
+    host: Option<(&Geometry, f64, f64)>,
+    neighbors: ParagraphNeighbors,
+) -> ParagraphFlow {
     let mut computed = compute_paragraph(ctx.document, para);
+    apply_character_grid(ctx, &mut computed);
     let justify = matches!(
         computed.alignment,
         strict_ooxml_wml::model::values::Justification::Both
@@ -137,14 +459,16 @@ pub(crate) fn layout_paragraph(
     // stays 0; a missing hanging/firstLine still comes from the level (A16).
     if let Some(marker) = ctx.numbering.get(para) {
         let direct = para.props.indentation.as_ref();
-        if direct.and_then(|indent| indent.start).is_none() {
+        if direct.and_then(|indent| indent.start).is_none()
+            && computed.character_indents[0].is_none()
+        {
             if let Some(start) = marker.indent_start_pt {
                 computed.indent_start_pt = start;
             }
         }
         let direct_line =
             direct.is_some_and(|indent| indent.hanging.is_some() || indent.first_line.is_some());
-        if !direct_line {
+        if !direct_line && computed.character_indents[2].is_none() {
             if let Some(first_line) = marker.first_line_pt {
                 computed.first_line_pt = first_line;
             }
@@ -170,6 +494,7 @@ pub(crate) fn layout_paragraph(
         &mut field_state,
     );
 
+    let segments = apply_east_asian_spacing(segments, &computed, ctx.options.scale);
     let mut flows = build_lines(
         ctx,
         para,
@@ -185,9 +510,11 @@ pub(crate) fn layout_paragraph(
     if computed.borders.any() {
         let scale = ctx.options.scale;
         let indent_start = pt_to_px(computed.indent_start_pt, scale);
-        let first = indent_start + pt_to_px(computed.first_line_pt, scale);
-        let box_left = content_left + indent_start.min(first);
-        let box_right = content_left + content_width - pt_to_px(computed.indent_end_pt, scale);
+        let first = pt_to_px(computed.first_line_pt, scale).min(0.0);
+        let box_left = content_left + indent_start + if computed.bidi { 0.0 } else { first };
+        let box_right = content_left + content_width
+            - pt_to_px(computed.indent_end_pt, scale)
+            - if computed.bidi { first } else { 0.0 };
         let reach_above = if neighbors.joins_prev {
             pt_to_px(neighbors.prev_after_pt + computed.space_before_pt, scale)
         } else {
@@ -210,6 +537,7 @@ pub(crate) fn layout_paragraph(
     // spacing a second time is what pushed the text below every display
     // formula down by a full line (STAGE-5C-REWORK-1 C1).
     let math_paragraph = ctx.options.math
+        && crate::math::layout::use_display_defaults(ctx)
         && para
             .inlines
             .iter()
@@ -607,6 +935,7 @@ fn flatten_inlines(
                 field,
             ),
             Inline::Directional(dir) => {
+                let first = out.len();
                 // AUD-42: apply direction like `w:rtl` on nested runs.
                 if dir.val == strict_ooxml_wml::model::inline::DirectionalVal::Rtl {
                     flatten_directional_rtl(
@@ -629,6 +958,40 @@ fn flatten_inlines(
                         field,
                     );
                 }
+                for segment in &mut out[first..] {
+                    let run = match segment {
+                        Seg::Text(_, run)
+                        | Seg::Math(_, run)
+                        | Seg::FootnoteMarker(_, run)
+                        | Seg::EndnoteMarker(_, run)
+                        | Seg::NoteNumber(run)
+                        | Seg::NoteSeparator(_, run)
+                        | Seg::FieldResult(_, _, run) => Some(run),
+                        _ => None,
+                    };
+                    if let Some(run) = run {
+                        if run.bidi_embeddings.is_empty()
+                            && dir.kind == strict_ooxml_wml::model::inline::DirectionalKind::Bdo
+                        {
+                            run.bidi_override = true;
+                            run.rtl = Some(
+                                dir.val == strict_ooxml_wml::model::inline::DirectionalVal::Rtl,
+                            );
+                        } else if run.bidi_embeddings.is_empty() && run.rtl.is_none() {
+                            run.rtl = Some(
+                                dir.val == strict_ooxml_wml::model::inline::DirectionalVal::Rtl,
+                            );
+                        }
+                        run.bidi_embeddings.insert(
+                            0,
+                            (
+                                dir as *const _ as usize,
+                                dir.val == strict_ooxml_wml::model::inline::DirectionalVal::Rtl,
+                                dir.kind == strict_ooxml_wml::model::inline::DirectionalKind::Bdo,
+                            ),
+                        );
+                    }
+                }
             }
             Inline::FootnoteRef(id) => out.push(Seg::FootnoteMarker(
                 *id,
@@ -650,6 +1013,7 @@ fn flatten_inlines(
                     &computed.default_run,
                     content_left,
                     content_width,
+                    computed,
                 )));
             }
             Inline::BookmarkStart(_)
@@ -703,6 +1067,54 @@ fn flatten_math(
     }
 }
 
+/// Keep additional inter-script spacing separate from document text.
+fn apply_east_asian_spacing(
+    segments: Vec<Seg>,
+    computed: &ComputedParagraph,
+    scale: f64,
+) -> Vec<Seg> {
+    if !computed.auto_space_de && !computed.auto_space_dn {
+        return segments;
+    }
+    let cjk = |ch: char| matches!(ch, '\u{2e80}'..='\u{9fff}' | '\u{ac00}'..='\u{d7af}' | '\u{ff66}'..='\u{ff9f}');
+    let mut previous = None;
+    let mut out = Vec::new();
+    for segment in segments {
+        if let Seg::Text(text, run) = segment {
+            let mut piece = String::new();
+            for ch in text.chars() {
+                let gap = previous.is_some_and(|prev| {
+                    if cjk(prev) == cjk(ch) {
+                        return false;
+                    }
+                    let western = if cjk(ch) { prev } else { ch };
+                    (computed.auto_space_de && western.is_alphabetic())
+                        || (computed.auto_space_dn && western.is_ascii_digit())
+                });
+                if gap {
+                    if !piece.is_empty() {
+                        out.push(Seg::Text(std::mem::take(&mut piece), run.clone()));
+                    }
+                    out.push(Seg::Object(
+                        Vec::new(),
+                        pt_to_px(run.size_pt * 0.25, scale),
+                        0.0,
+                    ));
+                }
+                piece.push(ch);
+                previous = Some(ch);
+            }
+            if !piece.is_empty() {
+                out.push(Seg::Text(piece, run));
+            }
+        } else {
+            previous = None;
+            out.push(segment);
+        }
+    }
+    out
+}
+
 /// Flattens directional content after stamping `w:rtl` onto nested runs (AUD-42).
 fn flatten_directional_rtl(
     ctx: &LayoutContext<'_>,
@@ -747,11 +1159,7 @@ fn stamp_rtl(inline: &Inline) -> Inline {
             sdt.inlines = sdt.inlines.iter().map(stamp_rtl).collect();
             Inline::SdtInline(sdt)
         }
-        Inline::Directional(dir) => {
-            let mut dir = dir.clone();
-            dir.inlines = dir.inlines.iter().map(stamp_rtl).collect();
-            Inline::Directional(dir)
-        }
+        Inline::Directional(dir) => Inline::Directional(dir.clone()),
         other => other.clone(),
     }
 }
@@ -776,23 +1184,27 @@ fn flatten_run(
             RunContent::InstrText(text) => field.on_instr(text),
             _ if field.suppressed() => {}
             RunContent::Text(text) => {
-                if text.text.is_empty() {
+                // Keep the source text in the model, but honor the Word text
+                // node's whitespace policy when measuring and painting it.
+                let visible = if text.space == Space::Preserve {
+                    text.text.as_str()
+                } else {
+                    text.text.trim_matches([' ', '\t', '\r', '\n'])
+                };
+                if visible.is_empty() {
                     continue;
                 }
-                if run_style.small_caps && !run_style.caps {
-                    push_small_caps(&text.text, &run_style, out);
+                if ctx.document.settings.compat_flags.do_not_leave_backslash_alone && visible.contains('\\') {
+                    push_script_segments(&visible.replace('\\', "¥"), &run_style, out);
                 } else {
-                    out.push(Seg::Text(
-                        apply_caps(&text.text, &run_style),
-                        run_style.clone(),
-                    ));
+                    push_script_segments(visible, &run_style, out);
                 }
             }
             RunContent::Tab => out.push(Seg::Tab),
             RunContent::Break(BreakKind::Page) => out.push(Seg::PageBreak),
             RunContent::Break(BreakKind::Column) => out.push(Seg::ColumnBreak),
+            RunContent::ClearingBreak(clear) => out.push(Seg::ClearingBreak(*clear)),
             RunContent::Break(BreakKind::TextWrapping)
-            | RunContent::ClearingBreak(_)
             | RunContent::CarriageReturn => out.push(Seg::Break),
             RunContent::Drawing(drawing) => flatten_drawing(ctx, drawing, out),
             RunContent::Symbol(symbol) => {
@@ -821,6 +1233,7 @@ fn flatten_run(
                 out.push(Seg::EndnoteMarker(*id, superscript(run_style.clone())));
             }
             RunContent::NoteRef => out.push(Seg::NoteNumber(superscript(run_style.clone()))),
+            RunContent::NoteSeparator(continuation) => out.push(Seg::NoteSeparator(*continuation, run_style.clone())),
             // An anchor, not a character. Word draws a marker here and this
             // renderer draws nothing, which is a visible difference rather than
             // a silent one: the choice is between a gap in the line and a glyph
@@ -875,6 +1288,48 @@ const SMALL_CAPS_SCALE: f64 = 0.8;
 /// Lowercase letters become capitals at [`SMALL_CAPS_SCALE`]; everything
 /// else keeps the run's size. The pieces are consecutive segments, so a word
 /// stays a word for wrapping the same way a word with mixed formatting does.
+fn push_script_segments(text: &str, run: &ComputedRun, out: &mut Vec<Seg>) {
+    let emit = |piece: String, channel: u8, out: &mut Vec<Seg>| {
+        let mut style = run.clone();
+        if channel == 1 || style.force_complex || style.rtl == Some(true) {
+            style.bold = style.complex_bold;
+            style.italic = style.complex_italic;
+            style.size_pt = style.complex_size_pt;
+        } else {
+            style.bold = style.latin_bold;
+            style.italic = style.latin_italic;
+            style.size_pt = style.latin_size_pt;
+        }
+        if style.small_caps && !style.caps {
+            push_small_caps(&piece, &style, out);
+        } else {
+            out.push(Seg::Text(apply_caps(&piece, &style), style));
+        }
+    };
+    let mut channel = 0u8;
+    let mut piece = String::new();
+    for ch in text.chars() {
+        let next = if crate::style::is_complex_script(ch) {
+            1
+        } else if matches!(ch, '\u{2e80}'..='\u{9fff}' | '\u{ac00}'..='\u{d7af}' | '\u{f900}'..='\u{faff}')
+        {
+            2
+        } else if ch.is_alphabetic() || ch.is_ascii_digit() {
+            0
+        } else {
+            channel
+        };
+        if next != channel && !piece.is_empty() {
+            emit(std::mem::take(&mut piece), channel, out);
+        }
+        channel = next;
+        piece.push(ch);
+    }
+    if !piece.is_empty() {
+        emit(piece, channel, out);
+    }
+}
+
 fn push_small_caps(text: &str, run: &ComputedRun, out: &mut Vec<Seg>) {
     let mut small = run.clone();
     small.size_pt = run.size_pt * SMALL_CAPS_SCALE;
@@ -900,8 +1355,16 @@ fn push_small_caps(text: &str, run: &ComputedRun, out: &mut Vec<Seg>) {
 }
 
 fn flatten_drawing(ctx: &LayoutContext<'_>, drawing: &Drawing, out: &mut Vec<Seg>) {
+    let doc_pr = match &drawing.kind {
+        DrawingKind::Anchor(anchor) => anchor.doc_pr.as_ref(),
+        DrawingKind::Inline(inline) => inline.doc_pr.as_ref(),
+        DrawingKind::Opaque(_) => None,
+    };
+    if doc_pr.is_some_and(|properties| properties.hidden == Some(true)) {
+        return;
+    }
     match &drawing.kind {
-        // `wp:docPr/@hidden`: the object is in the document, not on the page.
+        // An independently hidden anchor also contributes no paint or wrapping.
         DrawingKind::Anchor(anchor) if anchor.hidden == Some(true) => {}
         DrawingKind::Anchor(anchor) => out.push(Seg::Anchor(Box::new(anchor.clone()))),
         DrawingKind::Inline(_) => {
@@ -958,7 +1421,7 @@ fn build_lines(
     content_width: f64,
     grid_line_pitch: Option<f64>,
     note_marker: Option<&str>,
-    segments: Vec<Seg>,
+    mut segments: Vec<Seg>,
     page_exclusions: &[WrapExclusion],
     host: Option<(&Geometry, f64, f64)>,
 ) -> (Vec<Flow>, Vec<AnchorDrawing>) {
@@ -967,11 +1430,21 @@ fn build_lines(
     let indent_end = pt_to_px(computed.indent_end_pt, scale);
     let normal_x = content_left + indent_start;
     let first_offset = pt_to_px(computed.first_line_pt, scale);
-    let first_x = content_left + indent_start + first_offset;
+    let first_x = content_left + indent_start + if computed.bidi { 0.0 } else { first_offset };
     // Every line ends on this edge. The first line may start further in
     // (or further out, for a hanging indent); that changes its length, not
     // this edge (A20).
-    let right_edge = content_left + content_width - indent_end;
+    let mut right_edge = content_left + content_width - indent_end;
+    if computed.adjust_right_ind && computed.snap_to_grid {
+        if let Some(pitch) = computed
+            .grid_character_pitch_pt
+            .map(|pt| pt_to_px(pt, scale))
+        {
+            if pitch.is_finite() && pitch > 0.0 {
+                right_edge = normal_x + ((right_edge - normal_x) / pitch).floor().max(1.0) * pitch;
+            }
+        }
+    }
 
     // AUD-71: Word's default when `defaultTabStop` is missing or non-positive
     // is 720 twips (0.5"); a zero step would make `relative / tab_step` NaN.
@@ -987,9 +1460,16 @@ fn build_lines(
     };
 
     let marker = ctx.numbering.get(para).map(|marker| {
+        let mut run = marker.run.clone();
+        run.font_programs = std::sync::Arc::clone(&ctx.font_programs);
+        run.chapter_heading = computed
+            .chapter_level
+            .filter(|level| *level < 9)
+            .zip(marker.number)
+            .map(|(level, (value, format))| (level, value, format));
         (
             marker.text.clone(),
-            marker.run.clone(),
+            run,
             marker.suffix.clone(),
             marker.pic_bullet,
             marker.justification,
@@ -997,6 +1477,64 @@ fn build_lines(
     });
 
     let mut exclusions = page_exclusions.to_vec();
+    if let Some((geometry, host_x, host_y)) = host {
+        let mut occupied: Vec<_> = page_exclusions
+            .iter()
+            .map(|e| {
+                (
+                    e.left + host_x - content_left,
+                    e.right + host_x - content_left,
+                    e.top + host_y,
+                    e.bottom + host_y,
+                )
+            })
+            .collect();
+        for segment in &mut segments {
+            let Seg::Anchor(anchor) = segment else {
+                continue;
+            };
+            if !crate::layout::table::cell_anchor_wrap_enabled(anchor) {
+                continue;
+            }
+            if anchor.hidden == Some(true)
+                || anchor
+                    .doc_pr
+                    .as_ref()
+                    .is_some_and(|p| p.hidden == Some(true))
+            {
+                continue;
+            }
+            let Some((w, h)) = crate::layout::floating::resolved_extent(ctx, anchor, geometry)
+            else {
+                continue;
+            };
+            let (x, original_y) = crate::layout::floating::anchor_position(
+                anchor, geometry, host_x, host_y, w, h, scale,
+            );
+            let mut y = original_y;
+            if !anchor.allow_overlap {
+                for _ in 0..=occupied.len() {
+                    let next = occupied
+                        .iter()
+                        .filter(|(l, r, t, b)| x < *r && x + w > *l && y < *b && y + h > *t)
+                        .map(|(_, _, _, bottom)| *bottom)
+                        .fold(y, f64::max);
+                    if next <= y + 0.001 {
+                        break;
+                    }
+                    y = next;
+                }
+                if y != original_y {
+                    anchor.simple_pos = true;
+                    anchor.simple_pos_point = Some((
+                        (x / scale * 9525.0).round() as i64,
+                        (y / scale * 9525.0).round() as i64,
+                    ));
+                }
+            }
+            occupied.push((x, x + w, y, y + h));
+        }
+    }
     exclusions.extend(anchor_exclusions(
         ctx,
         &segments,
@@ -1007,7 +1545,8 @@ fn build_lines(
     let mut sink = LineSink {
         ctx,
         computed,
-        right_edge,
+        right_edge: right_edge - if computed.bidi { first_offset } else { 0.0 },
+        normal_right_edge: right_edge,
         shade: computed.shading.clone().map(|fill| {
             let width = (right_edge - normal_x).max(0.0);
             (normal_x, width, fill)
@@ -1056,7 +1595,48 @@ fn build_lines(
                 x = normal_x;
             }
             Seg::Break => {
-                sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
+                sink.emit(
+                    std::mem::replace(&mut current, LineBuilder::new()),
+                    ctx.document
+                        .settings
+                        .compat_flags
+                        .do_not_expand_shift_return,
+                );
+                x = normal_x;
+            }
+            Seg::ClearingBreak(clear) => {
+                sink.emit(
+                    std::mem::replace(&mut current, LineBuilder::new()),
+                    ctx.document
+                        .settings
+                        .compat_flags
+                        .do_not_expand_shift_return,
+                );
+                let center = content_left + content_width / 2.0;
+                let bottom = sink
+                    .exclusions
+                    .iter()
+                    .filter(|exclusion| {
+                        exclusion.bottom > sink.line_y
+                            && match clear {
+                                strict_ooxml_wml::model::values::BreakClear::All => true,
+                                strict_ooxml_wml::model::values::BreakClear::Left => {
+                                    exclusion.left < center
+                                }
+                                strict_ooxml_wml::model::values::BreakClear::Right => {
+                                    exclusion.right > center
+                                }
+                            }
+                    })
+                    .map(|exclusion| exclusion.bottom)
+                    .fold(sink.line_y, f64::max);
+                if bottom > sink.line_y {
+                    sink.flows.push(Flow::Block {
+                        items: Vec::new(),
+                        height: bottom - sink.line_y,
+                    });
+                    sink.line_y = bottom;
+                }
                 x = normal_x;
             }
             Seg::Tab => {
@@ -1089,7 +1669,7 @@ fn build_lines(
                 // An inline drawing sits in the text line with its bottom on the
                 // baseline, as Word places `wp:inline` (STAGE-5C-REWORK-1 D3).
                 let line_end = sink.right_edge;
-                if x + width > line_end + 1e-9 && !current.is_empty() {
+                if !computed.no_wrap && x + width > line_end + 1e-9 && !current.is_empty() {
                     sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
                     x = normal_x;
                 }
@@ -1114,7 +1694,12 @@ fn build_lines(
                 if !pending.is_empty() {
                     sink.emit(pending, false);
                 }
-                let properties = ctx.document.settings.math_properties.as_ref();
+                let properties = ctx
+                    .document
+                    .settings
+                    .math_properties
+                    .as_ref()
+                    .filter(|_| crate::math::layout::use_display_defaults(ctx));
                 let before = math_spacing(
                     ctx,
                     properties.and_then(|props| props.pre_space.as_deref()),
@@ -1136,24 +1721,68 @@ fn build_lines(
                 x = normal_x;
             }
             Seg::Text(text, run) => {
-                let tokens = tokenize(&text);
+                let mut chunks = vec![(text, run)];
+                while matches!(pending.front(), Some(Seg::Text(_, _))) {
+                    let Some(Seg::Text(text, run)) = pending.pop_front() else {
+                        unreachable!()
+                    };
+                    chunks.push((text, run));
+                }
+                let joined: String = chunks.iter().map(|(text, _)| text.as_str()).collect();
+                let tokens = tokenize(
+                    &joined,
+                    ctx.document.settings.compat_flags.apply_breaking_rules,
+                );
+                let mut chunk_index = 0;
+                let mut chunk_offset = 0;
                 for (index, token) in tokens.iter().enumerate() {
                     let following = tokens
                         .get(index + 1)
                         .and_then(|next| next.chars().find(|ch| !ch.is_whitespace()));
-                    place_token(
-                        &mut sink,
-                        &mut current,
-                        &mut x,
-                        normal_x,
-                        token,
-                        &run,
-                        following,
-                    );
+                    let mut remaining = token.len();
+                    let mut pieces = Vec::new();
+                    while remaining > 0 && chunk_index < chunks.len() {
+                        let (text, run) = &chunks[chunk_index];
+                        let count = remaining.min(text.len() - chunk_offset);
+                        if count > 0 {
+                            pieces.push((
+                                text[chunk_offset..chunk_offset + count].to_owned(),
+                                run.clone(),
+                            ));
+                        }
+                        chunk_offset += count;
+                        remaining -= count;
+                        if chunk_offset == text.len() {
+                            chunk_index += 1;
+                            chunk_offset = 0;
+                        }
+                    }
+                    if pieces.len() == 1 {
+                        place_token(
+                            &mut sink,
+                            &mut current,
+                            &mut x,
+                            normal_x,
+                            &pieces[0].0,
+                            &pieces[0].1,
+                            following,
+                        );
+                    } else if !pieces.is_empty() {
+                        place_formatted_word(
+                            &mut sink,
+                            &mut current,
+                            &mut x,
+                            normal_x,
+                            pieces,
+                            following,
+                        );
+                    }
                 }
             }
             Seg::FootnoteMarker(id, run) => {
                 if let Some((number, format)) = ctx.note_numbers.footnote_number(id) {
+                    let mut run = run;
+                    run.footnote_id = Some(id);
                     push_note_marker(ctx, &mut current, &mut x, &format.format(number), &run);
                     current.footnote_refs.push(id);
                 }
@@ -1167,6 +1796,23 @@ fn build_lines(
                 if let Some(text) = note_marker {
                     push_note_marker(ctx, &mut current, &mut x, text, &run);
                 }
+            }
+            Seg::NoteSeparator(continuation, run) => {
+                let width = if continuation {
+                    content_width
+                } else {
+                    (content_width / 3.0).max(8.0)
+                };
+                current.graphics.push(Item::Line(crate::layout::LineItem {
+                    x1: x,
+                    y1: -ctx.size_px(run.size_pt) * 0.3,
+                    x2: x + width,
+                    y2: -ctx.size_px(run.size_pt) * 0.3,
+                    color: run.color.unwrap_or_else(|| "#000000".to_owned()),
+                    width: pt_to_px(0.5, scale),
+                    dashed: false,
+                }));
+                x += width;
             }
             Seg::FieldResult(kind, format, run) => {
                 push_field_marker(
@@ -1268,16 +1914,37 @@ fn marker_clearance(ctx: &LayoutContext<'_>, run: &ComputedRun, suffix: Option<&
 }
 
 /// Splits text into wrap tokens (words keep a single trailing space).
-fn tokenize(text: &str) -> Vec<String> {
+fn tokenize(text: &str, legacy_ethiopic: bool) -> Vec<String> {
     if text.is_empty() {
         return Vec::new();
     }
-    text.split_inclusive(' ').map(str::to_owned).collect()
+    let mut tokens = Vec::new();
+    let mut start = 0;
+    for (index, ch) in text.char_indices() {
+        let ethiopic_separator = ('\u{1361}'..='\u{1368}').contains(&ch);
+        if legacy_ethiopic && ethiopic_separator && index > start {
+            tokens.push(text[start..index].to_owned());
+            start = index;
+        }
+        if ch == ' ' || (ethiopic_separator && !legacy_ethiopic) {
+            let end = index + ch.len_utf8();
+            tokens.push(text[start..end].to_owned());
+            start = end;
+        }
+    }
+    if start < text.len() {
+        tokens.push(text[start..].to_owned());
+    }
+    tokens
 }
 
 /// Shifts a paint item vertically (used to place a display formula's ink).
 fn shift_item(item: Item, dx: f64, dy: f64) -> Item {
     match item {
+        Item::Group(mut group) => {
+            group.offset(dx, dy);
+            Item::Group(group)
+        }
         Item::Text(mut text) => {
             text.x += dx;
             text.baseline += dy;
@@ -1319,14 +1986,17 @@ fn place_formula(
 ) {
     let width = boxed.size.width;
     let line_end = sink.right_edge;
-    if *x + width > line_end + 1e-9 && !current.is_empty() {
+    if !sink.computed.no_wrap && *x + width > line_end + 1e-9 && !current.is_empty() {
         sink.emit(std::mem::replace(current, LineBuilder::new()), false);
         *x = normal_x;
     }
     current.inline_fraction |= boxed.inline_fraction;
-    for item in boxed.items {
-        current.graphics.push(shift_item(item, *x, 0.0));
-    }
+    current
+        .graphics
+        .extend(crate::paint::graphics::transform_items(
+            boxed.items,
+            [1.0, 0.0, 0.0, 1.0, *x, 0.0],
+        ));
     current.ink_height = current.ink_height.max(boxed.size.height);
     current.ink_depth = current.ink_depth.max(boxed.size.depth);
     *x += width;
@@ -1339,9 +2009,10 @@ pub(crate) fn formula_ink(ctx: &LayoutContext<'_>, items: &[Item]) -> (f64, f64)
     let mut below: f64 = 0.0;
     for item in items {
         let (top, bottom) = match item {
+            Item::Group(group) => (group.bounds[1], group.bounds[1] + group.bounds[3]),
             Item::Text(text) => {
                 let family = crate::style::chosen_family(&text.run, &text.text);
-                let metrics = ctx.font.metrics(&family, text.run.bold, text.run.italic);
+                let metrics = crate::font::embedded::run_metrics(&text.run, &family, ctx.font);
                 let bounds = text
                     .text
                     .chars()
@@ -1420,6 +2091,8 @@ struct LineSink<'a, 'b> {
     computed: &'b ComputedParagraph,
     /// Absolute right edge. The first line starts further in and still ends here.
     right_edge: f64,
+    /// Edge of subsequent lines after the direction-dependent first-line indent.
+    normal_right_edge: f64,
     /// Paragraph shading: x, width, `#rrggbb`. Drawn behind each line.
     shade: Option<(f64, f64, String)>,
     grid_line_pitch: Option<f64>,
@@ -1460,6 +2133,7 @@ impl LineSink<'_, '_> {
         }
         let height = finished.height;
         self.flows.push(Flow::Line(finished));
+        self.right_edge = self.normal_right_edge;
         self.line_y += height;
         self.math_block = false;
     }
@@ -1484,8 +2158,8 @@ fn anchor_exclusions(
             right: 0.0,
             bottom: 0.0,
             grid_line_pitch: None,
-            column_count: 1,
-            column_gap: 0.0,
+            columns: crate::layout::ColumnLayout::single(content_width),
+            active_column: 0,
         };
         return segments
             .iter()
@@ -1493,18 +2167,27 @@ fn anchor_exclusions(
                 let Seg::Anchor(anchor) = segment else {
                     return None;
                 };
-                wrap_exclusion(ctx, anchor, &geometry, content_left, 0.0)
+                if !crate::layout::table::cell_anchor_wrap_enabled(anchor) {
+                    return None;
+                }
+                wrap_exclusion(ctx, anchor, &geometry, content_left, 0.0, 0.0)
             })
             .collect();
     };
     let _ = content_width;
+    // The paginator lays every column out from `content_left` and paints it at
+    // its column's left edge, `host_x`.
+    let column_dx = host_x - content_left;
     segments
         .iter()
         .filter_map(|segment| {
             let Seg::Anchor(anchor) = segment else {
                 return None;
             };
-            wrap_exclusion(ctx, anchor, geometry, host_x, host_y)
+            if !crate::layout::table::cell_anchor_wrap_enabled(anchor) {
+                return None;
+            }
+            wrap_exclusion(ctx, anchor, geometry, host_x, host_y, column_dx)
         })
         .collect()
 }
@@ -1640,10 +2323,14 @@ fn free_spans(sink: &LineSink<'_, '_>, left: f64, line_height: f64) -> Vec<(f64,
             continue;
         }
         if let Some(contour) = &exclusion.contour {
-            let occupied = contour.intervals(
-                sink.line_y + exclusion.page_y,
-                sink.line_y + line_height + exclusion.page_y,
-            );
+            let occupied: Vec<(f64, f64)> = contour
+                .intervals(
+                    sink.line_y + exclusion.page_y,
+                    sink.line_y + line_height + exclusion.page_y,
+                )
+                .into_iter()
+                .map(|(left, right)| (left - exclusion.page_dx, right - exclusion.page_dx))
+                .collect();
             if exclusion.side == WrapSide::Both {
                 for (left, right) in occupied {
                     subtract(&mut spans, left, right);
@@ -1728,6 +2415,45 @@ fn place_token(
     run: &ComputedRun,
     following: Option<char>,
 ) {
+    let mut token = token;
+    // Hyphenation runs before moving a whole word to the following line.
+    // Use the free interval containing the pen so floating objects constrain
+    // the candidate just as they constrain an ordinary text token.
+    if !sink.computed.no_wrap {
+        loop {
+            let spans = free_spans(sink, normal_x, provisional_line_height(sink));
+            let Some((_, line_end)) = spans
+                .iter()
+                .copied()
+                .find(|(start, end)| *start <= *x + 1e-9 && *x < *end)
+            else {
+                break;
+            };
+            if *x + sink.ctx.measure(token, run) <= line_end + 1e-9 {
+                break;
+            }
+            let Some((cut, displayed)) =
+                hyphenated_prefix(sink, current, token, run, line_end - *x)
+            else {
+                break;
+            };
+            let width = sink.ctx.measure(&displayed, run);
+            push_piece(
+                sink,
+                current,
+                &displayed,
+                *x,
+                width,
+                run,
+                sink.ctx.size_px(run.size_pt),
+                false,
+                1.0,
+            );
+            sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+            *x = normal_x;
+            token = &token[cut..];
+        }
+    }
     let compress = crate::style::compress_punctuation(
         sink.ctx
             .document
@@ -1739,7 +2465,10 @@ fn place_token(
     let width = sink
         .ctx
         .measure_with_next_factor(token, run, following, plain);
-    if sink.exclusions.is_empty() {
+    if sink.computed.no_wrap {
+        // A cell's noWrap retains authored hard breaks and lets the whole
+        // word advance beyond the cell when its fixed width is insufficient.
+    } else if sink.exclusions.is_empty() {
         let line_end = sink.right_edge;
         if *x + width > line_end + 1e-9 && !current.is_empty() {
             sink.emit(std::mem::replace(current, LineBuilder::new()), false);
@@ -1781,6 +2510,228 @@ fn place_token(
     *x += width;
 }
 
+/// A word can span multiple runs; line breaking uses its complete width and
+/// language while painting each substring with its authored formatting.
+fn place_formatted_word(
+    sink: &mut LineSink<'_, '_>,
+    current: &mut LineBuilder,
+    x: &mut f64,
+    normal_x: f64,
+    mut pieces: Vec<(String, ComputedRun)>,
+    following: Option<char>,
+) {
+    loop {
+        let word: String = pieces.iter().map(|(text, _)| text.as_str()).collect();
+        if word.is_empty() {
+            return;
+        }
+        let total: f64 = pieces
+            .iter()
+            .map(|(text, run)| sink.ctx.measure(text, run))
+            .sum();
+        let end = free_spans(sink, normal_x, provisional_line_height(sink))
+            .into_iter()
+            .find(|(left, right)| *left <= *x + 0.001 && *x < *right)
+            .map_or(sink.right_edge, |(_, right)| right);
+        let mut cut = word.len();
+        let mut hyphen = false;
+        if !sink.computed.no_wrap && *x + total > end + 0.001 {
+            let settings = &sink.ctx.document.settings;
+            let zone = settings.hyphenation_zone.map_or(0.0, |v| {
+                twips_to_px(v.value().max(0), sink.ctx.options.scale)
+            });
+            if settings.auto_hyphenation
+                && !settings.auto_hyphenation_off
+                && word.len() <= 4096
+                && (*x <= normal_x + 0.001 || end - *x > zone)
+                && !(settings.do_not_hyphenate_caps
+                    && word
+                        .chars()
+                        .all(|ch| !ch.is_alphabetic() || ch.is_uppercase()))
+            {
+                let language = &pieces[0].1.language;
+                let tag = if word.chars().any(crate::style::is_complex_script) {
+                    language.bidi.as_deref().or(language.val.as_deref())
+                } else {
+                    language.val.as_deref()
+                }
+                .unwrap_or("en")
+                .split(['-', '_'])
+                .next()
+                .unwrap_or("en");
+                let code = tag.as_bytes();
+                if let [a, b] = code {
+                    if let Some(language) =
+                        hypher::Lang::from_iso([a.to_ascii_lowercase(), b.to_ascii_lowercase()])
+                    {
+                        let mut candidate = 0;
+                        let mut best = None;
+                        let word_end = word
+                            .char_indices()
+                            .find(|(_, ch)| !ch.is_alphabetic())
+                            .map_or(word.len(), |(index, _)| index);
+                        for syllable in hypher::hyphenate(&word[..word_end], language) {
+                            candidate += syllable.len();
+                            if candidate >= word_end {
+                                break;
+                            }
+                            let mut remaining = candidate;
+                            let mut width = 0.0;
+                            for (text, run) in &pieces {
+                                let count = remaining.min(text.len());
+                                width += sink.ctx.measure(&text[..count], run);
+                                remaining -= count;
+                                if remaining == 0 {
+                                    width += sink.ctx.measure("-", run);
+                                    break;
+                                }
+                            }
+                            if *x + width <= end + 0.001 {
+                                best = Some(candidate);
+                            }
+                        }
+                        if let Some(best) = best {
+                            cut = best;
+                            hyphen = true;
+                        }
+                    }
+                }
+            }
+            if !hyphen && !current.is_empty() {
+                sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+                *x = normal_x;
+                continue;
+            }
+        }
+        let mut remaining = cut;
+        let mut tail = Vec::new();
+        let mut last_run = pieces[0].1.clone();
+        for (text, run) in pieces {
+            let count = remaining.min(text.len());
+            remaining -= count;
+            if count > 0 {
+                let part = &text[..count];
+                let width = sink.ctx.measure(part, &run);
+                last_run = run.clone();
+                if !hyphen
+                    && !sink.computed.no_wrap
+                    && (sink.computed.word_wrap
+                        || word.chars().any(crate::font::metrics::is_wide_character))
+                    && *x + width > end
+                {
+                    if !current.is_empty() {
+                        sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+                        *x = normal_x;
+                    }
+                    place_long_token(sink, current, x, end, normal_x, part, &run);
+                } else {
+                    push_piece(
+                        sink,
+                        current,
+                        part,
+                        *x,
+                        width,
+                        &run,
+                        sink.ctx.size_px(run.size_pt),
+                        false,
+                        1.0,
+                    );
+                    *x += width;
+                }
+            }
+            if count < text.len() {
+                tail.push((text[count..].to_owned(), run));
+            }
+        }
+        if !hyphen {
+            if let Some(last) = current.items.last_mut() {
+                last.following_non_space = following;
+            }
+            return;
+        }
+        let width = sink.ctx.measure("-", &last_run);
+        push_piece(
+            sink,
+            current,
+            "-",
+            *x,
+            width,
+            &last_run,
+            sink.ctx.size_px(last_run.size_pt),
+            false,
+            1.0,
+        );
+        sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+        *x = normal_x;
+        pieces = tail;
+    }
+}
+
+/// Longest language-approved prefix fitting the current line, including its
+/// visible hyphen. The model and the DOCX writer retain the original word.
+fn hyphenated_prefix(
+    sink: &LineSink<'_, '_>,
+    current: &LineBuilder,
+    token: &str,
+    run: &ComputedRun,
+    available: f64,
+) -> Option<(usize, String)> {
+    let settings = &sink.ctx.document.settings;
+    if !settings.auto_hyphenation
+        || settings.auto_hyphenation_off
+        || available <= 0.0
+        || token.len() > 4096
+    {
+        return None;
+    }
+    let zone = settings.hyphenation_zone.map_or(0.0, |zone| {
+        twips_to_px(zone.value().max(0), sink.ctx.options.scale)
+    });
+    if !current.is_empty() && available <= zone {
+        return None;
+    }
+    let end = token
+        .char_indices()
+        .find(|(_, ch)| !ch.is_alphabetic())
+        .map_or(token.len(), |(index, _)| index);
+    let word = &token[..end];
+    if word.chars().count() < 4
+        || (settings.do_not_hyphenate_caps && word.chars().all(char::is_uppercase))
+    {
+        return None;
+    }
+    let tag = if word.chars().any(crate::style::is_complex_script) {
+        run.language.bidi.as_deref().or(run.language.val.as_deref())
+    } else {
+        run.language.val.as_deref()
+    }
+    .unwrap_or("en");
+    let code = tag.split(['-', '_']).next()?.as_bytes();
+    if code.len() != 2 {
+        return None;
+    }
+    let language =
+        hypher::Lang::from_iso([code[0].to_ascii_lowercase(), code[1].to_ascii_lowercase()])?;
+    let hyphen = if language.hyphenation_character().is_some() {
+        "-"
+    } else {
+        ""
+    };
+    let mut cut = 0;
+    let mut best = None;
+    for syllable in hypher::hyphenate(word, language) {
+        cut += syllable.len();
+        if cut >= word.len() {
+            break;
+        }
+        let displayed = format!("{}{hyphen}", &word[..cut]);
+        if sink.ctx.measure(&displayed, run) <= available + 1e-9 {
+            best = Some((cut, displayed));
+        }
+    }
+    best
+}
+
 #[allow(clippy::too_many_arguments)]
 fn place_long_token(
     sink: &mut LineSink<'_, '_>,
@@ -1800,6 +2751,26 @@ fn place_long_token(
             .as_deref(),
     );
     let plain_space_factor = crate::style::plain_space_factor(sink.computed.alignment, run.size_pt);
+    let cjk = token.chars().any(|ch| {
+        matches!(u32::from(ch),
+        0x2e80..=0x9fff | 0xac00..=0xd7af | 0xf900..=0xfaff)
+    });
+    if !sink.computed.word_wrap && !cjk {
+        let width = sink.ctx.measure(token, run);
+        push_piece(
+            sink,
+            current,
+            token,
+            *x,
+            width,
+            run,
+            size_px,
+            compress,
+            plain_space_factor,
+        );
+        *x += width;
+        return;
+    }
     // One item per line-sized piece, not per character: a 1 MB unbroken token
     // used to become a million items, each with its own copy of the run. The
     // token is cut only at grapheme-cluster boundaries.
@@ -2066,12 +3037,187 @@ fn warn_line_overflow(ctx: &LayoutContext<'_>, line: &LineBuilder, right_edge: f
             Item::Rect(_) => "rectangle",
             Item::Line(_) => "line",
             Item::Path(_) => "path",
+            Item::Group(_) => "group",
             Item::Image(_) => "image",
         };
         ctx.warn(format!(
             "render.object-overflow: {kind}, right={:.3}, limit={right_edge:.3}",
             item_right(item)
         ));
+    }
+}
+
+/// Order text fragments by Unicode embedding levels while preserving glyph
+/// order inside each already-shaped fragment.
+fn reorder_bidi_line(ctx: &LayoutContext<'_>, line: &mut LineBuilder, rtl: bool) {
+    if !rtl
+        && !line
+            .items
+            .iter()
+            .any(|item| item.run.rtl.is_some() || crate::font::needs_complex_script(&item.text))
+    {
+        return;
+    }
+    let base = if rtl {
+        unicode_bidi::Level::rtl()
+    } else {
+        unicode_bidi::Level::ltr()
+    };
+    let mut logical = String::new();
+    let mut starts = Vec::new();
+    let mut active_scopes = Vec::new();
+    for item in &line.items {
+        let shared = active_scopes
+            .iter()
+            .zip(&item.run.bidi_embeddings)
+            .take_while(|(a, b)| a == b)
+            .count();
+        for _ in shared..active_scopes.len() {
+            logical.push('\u{202c}');
+        }
+        active_scopes.truncate(shared);
+        for scope in &item.run.bidi_embeddings[shared..] {
+            logical.push(match (scope.1, scope.2) {
+                (true, true) => '\u{202e}',
+                (false, true) => '\u{202d}',
+                (true, false) => '\u{202b}',
+                (false, false) => '\u{202a}',
+            });
+            active_scopes.push(*scope);
+        }
+        if let Some(direction) = item.run.rtl {
+            logical.push(match (direction, item.run.bidi_override) {
+                (true, true) => '\u{202e}',
+                (false, true) => '\u{202d}',
+                (true, false) => '\u{202b}',
+                (false, false) => '\u{202a}',
+            });
+        }
+        starts.push(logical.len());
+        logical.push_str(&item.text);
+        if item.run.rtl.is_some() {
+            logical.push('\u{202c}');
+        }
+    }
+    for _ in &active_scopes {
+        logical.push('\u{202c}');
+    }
+    let bidi = unicode_bidi::BidiInfo::new(&logical, Some(base));
+    let levels = bidi.paragraphs.first().map_or_else(
+        || bidi.levels.clone(),
+        |paragraph| bidi.reordered_levels(paragraph, 0..logical.len()),
+    );
+    let mut fragments = Vec::new();
+    let mut fragment_levels = Vec::new();
+    for (item, start) in line.items.iter().zip(starts) {
+        let mut begin = 0;
+        let mut level = levels.get(start).copied().unwrap_or(base);
+        let mut x = item.x;
+        for (byte, _) in item
+            .text
+            .char_indices()
+            .chain(std::iter::once((item.text.len(), '\0')))
+        {
+            let next = levels.get(start + byte).copied().unwrap_or(level);
+            if byte == item.text.len() || next != level {
+                if byte > begin {
+                    let mut fragment = item.clone();
+                    fragment.text = item.text[begin..byte].to_owned();
+                    fragment.x = x;
+                    fragment.run.rtl = Some(level.is_rtl());
+                    fragment.width = ctx.measure(&fragment.text, &fragment.run);
+                    fragment.advance = ctx.advance_kind_for(&fragment.text, &fragment.run);
+                    x += fragment.width;
+                    fragments.push(fragment);
+                    fragment_levels.push(level);
+                }
+                begin = byte;
+                level = next;
+            }
+        }
+    }
+    line.items = fragments;
+    #[derive(Clone)]
+    struct Unit {
+        left: f64,
+        right: f64,
+        texts: Vec<usize>,
+        graphics: Vec<usize>,
+    }
+    let mut units: Vec<_> = line
+        .items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| Unit {
+            left: item.x,
+            right: item.x + item.width,
+            texts: vec![index],
+            graphics: Vec::new(),
+        })
+        .collect();
+    for (index, item) in line.graphics.iter().enumerate() {
+        // Background fills and frame edges span the whole line, so they follow
+        // alignment rather than acting as inline bidi objects.
+        if matches!(item, Item::Rect(_) | Item::Line(_)) {
+            continue;
+        }
+        let (left, right) = match item {
+            Item::Image(image) => (image.x, image.x + image.w),
+            Item::Path(path) => (path.x, path.x + path.w),
+            Item::Group(group) => (group.bounds[0], group.bounds[0] + group.bounds[2]),
+            _ => continue,
+        };
+        units.push(Unit {
+            left,
+            right,
+            texts: Vec::new(),
+            graphics: vec![index],
+        });
+    }
+    units.sort_by(|a, b| a.left.total_cmp(&b.left));
+    let mut groups: Vec<Unit> = Vec::new();
+    for unit in units {
+        if let Some(group) = groups
+            .last_mut()
+            .filter(|group| unit.left < group.right - 0.01)
+        {
+            group.right = group.right.max(unit.right);
+            group.texts.extend(unit.texts);
+            group.graphics.extend(unit.graphics);
+        } else {
+            groups.push(unit);
+        }
+    }
+    // Retain the resolved embedding depth, including nested dir/bdo scopes.
+    // Neutral objects inherit the surrounding resolved level.
+    let mut prior_level = base;
+    let levels: Vec<_> = groups
+        .iter()
+        .map(|group| {
+            if let Some(index) = group.texts.first() {
+                prior_level = fragment_levels[*index];
+            }
+            prior_level
+        })
+        .collect();
+    let order = unicode_bidi::BidiInfo::reorder_visual(&levels);
+    let mut gaps: Vec<_> = groups
+        .windows(2)
+        .map(|pair| (pair[1].left - pair[0].right).max(0.0))
+        .collect();
+    gaps.push(0.0);
+    let mut x = groups.first().map_or(0.0, |group| group.left);
+    for index in order {
+        let group = &groups[index];
+        let dx = x - group.left;
+        for index in &group.texts {
+            line.items[*index].x += dx;
+        }
+        for index in &group.graphics {
+            line.graphics[*index] =
+                crate::layout::table::offset_item(&line.graphics[*index], dx, 0.0);
+        }
+        x += group.right - group.left + gaps[index];
     }
 }
 
@@ -2139,6 +3285,7 @@ fn finish_line(
     }
 
     let used = if justify { line_width } else { used };
+    reorder_bidi_line(ctx, &mut line, computed.bidi);
     let offset = match computed.alignment {
         strict_ooxml_wml::model::values::Justification::Center => {
             (line_width - used).max(0.0) / 2.0
@@ -2165,6 +3312,27 @@ fn finish_line(
     let (mut height, mut ascent) =
         resolve_line_metrics(ctx, computed, line.items.first(), grid_line_pitch);
     (height, ascent) = resolve_math_line_metrics(&mut line, height, ascent);
+    if computed.line_rule != LineSpacingRule::Exact {
+        let extra_above = line
+            .items
+            .iter()
+            .filter(|item| {
+                item.run
+                    .emphasis
+                    .as_deref()
+                    .is_some_and(|mark| mark != "underDot")
+            })
+            .map(|item| item.size_px * 0.25)
+            .fold(0.0, f64::max);
+        let extra_below = line
+            .items
+            .iter()
+            .filter(|item| item.run.emphasis.as_deref() == Some("underDot"))
+            .map(|item| item.size_px * 0.25)
+            .fold(0.0, f64::max);
+        ascent += extra_above;
+        height += extra_above + extra_below;
+    }
     // The nominal cap is a spacing preference, never permission to overlap
     // adjacent lines. Reserve only the actual painted extent beyond it.
     if line.ink_height > 0.0 || line.ink_depth > 0.0 {
@@ -2189,6 +3357,24 @@ fn finish_line(
         height = height.max(ascent + depth);
     }
     warn_inline_vertical_overflow(ctx, &line, ascent, height);
+    for item in line.items.iter_mut().rev() {
+        item.run.underline_trailing_space =
+            ctx.document.settings.compat_flags.underline_trailing_space;
+        if item.text.chars().any(|ch| !ch.is_whitespace()) {
+            break;
+        }
+    }
+    if computed.line_rule != LineSpacingRule::Exact
+        && ctx.document.settings.compat_flags.space_for_underline
+    {
+        let underline_depth = line
+            .items
+            .iter()
+            .filter(|item| item.run.underline.is_some())
+            .map(|item| item.size_px * 0.2)
+            .fold(0.0, f64::max);
+        height = height.max(ascent + underline_depth);
+    }
     for item in &mut line.items {
         item.baseline = ascent;
         apply_vertical_align(item);
@@ -2198,6 +3384,7 @@ fn finish_line(
     for item in &mut line.graphics {
         *item = shift_item(item.clone(), 0.0, ascent);
     }
+    super::decoration::merge_run_borders(&mut line.items, &mut line.graphics);
     TextLine {
         items: line.items,
         graphics: line.graphics,
@@ -2245,14 +3432,15 @@ fn push_field_marker(
     // AUD-70: headers/footers set `field_env` so PAGE/NUMPAGES resolve per page
     // during layout. The body still places a placeholder and fixes it in
     // `Paginator::resolve_fields`.
-    let (value, format) = match ctx.field_env.get() {
-        Some(env) => env.resolve(marker),
-        None => (
-            1,
-            marker.format.unwrap_or(crate::notes::NumberFormat::Decimal),
-        ),
-    };
-    let text = format.format(value);
+    let text = ctx.field_env.get().map_or_else(
+        || {
+            marker
+                .format
+                .unwrap_or(crate::notes::NumberFormat::Decimal)
+                .format(1)
+        },
+        |env| env.format(marker),
+    );
     let width = ctx.measure(&text, run);
     let size_px = ctx.size_px(run.size_pt);
     let advance = ctx.advance_kind_for(&text, run);
@@ -2326,6 +3514,7 @@ fn line_origin(items: &[TextItem], graphics: &[Item]) -> f64 {
 /// The left edge of a paint item.
 fn item_left(item: &Item) -> f64 {
     match item {
+        Item::Group(group) => group.bounds[0],
         Item::Text(text) => text.x,
         Item::Rect(rect) => rect.x,
         Item::Path(path) => path.x,
@@ -2337,6 +3526,7 @@ fn item_left(item: &Item) -> f64 {
 /// The right edge of a paint item.
 fn item_right(item: &Item) -> f64 {
     match item {
+        Item::Group(group) => group.bounds[0] + group.bounds[2],
         Item::Text(text) => text.x + text.width,
         Item::Rect(rect) => rect.x + rect.w,
         Item::Path(path) => path.x + path.w,
@@ -2353,8 +3543,9 @@ fn resolve_line_metrics(
     grid_line_pitch: Option<f64>,
 ) -> (f64, f64) {
     let run = item.map_or(&computed.default_run, |item| &item.run);
+    let grid_line_pitch = grid_line_pitch.filter(|_| computed.snap_to_grid && run.snap_to_grid);
     let family = crate::style::chosen_family(run, item.map_or("", |text| text.text.as_str()));
-    let metrics = ctx.font.metrics(&family, run.bold, run.italic);
+    let metrics = crate::font::embedded::run_metrics(run, &family, ctx.font);
     let size_px = ctx.size_px(run.size_pt);
     let natural_height = (metrics.line_height_em() * size_px).max(1.0);
     let natural_ascent = metrics.ascent_em() * size_px;
@@ -2488,14 +3679,19 @@ fn following_ink(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
                     kind: *kind,
                     format: *format,
                 };
-                let (value, format) = ctx.field_env.get().map_or(
-                    (1, format.unwrap_or(crate::notes::NumberFormat::Decimal)),
-                    |env| env.resolve(marker),
+                let text = ctx.field_env.get().map_or_else(
+                    || {
+                        format
+                            .unwrap_or(crate::notes::NumberFormat::Decimal)
+                            .format(1)
+                    },
+                    |env| env.format(marker),
                 );
-                width += ctx.measure(&format.format(value), run);
+                width += ctx.measure(&text, run);
             }
             Seg::Tab
             | Seg::Break
+            | Seg::ClearingBreak(_)
             | Seg::PageBreak
             | Seg::ColumnBreak
             | Seg::Image(_)
@@ -2503,7 +3699,8 @@ fn following_ink(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
             Seg::Anchor(_)
             | Seg::FootnoteMarker(_, _)
             | Seg::EndnoteMarker(_, _)
-            | Seg::NoteNumber(_) => {}
+            | Seg::NoteNumber(_)
+            | Seg::NoteSeparator(_, _) => {}
         }
     }
     width
@@ -2522,7 +3719,9 @@ fn decimal_offset(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
                 }
                 width += ctx.measure(text, run);
             }
-            Seg::Tab | Seg::Break | Seg::PageBreak | Seg::ColumnBreak => break,
+            Seg::Tab | Seg::Break | Seg::ClearingBreak(_) | Seg::PageBreak | Seg::ColumnBreak => {
+                break
+            }
             _ => {}
         }
     }

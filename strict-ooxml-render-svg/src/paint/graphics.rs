@@ -41,6 +41,14 @@ pub(crate) fn anchor_items(
     w: f64,
     h: f64,
 ) -> Vec<Item> {
+    if anchor.hidden == Some(true)
+        || anchor
+            .doc_pr
+            .as_ref()
+            .is_some_and(|properties| properties.hidden == Some(true))
+    {
+        return Vec::new();
+    }
     graphic_items(ctx, anchor.graphic.as_ref(), x, y, w, h)
 }
 
@@ -93,7 +101,11 @@ pub(crate) fn graphic_items(
             Some(diagram) => diagram_items(ctx, diagram, x, y, w, h),
             None => vec![placeholder(x, y, w, h)],
         },
-        Graphic::None | Graphic::LockedCanvas(_) | Graphic::Other => {
+        Graphic::LockedCanvas(canvas) => canvas.graphics.as_deref().map_or_else(
+            || vec![placeholder(x, y, w, h)],
+            |group| group_items(ctx, group, x, y, w, h),
+        ),
+        Graphic::None | Graphic::Other => {
             vec![placeholder(x, y, w, h)]
         }
     }
@@ -244,21 +256,217 @@ fn shape_items(
     }
     if let Some(text) = &shape.text {
         if !text.blocks.is_empty() {
-            let mut text_items = text_box_items(ctx, text, x, y, w, h);
+            let (tx, ty, tw, th) = custom_text_box(ctx, shape, x, y, w, h).unwrap_or((x, y, w, h));
+            let mut text_items = text_box_items(ctx, text, tx, ty, tw, th);
             // `a:fontRef` colours the text the runs leave on `auto`.
             if let Some(color) = &style.font {
-                for item in &mut text_items {
-                    if let Item::Text(text) = item {
-                        if text.run.color.is_none() {
-                            text.run.color = Some(color.clone());
-                        }
-                    }
-                }
+                color_auto_text(&mut text_items, color);
+            }
+            let body = text.body.as_ref();
+            let angle = body
+                .and_then(|body| body.rot)
+                .map_or(0.0, |rot| f64::from(rot) / 60_000.0)
+                + if body.is_some_and(|body| body.upright == Some(true)) {
+                    0.0
+                } else {
+                    shape
+                        .xfrm
+                        .and_then(|xfrm| xfrm.rot)
+                        .map_or(0.0, |rot| f64::from(rot) / 60_000.0)
+                };
+            if angle != 0.0 {
+                let (sin, cos) = angle.to_radians().sin_cos();
+                let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+                text_items = transform_items(
+                    text_items,
+                    [
+                        cos,
+                        sin,
+                        -sin,
+                        cos,
+                        cx - cos * cx + sin * cy,
+                        cy - sin * cx - cos * cy,
+                    ],
+                );
             }
             items.extend(text_items);
         }
     }
-    items
+    super::effects::apply(ctx, shape.effects.as_deref(), items, [x, y, w, h])
+}
+
+fn color_auto_text(items: &mut [Item], color: &str) {
+    for item in items {
+        match item {
+            Item::Text(text) if text.run.color.is_none() => text.run.color = Some(color.to_owned()),
+            Item::Group(group) => color_auto_text(&mut group.items, color),
+            _ => {}
+        }
+    }
+}
+
+/// Resolve the text rectangle in the custom geometry's coordinate space.
+fn custom_text_box(
+    ctx: &LayoutContext<'_>,
+    shape: &Shape,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) -> Option<(f64, f64, f64, f64)> {
+    let strict_ooxml_wml::model::drawing::ShapeGeometry::Custom(geometry) = &shape.geometry else {
+        return None;
+    };
+    let rect = geometry.text_rect.as_ref()?;
+    let path = geometry.paths.first();
+    let gw = path
+        .filter(|path| path.width > 0)
+        .map_or(w, |path| path.width as f64);
+    let gh = path
+        .filter(|path| path.height > 0)
+        .map_or(h, |path| path.height as f64);
+    let mut guides = std::collections::HashMap::new();
+    for (name, formula) in geometry.adjustments.iter().chain(&geometry.guides) {
+        if let Some(value) = geometry_formula(formula, gw, gh, &guides) {
+            guides.insert(name.to_string(), value);
+        }
+    }
+    let resolve = |value: &str| -> Option<f64> {
+        if let Some(value) = guides.get(value) {
+            return Some(*value);
+        }
+        if let Some(value) = geometry_value(value, gw, gh, &guides) {
+            return Some(value);
+        }
+        match value {
+            "l" | "t" => Some(0.0),
+            "r" | "w" => Some(gw),
+            "b" | "h" => Some(gh),
+            "hc" => Some(gw / 2.0),
+            "vc" => Some(gh / 2.0),
+            _ => {
+                if let Some(divisor) = value
+                    .strip_prefix("wd")
+                    .and_then(|part| part.parse::<f64>().ok())
+                    .filter(|n| *n > 0.0)
+                {
+                    Some(gw / divisor)
+                } else if let Some(divisor) = value
+                    .strip_prefix("hd")
+                    .and_then(|part| part.parse::<f64>().ok())
+                    .filter(|n| *n > 0.0)
+                {
+                    Some(gh / divisor)
+                } else {
+                    value.parse::<f64>().ok().filter(|n| n.is_finite())
+                }
+            }
+        }
+    };
+    let values: Option<Vec<_>> = rect.iter().map(|value| resolve(value)).collect();
+    let Some(values) = values else {
+        ctx.warn("render.custom-text-rect: unresolved geometry guide in text rectangle".to_owned());
+        return None;
+    };
+    Some((
+        x + values[0] * w / gw,
+        y + values[1] * h / gh,
+        ((values[2] - values[0]) * w / gw).max(1.0),
+        ((values[3] - values[1]) * h / gh).max(1.0),
+    ))
+}
+
+fn geometry_value(
+    value: &str,
+    w: f64,
+    h: f64,
+    guides: &std::collections::HashMap<String, f64>,
+) -> Option<f64> {
+    if let Some(value) = guides.get(value) {
+        return Some(*value);
+    }
+    let result = match value {
+        "l" | "t" => 0.0,
+        "w" | "r" => w,
+        "h" | "b" => h,
+        "hc" => w / 2.0,
+        "vc" => h / 2.0,
+        "ss" => w.min(h),
+        "ls" => w.max(h),
+        "cd2" => 10_800_000.0,
+        "cd4" => 5_400_000.0,
+        "cd8" => 2_700_000.0,
+        "3cd4" => 16_200_000.0,
+        "3cd8" => 8_100_000.0,
+        "5cd8" => 13_500_000.0,
+        "7cd8" => 18_900_000.0,
+        _ => {
+            if let Some((base, divisor)) = ["wd", "hd", "ssd"].into_iter().find_map(|prefix| {
+                value
+                    .strip_prefix(prefix)
+                    .and_then(|suffix| suffix.parse::<f64>().ok())
+                    .filter(|divisor| *divisor > 0.0)
+                    .map(|divisor| {
+                        (
+                            match prefix {
+                                "wd" => w,
+                                "hd" => h,
+                                _ => w.min(h),
+                            },
+                            divisor,
+                        )
+                    })
+            }) {
+                base / divisor
+            } else {
+                value.parse::<f64>().ok()?
+            }
+        }
+    };
+    result.is_finite().then_some(result)
+}
+
+/// DrawingML guide operators; angular values are in 1/60000 degree.
+fn geometry_formula(
+    formula: &str,
+    w: f64,
+    h: f64,
+    guides: &std::collections::HashMap<String, f64>,
+) -> Option<f64> {
+    let mut parts = formula.split_whitespace();
+    let operator = parts.next()?;
+    let values: Option<Vec<_>> = parts
+        .map(|value| geometry_value(value, w, h, guides))
+        .collect();
+    let values = values?;
+    let radians = |angle: f64| (angle / 60_000.0).to_radians();
+    let value = match (operator, values.as_slice()) {
+        ("val", [x]) => *x,
+        ("*/", [x, y, z]) if *z != 0.0 => x * y / z,
+        ("+-", [x, y, z]) => x + y - z,
+        ("+/", [x, y, z]) if *z != 0.0 => (x + y) / z,
+        ("?:", [x, y, z]) => {
+            if *x > 0.0 {
+                *y
+            } else {
+                *z
+            }
+        }
+        ("abs", [x]) => x.abs(),
+        ("at2", [x, y]) => y.atan2(*x).to_degrees() * 60_000.0,
+        ("cat2", [x, y, z]) => x * z.atan2(*y).cos(),
+        ("sat2", [x, y, z]) => x * z.atan2(*y).sin(),
+        ("cos", [x, angle]) => x * radians(*angle).cos(),
+        ("sin", [x, angle]) => x * radians(*angle).sin(),
+        ("tan", [x, angle]) => x * radians(*angle).tan(),
+        ("max", [x, y]) => x.max(*y),
+        ("min", [x, y]) => x.min(*y),
+        ("mod", [x, y, z]) => x.hypot(*y).hypot(*z),
+        ("pin", [minimum, value, maximum]) => value.max(*minimum).min(*maximum),
+        ("sqrt", [x]) if *x >= 0.0 => x.sqrt(),
+        _ => return None,
+    };
+    value.is_finite().then_some(value)
 }
 
 /// The colours a `wps:style` block gives a shape, resolved through the theme.
@@ -531,7 +739,93 @@ fn group_items(
         scale: (scale_x, scale_y),
         fallback: (w, h),
     };
-    place_children(ctx, &group.children, &placement)
+    let items = place_children(ctx, &group.children, &placement);
+    let angle = f64::from(transform.rot.unwrap_or(0)) / 60_000.0;
+    if angle == 0.0 && !transform.flip_h && !transform.flip_v {
+        return items;
+    }
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let sx = if transform.flip_h { -1.0 } else { 1.0 };
+    let sy = if transform.flip_v { -1.0 } else { 1.0 };
+    let (cx, cy) = (x + off_x + ext_w / 2.0, y + off_y + ext_h / 2.0);
+    let (a, b, c, d) = (cos * sx, sin * sx, -sin * sy, cos * sy);
+    transform_items(
+        items,
+        [a, b, c, d, cx - a * cx - c * cy, cy - b * cx - d * cy],
+    )
+}
+
+/// Retains an affine transform until painting, so glyphs and image crops are
+/// transformed together with their geometry in both backends.
+pub(crate) fn transform_items(items: Vec<Item>, matrix: [f64; 6]) -> Vec<Item> {
+    if items.is_empty() {
+        return items;
+    }
+    let [a, b, c, d, e, f] = matrix;
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for item in &items {
+        let (x, y, w, h) = match item {
+            Item::Text(text) => (
+                text.x,
+                text.baseline - text.size_px,
+                text.width,
+                1.3 * text.size_px,
+            ),
+            Item::Rect(rect) => (rect.x, rect.y, rect.w, rect.h),
+            Item::Line(line) => (
+                line.x1.min(line.x2),
+                line.y1.min(line.y2),
+                (line.x1 - line.x2).abs(),
+                (line.y1 - line.y2).abs(),
+            ),
+            Item::Path(path) => (path.x, path.y, path.w, path.h),
+            Item::Image(image) => (image.x, image.y, image.w, image.h),
+            Item::Group(group) => (
+                group.bounds[0],
+                group.bounds[1],
+                group.bounds[2],
+                group.bounds[3],
+            ),
+        };
+        let (angle, origin_x, origin_y) = match item {
+            Item::Path(path) => (
+                path.rotate_deg.to_radians(),
+                path.x + path.w / 2.0,
+                path.y + path.h / 2.0,
+            ),
+            Item::Text(text) => (text.run.rotation_deg.to_radians(), text.x, text.baseline),
+            _ => (0.0, 0.0, 0.0),
+        };
+        for (x, y) in [(x, y), (x + w, y), (x, y + h), (x + w, y + h)] {
+            let (x, y) = if angle == 0.0 {
+                (x, y)
+            } else {
+                let (sin, cos) = angle.sin_cos();
+                let (dx, dy) = (x - origin_x, y - origin_y);
+                (
+                    origin_x + cos * dx - sin * dy,
+                    origin_y + sin * dx + cos * dy,
+                )
+            };
+            let (px, py) = (a * x + c * y + e, b * x + d * y + f);
+            min_x = min_x.min(px);
+            min_y = min_y.min(py);
+            max_x = max_x.max(px);
+            max_y = max_y.max(py);
+        }
+    }
+    vec![Item::Group(crate::layout::GroupItem {
+        matrix,
+        items,
+        bounds: [min_x, min_y, max_x - min_x, max_y - min_y],
+        clip: None,
+        clip_path: None,
+        clip_inverse: false,
+        opacity: 1.0,
+    })]
 }
 
 /// Where a list of child graphics lands: child coordinates (px at the
@@ -707,6 +1001,11 @@ fn text_box_items(
     h: f64,
 ) -> Vec<Item> {
     let body = text.body.clone().unwrap_or_default();
+    let _text_flow = crate::table_style::enter_text_flow(
+        strict_ooxml_wml::model::values::TextDirection::LrTb,
+        Some(h),
+    );
+    let _wrap = crate::table_style::wrap_override(body.wrap.as_deref() == Some("none"));
     let scale = ctx.options.scale;
     let left_inset = body
         .left_inset
@@ -731,6 +1030,22 @@ fn text_box_items(
     // extent has no interior, and "no interior" has to be drawn as something
     // rather than as a negative width (AUD-09).
     let inner_width = (w - emu_to_px(left_inset.saturating_add(right_inset), scale)).max(1.0);
+    let available = (h - emu_to_px(top_inset.saturating_add(bottom_inset), scale)).max(1.0);
+    let angle = match body.vert.as_deref() {
+        Some("vert270") => -90.0_f64,
+        Some("vert" | "eaVert" | "mongolianVert" | "wordArtVert" | "wordArtVertRtl") => 90.0,
+        _ => 0.0,
+    };
+    let (layout_width, layout_height) = if angle == 0.0 {
+        (inner_width, available)
+    } else {
+        (available, inner_width)
+    };
+    let columns = body.num_col.unwrap_or(1).clamp(1, 45) as usize;
+    let gap = body
+        .spc_col
+        .map_or(0.0, |value| emu_to_px(i64::from(value.max(0)), scale));
+    let column_width = ((layout_width - gap * (columns - 1) as f64) / columns as f64).max(1.0);
     let mut items = Vec::new();
     let mut content_y = 0.0;
     // A text box is one container, so its content is one level deeper than
@@ -745,7 +1060,7 @@ fn text_box_items(
         ctx,
         &text.blocks,
         0.0,
-        inner_width,
+        column_width,
         &mut content_y,
         &mut items,
         ctx.block_depth() + 1,
@@ -753,16 +1068,134 @@ fn text_box_items(
         false,
         &mut page_frames,
     );
-    let available = (h - emu_to_px(top_inset.saturating_add(bottom_inset), scale)).max(0.0);
+    if columns > 1 {
+        let bands = items
+            .iter()
+            .map(|item| crate::layout::table::item_vertical_bounds(ctx, item))
+            .collect();
+        let splits = crate::layout::table::row_split_points(bands, content_y);
+        let row = crate::layout::TableRowFlow {
+            anchors: Vec::new(),
+            items,
+            height: content_y,
+            header: false,
+            page_frames: Vec::new(),
+            split_points: splits,
+        };
+        items = Vec::new();
+        let mut start = 0.0;
+        let mut height = 0.0_f64;
+        for index in 0..columns {
+            if start >= content_y {
+                break;
+            }
+            let end = if index + 1 == columns || content_y - start <= layout_height {
+                content_y
+            } else {
+                row.split_points
+                    .iter()
+                    .copied()
+                    .filter(|point| *point > start && *point <= start + layout_height)
+                    .next_back()
+                    .or_else(|| {
+                        row.split_points
+                            .iter()
+                            .copied()
+                            .find(|point| *point > start)
+                    })
+                    .unwrap_or(content_y)
+            };
+            let fragment = crate::layout::table::row_fragment(&row, start, end);
+            height = height.max(fragment.height);
+            let column = if body.rtl_col == Some(true) {
+                columns - 1 - index
+            } else {
+                index
+            };
+            items.extend(
+                fragment
+                    .items
+                    .iter()
+                    .map(|item| offset_item(item, column as f64 * (column_width + gap), 0.0)),
+            );
+            start = end;
+        }
+        content_y = height;
+    }
     let shift = match body.anchor.unwrap_or(TextAnchor::Top) {
         TextAnchor::Top => 0.0,
-        TextAnchor::Center => ((available - content_y) / 2.0).max(0.0),
-        TextAnchor::Bottom => (available - content_y).max(0.0),
+        TextAnchor::Center => ((layout_height - content_y) / 2.0).max(0.0),
+        TextAnchor::Bottom => (layout_height - content_y).max(0.0),
     };
-    items
+    let horizontal_shift = if body.anchor_centered == Some(true) {
+        let bounds = transform_items(items.clone(), [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        match bounds.first() {
+            Some(Item::Group(group)) => (layout_width - group.bounds[2]) / 2.0 - group.bounds[0],
+            _ => 0.0,
+        }
+    } else {
+        0.0
+    };
+    let mut items: Vec<_> = items
         .iter()
-        .map(|item| offset_item(item, left, top + shift))
-        .collect()
+        .map(|item| offset_item(item, horizontal_shift, shift))
+        .collect();
+    if body.horz_overflow.as_deref() == Some("clip")
+        || body.vert_overflow.as_deref() == Some("clip")
+    {
+        let horizontal_clip = body.horz_overflow.as_deref() == Some("clip");
+        let vertical_clip = body.vert_overflow.as_deref() == Some("clip");
+        items = transform_items(items, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        if let Some(Item::Group(group)) = items.first_mut() {
+            let [bx, by, bw, bh] = group.bounds;
+            let cx = if horizontal_clip { 0.0 } else { bx.min(0.0) };
+            let cy = if vertical_clip { 0.0 } else { by.min(0.0) };
+            let cw = if horizontal_clip {
+                layout_width
+            } else {
+                (bx + bw).max(layout_width) - cx
+            };
+            let ch = if vertical_clip {
+                layout_height
+            } else {
+                (by + bh).max(layout_height) - cy
+            };
+            group.clip = Some([cx, cy, cw, ch]);
+            let x1 = bx.max(cx);
+            let y1 = by.max(cy);
+            group.bounds = [
+                x1,
+                y1,
+                (bx + bw).min(cx + cw).max(x1) - x1,
+                (by + bh).min(cy + ch).max(y1) - y1,
+            ];
+        }
+    }
+    if matches!(
+        body.vert.as_deref(),
+        Some("eaVert" | "mongolianVert" | "wordArtVert" | "wordArtVertRtl")
+    ) {
+        let all = matches!(body.vert.as_deref(), Some("wordArtVert" | "wordArtVertRtl"));
+        items = crate::layout::table::rotate_upright_items(ctx, items, all);
+    }
+    if angle == 0.0 {
+        return items
+            .iter()
+            .map(|item| offset_item(item, left, top))
+            .collect();
+    }
+    let (sin, cos) = angle.to_radians().sin_cos();
+    transform_items(
+        items,
+        [
+            cos,
+            sin,
+            -sin,
+            cos,
+            left + inner_width / 2.0 - cos * layout_width / 2.0 + sin * layout_height / 2.0,
+            top + available / 2.0 - sin * layout_width / 2.0 - cos * layout_height / 2.0,
+        ],
+    )
 }
 
 /// One outline of a shape and whether it is filled and stroked.
@@ -1132,7 +1565,7 @@ fn custom_paths(custom: &CustomGeometry, w: f64, h: f64) -> Vec<ShapePath> {
         .paths
         .iter()
         .map(|path| ShapePath {
-            d: geometry_path_d(path, w, h),
+            d: geometry_path_d(custom, path, w, h),
             // `a:path/@fill="none"` outlines without filling; `@stroke="0"`
             // fills without outlining.
             fill: path.fill.as_deref() != Some("none"),
@@ -1143,40 +1576,32 @@ fn custom_paths(custom: &CustomGeometry, w: f64, h: f64) -> Vec<ShapePath> {
 }
 
 fn geometry_path_d(
+    custom: &CustomGeometry,
     path: &strict_ooxml_wml::model::drawing::GeometryPath,
     w: f64,
     h: f64,
 ) -> String {
-    let scale_x = if path.width > 0 {
-        w / path.width as f64
+    let gw = if path.width > 0 { path.width as f64 } else { w };
+    let gh = if path.height > 0 {
+        path.height as f64
     } else {
-        1.0
+        h
     };
-    let scale_y = if path.height > 0 {
-        h / path.height as f64
-    } else {
-        1.0
-    };
+    let (sx, sy) = (w / gw.max(1.0), h / gh.max(1.0));
+    let mut guides = std::collections::HashMap::new();
+    for (name, formula) in custom.adjustments.iter().chain(&custom.guides) {
+        if let Some(value) = geometry_formula(formula, gw, gh, &guides) {
+            guides.insert(name.to_string(), value);
+        }
+    }
     let f = crate::units::fmt_num;
     let mut out = String::new();
+    let mut current = (0.0, 0.0);
+    let mut origin = current;
     for command in &path.commands {
-        match command {
-            PathCommand::MoveTo { x, y } => {
-                let _ = write!(
-                    out,
-                    "M{} {} ",
-                    f(*x as f64 * scale_x),
-                    f(*y as f64 * scale_y)
-                );
-            }
-            PathCommand::LineTo { x, y } => {
-                let _ = write!(
-                    out,
-                    "L{} {} ",
-                    f(*x as f64 * scale_x),
-                    f(*y as f64 * scale_y)
-                );
-            }
+        let (kind, values): (&str, Vec<f64>) = match command {
+            PathCommand::MoveTo { x, y } => ("moveTo", vec![*x as f64, *y as f64]),
+            PathCommand::LineTo { x, y } => ("lnTo", vec![*x as f64, *y as f64]),
             PathCommand::CubicBezTo {
                 x1,
                 y1,
@@ -1184,19 +1609,119 @@ fn geometry_path_d(
                 y2,
                 x,
                 y,
-            } => {
+            } => (
+                "cubicBezTo",
+                vec![
+                    *x1 as f64, *y1 as f64, *x2 as f64, *y2 as f64, *x as f64, *y as f64,
+                ],
+            ),
+            PathCommand::Parametric { kind, values } => {
+                let Some(values) = values
+                    .iter()
+                    .map(|v| geometry_value(v, gw, gh, &guides))
+                    .collect::<Option<Vec<_>>>()
+                else {
+                    continue;
+                };
+                (kind.as_ref(), values)
+            }
+            PathCommand::Close => {
+                out.push_str("Z ");
+                current = origin;
+                continue;
+            }
+        };
+        match (kind, values.as_slice()) {
+            ("moveTo" | "lnTo", [x, y]) => {
+                let _ = write!(
+                    out,
+                    "{}{} {} ",
+                    if kind == "moveTo" { "M" } else { "L" },
+                    f(x * sx),
+                    f(y * sy)
+                );
+                current = (*x, *y);
+                if kind == "moveTo" {
+                    origin = current;
+                }
+            }
+            ("cubicBezTo", [x1, y1, x2, y2, x, y]) => {
                 let _ = write!(
                     out,
                     "C{} {} {} {} {} {} ",
-                    f(*x1 as f64 * scale_x),
-                    f(*y1 as f64 * scale_y),
-                    f(*x2 as f64 * scale_x),
-                    f(*y2 as f64 * scale_y),
-                    f(*x as f64 * scale_x),
-                    f(*y as f64 * scale_y)
+                    f(x1 * sx),
+                    f(y1 * sy),
+                    f(x2 * sx),
+                    f(y2 * sy),
+                    f(x * sx),
+                    f(y * sy)
                 );
+                current = (*x, *y);
             }
-            PathCommand::Close => out.push_str("Z "),
+            ("quadBezTo", [x1, y1, x, y]) => {
+                let (cx1, cy1) = (
+                    current.0 + (x1 - current.0) * 2.0 / 3.0,
+                    current.1 + (y1 - current.1) * 2.0 / 3.0,
+                );
+                let (cx2, cy2) = (x + (x1 - x) * 2.0 / 3.0, y + (y1 - y) * 2.0 / 3.0);
+                let _ = write!(
+                    out,
+                    "C{} {} {} {} {} {} ",
+                    f(cx1 * sx),
+                    f(cy1 * sy),
+                    f(cx2 * sx),
+                    f(cy2 * sy),
+                    f(x * sx),
+                    f(y * sy)
+                );
+                current = (*x, *y);
+            }
+            ("arcTo", [rx, ry, start, sweep]) if *rx > 0.0 && *ry > 0.0 => {
+                // DrawingML angles are polar rays, not ellipse parameters.
+                let parameter = |angle: f64| (rx * angle.sin()).atan2(ry * angle.cos());
+                let polar_start = (start / 60000.0).to_radians();
+                let polar_sweep = (sweep / 60000.0)
+                    .to_radians()
+                    .clamp(-std::f64::consts::TAU, std::f64::consts::TAU);
+                let a = parameter(polar_start);
+                let mut delta = parameter(polar_start + polar_sweep) - a;
+                if polar_sweep > 0.0 && delta <= 0.0 {
+                    delta += std::f64::consts::TAU;
+                }
+                if polar_sweep < 0.0 && delta >= 0.0 {
+                    delta -= std::f64::consts::TAU;
+                }
+                if polar_sweep == 0.0 {
+                    continue;
+                }
+                let (cx, cy) = (current.0 - rx * a.cos(), current.1 - ry * a.sin());
+                let steps = (delta.abs() / std::f64::consts::FRAC_PI_2).ceil().max(1.0) as usize;
+                for index in 0..steps {
+                    let a1 = a + delta * index as f64 / steps as f64;
+                    let a2 = a + delta * (index + 1) as f64 / steps as f64;
+                    let k = 4.0 / 3.0 * ((a2 - a1) / 4.0).tan();
+                    let (x1, y1) = (
+                        cx + rx * (a1.cos() - k * a1.sin()),
+                        cy + ry * (a1.sin() + k * a1.cos()),
+                    );
+                    let (x2, y2) = (
+                        cx + rx * (a2.cos() + k * a2.sin()),
+                        cy + ry * (a2.sin() - k * a2.cos()),
+                    );
+                    current = (cx + rx * a2.cos(), cy + ry * a2.sin());
+                    let _ = write!(
+                        out,
+                        "C{} {} {} {} {} {} ",
+                        f(x1 * sx),
+                        f(y1 * sy),
+                        f(x2 * sx),
+                        f(y2 * sy),
+                        f(current.0 * sx),
+                        f(current.1 * sy)
+                    );
+                }
+            }
+            _ => {}
         }
     }
     out.trim_end().to_owned()

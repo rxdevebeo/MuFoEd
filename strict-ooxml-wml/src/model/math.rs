@@ -302,10 +302,16 @@ impl MathJustification {
 /// Properties of a math run (`m:rPr`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MathRunProperties {
+    /// `m:aln`: a boolean alignment point in an equation array.
+    pub alignment_point: Option<bool>,
     /// `m:lit` — the run is literal text (not folded to a different script).
     pub literal: bool,
+    /// Explicit value of m:lit, including false.
+    pub literal_value: Option<bool>,
     /// `m:nor` — normal text (upright, not italic).
     pub normal: bool,
+    /// Explicit value of m:nor, including false.
+    pub normal_value: Option<bool>,
     /// `m:scr` — the script.
     pub script: Option<MathScript>,
     /// `m:sty` — the character style.
@@ -595,9 +601,9 @@ pub struct EquationArray {
     /// the justification one.
     pub base_justification: Option<MathVerticalAlign>,
     /// `m:eqArrPr/m:maxDist`.
-    pub max_distance: Option<i32>,
+    pub max_distance: Option<bool>,
     /// `m:eqArrPr/m:objDist`.
-    pub object_distance: Option<i32>,
+    pub object_distance: Option<bool>,
     /// `m:eqArrPr/m:rSpRule/@m:val`.
     pub row_spacing_rule: Option<Arc<str>>,
     /// `m:eqArrPr/m:rSp`.
@@ -671,6 +677,10 @@ pub struct Boxed {
 /// A bordered box (`m:borderBox`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BorderBox {
+    /// Hidden edges in top, bottom, left, right order.
+    pub hide_edges: [Option<bool>; 4],
+    /// Strikes in horizontal, vertical, bottom-left/top-right, top-left/bottom-right order.
+    pub strikes: [Option<bool>; 4],
     /// `m:borderBoxPr/m:algn`.
     pub alignment: Option<MathAlignment>,
     /// `m:borderBoxPr/m:sp`.

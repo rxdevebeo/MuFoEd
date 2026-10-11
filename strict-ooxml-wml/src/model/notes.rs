@@ -182,6 +182,9 @@ impl NoteProperties {
         if other.num_restart.is_some() {
             self.num_restart.clone_from(&other.num_restart);
         }
+        if !other.separator_ids.is_empty() {
+            self.separator_ids.clone_from(&other.separator_ids);
+        }
     }
 }
 

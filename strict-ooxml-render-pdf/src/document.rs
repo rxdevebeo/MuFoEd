@@ -60,6 +60,8 @@ struct PageWriter<'a> {
     names: &'a BTreeMap<PartId, String>,
     images: BTreeMap<PartId, String>,
     paints: Vec<(String, PathPaint)>,
+    alpha: f64,
+    alphas: std::collections::BTreeSet<u8>,
     report: &'a mut PdfReport,
 }
 
@@ -102,12 +104,16 @@ pub fn render_with_source(
     // dictionary has to answer to that same name, and a name chosen twice is a
     // dictionary with two entries under one key — a malformed page where one of
     // the two pictures is simply not there.
-    let image_names = name_the_images(pages.iter().flat_map(|page| page.items.iter()).filter_map(
-        |item| match item {
-            Item::Image(image) => image.part.as_ref(),
-            _ => None,
-        },
-    ));
+    let image_names = name_the_images(
+        pages
+            .iter()
+            .flat_map(|page| page.items.iter())
+            .flat_map(Item::leaves)
+            .filter_map(|item| match item {
+                Item::Image(image) => image.part.as_ref(),
+                _ => None,
+            }),
+    );
     let image_sizes = image_raster_sizes(pages);
 
     // Pass one: content streams and the images each page needs.
@@ -126,6 +132,8 @@ pub fn render_with_source(
             names: &image_names,
             images: BTreeMap::new(),
             paints: Vec::new(),
+            alpha: 1.0,
+            alphas: Default::default(),
             report: &mut report,
         };
         writer.draw_page(page, options.background);
@@ -133,6 +141,7 @@ pub fn render_with_source(
             writer.content.finish().into_vec(),
             writer.images,
             writer.paints,
+            writer.alphas,
         ));
     }
 
@@ -145,7 +154,7 @@ pub fn render_with_source(
     let mut builder = PdfBuilder::new();
     let mut image_refs: BTreeMap<PartId, (Ref, Option<Ref>)> = BTreeMap::new();
     let mut page_objects: Vec<PageObjects> = Vec::with_capacity(pages.len());
-    for (_, images, paints) in &streams {
+    for (_, images, paints, _) in &streams {
         let content_id = builder.allocate();
         let mut image_ids: BTreeMap<PartId, (Ref, Option<Ref>)> = BTreeMap::new();
         for part in images.keys() {
@@ -204,7 +213,18 @@ pub fn render_with_source(
     // Type0 wrapper.
     let font_ids: Vec<FontIds> = fonts.iter().map(|_| builder.allocate_seven()).collect();
 
+    let mut alpha_ids = BTreeMap::new();
+    for alpha in streams.iter().flat_map(|(_, _, _, alphas)| alphas.iter()) {
+        alpha_ids
+            .entry(*alpha)
+            .or_insert_with(|| builder.allocate());
+    }
     let mut pdf = Pdf::new();
+    for (alpha, id) in &alpha_ids {
+        pdf.ext_graphics(*id)
+            .non_stroking_alpha(f32::from(*alpha) / 255.0)
+            .stroking_alpha(f32::from(*alpha) / 255.0);
+    }
     pdf.catalog(builder.catalog).pages(builder.pages);
     pdf.pages(builder.pages)
         .kids(page_objects.iter().map(|page| page.page))
@@ -222,7 +242,8 @@ pub fn render_with_source(
     }
     // Pass one pushed one stream per page and the loop above one set of ids per
     // stream, so the three line up.
-    for ((page, objects), (content, _, _)) in pages.iter().zip(&page_objects).zip(&streams) {
+    for ((page, objects), (content, _, _, alphas)) in pages.iter().zip(&page_objects).zip(&streams)
+    {
         let width_pt = px_to_pt(page.width_px, scale) as f32;
         let height_pt = px_to_pt(page.height_px, scale) as f32;
         {
@@ -237,6 +258,14 @@ pub fn render_with_source(
         page_writer.media_box(Rect::new(0.0, 0.0, width_pt, height_pt));
         {
             let mut resources = page_writer.resources();
+            {
+                let mut states = resources.ext_g_states();
+                for alpha in alphas {
+                    if let Some(id) = alpha_ids.get(alpha) {
+                        states.pair(Name(format!("A{alpha}").as_bytes()), *id);
+                    }
+                }
+            }
             {
                 let mut shadings = resources.shadings();
                 for (name, id, paint) in &objects.paints {
@@ -285,7 +314,7 @@ pub fn render_with_source(
 fn image_raster_sizes(pages: &[PlacedPage]) -> BTreeMap<PartId, (u32, u32)> {
     let mut sizes = BTreeMap::new();
     for page in pages {
-        for item in &page.items {
+        for item in page.items.iter().flat_map(Item::leaves) {
             let Item::Image(image) = item else {
                 continue;
             };
@@ -388,19 +417,23 @@ fn read_media(media: Option<&dyn MediaSource>, part: &PartId) -> Result<Option<V
 /// Subsets and orders the faces the pages use.
 fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont> {
     let mut collector = FaceCollector::new();
+    let mut programs = BTreeMap::new();
     for page in pages {
-        for item in &page.items {
+        for item in page.items.iter().flat_map(Item::leaves) {
             let Item::Text(text) = item else {
                 continue;
             };
             let shown = strict_ooxml_render_svg::font::present_text(&text.run.family, &text.text);
             let family = strict_ooxml_render_svg::style::chosen_family(&text.run, &shown);
             let Some(source) =
-                strict_ooxml_render_svg::font::face_source(&family, text.run.bold, text.run.italic)
+                strict_ooxml_render_svg::font::embedded::run_face_source(&text.run, &family)
             else {
                 report.record_missing_face(&text.run.family);
                 continue;
             };
+            if let Some(program) = text.run.font_programs.for_resource(&family) {
+                programs.insert(family.clone(), Arc::clone(program));
+            }
             if text.advance == TextAdvanceKind::Metric {
                 // Metric paint addresses scalar CIDs, not shaped clusters. A
                 // ligature-only subset cannot serve its individual characters.
@@ -409,12 +442,9 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
                 }
                 continue;
             }
-            if let Some(shaped) = strict_ooxml_render_svg::font::shape_bundled(
-                &shown,
-                &family,
-                text.run.bold,
-                text.run.italic,
-            ) {
+            if let Some(shaped) =
+                strict_ooxml_render_svg::font::shape_bundled_run(&shown, &family, &text.run)
+            {
                 if shaped.glyphs.is_empty() {
                     for ch in shown.chars() {
                         collector.add(&source, text.run.bold, text.run.italic, ch);
@@ -450,10 +480,19 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
 
     let mut out: Vec<PlacedFont> = Vec::new();
     for (index, key) in collector.faces().iter().enumerate() {
-        let Some(source) =
-            strict_ooxml_render_svg::font::face_source(key.family, key.bold, key.italic)
+        let Some(source) = programs
+            .get(&key.family)
+            .map(|program| strict_ooxml_render_svg::font::FaceSource {
+                family: program.family.as_str(),
+                data: &program.bytes,
+                weight: None,
+                single: false,
+            })
+            .or_else(|| {
+                strict_ooxml_render_svg::font::face_source(&key.family, key.bold, key.italic)
+            })
         else {
-            report.record_missing_face(key.family);
+            report.record_missing_face(&key.family);
             continue;
         };
         match collector.build(key, &source) {
@@ -481,6 +520,91 @@ impl PageWriter<'_> {
 
     fn item(&mut self, item: &Item) {
         match item {
+            Item::Group(group) => {
+                let [a, b, c, d, e, f] = group.matrix;
+                let s = f64::from(self.x(1.0));
+                let h = self.page_height_pt;
+                self.content.save_state();
+                let previous_alpha = self.alpha;
+                self.alpha *= group.opacity.clamp(0.0, 1.0);
+                if group.opacity < 1.0 {
+                    let alpha = (self.alpha * 255.0).round() as u8;
+                    self.alphas.insert(alpha);
+                    self.content
+                        .op("gs")
+                        .operand(Name(format!("A{alpha}").as_bytes()));
+                }
+                self.content.transform([
+                    a as f32,
+                    -b as f32,
+                    -c as f32,
+                    d as f32,
+                    (s * e + c * h) as f32,
+                    (h * (1.0 - d) - s * f) as f32,
+                ]);
+                if let Some([x, y, w, height]) = group.clip {
+                    self.content
+                        .rect(self.x(x), self.y(y + height), self.x(w), self.x(height));
+                    self.content.clip_nonzero().end_path();
+                }
+                if let Some(shape) = &group.clip_path {
+                    if group.clip_inverse {
+                        if let Some([x, y, w, h]) = group.clip {
+                            self.content
+                                .rect(self.x(x), self.y(y + h), self.x(w), self.x(h));
+                        }
+                    }
+                    let segments = path::resolve(&path::parse(&shape.d), (0.0, 0.0)).0;
+                    let (sin, cos) = shape.rotate_deg.to_radians().sin_cos();
+                    let point = |x: f64, y: f64| {
+                        let x = (x - shape.w / 2.0) * if shape.flip_h { -1.0 } else { 1.0 };
+                        let y = (y - shape.h / 2.0) * if shape.flip_v { -1.0 } else { 1.0 };
+                        (
+                            shape.x + shape.w / 2.0 + cos * x - sin * y,
+                            shape.y + shape.h / 2.0 + sin * x + cos * y,
+                        )
+                    };
+                    for segment in segments {
+                        match segment {
+                            Segment::MoveTo(x, y) => {
+                                let (x, y) = point(x, y);
+                                self.content.move_to(self.x(x), self.y(y));
+                            }
+                            Segment::LineTo(x, y) => {
+                                let (x, y) = point(x, y);
+                                self.content.line_to(self.x(x), self.y(y));
+                            }
+                            Segment::CurveTo(x1, y1, x2, y2, x, y) => {
+                                let (x1, y1) = point(x1, y1);
+                                let (x2, y2) = point(x2, y2);
+                                let (x, y) = point(x, y);
+                                self.content.cubic_to(
+                                    self.x(x1),
+                                    self.y(y1),
+                                    self.x(x2),
+                                    self.y(y2),
+                                    self.x(x),
+                                    self.y(y),
+                                );
+                            }
+                            Segment::Close => {
+                                self.content.close_path();
+                            }
+                            Segment::Arc { .. } => {}
+                        }
+                    }
+                    if group.clip_inverse {
+                        self.content.clip_even_odd().end_path();
+                    } else {
+                        self.content.clip_nonzero().end_path();
+                    }
+                }
+                for child in &group.items {
+                    self.item(child);
+                }
+                self.content.restore_state();
+                self.alpha = previous_alpha;
+            }
             Item::Rect(rect) => self.rect(rect),
             Item::Line(line) => self.line(line),
             Item::Path(path) => self.path(path),
@@ -745,6 +869,17 @@ impl PageWriter<'_> {
         if text.text.is_empty() {
             return;
         }
+        self.content.set_text_rendering_mode(if text.run.outline {
+            pdf_writer::types::TextRenderingMode::Stroke
+        } else {
+            pdf_writer::types::TextRenderingMode::Fill
+        });
+        if text.run.outline {
+            let (red, green, blue) = rgb(text.run.color.as_deref().unwrap_or("#000000"));
+            self.content.set_stroke_rgb(red, green, blue);
+            self.content
+                .set_line_width(self.x((text.size_px * 0.035).max(0.5)));
+        }
         // The face is matched by the *mapped* family, so the same substitution
         // the layout used decides which embedded face a run refers to, and it is
         // cloned out before anything is drawn: `fonts` is an immutable borrow of
@@ -774,12 +909,9 @@ impl PageWriter<'_> {
                 }
             }
             TextAdvanceKind::Shaped => {
-                if let Some(shaped) = strict_ooxml_render_svg::font::shape_bundled(
-                    &shown,
-                    &mapped,
-                    text.run.bold,
-                    text.run.italic,
-                ) {
+                if let Some(shaped) =
+                    strict_ooxml_render_svg::font::shape_bundled_run(&shown, &mapped, &text.run)
+                {
                     if self.show_shaped(text, &font, &name, &shown, &shaped) {
                         return;
                     }
@@ -807,7 +939,8 @@ impl PageWriter<'_> {
         self.content.begin_text();
         self.content.set_fill_rgb(red, green, blue);
         self.content.set_font(Name(name.as_bytes()), size);
-        self.content.set_text_matrix([1.0, 0.0, 0.0, 1.0, x, y]);
+        self.content
+            .set_text_matrix([text.run.char_scale as f32, 0.0, 0.0, 1.0, x, y]);
         self.content.show(Str(&encoded));
         self.content.end_text();
     }
@@ -833,12 +966,14 @@ impl PageWriter<'_> {
         self.content.begin_text();
         self.content.set_fill_rgb(red, green, blue);
         self.content.set_font(Name(name.as_bytes()), size);
-        for ch in shown.chars() {
+        let chars: Vec<_> = shown.chars().collect();
+        let mut previous = None;
+        for (index, &ch) in chars.iter().enumerate() {
             match font.chars.get(&ch) {
                 Some(cid) => {
-                    let x_px = text.x + cursor;
+                    let x_px = text.x + cursor * text.run.char_scale;
                     self.content.set_text_matrix([
-                        1.0,
+                        text.run.char_scale as f32,
                         0.0,
                         0.0,
                         1.0,
@@ -850,10 +985,28 @@ impl PageWriter<'_> {
                 }
                 None => self.report.record_missing_glyph(&text.run.family, ch),
             }
-            cursor +=
-                provider.advance_em(&family, ch, text.run.bold, text.run.italic) * text.size_px;
+            let next = chars.get(index + 1).copied().or(text.following_non_space);
+            let factor = strict_ooxml_render_svg::style::compressed_char_factor(
+                previous,
+                ch,
+                next,
+                text.compress_punctuation,
+                text.plain_space_factor,
+            );
+            cursor += strict_ooxml_render_svg::style::space_advance_em(
+                &text.run,
+                &family,
+                ch,
+                strict_ooxml_render_svg::font::embedded::run_advance_em(
+                    &text.run, &family, ch, provider,
+                ),
+            ) * text.size_px
+                * factor;
             if !ch.is_whitespace() {
                 cursor += extra;
+            }
+            if !ch.is_whitespace() || factor > 0.0 {
+                previous = Some(ch);
             }
         }
         self.content.end_text();
@@ -878,16 +1031,12 @@ impl PageWriter<'_> {
         self.content.begin_text();
         self.content.set_fill_rgb(red, green, blue);
         self.content.set_font(Name(name.as_bytes()), size);
-        let extra = strict_ooxml_render_svg::style::spacing_px(&text.run, text.size_px);
-        let mut non_space_before = 0_u32;
-        for cluster in &shaped.clusters {
+        let offsets = strict_ooxml_render_svg::font::shaped_cluster_offsets_px(text, shown, shaped);
+        for (cluster_index, cluster) in shaped.clusters.iter().enumerate() {
             let unicode = shown
                 .get(cluster.byte_start..cluster.byte_end)
                 .unwrap_or("");
-            let cluster_extra = extra * f64::from(non_space_before);
-            let visible = unicode.chars().filter(|ch| !ch.is_whitespace()).count();
-            non_space_before =
-                non_space_before.saturating_add(u32::try_from(visible).unwrap_or(u32::MAX));
+            let cluster_extra = offsets.get(cluster_index).copied().unwrap_or(0.0);
             let end = cluster.glyph_start.saturating_add(cluster.glyph_count);
             let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                 continue;
@@ -913,10 +1062,17 @@ impl PageWriter<'_> {
                 let Some(cid) = cid else {
                     continue;
                 };
-                let x_px = text.x + glyph.x_em * text.size_px + cluster_extra;
+                let x_px =
+                    text.x + (glyph.x_em * text.size_px + cluster_extra) * text.run.char_scale;
                 let y_px = text.baseline - glyph.y_offset_em * text.size_px;
-                self.content
-                    .set_text_matrix([1.0, 0.0, 0.0, 1.0, self.x(x_px), self.y(y_px)]);
+                self.content.set_text_matrix([
+                    text.run.char_scale as f32,
+                    0.0,
+                    0.0,
+                    1.0,
+                    self.x(x_px),
+                    self.y(y_px),
+                ]);
                 let bytes = cid.to_be_bytes();
                 self.content.show(Str(&bytes));
                 drew = true;

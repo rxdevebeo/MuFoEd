@@ -29,7 +29,7 @@ use subsetter::{subset, subset_with_variations, Error as SubsetError, GlyphRemap
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FaceKey {
     /// The mapped family (the bundled substitute).
-    pub family: &'static str,
+    pub family: String,
     /// Bold.
     pub bold: bool,
     /// Italic.
@@ -99,9 +99,9 @@ impl FaceCollector {
     /// silently drawn with a substitute: the text would keep its metrics and
     /// lose its glyphs, which is exactly the kind of quiet loss the project
     /// refuses.
-    pub fn add(&mut self, source: &FaceSource, bold: bool, italic: bool, ch: char) {
+    pub fn add(&mut self, source: &FaceSource<'_>, bold: bool, italic: bool, ch: char) {
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
             bold,
             italic,
         };
@@ -119,7 +119,7 @@ impl FaceCollector {
     /// stored separately and still subsets the source glyph id.
     pub fn add_cluster(
         &mut self,
-        source: &FaceSource,
+        source: &FaceSource<'_>,
         bold: bool,
         italic: bool,
         glyph_id: u16,
@@ -129,7 +129,7 @@ impl FaceCollector {
             return;
         }
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
             bold,
             italic,
         };
@@ -172,7 +172,7 @@ impl FaceCollector {
     #[cfg(test)]
     fn add_shared_glyph(
         &mut self,
-        source: &FaceSource,
+        source: &FaceSource<'_>,
         bold: bool,
         italic: bool,
         glyph: GlyphId,
@@ -180,7 +180,7 @@ impl FaceCollector {
         second: char,
     ) {
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
             bold,
             italic,
         };
@@ -197,7 +197,7 @@ impl FaceCollector {
     /// # Errors
     ///
     /// Returns a [`FontError`] when the face cannot be parsed or subsetted.
-    pub fn build(&self, key: &FaceKey, source: &FaceSource) -> Result<EmbeddedFont, FontError> {
+    pub fn build(&self, key: &FaceKey, source: &FaceSource<'_>) -> Result<EmbeddedFont, FontError> {
         let used: Vec<UsedGlyph> = self
             .faces
             .get(key)
@@ -381,7 +381,7 @@ impl std::fmt::Display for FontError {
 impl std::error::Error for FontError {}
 
 /// Returns the glyph id a face uses for `ch`.
-fn glyph_for(source: &FaceSource, ch: char) -> Option<GlyphId> {
+fn glyph_for(source: &FaceSource<'_>, ch: char) -> Option<GlyphId> {
     let font = FontRef::new(source.data).ok()?;
     let glyph = font.charmap().map(ch)?;
     (glyph != GlyphId::NOTDEF).then_some(glyph)
@@ -484,7 +484,7 @@ mod tests {
         assert!(collector.unknown_faces().is_empty());
 
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
             bold: false,
             italic: false,
         };
@@ -514,7 +514,7 @@ mod tests {
                 collector.add(&source, bold, italic, 'g');
                 collector.add_notdef();
                 let key = FaceKey {
-                    family: source.family,
+                    family: source.family.to_owned(),
                     bold,
                     italic,
                 };
@@ -536,7 +536,7 @@ mod tests {
         collector.add(&source, true, false, 'B');
         collector.add_notdef();
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
             bold: true,
             italic: false,
         };
@@ -563,7 +563,7 @@ mod tests {
         collector.add(&source, false, false, 'A');
         collector.add_notdef();
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
             bold: false,
             italic: false,
         };
@@ -586,7 +586,7 @@ mod tests {
         }
         collector.add_notdef();
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
             bold: false,
             italic: false,
         };
@@ -623,7 +623,7 @@ mod tests {
         collector.add_shared_glyph(&source, false, false, space_gid, ' ', '\u{A0}');
         collector.add_notdef();
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
             bold: false,
             italic: false,
         };

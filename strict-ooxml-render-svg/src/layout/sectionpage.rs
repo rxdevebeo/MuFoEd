@@ -6,10 +6,12 @@
 //! landed on it.
 
 use strict_ooxml_core::error::Result;
-use strict_ooxml_wml::model::props::{LineNumbering, Section, SectionProperties};
+use strict_ooxml_wml::model::props::{LineNumbering, Section};
 use strict_ooxml_wml::model::values::{LineNumberRestart, VerticalJc};
 
-use crate::layout::{geometry_for, Item, LayoutContext, LineItem, LineMark, PlacedPage, TextItem};
+use crate::layout::{
+    geometry_for, ColumnRegion, Item, LayoutContext, LineItem, LineMark, PlacedPage, TextItem,
+};
 use crate::style::ComputedRun;
 use crate::units::twips_to_px;
 
@@ -23,6 +25,7 @@ pub(crate) fn apply(
     ctx: &LayoutContext<'_>,
     pages: &mut [PlacedPage],
     marks: &mut [LineMark],
+    regions: &mut [ColumnRegion],
     sections: &[Section],
 ) -> Result<()> {
     let scale = ctx.options.scale;
@@ -30,7 +33,12 @@ pub(crate) fn apply(
         let Some(section) = sections.get(page.section_index).map(|s| &s.properties) else {
             continue;
         };
-        let geometry = geometry_for(Some(section), scale, None);
+        let geometry = crate::layout::body_geometry_for(
+            Some(section),
+            scale,
+            None,
+            ctx.document.settings.gutter_at_top,
+        );
         let body_top = geometry.top;
         let body_bottom = page.height_px - geometry.bottom;
         let shift = match section.vertical_align {
@@ -52,12 +60,71 @@ pub(crate) fn apply(
             for mark in marks.iter_mut().filter(|mark| mark.page == index) {
                 mark.baseline += shift;
             }
+            for region in regions.iter_mut().filter(|region| region.page == index) {
+                region.top += shift;
+                region.bottom += shift;
+            }
         }
-        let separators = column_separators(section, page, &geometry, body_top, body_bottom);
+        let separators = column_separators(regions, index);
         ctx.charge_items(separators.len())?;
         page.items.extend(separators);
     }
     line_numbers(ctx, pages, marks, sections)
+}
+
+/// Restore physical page coordinates before adding horizontal headers/footers.
+pub(crate) fn orient_body(ctx: &LayoutContext<'_>, pages: &mut [PlacedPage], sections: &[Section]) {
+    use strict_ooxml_wml::model::values::TextDirection;
+    for page in pages {
+        let properties = sections.get(page.section_index).map(|s| &s.properties);
+        let direction = properties.and_then(|s| s.text_direction);
+        let physical = geometry_for(
+            properties,
+            ctx.options.scale,
+            None,
+            ctx.document.settings.gutter_at_top,
+        );
+        let matrix = match direction {
+            Some(TextDirection::TbRl | TextDirection::TbRlV) => {
+                Some([0.0, 1.0, -1.0, 0.0, physical.width, 0.0])
+            }
+            Some(TextDirection::BtLr) => Some([0.0, -1.0, 1.0, 0.0, 0.0, physical.height]),
+            Some(TextDirection::TbLrV) => None,
+            _ => None,
+        };
+        let mut items = std::mem::take(&mut page.items);
+        if matches!(
+            direction,
+            Some(TextDirection::TbRlV | TextDirection::TbLrV | TextDirection::LrTbV)
+        ) {
+            items = crate::layout::table::rotate_east_asian_items(ctx, items);
+        }
+        page.items = if direction == Some(TextDirection::TbLrV) {
+            items
+                .into_iter()
+                .flat_map(|item| {
+                    let center = match &item {
+                        Item::Text(text) => text.baseline,
+                        _ => {
+                            let (top, bottom) =
+                                crate::layout::table::item_vertical_bounds(ctx, &item);
+                            (top + bottom) / 2.0
+                        }
+                    };
+                    crate::paint::graphics::transform_items(
+                        vec![item],
+                        [0.0, 1.0, -1.0, 0.0, 2.0 * center, 0.0],
+                    )
+                })
+                .collect()
+        } else if let Some(matrix) = matrix {
+            crate::paint::graphics::transform_items(items, matrix)
+        } else {
+            items
+        };
+        page.width_px = physical.width;
+        page.height_px = physical.height;
+    }
 }
 
 /// The lowest painted point of the body, px from the page top.
@@ -65,6 +132,7 @@ fn content_bottom(page: &PlacedPage, top: f64, bottom: f64) -> f64 {
     page.items
         .iter()
         .map(|item| match item {
+            Item::Group(group) => group.bounds[1] + group.bounds[3],
             Item::Text(text) => text.baseline + text.size_px * 0.25,
             Item::Rect(rect) => rect.y + rect.h,
             Item::Line(line) => line.y1.max(line.y2),
@@ -75,37 +143,25 @@ fn content_bottom(page: &PlacedPage, top: f64, bottom: f64) -> f64 {
         .fold(top, f64::max)
 }
 
-/// Lines between the columns of a `w:cols/@w:sep` section, as tall as the
-/// body content of the page.
-fn column_separators(
-    section: &SectionProperties,
-    page: &PlacedPage,
-    geometry: &crate::layout::Geometry,
-    top: f64,
-    bottom: f64,
-) -> Vec<Item> {
-    let draws = section
-        .columns
-        .as_ref()
-        .is_some_and(|columns| columns.separator);
-    if !draws || geometry.column_count < 2 {
-        return Vec::new();
-    }
-    let end = content_bottom(page, top, bottom);
-    if end <= top {
-        return Vec::new();
-    }
-    (1..geometry.column_count)
-        .map(|index| {
-            let x = geometry.column_left(index) - geometry.column_gap.max(0.0) / 2.0;
-            Item::Line(LineItem {
-                x1: x,
-                y1: top,
-                x2: x,
-                y2: end,
-                color: "#000000".to_owned(),
-                width: 0.75,
-                dashed: false,
+/// Lines between the columns of a `w:cols/@w:sep` section (ISO/IEC 29500-1
+/// §17.6.4): in the middle of each gap, from the top of the columns to the
+/// bottom of the longest one, for every multi-column area of page `page`.
+fn column_separators(regions: &[ColumnRegion], page: usize) -> Vec<Item> {
+    regions
+        .iter()
+        .filter(|region| region.page == page && region.columns.separator)
+        .flat_map(|region| {
+            region.columns.gap_centres().into_iter().map(|offset| {
+                let x = region.left + offset;
+                Item::Line(LineItem {
+                    x1: x,
+                    y1: region.top,
+                    x2: x,
+                    y2: region.bottom,
+                    color: "#000000".to_owned(),
+                    width: 0.75,
+                    dashed: false,
+                })
             })
         })
         .collect()
@@ -218,7 +274,7 @@ pub(crate) fn mirror_margins(
             continue;
         }
         let section = sections.get(page.section_index).map(|s| &s.properties);
-        let geometry = geometry_for(section, scale, None);
+        let geometry = geometry_for(section, scale, None, ctx.document.settings.gutter_at_top);
         let dx = geometry.right - geometry.left;
         if dx.abs() < 1e-9 {
             continue;
