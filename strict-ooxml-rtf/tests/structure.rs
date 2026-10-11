@@ -2,8 +2,9 @@
 #![allow(clippy::default_trait_access)]
 use strict_ooxml_rtf::{import, RtfOptions};
 use strict_ooxml_wml::model::{
-    AbstractNumId, Block, BorderStyle, Color, EighthsPoint, HalfPoints, Ilvl, Inline, NoteKind,
-    NumId, RunContent, StyleId, TabLeader, TriState, Twips, WidthKind,
+    AbstractNumId, Block, BorderStyle, Color, EighthsPoint, HalfPoints, HeightRule, Ilvl, Inline,
+    Justification, NoteKind, NumId, RowHeight, RunContent, StyleId, TabLeader, TableLayout,
+    TriState, Twips, Underline, WidthKind,
 };
 
 /// The complex-field markers (`w:fldChar`/`w:instrText`) of one paragraph, in order.
@@ -502,7 +503,9 @@ fn legacy_layout_and_revision_controls_are_info_not_losses() {
 }
 
 /// The non-default form of a legacy toggle (no Strict paragraph slot) stays an
-/// explicit Loss rather than being renamed away.
+/// explicit Loss rather than being renamed away. `\hyphpar0` is the exception:
+/// WPS itself writes no `w:suppressAutoHyphens` for it, so it only names the
+/// default no-hyphenation behaviour and is Info.
 #[test]
 fn non_default_legacy_layout_controls_stay_losses() {
     let imported = import(
@@ -511,7 +514,7 @@ fn non_default_legacy_layout_controls_stay_losses() {
     )
     .unwrap();
     assert_eq!(
-        imported.report.loss_count, 2,
+        imported.report.loss_count, 1,
         "{:?}",
         imported.report.issues
     );
@@ -519,7 +522,7 @@ fn non_default_legacy_layout_controls_stay_losses() {
         .report
         .issues
         .iter()
-        .any(|i| i.feature == "control:hyphpar"));
+        .any(|i| i.feature == "paragraph-compat:hyphpar0"));
     assert!(imported
         .report
         .issues
@@ -1039,6 +1042,45 @@ fn run_effects_kerning_and_position_roundtrip() {
         assert_eq!(run_props(2).position, Some(HalfPoints(6)));
         assert_eq!(run_props(3).position, Some(HalfPoints(-4)));
         assert_eq!(run_props(4).shadow, TriState::Off);
+    }
+}
+
+#[test]
+fn kerning_underline_colour_and_character_background_map_to_run_props() {
+    // `\kerning` is the WPS spelling of `\kern`; `\ulc` is the underline colour
+    // (`w:u/@w:color`); `\cb` is the WPS spelling of the character background
+    // (`w:rPr/w:shd`, the same property as `\chcbpat`).
+    let input = br"{\rtf1{\colortbl;\red0\green0\blue255;\red255\green0\blue0;}\pard\kerning32\ul\ulc1\cb2 kerned\par}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+            panic!("paragraph")
+        };
+        let Inline::Run(run) = &paragraph.inlines[0] else {
+            panic!("run")
+        };
+        assert_eq!(
+            run.props.kerning,
+            Some(HalfPoints(32)),
+            "\\kerning -> w:kern"
+        );
+        assert_eq!(run.props.underline, Some(Underline::Single));
+        assert_eq!(
+            run.props.underline_color.as_ref().map(Color::as_str),
+            Some("0000FF"),
+            "\\ulc -> w:u/@w:color"
+        );
+        let shading = run.props.shading.as_ref().expect("w:rPr/w:shd");
+        assert_eq!(
+            shading.fill.as_ref().map(Color::as_str),
+            Some("FF0000"),
+            "\\cb -> run background"
+        );
     }
 }
 
@@ -1686,6 +1728,70 @@ fn row_exception_borders_map_to_tbl_prex() {
         assert_eq!(
             borders.bottom.as_ref().unwrap().style,
             Some(BorderStyle::Double)
+        );
+    }
+}
+
+#[test]
+fn table_padding_row_height_alignment_and_layout_map() {
+    // Table-cell padding (`\trpadd*` -> `w:tblCellMar`), row height (`\trrh` ->
+    // `w:trHeight`), row alignment (`\trqr` -> `w:trPr/w:jc`) and table layout
+    // (`\trautofit` -> `w:tblLayout`).
+    let input = br"{\rtf1\trowd\trpaddt0\trpaddb0\trpaddl108\trpaddr108\trpaddft3\trpaddfb3\trpaddfl3\trpaddfr3\trrh-567\trqr\trautofit1\cellx2000\intbl A\cell\row}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened(input)] {
+        let Block::Table(table) = &document.body.blocks[0] else {
+            panic!("table")
+        };
+        let margins = &table.props.cell_margins;
+        assert_eq!(margins.top, Some(Twips(0)), "\\trpaddt -> tblCellMar top");
+        assert_eq!(margins.bottom, Some(Twips(0)));
+        assert_eq!(margins.start, Some(Twips(108)), "\\trpaddl -> start");
+        assert_eq!(margins.end, Some(Twips(108)), "\\trpaddr -> end");
+        assert_eq!(table.props.layout, Some(TableLayout::Autofit));
+        let row = &table.rows[0].props;
+        assert_eq!(
+            row.height,
+            Some(RowHeight {
+                value: Some(Twips(567)),
+                rule: Some(HeightRule::Exact),
+            })
+        );
+        assert_eq!(row.alignment, Some(Justification::End));
+    }
+}
+
+#[test]
+fn default_tab_stop_and_compat_controls_map_and_classify() {
+    let input = br"{\rtf1\pardeftab720\hyphpar0\nooverflow\nocwrap\cltxlrtb\animtext2\qk text\par}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "default tab stop and WPS defaults are not losses: {:?}",
+        imported.report.issues
+    );
+    assert_eq!(
+        imported.document.settings.default_tab_stop,
+        Some(Twips(720)),
+        "\\pardeftab -> w:defaultTabStop"
+    );
+    for feature in [
+        "paragraph-compat:hyphpar0",
+        "table-cell-compat:nooverflow",
+        "table-cell-compat:nocwrap",
+        "table-cell-compat:cltxlrtb",
+        "character-compat:animtext",
+        "paragraph-compat:qk",
+    ] {
+        assert!(
+            imported.report.issues.iter().any(|i| i.feature == feature),
+            "missing {feature}: {:?}",
+            imported.report.issues
         );
     }
 }

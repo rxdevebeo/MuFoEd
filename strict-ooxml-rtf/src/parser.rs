@@ -17,14 +17,14 @@ use strict_ooxml_wml::model::drawing::{MediaIndex, MediaKind};
 use strict_ooxml_wml::model::{
     AbstractNum, AbstractNumId, Block, Bookmark, BookmarkId, Border, BorderStyle, BreakKind,
     CellMargins, CellProperties, Color, ColumnSpec, EighthsPoint, Field, FieldChar, FieldCharType,
-    Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, Ilvl, Inline,
-    Justification, Language, Level, LevelOverride, LineSpacingRule, Note, NoteKind, NoteProperties,
-    NoteTable, Num, NumId, NumPr, NumberingTable, PageBorder, PageBorders, PageMargins,
-    PageOrientation, PageSize, Paragraph, ParagraphProperties, RowProperties, Rsids, Run,
-    RunContent, RunProperties, Section, SectionProperties, SectionType, Shading, Space, Style,
-    StyleId, StyleTable, StyleType, Symbol, TabAlignment, TabLeader, TabStop, Table, TableCell,
-    TableLook, TableProperties, TableRow, TextNode, TriState, Twips, Underline, VertAlign,
-    VerticalJc, VerticalMerge, Width, WidthKind,
+    Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, HeightRule, Ilvl,
+    Inline, Justification, Language, Level, LevelOverride, LineSpacingRule, Note, NoteKind,
+    NoteProperties, NoteTable, Num, NumId, NumPr, NumberingTable, PageBorder, PageBorders,
+    PageMargins, PageOrientation, PageSize, Paragraph, ParagraphProperties, RowHeight,
+    RowProperties, Rsids, Run, RunContent, RunProperties, Section, SectionProperties, SectionType,
+    Shading, Space, Style, StyleId, StyleTable, StyleType, Symbol, TabAlignment, TabLeader,
+    TabStop, Table, TableCell, TableLayout, TableLook, TableProperties, TableRow, TextDirection,
+    TextNode, TriState, Twips, Underline, VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
 };
 use unicode_bidi::BidiInfo;
 
@@ -525,6 +525,12 @@ struct Parser<'a> {
     table_cells: usize,
     /// Table default cell half-gap from `\trgaph` (left/right cell margins).
     table_gap: Option<Twips>,
+    /// Table default cell padding from `\trpadd{t,b,l,r}` (`w:tblCellMar`).
+    table_padding: CellMargins,
+    /// Table layout from `\trautofit` (`w:tblLayout`), applied at creation.
+    table_layout: Option<TableLayout>,
+    /// Document default tab stop from `\pardeftab` (`w:defaultTabStop`).
+    default_tab_stop: Option<Twips>,
     row_template: Option<RowBuilder>,
     picture: Option<PictureBuilder>,
     media: Vec<(PartId, Vec<u8>)>,
@@ -1471,6 +1477,8 @@ impl Parser<'_> {
         self.table_look = TableLook::default();
         self.table_rtl = false;
         self.table_gap = None;
+        self.table_padding = CellMargins::default();
+        self.table_layout = None;
     }
     fn cell(&mut self, offset: usize) -> Result<(), RtfError> {
         if self.row.is_none() {
@@ -1549,17 +1557,34 @@ impl Parser<'_> {
         }
         if self.table.is_none() {
             let look = (self.table_look != TableLook::default()).then_some(self.table_look);
+            // `\trgaph` is half the inter-cell gap (both sides); an explicit
+            // `\trpadd*` overrides the half-gap on each side it names, so the
+            // table keeps the padding the source actually declared.
+            let mut cell_margins =
+                self.table_gap
+                    .map_or_else(CellMargins::default, |gap| CellMargins {
+                        start: Some(gap),
+                        end: Some(gap),
+                        ..CellMargins::default()
+                    });
+            if self.table_padding.top.is_some() {
+                cell_margins.top = self.table_padding.top;
+            }
+            if self.table_padding.bottom.is_some() {
+                cell_margins.bottom = self.table_padding.bottom;
+            }
+            if self.table_padding.start.is_some() {
+                cell_margins.start = self.table_padding.start;
+            }
+            if self.table_padding.end.is_some() {
+                cell_margins.end = self.table_padding.end;
+            }
             self.node(1, span.start)?;
             self.table = Some(Table {
                 props: TableProperties {
                     indent: Some(Twips(row.left)),
-                    cell_margins: self.table_gap.map_or_else(CellMargins::default, |gap| {
-                        CellMargins {
-                            start: Some(gap),
-                            end: Some(gap),
-                            ..CellMargins::default()
-                        }
-                    }),
+                    cell_margins,
+                    layout: self.table_layout,
                     look,
                     bidi_visual: self.table_rtl,
                     ..Default::default()
@@ -3245,6 +3270,16 @@ impl Parser<'_> {
                 self.state.tab_alignment = TabAlignment::Start;
                 self.state.tab_leader = None;
             }
+            // Default tab stop (`w:defaultTabStop` in settings.xml): `\deftab`
+            // is the document default and `\pardeftab` the WPS spelling, both in
+            // twips.
+            "deftab" | "pardeftab" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing default tab stop",
+                })?;
+                self.default_tab_stop = Some(Twips(value));
+            }
             "widctlpar" => self.state.paragraph.widow_control = toggle,
             "nowidctlpar" => self.state.paragraph.widow_control = TriState::Off,
             "contextualspace" => self.state.paragraph.contextual_spacing = toggle,
@@ -3347,7 +3382,7 @@ impl Parser<'_> {
             "impr" => self.state.run.imprint = toggle,
             "noproof" => self.state.run.no_proof = toggle,
             "snaptogrid" => self.state.run.snap_to_grid = toggle,
-            "kern" => {
+            "kern" | "kerning" => {
                 let size = n.ok_or(RtfError::Malformed {
                     offset: span.start,
                     reason: "missing kerning size",
@@ -3397,6 +3432,27 @@ impl Parser<'_> {
             }
             "ulnone" => self.state.run.underline = Some(Underline::None),
             "uldb" => self.state.run.underline = Some(Underline::Double),
+            "ulc" => {
+                // Underline colour index (`w:u/@w:color`); palette index 0 is the
+                // `auto` slot, which `palette_color` maps to `w:val="auto"`.
+                let index = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing underline colour",
+                })?;
+                if let Some(color) = self.palette_color(index, span)? {
+                    self.state.run.underline_color = Some(color);
+                }
+            }
+            "cb" => {
+                // Character background colour (`w:shd` on the run), the WPS
+                // spelling of the character background; `\chcbpat` is the Word
+                // spelling of the same property.
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing character background",
+                })?;
+                self.apply_shading(ShadingScope::Run, "chcbpat", value, span)?;
+            }
             "fs" | "afs" => {
                 let Some(size) = n.filter(|n| *n > 0) else {
                     return malformed(span.start, "invalid font size");
@@ -3608,6 +3664,24 @@ impl Parser<'_> {
                 })?;
                 row.next_props.shading = None;
             }
+            // Cell text direction (`w:textDirection`). `\cltxlrtb` is the Strict
+            // default (`tb`, top-to-bottom, left-to-right), so WPS writes no
+            // element for it; only a non-default direction is carried.
+            "cltxlrtb" => {
+                return self.issue(span, Severity::Info, "table-cell-compat:cltxlrtb");
+            }
+            "cltxtbrl" | "cltxbtlr" | "cltxlrtbv" | "cltxtbrlv" => {
+                let row = self.row.as_mut().ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "cell property outside row",
+                })?;
+                row.next_props.text_direction = Some(match name {
+                    "cltxtbrl" => TextDirection::TbRl,
+                    "cltxbtlr" => TextDirection::BtLr,
+                    "cltxlrtbv" => TextDirection::LrTbV,
+                    _ => TextDirection::TbRlV,
+                });
+            }
             "trcbpat" | "trcfpat" | "trshdng" => {
                 let value = n.ok_or(RtfError::Malformed {
                     offset: span.start,
@@ -3630,6 +3704,103 @@ impl Parser<'_> {
                 self.apply_shading(ShadingScope::Paragraph, name, value, span)?;
             }
             "trgaph" => self.table_gap = n.map(Twips),
+            // Table default cell padding (`w:tblCellMar`). The value comes from
+            // `\trpadd{t,b,l,r}`; the parallel `\trpaddf{t,b,l,r}` selects the
+            // unit, where 3 is twips and 0 means "no padding" for that side.
+            "trpaddt" | "trpaddb" | "trpaddl" | "trpaddr" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing table cell padding",
+                })?;
+                match name {
+                    "trpaddt" => self.table_padding.top = Some(Twips(value)),
+                    "trpaddb" => self.table_padding.bottom = Some(Twips(value)),
+                    "trpaddl" => self.table_padding.start = Some(Twips(value)),
+                    _ => self.table_padding.end = Some(Twips(value)),
+                }
+            }
+            "trpaddft" | "trpaddfb" | "trpaddfl" | "trpaddfr" => {
+                let unit = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing table cell padding unit",
+                })?;
+                match unit {
+                    // A null unit clears that side's padding to zero.
+                    0 => match name {
+                        "trpaddft" => self.table_padding.top = Some(Twips(0)),
+                        "trpaddfb" => self.table_padding.bottom = Some(Twips(0)),
+                        "trpaddfl" => self.table_padding.start = Some(Twips(0)),
+                        _ => self.table_padding.end = Some(Twips(0)),
+                    },
+                    // Twips is the declared padding unit; no conversion needed.
+                    3 => (),
+                    _ => {
+                        return self.issue(
+                            span,
+                            Severity::Loss,
+                            format!("table-cell-padding-unit:{name}:{unit}"),
+                        )
+                    }
+                }
+            }
+            // Row height (`w:trHeight`): a positive value is a minimum
+            // (`atLeast`), a negative value an exact height (`exact`).
+            "trrh" => {
+                let value = n.ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "missing row height",
+                })?;
+                let row = self.row.as_mut().ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "row property outside row",
+                })?;
+                row.props.height = Some(if value == 0 {
+                    RowHeight {
+                        value: Some(Twips(0)),
+                        rule: Some(HeightRule::Auto),
+                    }
+                } else {
+                    RowHeight {
+                        value: Some(Twips(value.checked_abs().ok_or(RtfError::Malformed {
+                            offset: span.start,
+                            reason: "row height overflow",
+                        })?)),
+                        rule: Some(if value < 0 {
+                            HeightRule::Exact
+                        } else {
+                            HeightRule::AtLeast
+                        }),
+                    }
+                });
+            }
+            // Row alignment (`w:trPr/w:jc`).
+            "trql" | "trqc" | "trqr" => {
+                let row = self.row.as_mut().ok_or(RtfError::Malformed {
+                    offset: span.start,
+                    reason: "row property outside row",
+                })?;
+                row.props.alignment = Some(match name {
+                    "trqr" => Justification::End,
+                    "trqc" => Justification::Center,
+                    _ => Justification::Start,
+                });
+            }
+            // Table layout algorithm (`w:tblLayout`), applied when the table is
+            // created at its first row.
+            "trautofit" => {
+                self.table_layout = Some(if n == Some(0) {
+                    TableLayout::Fixed
+                } else {
+                    TableLayout::Autofit
+                });
+            }
+            // Preferred row/table widths are carried by the `\cellx` grid (the
+            // Strict `w:tblW`/`w:trW` are derived), so these only name the unit
+            // and value; there is nothing extra to write back.
+            "trftsWidth" | "trftsWidthA" | "trftsWidthB" | "trwWidth" | "trwWidthA"
+            | "trwWidthB" => {
+                return self.issue(span, Severity::Info, format!("table-row-compat:{name}"));
+            }
             // Table-indent controls with no independent WML form: the indent is
             // carried by the row position (`\trleft`), and WPS writes no
             // `w:tblInd` for the corpus (`\tblind0`).
@@ -3951,8 +4122,37 @@ impl Parser<'_> {
             "hyphpar" if n.is_none() => {
                 return self.issue(span, Severity::Info, "paragraph-compat:hyphpar");
             }
-            "wrapdefault" | "sectdefaultcl" | "linex" | "lnbrkrule" | "partightenfactor" => {
+            // Word 5/6/7 and Asian text-layout hints whose effect is default
+            // layout: `\wrapdefault`/`\sectdefaultcl`/`\linex`/`\lnbrkrule`/
+            // `\partightenfactor` assert default line breaking, and the Arabic
+            // kashida hints `\qk`/`\qnatural` get no kashida `w:jc` from WPS.
+            "wrapdefault" | "sectdefaultcl" | "linex" | "lnbrkrule" | "partightenfactor" | "qk"
+            | "qnatural" => {
                 return self.issue(span, Severity::Info, format!("paragraph-compat:{name}"));
+            }
+            // WPS writes `\hyphpar0` (and `\noline`) as paragraph resets whose
+            // effect is the default layout; its DOCX carries no
+            // `w:suppressAutoHyphens`, so the honest reading is a named Info.
+            "hyphpar" if n == Some(0) => {
+                return self.issue(span, Severity::Info, "paragraph-compat:hyphpar0");
+            }
+            "noline" => {
+                return self.issue(span, Severity::Info, "paragraph-compat:noline");
+            }
+            // `\nooverflow`/`\nocwrap` are WPS cell-text controls; WPS writes no
+            // `w:noWrap` for them, so they assert the default wrapping.
+            "nooverflow" | "nocwrap" => {
+                return self.issue(span, Severity::Info, format!("table-cell-compat:{name}"));
+            }
+            // Picture resolution hint (`\hres`/`\chhres`, in dots per inch) set to
+            // 0 in the corpus: no Strict slot and no visual effect.
+            "hres" | "chhres" => {
+                return self.issue(span, Severity::Info, format!("picture-resolution:{name}"));
+            }
+            // Word 6 animated-text effect with no Strict representation; modern
+            // renderers (and WPS) draw the text unanimated.
+            "animtext" => {
+                return self.issue(span, Severity::Info, format!("character-compat:{name}"));
             }
             _ => {
                 self.issue(span, Severity::Loss, format!("control:{name}"))?;
@@ -4278,6 +4478,9 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         override_draft: None,
         override_level_draft: None,
         table_gap: None,
+        table_padding: CellMargins::default(),
+        table_layout: None,
+        default_tab_stop: None,
     };
     loop {
         let Some((span, token)) = lexer.next()? else {
@@ -4666,6 +4869,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         footnotes: p.footnotes,
         endnotes: p.endnotes,
         settings: strict_ooxml_wml::model::settings::Settings {
+            default_tab_stop: p.default_tab_stop,
             even_and_odd_headers: p.even_and_odd_headers,
             footnote_properties: p.document_footnote,
             endnote_properties: p.document_endnote,
