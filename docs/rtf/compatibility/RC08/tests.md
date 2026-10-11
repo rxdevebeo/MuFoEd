@@ -247,11 +247,19 @@ marker and the Info classification. Corpus receipt
 drops 83671 -> 83010 import losses, and every one of the 100 page counts equals
 the column-layout baseline (no regression).
 
+## Custom note marks (2026-10-11)
+
+`w:customMarkFollows` (a hand-typed note mark) is unobserved in the corpus and
+is not carried by the model. The reader used to drop the attribute silently; it
+now keeps the reference but records `w:footnoteReference`/`w:endnoteReference`
+`Partial` with an explicit message (`notes.rs::custom_mark_follows_is_partial_not_
+silent`). The continuation NOTICE (`\ftncn`/`\aftncn`, distinct from the
+`\ftnsepc` continuation separator already mapped) has no Strict element and stays
+an explicit `destination:ftncn` Loss. Both are explicit non-support rules, not
+silent fallbacks.
+
 ## Other open items
 
 - A continuous section break still defers its geometry (and columns) to the next
   page (see "Section column layout"); same-page continuous geometry is the
   remaining shared-layout build.
-- Custom marks (footnote/endnote `customMarkFollows`): no corpus occurrence and
-  no shared model support yet.
-- `\ftncn`/`\aftncn` continuation-notice definitions.

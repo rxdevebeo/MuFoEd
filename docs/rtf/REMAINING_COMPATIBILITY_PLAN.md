@@ -985,3 +985,17 @@ Corpus `target/rtf-import/rc08-field-verify2`: 014 losses 830 → 796, весь 
 83671 → 83010; `check` 014 `ok: strict`; все 100 page counts равны столбцовой
 baseline (регрессий нет). Открыто по RC08: custom marks и `\ftncn`/`\aftncn`.
 
+### RC08: custom marks и continuation notice — 2026-10-11
+
+Оба класса в корпусе не наблюдаются (0 вхождений), поэтому закрыты как явные
+неподдержанные правила, а не спекулятивно реализованы. `w:customMarkFollows`
+reader раньше ронял молча; теперь ссылка сохраняется, а
+`w:footnoteReference`/`w:endnoteReference` помечается `Partial` с явным
+сообщением (глиф-ран custom-марки не различается в render).
+`notes.rs::custom_mark_follows_is_partial_not_silent` покрывает. `\ftncn`/
+`\aftncn` (continuation notice, не `\ftnsepc`) — Strict-элемента нет, остаётся
+явным `destination:ftncn` Loss. RC08 после этого: колонки и field block сделаны,
+остаётся только same-page continuous geometry.
+
+Далее по порядку — RC04.
+

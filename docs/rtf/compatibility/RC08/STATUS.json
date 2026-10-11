@@ -22,7 +22,7 @@
   "remaining": [
     "072 remaining +34 pages is a WPS source-format inconsistency, not a mapping bug. Body line pitch matches (16.1pt = Arimo 1.15em x \\sl280/240). The residual is inter-paragraph spacing: measured against the immutable WPS references, the WPS RTF path SUMS before+after (072 heading->heading 38.25pt = sum 36pt) while the WPS DOCX path takes MAX (06-strict-math-display body->Heading2 14.74pt = max 14pt). The renderer's max (paginate.rs) is what the DOCX baseline and the SVG refs require; a max->sum change regressed 06 and was reverted, and inflating w:before at import would misrepresent the document. Recorded as a WPS RTF-path quirk (not imitated, not a support blocker).",
     "section column LAYOUT is now built (see implemented), but a CONTINUOUS section break defers its geometry and its columns to the next page, so 074's 2-column section begins on page 2 instead of mid-page 1: 074 renders both columns (left edge 76 px, right edge 425 px at 96 dpi) yet stays 4 pages against the WPS reference's 3. Same-page continuous-section geometry changes are the remaining shared-layout build. 092 (one continuous 2-column body) matches the reference exactly (21 -> 20 pages). An unequal-width column set also has no per-column re-wrap: a paragraph that starts in a wide column and continues into a narrower one keeps the starting column's wrap (074/092 do not exercise it).",
-    "multi-paragraph field block results are now preserved (see implemented). Custom marks (footnote/endnote customMarkFollows) and the `\\ftncn`/`\\aftncn` continuation-notice definitions remain unreviewed."
+    "multi-paragraph field block results are now preserved (see implemented). Custom note marks and the continuation notice are unobserved in the corpus and stay explicit non-support: `w:customMarkFollows` is recorded `Partial` (the reference is kept and the attribute is named, not silently dropped) but the custom glyph run is not distinguished at render, and `\\ftncn`/`\\aftncn` (the continuation NOTICE, distinct from the `\\ftnsepc` continuation separator already mapped) have no Strict element and stay an explicit `destination:ftncn` Loss."
   ],
   "blocked": [],
   "checks": {
@@ -101,6 +101,14 @@
         "a `{\\field}` with a multi-paragraph `\\fldrslt` writes `w:fldChar begin` + `w:instrText` + `w:fldChar separate` + the result paragraphs + `w:fldChar end` (no flatten, no `field:multi-paragraph-instruction-dropped` Loss)",
         "the cached paragraph boundaries survive (paragraph texts AB / C / empty / D; the instruction is not woven into the result)",
         "`\\flddirty` sets `w:dirty` on the begin marker; `\\fldedit` and `{\\*\\datafield}` are Info, not Loss (loss_count 0)"
+      ]
+    },
+    "custom_note_marks": {
+      "status": "Pass",
+      "test": "strict-ooxml-wml/tests/notes.rs::custom_mark_follows_is_partial_not_silent",
+      "assertions": [
+        "a `w:footnoteReference` with `w:customMarkFollows` keeps the reference and is recorded Partial with an explicit message",
+        "the attribute is named, not silently dropped (customMarkFollows is unobserved in the corpus)"
       ]
     },
     "note_numbering_properties": {

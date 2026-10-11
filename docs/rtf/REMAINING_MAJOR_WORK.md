@@ -234,9 +234,12 @@ bombs отклоняются до allocation и не обходят бюджет
    830 → 796; весь корпус 83671 → 83010, все 100 page counts без изменений.
    Тесты `structure.rs::{multi_paragraph_field_becomes_the_complex_marker_form,
    dirty_field_marker_and_compat_controls_are_not_losses}`.
-3. **Custom marks** (`w:customMarkFollows`): 0 вхождений в корпусе, нет
-   поддержки в model.
-4. `\ftncn`/`\aftncn` (continuation notice) остаются Loss.
+3. **Custom marks** (`w:customMarkFollows`) — 0 вхождений в корпусе; reader
+   теперь помечает ссылку `Partial` явно (не молчаливый drop), но глиф-ран
+   custom-марки не различается — **explicit non-support**.
+4. `\ftncn`/`\aftncn` (continuation notice, не `\ftnsepc` continuation separator,
+   который уже смаплен) — нет Strict-элемента, остаётся явным
+   `destination:ftncn` Loss — **explicit non-support**.
 
 **Контракт/подход.**
 - Columns — **сделано (2026-10-11)**: колонко-менеджер в paginator; single-column
@@ -347,7 +350,8 @@ unsupported statuses и подробный report. Merge/release — отдел�
 2. **RC06** (cell/paragraph/row borders, shading, cell props, диагонали) —
    **сделано (2026-10-11)**, этап закрыт; nested tables — явный Reject. С RC10.
 3. **RC08 columns** — **сделано (2026-10-11)**; **RC08 field block** (witness 014)
-   — **сделано (2026-10-11)** (marker-форма). Далее custom marks и `\ftncn`.
+   — **сделано (2026-10-11)** (marker-форма); custom marks и `\ftncn` —
+   **explicit non-support** (в корпусе не наблюдаются). Далее RC04.
 4. **RC04 resolved-cascade** (resolver) и corpus geometry — параллельно с RC02/RC03.
 5. **RC03 line-level bidi** — после bidi-oracle с per-char levels.
 6. **RC07 metafiles** (отдельная очередь) + RC10.
