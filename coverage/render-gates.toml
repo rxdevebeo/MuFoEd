@@ -227,15 +227,16 @@ max_extent_px = 18.0
 # per page: `EXTENT_RATCHET` pins every page's ink extent exactly.
 [[overrides]]
 document = "strict-stage5c"
-# AUD-50 multi-`m:oMath` stacking (one display line per equation) moves page 1
-# by ≈240 px at the bottom ink edge and drops row-ink correlation to ≈0.24.
-# Numbers below are measured on that layout; waiver `STAGE5C-P1-LAYOUT` tracks
-# restoring a tighter band against an updated WPS reference.
-max_shift_px = 26
-max_centroid_px = 160.0
-max_content_centroid_px = 160.0
-max_extent_px = 250.0
-min_row_correlation = 0.20
+# 2026-10-11: adjacent equations share a baseline; explicit math-run breaks
+# create a new line. Confirmed with WPS 12.1.0.28485 minimal probes. The former
+# 193-242 px bottom drift is now 24 px (SVG), 23 px (PDF); exact pins remain.
+# Font substitution still moves sparse-page ink profiles: measured best shift
+# 16 px, centroid up to 37.1 px. These are coarse bounds, not pixel fidelity.
+max_shift_px = 18
+max_centroid_px = 40.0
+max_content_centroid_px = 40.0
+max_extent_px = 26.0
+min_row_correlation = 0.40
 min_column_correlation = 0.35
 
 # ---------------------------------------------------------------------------

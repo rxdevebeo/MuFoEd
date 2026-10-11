@@ -302,6 +302,8 @@ pub(crate) enum Flow {
     TableRow(TableRowFlow),
     /// An explicit page break.
     PageBreak,
+    /// An explicit column break.
+    ColumnBreak,
 }
 
 /// A laid-out table row.
@@ -334,6 +336,10 @@ pub(crate) struct Geometry {
     pub bottom: f64,
     /// Document-grid line pitch in px (`w:docGrid/@w:linePitch`), if any.
     pub grid_line_pitch: Option<f64>,
+    /// Number of equal-width body columns from `w:cols`.
+    pub column_count: usize,
+    /// Gap between body columns in px.
+    pub column_gap: f64,
 }
 
 impl Geometry {
@@ -347,6 +353,20 @@ impl Geometry {
     #[must_use]
     pub(crate) fn content_height(&self) -> f64 {
         (self.height - self.top - self.bottom).max(1.0)
+    }
+
+    /// Width of one equal-width body column.
+    #[must_use]
+    pub(crate) fn column_width(&self) -> f64 {
+        let count = self.column_count.max(1);
+        let gaps = self.column_gap.max(0.0) * count.saturating_sub(1) as f64;
+        ((self.content_width() - gaps) / count as f64).max(1.0)
+    }
+
+    /// Left edge of a body column.
+    #[must_use]
+    pub(crate) fn column_left(&self, index: usize) -> f64 {
+        self.left + index as f64 * (self.column_width() + self.column_gap.max(0.0))
     }
 }
 
@@ -426,6 +446,17 @@ pub(crate) fn geometry_for(
         .and_then(|grid| grid.line_pitch)
         .filter(|pitch| *pitch > 0)
         .map(|pitch| twips_to_px(pitch, scale));
+    let columns = section.and_then(|section| section.columns.as_ref());
+    let explicit_count = columns.map_or(0, |columns| columns.columns.len());
+    let column_count = columns
+        .and_then(|columns| columns.count)
+        .map_or(explicit_count.max(1), usize::from)
+        .max(1);
+    // ISO/IEC 29500's default column spacing is 720 twips.
+    let column_gap = columns.and_then(|columns| columns.space).map_or_else(
+        || twips_to_px(720, scale),
+        |space| twips_to_px(space.value(), scale),
+    );
     Geometry {
         width,
         height,
@@ -434,6 +465,8 @@ pub(crate) fn geometry_for(
         right: value(margins.right, DEFAULT_MARGIN),
         bottom: value(margins.bottom, DEFAULT_MARGIN),
         grid_line_pitch,
+        column_count,
+        column_gap,
     }
 }
 
