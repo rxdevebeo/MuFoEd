@@ -16,15 +16,15 @@ use strict_ooxml_wml::model::document::{Body, DocumentSource};
 use strict_ooxml_wml::model::drawing::{MediaIndex, MediaKind};
 use strict_ooxml_wml::model::{
     AbstractNum, AbstractNumId, Block, Bookmark, BookmarkId, Border, BorderStyle, BreakKind,
-    CellMargins, CellProperties, Color, ColumnSpec, EighthsPoint, Field, Fonts, GridCol,
-    HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, Ilvl, Inline, Justification,
-    Language, Level, LevelOverride, LineSpacingRule, Note, NoteKind, NoteProperties, NoteTable,
-    Num, NumId, NumPr, NumberingTable, PageBorder, PageBorders, PageMargins, PageOrientation,
-    PageSize, Paragraph, ParagraphProperties, RowProperties, Rsids, Run, RunContent, RunProperties,
-    Section, SectionProperties, SectionType, Shading, Space, Style, StyleId, StyleTable, StyleType,
-    Symbol, TabAlignment, TabLeader, TabStop, Table, TableCell, TableLook, TableProperties,
-    TableRow, TextNode, TriState, Twips, Underline, VertAlign, VerticalJc, VerticalMerge, Width,
-    WidthKind,
+    CellMargins, CellProperties, Color, ColumnSpec, EighthsPoint, Field, FieldChar, FieldCharType,
+    Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, Ilvl, Inline,
+    Justification, Language, Level, LevelOverride, LineSpacingRule, Note, NoteKind, NoteProperties,
+    NoteTable, Num, NumId, NumPr, NumberingTable, PageBorder, PageBorders, PageMargins,
+    PageOrientation, PageSize, Paragraph, ParagraphProperties, RowProperties, Rsids, Run,
+    RunContent, RunProperties, Section, SectionProperties, SectionType, Shading, Space, Style,
+    StyleId, StyleTable, StyleType, Symbol, TabAlignment, TabLeader, TabStop, Table, TableCell,
+    TableLook, TableProperties, TableRow, TextNode, TriState, Twips, Underline, VertAlign,
+    VerticalJc, VerticalMerge, Width, WidthKind,
 };
 use unicode_bidi::BidiInfo;
 
@@ -104,6 +104,8 @@ enum RegionKind {
     },
     Field {
         instruction: String,
+        /// `\flddirty`: the cached result must be recomputed.
+        dirty: bool,
     },
     Bookmark {
         is_start: bool,
@@ -443,6 +445,16 @@ fn is_field_instruction_formatting(name: &str) -> bool {
         // Revision save ids.
             | "insrsid" | "charrsid"
     )
+}
+
+/// A run holding one complex-field marker (`w:fldChar`).
+fn field_char_marker(kind: FieldCharType, dirty: bool) -> Inline {
+    Inline::Run(Run {
+        props: RunProperties::default(),
+        content: vec![RunContent::FieldChar(FieldChar { kind, dirty })],
+        revision: None,
+        location: SourceLocation::unknown(),
+    })
 }
 
 fn assign_font(fonts: &mut Fonts, slot: FontSlot, face: Arc<str>) {
@@ -1265,61 +1277,60 @@ impl Parser<'_> {
                 }
                 Ok(None)
             }
-            RegionKind::Field { instruction } => {
-                if blocks.len() > 1 || ended_paragraph {
-                    // The shared model supports inline fields only. Retain the
-                    // cached paragraphs and explicitly report lost field scope.
-                    self.issue(
-                        span,
-                        Severity::Loss,
-                        "field:multi-paragraph-instruction-dropped",
-                    )?;
-                    let count = blocks.len();
-                    for (index, block) in blocks.into_iter().enumerate() {
+            RegionKind::Field { instruction, dirty } => {
+                // A single-paragraph, up-to-date result can use the simple-field
+                // form. A block result (the shared model has no block-result
+                // simple field) or a dirty field (whose `w:dirty` flag only the
+                // complex-field begin marker carries) is emitted as the complex
+                // marker form: begin / instrText / separate / result / end, so
+                // the result paragraphs and the field scope survive.
+                if !dirty && blocks.len() <= 1 && !ended_paragraph {
+                    if blocks.is_empty() {
+                        return malformed(span.start, "empty field builder");
+                    }
+                    let mut inlines = vec![];
+                    for block in blocks {
                         let Block::Paragraph(p) = block else {
                             return malformed(span.start, "table in inline field result");
                         };
-                        if self.inlines.is_empty() {
+                        inlines.extend(p.inlines);
+                    }
+                    return Ok(Some(Inline::Field(Field {
+                        instruction: Some(Arc::from(instruction.trim())),
+                        inlines,
+                        location: SourceLocation::unknown(),
+                    })));
+                }
+                self.inlines
+                    .push(field_char_marker(FieldCharType::Begin, dirty));
+                self.inlines.push(Inline::Run(Run {
+                    props: RunProperties::default(),
+                    content: vec![RunContent::InstrText(instruction.trim().to_owned())],
+                    revision: None,
+                    location: SourceLocation::unknown(),
+                }));
+                self.inlines
+                    .push(field_char_marker(FieldCharType::Separate, false));
+                let preceded = self.inlines.len() > 3;
+                for (index, block) in blocks.into_iter().enumerate() {
+                    let Block::Paragraph(p) = block else {
+                        return malformed(span.start, "table in field result");
+                    };
+                    if index == 0 {
+                        if !preceded {
                             self.paragraph_props = p.props;
                         }
-                        self.inlines.extend(p.inlines);
-                        self.paragraph_pending = true;
-                        if index + 1 < count || ended_paragraph {
-                            self.paragraph(span.start)?;
-                        }
-                    }
-                    return Ok(None);
-                }
-                let mut inlines = vec![];
-                let count = blocks.len();
-                for (index, block) in blocks.into_iter().enumerate() {
-                    if let Block::Paragraph(p) = block {
-                        if index != 0 {
-                            self.issue(
-                                span,
-                                Severity::Loss,
-                                "field:multi-paragraph-result-flattened",
-                            )?;
-                            inlines.push(Inline::Run(Run {
-                                props: RunProperties::default(),
-                                content: vec![RunContent::Break(BreakKind::TextWrapping)],
-                                revision: None,
-                                location: SourceLocation::unknown(),
-                            }));
-                        }
-                        inlines.extend(p.inlines);
                     } else {
-                        return malformed(span.start, "table in inline field result");
+                        self.paragraph(span.start)?;
+                        self.paragraph_props = p.props;
                     }
+                    self.inlines.extend(p.inlines);
+                    self.paragraph_pending = true;
                 }
-                if count == 0 {
-                    return malformed(span.start, "empty field builder");
-                }
-                Ok(Some(Inline::Field(Field {
-                    instruction: Some(Arc::from(instruction.trim())),
-                    inlines,
-                    location: SourceLocation::unknown(),
-                })))
+                self.inlines
+                    .push(field_char_marker(FieldCharType::End, false));
+                self.paragraph(span.start)?;
+                Ok(None)
             }
             RegionKind::Bookmark { is_start } => {
                 let mut name = String::new();
@@ -1955,7 +1966,7 @@ impl Parser<'_> {
                 });
             }
             if let Some(RegionFrame {
-                kind: RegionKind::Field { instruction },
+                kind: RegionKind::Field { instruction, .. },
                 ..
             }) = self.regions.last_mut()
             {
@@ -2695,6 +2706,7 @@ impl Parser<'_> {
                 return self.begin_region(
                     RegionKind::Field {
                         instruction: String::new(),
+                        dirty: false,
                     },
                     span.start,
                 );
@@ -2737,8 +2749,10 @@ impl Parser<'_> {
         if first && self.state.ignorable {
             self.state.skip = true;
             // `{\*\levelmarker ...}` is a legacy alternative list marker
-            // superseded by `\leveltext`; it is ignored, not a loss.
-            let severity = if name == "levelmarker" {
+            // superseded by `\leveltext`, and `{\*\datafield ...}` is a legacy
+            // cached binary field payload whose human-readable result Word takes
+            // from `\fldrslt`; both are ignored, not a loss.
+            let severity = if matches!(name, "levelmarker" | "datafield") {
                 Severity::Info
             } else {
                 Severity::Loss
@@ -3842,6 +3856,25 @@ impl Parser<'_> {
                     _ => "\u{2005}",
                 };
                 self.text(text.into(), span.start)?;
+            }
+            "flddirty" => {
+                // The field's cached result is stale. `w:dirty` lives on the
+                // complex-field begin marker, which the field's `end_region`
+                // emits when this flag is set.
+                if let Some(RegionFrame {
+                    kind: RegionKind::Field { dirty, .. },
+                    ..
+                }) = self.regions.last_mut()
+                {
+                    *dirty = true;
+                    return Ok(());
+                }
+                return self.issue(span, Severity::Info, "field-compat:flddirty");
+            }
+            "fldedit" => {
+                // "Field was edited": a Word/RTF compatibility hint with no WML
+                // analogue on either field form.
+                return self.issue(span, Severity::Info, "field-compat:fldedit");
             }
             "chpgn" | "sectnum" => {
                 // RTF special characters that render a page/section number.

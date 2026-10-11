@@ -6,6 +6,21 @@ use strict_ooxml_wml::model::{
     NumId, RunContent, StyleId, TabLeader, TriState, Twips, WidthKind,
 };
 
+/// The complex-field markers (`w:fldChar`/`w:instrText`) of one paragraph, in order.
+fn field_marker_marks(inlines: &[Inline]) -> Vec<String> {
+    inlines
+        .iter()
+        .filter_map(|i| {
+            let Inline::Run(r) = i else { return None };
+            r.content.iter().find_map(|c| match c {
+                RunContent::FieldChar(f) => Some(format!("fieldchar:{}", f.kind.as_str())),
+                RunContent::InstrText(t) => Some(format!("instr:{t}")),
+                _ => None,
+            })
+        })
+        .collect()
+}
+
 #[test]
 fn unresolved_abstract_list_reference_is_never_clean() {
     let source =
@@ -356,14 +371,17 @@ fn numbering_suffix_precedes_level_text_in_the_written_package() {
 }
 
 #[test]
-fn multi_paragraph_field_keeps_cached_boundaries_and_reports_instruction_loss() {
+fn multi_paragraph_field_becomes_the_complex_marker_form() {
     let source = br"{\rtf1 A{\field{\*\fldinst TOC}{\fldrslt B\par C\par}}\par D}";
     let imported = import(source, &RtfOptions::default()).unwrap();
-    assert!(imported
-        .report
-        .issues
-        .iter()
-        .any(|i| i.feature == "field:multi-paragraph-instruction-dropped"));
+    assert!(
+        !imported
+            .report
+            .issues
+            .iter()
+            .any(|i| i.feature.starts_with("field:")),
+        "a block result is preserved as the complex marker form"
+    );
     let d = reopened(source);
     let text: Vec<String> = d
         .body
@@ -395,6 +413,60 @@ fn multi_paragraph_field_keeps_cached_boundaries_and_reports_instruction_loss() 
         })
         .collect();
     assert_eq!(text, ["AB", "C", "", "D"]);
+    // The field scope survives as begin / instrText / separate / end, split
+    // across the cached result paragraphs.
+    let Block::Paragraph(first) = &d.body.blocks[0] else {
+        panic!()
+    };
+    let Block::Paragraph(second) = &d.body.blocks[1] else {
+        panic!()
+    };
+    assert_eq!(
+        field_marker_marks(&first.inlines),
+        ["fieldchar:begin", "instr:TOC", "fieldchar:separate"]
+    );
+    assert_eq!(field_marker_marks(&second.inlines), ["fieldchar:end"]);
+}
+
+#[test]
+fn dirty_field_marker_and_compat_controls_are_not_losses() {
+    // `\flddirty` marks the complex-field begin marker dirty; `\fldedit` and the
+    // legacy `{\*\datafield}` cache are compatibility info, not losses.
+    let source = br"{\rtf1 X{\field\flddirty\fldedit{\*\fldinst PAGEREF _Toc1}{\fldrslt 7}}{\*\datafield 08}\par D}";
+    let imported = import(source, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "every field-compat control is Info: {:?}",
+        imported.report.issues
+    );
+    assert!(
+        imported
+            .report
+            .issues
+            .iter()
+            .any(|i| i.feature == "field-compat:fldedit"),
+        "fldedit is recorded as Info: {:?}",
+        imported.report.issues
+    );
+    assert!(
+        imported
+            .report
+            .issues
+            .iter()
+            .any(|i| i.feature == "destination:datafield"),
+        "the legacy cache is recorded as Info: {:?}",
+        imported.report.issues
+    );
+    let d = reopened(source);
+    let Block::Paragraph(first) = &d.body.blocks[0] else {
+        panic!()
+    };
+    assert!(
+        first.inlines.iter().any(|i| matches!(i,
+            Inline::Run(r) if r.content.iter().any(|c| matches!(c,
+                RunContent::FieldChar(f) if f.kind.as_str() == "begin" && f.dirty)))),
+        "the begin marker carries w:dirty"
+    );
 }
 
 #[test]
