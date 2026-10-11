@@ -118,6 +118,44 @@ pixels (6/100, 22/458) are unchanged.
 `\rtlsect`/`\ltrsect` set the section bidi flag (`\rtlpar`/`\ltrpar` were already
 mapped); `structure.rs::section_bidi_controls_map` pins it.
 
+## Section column layout (2026-10-11)
+
+The `w:cols` mapping above was inert: the shared renderer painted one column.
+`layout::column_layout` now turns `w:cols` into the per-column `(left, width)` in
+px — equal-width columns with `w:cols/@space`, or the explicit `w:col/@w` and
+`@space` of an unequal set (an undeclared width in an explicit set is the equal
+share of what is left; the units are never guessed). The paginator breaks a block
+that overflows a column to the **next column on the same page** and opens a new
+page only when the columns are full; a page or section break resets to the first
+column, and a continuous section carries its columns with its deferred geometry.
+Items placed in a later column are shifted by the column offset, so a paragraph
+that starts in one column and continues into the next keeps its wrap. A
+single-column section is the fast path: the column list is empty, every offset is
+zero, and the old layout is byte-identical. `w:br w:type="column"` becomes a
+`Flow::ColumnBreak` and advances a column; endnotes span the whole page.
+
+`strict-ooxml-render-svg/tests/f14_columns.rs` pins
+`column_break_moves_the_rest_to_the_next_column`,
+`overflowing_text_flows_into_the_second_column` and
+`a_single_column_section_keeps_the_page_content_box`.
+
+Corpus receipt `target/rtf-import/RC08-columns-layout/`: pagination **65/100 ->
+66/100**. Only 092 changes (21 -> 20 pages) and now equals the WPS reference;
+every other page count equals `RC06-final3`, so the single-column fast path does
+not regress. 074 renders both columns (left edge 76 px, right edge 425 px at
+96 dpi) but stays 4 pages against the reference's 3: its 2-column section is a
+continuous break, and a continuous break defers its geometry **and its columns**
+to the next page, so the columns start on page 2 rather than mid-page 1. That
+same-page continuous-section change is the remaining build, recorded below.
+
+### Remaining
+
+A continuous section break still defers its geometry (and now its columns) to the
+next page, so 074's two-column section starts on page 2 instead of mid-page 1.
+An unequal-width column set also has no per-column re-wrap: a paragraph that
+starts in a wide column and continues into a narrower one keeps the starting
+column's wrap (074/092 do not exercise it).
+
 ## Note numbering and placement (2026-10-10)
 
 Footnote/endnote **numbering and placement** controls were dropped as
@@ -185,8 +223,9 @@ WPS reference uses it, so pagination/pixels are unchanged.
 
 ## Other open items
 
-- Section column **layout** in the shared renderer (model + `w:cols` mapping are
-  done; a multi-column section still paints one column).
+- A continuous section break still defers its geometry (and columns) to the next
+  page (see "Section column layout"); same-page continuous geometry is the
+  remaining shared-layout build.
 - Multi-paragraph field block results: the inline `Field` cannot hold a block
   result, and the complex-field marker form needs a document-level field state
   threaded across paragraphs. One corpus occurrence (014).

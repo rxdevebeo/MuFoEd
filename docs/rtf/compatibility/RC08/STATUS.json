@@ -1,7 +1,7 @@
 {
   "card": "RC08",
   "status": "InProgress",
-  "updated": "2026-10-10",
+  "updated": "2026-10-11",
   "scope": "sections, regions, notes and complex fields",
   "base_commit": "06f4eba",
   "dependencies": ["RC01", "RC04"],
@@ -15,11 +15,12 @@
     "footnote/endnote numbering and placement map to NoteProperties: document-wide \\ftn*/\\enddoc and \\aftn*/\\aenddoc land in settings.xml (w:footnotePr/w:endnotePr), and the section-scoped \\sftn*/\\saftn* forms land in the running w:sectPr. Number formats (\\ftnnar/alc/auc/rlc/ruc/chi and endnote twins), \\ftnstart/\\aftnstart (w:numStart), \\ftnrstcont/\\ftnrestart/\\ftnrstpg and \\aftnrstcont/\\aftnrestart (w:numRestart), and position (\\ftnbj->pageBottom, \\ftntj->beneathText, \\endnotes->sectEnd, \\enddoc->docEnd, \\aendnotes->sectEnd, \\aenddoc->docEnd) are mapped per the RTF 1.5 footnotes table; 29 corpus documents lose 625 import-loss events. \\aftnbj/\\aftntj and \\ftnlytwnine stay Loss (no ST_EdnPos value / no Strict equivalent). Note separators (\\ftnsep/\\ftnsepc/\\ftncn and endnote twins) remain Loss: faithful w:separator content needs a shared RunContent::Separator, not a hidden fragment.",
     "note separator definitions are preserved: RunContent::Separator/ContinuationSeparator were added to the shared model (the reader now keeps w:separator/w:continuationSeparator instead of discarding them; the writer emits them); \\ftnsep/\\ftnsepc and the endnote twins become the reserved id -1/0 note definitions plus their w:footnotePr/w:endnotePr references instead of a dropped destination. Capturing the destination body unmasks the formatting controls inside it (+152 Loss across 6 docs; honest per-control accounting). Output DOCX, page counts and PDF bytes are unchanged.",
     "field-instruction formatting is classified honestly: the curated character-formatting controls the writer embeds in \\fldinst (font/script/lang/colour/toggles/size) are the field-code display formatting, kept out of the instruction; they become explicit Info. An unknown instruction control stays an explicit Loss (no blanket rename). Corpus import losses 170981 -> 137380 (-33753).",
-    "w:contextualSpacing is mapped and applied: \\contextualspace sets the paragraph property, and the paginator suppresses the before/after gap between consecutive same-style paragraphs when either side enables it (no corpus or WPS reference uses it, so pagination/pixels are unchanged)."
+    "w:contextualSpacing is mapped and applied: \\contextualspace sets the paragraph property, and the paginator suppresses the before/after gap between consecutive same-style paragraphs when either side enables it (no corpus or WPS reference uses it, so pagination/pixels are unchanged).",
+    "section column LAYOUT is implemented in the shared renderer: a new `layout::column_layout` turns w:cols into per-column (left, width) in px (equal-width with w:cols/@space, or the explicit w:col/@w and @space of an unequal set; an undeclared width in an explicit set is the equal share of what is left). The paginator now breaks a block that overflows a column to the NEXT COLUMN on the same page and opens a new page only when the columns are full; a page/section break resets to the first column and a continuous section carries its columns with its deferred geometry. Items placed in a later column are shifted by the column offset, so a paragraph that starts in one column and continues in the next keeps its wrap. A single-column section is the fast path: the column list is empty and every offset is zero, so the old layout is unchanged. `w:br w:type=\"column\"` becomes a `Flow::ColumnBreak` and advances a column; endnotes span the whole page."
   ],
   "remaining": [
     "072 remaining +34 pages is a WPS source-format inconsistency, not a mapping bug. Body line pitch matches (16.1pt = Arimo 1.15em x \\sl280/240). The residual is inter-paragraph spacing: measured against the immutable WPS references, the WPS RTF path SUMS before+after (072 heading->heading 38.25pt = sum 36pt) while the WPS DOCX path takes MAX (06-strict-math-display body->Heading2 14.74pt = max 14pt). The renderer's max (paginate.rs) is what the DOCX baseline and the SVG refs require; a max->sum change regressed 06 and was reverted, and inflating w:before at import would misrepresent the document. Recorded as a WPS RTF-path quirk (not imitated, not a support blocker).",
-    "section column LAYOUT is not implemented in the shared renderer: w:cols round-trips and validates, but a multi-column section still renders as one column (a shared layout build)",
+    "section column LAYOUT is now built (see implemented), but a CONTINUOUS section break defers its geometry and its columns to the next page, so 074's 2-column section begins on page 2 instead of mid-page 1: 074 renders both columns (left edge 76 px, right edge 425 px at 96 dpi) yet stays 4 pages against the WPS reference's 3. Same-page continuous-section geometry changes are the remaining shared-layout build. 092 (one continuous 2-column body) matches the reference exactly (21 -> 20 pages). An unequal-width column set also has no per-column re-wrap: a paragraph that starts in a wide column and continues into a narrower one keeps the starting column's wrap (074/092 do not exercise it).",
     "multi-paragraph field block results (a shared model change; the current inline Field cannot hold a block result, and the complex-field marker form needs a document-level field state across paragraphs) and custom marks (footnote/endnote customMarkFollows) are unreviewed"
   ],
   "blocked": [],
@@ -76,6 +77,19 @@
         "\\ltrsect clears it"
       ]
     },
+    "section_column_layout": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-render-svg/tests/f14_columns.rs::column_break_moves_the_rest_to_the_next_column",
+        "strict-ooxml-render-svg/tests/f14_columns.rs::overflowing_text_flows_into_the_second_column",
+        "strict-ooxml-render-svg/tests/f14_columns.rs::a_single_column_section_keeps_the_page_content_box"
+      ],
+      "assertions": [
+        "a `w:br w:type=\"column\"` moves the rest of the paragraph to the second column on the same page (left edge 66.67 -> 240 px)",
+        "a paragraph that overflows the first column flows into the second column on the same page",
+        "a single-column section keeps the page content box (the fast path is unchanged)"
+      ]
+    },
     "note_numbering_properties": {
       "status": "Pass",
       "tests": [
@@ -124,6 +138,20 @@
         "\\contextualspace -> w:contextualSpacing On, \\contextualspace0 -> Off (import -> reopen)",
         "the paginator removes the 32 px before/after gap between two same-style paragraphs when contextualSpacing is on, and keeps it when off"
       ]
+    },
+    "column_layout_corpus": {
+      "status": "Measured",
+      "date": "2026-10-11",
+      "receipts": [
+        "target/rtf-import/RC08-columns-layout/corpus-pages.json",
+        "target/rtf-import/RC08-columns-layout/092_SurviveTheTyrant.pdf",
+        "target/rtf-import/RC08-columns-layout/074_HenryWallaceSpeech-TheCenturyOfTheCommonMan.pdf"
+      ],
+      "results": {
+        "pagination": "65/100 -> 66/100: only 092_SurviveTheTyrant changes (21 -> 20 pages), now equal to the WPS reference; every other page count equals RC06-final3",
+        "witness_074": "both columns render (left edge 76 px / right edge 425 px at 96 dpi); 4 pages vs the reference's 3, unchanged by the column build because its 2-column section is a continuous break whose columns are deferred to page 2",
+        "single_column_fast_path": "no regression: the 65 RC06-final3 pagination passes and every non-092 page count are identical"
+      }
     },
     "corpus_gates": {
       "status": "Measured",

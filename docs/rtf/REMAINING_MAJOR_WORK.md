@@ -20,7 +20,7 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 | RC05 lists | InProgress | override levels `\lfolevel` — **done (2026-10-11)**; remaining is renderer counter continuity | parser done; renderer |
 | RC06 tables | Done | all table controls mapped (grid/merge/borders/shading/margins/widths/diagonals); nested tables = explicit Reject | parser + shared model |
 | RC07 metafiles | Planned | bounded WMF/EMF decoder in typed primitives | shared render |
-| RC08 regions/fields | InProgress | column layout; multi-paragraph field block; custom marks; `\ftncn` | shared layout/model |
+| RC08 regions/fields | InProgress | column layout **done (2026-10-11)**; remaining: multi-paragraph field block, custom marks, `\ftncn`, continuous-section same-page geometry | shared layout/model |
 | RC09 other losses | Planned | comments/revisions/textboxes/OLE/metadata | shared model |
 | RC10 hardening | непрерывно | fuzz/budgets/hostile на каждом новом декодере | все crates |
 | RC11 acceptance | Blocked | полный корпусный/профильный прогон, 100 verdicts | harness/assets |
@@ -202,8 +202,27 @@ bombs отклоняются до allocation и не обходят бюджет
 закрыты.
 
 **Осталось.**
-1. **Column layout** в shared renderer: `w:cols` round-trip'ится, но рисуется
-   одна колонка. Witness 074/092.
+1. **Column layout** — **сделано (2026-10-11)**. `layout::column_layout` строит
+   per-column `(left, width)` из `w:cols` (equal-width с `@space` либо explicit
+   `w:col/@w`+`@space`; необъявленная ширина в explicit-наборе = равная доля
+   остатка). Paginator переносит блок, не влезший в колонку, в **следующую
+   колонку на той же странице** и открывает новую страницу только когда колонки
+   полны; page/section-break сбрасывает на первую колонку, а continuous-секция
+   несёт свои колонки вместе с отложенной геометрией. Элементы в следующей
+   колонке сдвигаются на column-offset (параграф, начавшийся в одной колонке и
+   продолжившийся в следующей, сохраняет свой wrap). Single-column — fast-path:
+   список колонок пуст, все offsets нулевые, старая раскладка byte-identical.
+   `w:br w:type="column"` → `Flow::ColumnBreak`; endnotes идут на всю страницу.
+   Тесты `f14_columns.rs` (column break, overflow, fast-path). Corpus: pagination
+   **65/100 → 66/100** — меняется только 092 (21 → 20 стр., совпало с WPS ref),
+   остальные page counts равны `RC06-final3`. Receipts —
+   `target/rtf-import/RC08-columns-layout/`.
+   Witness 074: обе колонки рисуются (left 76 px / right 425 px), но 4 стр. против
+   ref 3 — его 2-column секция это continuous-break, а continuous-break по-прежнему
+   откладывает геометрию (и колонки) на следующую страницу, поэтому колонки
+   начинаются со стр. 2. Остаётся same-page continuous geometry. У unequal-колонок
+   нет per-column re-wrap: параграф из широкой колонки в узкую сохраняет wrap
+   стартовой колонки (074/092 это не задействуют).
 2. **Multi-paragraph field block results**: inline `Field` не держит block
    result; marker-форма сложного поля требует document-level field state между
    параграфами. Witness 014 (поле TOC).
@@ -319,7 +338,8 @@ unsupported statuses и подробный report. Merge/release — отдел�
    2026-10-11.
 2. **RC06** (cell/paragraph/row borders, shading, cell props, диагонали) —
    **сделано (2026-10-11)**, этап закрыт; nested tables — явный Reject. С RC10.
-3. **RC08 columns** (2 свидетеля) → затем **RC08 field block** (witness 014).
+3. **RC08 columns** — **сделано (2026-10-11)**; далее **RC08 field block**
+   (witness 014) и custom marks.
 4. **RC04 resolved-cascade** (resolver) и corpus geometry — параллельно с RC02/RC03.
 5. **RC03 line-level bidi** — после bidi-oracle с per-char levels.
 6. **RC07 metafiles** (отдельная очередь) + RC10.
@@ -335,7 +355,7 @@ unsupported statuses и подробный report. Merge/release — отдел�
   включая writer/reader/render-svg merge; regression-тесты wml/write/convert/
   render-svg прогнаны.
 - Field block-result контракт (model + reader/writer/layout/edit/report) — RC08.
-- Column-менеджер в paginator — RC08.
+- Column-менеджер в paginator — RC08 — **сделано (2026-10-11)**.
 - `customMarkFollows` для `FootnoteRef`/`EndnoteRef` — RC08.
 - Bounded WMF/EMF decoder (typed primitives) — RC07.
 - Каждое изменение общих model/layout/writer требует согласованной единой

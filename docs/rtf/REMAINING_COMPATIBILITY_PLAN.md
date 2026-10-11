@@ -938,8 +938,30 @@ text/resource 100/100; `check` 100/100 `ok: strict`; import losses
 137 380 → 127 228 (−10 152); все 100 page counts равны RC08-final, все 100 PDF
 побайтово идентичны (pixel-замер переносится по идентичности).
 
+### RC08: shared column layout — 2026-10-11
 
+Закрыт крупнейший оставшийся shared-layout пункт RC08: `w:cols` теперь влияет на
+раскладку, а не только round-trip'ится. `layout::column_layout` строит
+per-column `(left, width)` в px: equal-width с `w:cols/@space` либо explicit
+`w:col/@w`/`@space` (необъявленная ширина в explicit-наборе — равная доля
+остатка; единицы не угадываются). Paginator переносит блок, не влезший в
+колонку, в **следующую колонку на той же странице**; новая страница — только
+когда колонки полны. Page/section-break сбрасывает на первую колонку, а
+continuous-секция несёт колонки вместе с отложенной геометрией. Элементы
+следующей колонки сдвигаются на column-offset, поэтому параграф, продолжившийся
+из колонки в колонку, сохраняет wrap. Single-column — fast-path: пустой список
+колонок, нулевые offsets, старая раскладка byte-identical. `w:br
+w:type="column"` → `Flow::ColumnBreak`; endnotes идут на всю страницу.
 
-
-
+Проверки: `f14_columns.rs` (column break, overflow, fast-path); suite
+`strict-ooxml-render-svg` Pass (кроме pre-existing `font::family`
+styled-PostScript теста, к RC08 не относится); clippy `-D warnings` и fmt Pass.
+Corpus `target/rtf-import/RC08-columns-layout`: pagination **65/100 → 66/100**.
+Единственное изменение — 092_SurviveTheTyrant (21 → 20 стр., теперь равно WPS
+reference); все остальные page counts равны `RC06-final3`, регрессий нет.
+Witness 074 рисует обе колонки (left 76 px / right 425 px при 96 dpi), но
+остаётся 4 стр. против ref 3: его 2-column секция — continuous-break, а
+continuous-break по-прежнему откладывает геометрию и колонки на следующую
+страницу. Открыто: same-page continuous geometry и per-column re-wrap для
+неравных колонок.
 
