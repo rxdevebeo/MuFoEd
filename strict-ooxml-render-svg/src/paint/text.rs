@@ -55,7 +55,7 @@ pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
 }
 
 fn text_svg_unrotated(out: &mut String, item: &TextItem) {
-    if item.run.char_scale != 1.0 {
+    if (item.run.char_scale - 1.0).abs() > 1e-9 {
         let _ = writeln!(
             out,
             "<g transform=\"translate({} 0) scale({} 1) translate({} 0)\">",
@@ -105,7 +105,7 @@ fn text_svg_unrotated(out: &mut String, item: &TextItem) {
         },
         super::escape_text(&shown),
     );
-    if item.run.char_scale != 1.0 {
+    if (item.run.char_scale - 1.0).abs() > 1e-9 {
         out.push_str("</g>\n");
     }
 }

@@ -9,7 +9,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use strict_ooxml_view::{failed, render_controlled, DocumentView, Entry};
+use strict_ooxml_view::{failed, render_controlled, DocumentView, Entry, RenderSettings};
 
 pub(crate) const MEMORY_LIMIT: usize = 2 * 1024 * 1024 * 1024;
 const MAX_RESULT_BYTES: u64 = 96 * 1024 * 1024;
@@ -19,7 +19,7 @@ static COUNTER: AtomicU64 = AtomicU64::new(0);
 struct Request {
     entry: Entry,
     transitional: bool,
-    scale: f64,
+    settings: RenderSettings,
     timeout_ms: u64,
 }
 
@@ -48,7 +48,7 @@ pub(crate) fn log(value: &serde_json::Value) {
 pub(crate) fn run(
     entry: &Entry,
     transitional: bool,
-    scale: f64,
+    settings: RenderSettings,
     timeout: Duration,
 ) -> DocumentView {
     let started = Instant::now();
@@ -73,7 +73,7 @@ pub(crate) fn run(
             execute(
                 entry,
                 transitional,
-                scale,
+                settings,
                 timeout,
                 &directory.path().join("metadata.json"),
                 &directory.path().join("worker.stderr"),
@@ -100,7 +100,7 @@ pub(crate) fn run(
 fn execute(
     entry: &Entry,
     transitional: bool,
-    scale: f64,
+    settings: RenderSettings,
     timeout: Duration,
     path: &std::path::Path,
     stderr_path: &std::path::Path,
@@ -130,7 +130,7 @@ fn execute(
     let request = Request {
         entry: entry.clone(),
         transitional,
-        scale,
+        settings,
         timeout_ms: u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
     };
     serde_json::to_writer(&mut input, &request).map_err(|error| error.to_string())?;
@@ -205,7 +205,7 @@ pub(crate) fn entry(path: &std::path::Path) -> Result<(), String> {
             render_controlled(
                 &request.entry,
                 request.transitional,
-                request.scale,
+                request.settings,
                 &control,
             )
             .map_err(|error| error.to_string())

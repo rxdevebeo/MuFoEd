@@ -216,6 +216,8 @@ pub struct RenderOptions {
     /// the `strict-text` pixel gate failed. It is kept for reproducing that
     /// audit, behind this switch.
     pub wps_times_calibration: bool,
+    /// How `w:noWrap` on a table cell is honoured. Default [`CellNoWrap::Spec`].
+    pub cell_no_wrap: CellNoWrap,
     /// Progress and cancellation handle (default none); see
     /// [`strict_ooxml_core::control`]. Layout reports pages laid out, painting
     /// pages written, and either stops with `StrictError::Cancelled`.
@@ -237,6 +239,7 @@ impl Default for RenderOptions {
             revisions: RevisionView::Final,
             limits: strict_ooxml_core::limits::ResourceLimits::default(),
             wps_times_calibration: false,
+            cell_no_wrap: CellNoWrap::Spec,
             control: None,
         }
     }
@@ -299,6 +302,39 @@ impl RenderOptions {
     pub fn wps_times_calibration(mut self, enabled: bool) -> Self {
         self.wps_times_calibration = enabled;
         self
+    }
+
+    /// Sets [`Self::cell_no_wrap`].
+    #[must_use]
+    pub fn cell_no_wrap(mut self, mode: CellNoWrap) -> Self {
+        self.cell_no_wrap = mode;
+        self
+    }
+}
+
+/// How `w:tcPr/w:noWrap` is honoured (ISO/IEC 29500-1 §17.4.30).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CellNoWrap {
+    /// As specified: the flag acts only under the automatic table layout. A
+    /// cell with a fixed (`dxa`) preferred width keeps wrapping its text and
+    /// is only never made narrower than that width; a cell with an `auto`,
+    /// `pct` or absent width is laid out without line breaks. WPS does this.
+    #[default]
+    Spec,
+    /// The flag always suppresses line breaks, whatever the cell width and
+    /// table layout (the behaviour before the option existed).
+    Always,
+}
+
+impl CellNoWrap {
+    /// Parses a CLI value: `spec` or `always`.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "spec" => Some(Self::Spec),
+            "always" => Some(Self::Always),
+            _ => None,
+        }
     }
 }
 

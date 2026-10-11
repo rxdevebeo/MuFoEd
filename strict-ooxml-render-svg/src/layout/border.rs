@@ -6,6 +6,8 @@
 //! Word sizes the band the same way, which is why the space it reserves for
 //! a `double` border is three line widths, not one.
 
+use std::fmt::Write as _;
+
 use strict_ooxml_wml::model::theme::Theme;
 use strict_ooxml_wml::model::values::{Border, BorderStyle};
 
@@ -113,14 +115,16 @@ fn shade_color(color: &str, light: bool) -> String {
         return color.to_owned();
     }
     let mut result = String::from("#");
-    for index in 0..3 {
-        let value = u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16).unwrap_or(0);
+    for pair in hex.as_bytes().chunks_exact(2) {
+        let value = std::str::from_utf8(pair)
+            .ok()
+            .and_then(|pair| u8::from_str_radix(pair, 16).ok())
+            .unwrap_or(0);
         let value = if light {
-            (u16::from(value) + 255) / 2
+            u16::midpoint(u16::from(value), 255)
         } else {
             u16::from(value) / 2
         };
-        use std::fmt::Write as _;
         let _ = write!(result, "{value:02x}");
     }
     result
@@ -144,6 +148,7 @@ pub enum Side {
 /// `at` is the band's inner edge (the side nearer the text), `from`..`to` its
 /// extent along the edge, `px_per_pt` the page scale.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn edge_items(
     border: &ResolvedBorder,
     side: Side,
@@ -186,7 +191,7 @@ pub fn edge_items(
             } else {
                 false
             };
-            if *offset == 0.5 {
+            if (*offset - 0.5).abs() < 1e-9 {
                 border.color.clone()
             } else {
                 shade_color(&border.color, light)
@@ -199,7 +204,6 @@ pub fn edge_items(
             let amplitude = unit * 0.5;
             let steps = ((length / unit.max(0.5)) * 4.0).ceil().clamp(2.0, 16384.0) as usize;
             let mut d = String::new();
-            use std::fmt::Write as _;
             for step in 0..=steps {
                 let along = length * step as f64 / steps as f64;
                 let across = amplitude
@@ -322,7 +326,7 @@ pub fn edge_items(
             .collect();
         for item in &mut shadows {
             match item {
-                Item::Line(line) => line.color = "#808080".to_owned(),
+                Item::Line(line) => "#808080".clone_into(&mut line.color),
                 Item::Path(path) => path.stroke = Some("#808080".to_owned()),
                 _ => {}
             }

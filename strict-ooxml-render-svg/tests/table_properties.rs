@@ -217,5 +217,9 @@ fn omitted_grid_columns_keep_their_authored_widths_without_a_grid() {
         <w:tc><w:tcPr><w:tcW w:w=\"2500\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Inset</w:t></w:r></w:p></w:tc></w:tr></w:tbl>";
     let result = page(&document(body));
     let label = text(&result, "Inset");
-    assert!((label.x - 96.0 - 1000.0 / 15.0 - 108.0 / 15.0).abs() < 0.01, "{}", label.x);
+    assert!(
+        (label.x - 96.0 - 1000.0 / 15.0 - 108.0 / 15.0).abs() < 0.01,
+        "{}",
+        label.x
+    );
 }

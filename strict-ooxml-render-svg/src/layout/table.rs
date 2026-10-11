@@ -29,12 +29,21 @@ impl CellAnchorGuard {
         CELL_HEIGHT_REQUIRED.with(|stack| stack.borrow_mut().push(false));
         Self
     }
+    // The receiver ties every access to a live scope: the stacks are pushed in
+    // `enter` and popped in `drop`.
+    #[allow(clippy::unused_self)]
     fn needs_height(&self) -> bool {
         CELL_HEIGHT_REQUIRED.with(|stack| stack.borrow().last().copied().unwrap_or(false))
     }
+    #[allow(clippy::unused_self)]
     fn take(&self) -> Vec<crate::layout::RowAnchor> {
-        CELL_ANCHORS
-            .with(|stack| std::mem::take(stack.borrow_mut().last_mut().expect("cell anchor scope")))
+        CELL_ANCHORS.with(|stack| {
+            stack
+                .borrow_mut()
+                .last_mut()
+                .map(std::mem::take)
+                .unwrap_or_default()
+        })
     }
 }
 impl Drop for CellAnchorGuard {
@@ -474,12 +483,12 @@ pub(crate) fn row_split_points(mut bands: Vec<(f64, f64)>, height: f64) -> Vec<f
     let mut end = 0.0_f64;
     for (top, bottom) in bands {
         if top > end + 0.01 && end > 0.0 && end < height {
-            points.push((end + top) / 2.0);
+            points.push(f64::midpoint(end, top));
         }
         end = end.max(bottom);
     }
     if end > 0.0 && end < height - 0.01 {
-        points.push((end + height) / 2.0);
+        points.push(f64::midpoint(end, height));
     }
     points
 }
@@ -595,6 +604,7 @@ struct LaidOutRow {
 
 /// Lays out one row's cells against `widths`.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 fn layout_row(
     ctx: &LayoutContext<'_>,
     table: &Table,
@@ -673,7 +683,7 @@ fn layout_row(
         let cell_style = crate::table_style::enter_cell(
             table,
             conditions,
-            properties.no_wrap || properties.fit_text,
+            suppresses_breaks(ctx, table, &properties) || properties.fit_text,
         );
         let direction = properties.text_direction;
         let anchor_scope = CellAnchorGuard::enter();
@@ -762,6 +772,7 @@ fn layout_row(
 
 /// Rotate a horizontal text layout before deriving the physical row height.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 fn layout_oriented_cell_content(
     ctx: &LayoutContext<'_>,
     blocks: &[Block],
@@ -810,7 +821,7 @@ fn layout_oriented_cell_content(
         return (items, height, frames);
     }
     let left_to_right = desired == TextDirection::TbLrV;
-    let available = if angle.abs() == 180.0 {
+    let available = if crate::layout::paragraph::is_half_turn(angle) {
         width
     } else {
         along_height
@@ -822,7 +833,7 @@ fn layout_oriented_cell_content(
     if rotated(desired) && !rotated(parent) {
         items = rotate_east_asian_items(ctx, items);
     }
-    if angle.abs() == 180.0 {
+    if crate::layout::paragraph::is_half_turn(angle) {
         return (
             crate::paint::graphics::transform_items(
                 items,
@@ -857,17 +868,16 @@ fn layout_oriented_cell_content(
                 Item::Group(group) => group.items,
                 other => vec![other],
             }) {
-                let center = match &item {
-                    Item::Text(text) => text.baseline,
-                    _ => {
-                        let bounds = crate::paint::graphics::transform_items(
-                            vec![item.clone()],
-                            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                        );
-                        match bounds.first() {
-                            Some(Item::Group(group)) => group.bounds[1] + group.bounds[3] / 2.0,
-                            _ => 0.0,
-                        }
+                let center = if let Item::Text(text) = &item {
+                    text.baseline
+                } else {
+                    let bounds = crate::paint::graphics::transform_items(
+                        vec![item.clone()],
+                        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                    );
+                    match bounds.first() {
+                        Some(Item::Group(group)) => group.bounds[1] + group.bounds[3] / 2.0,
+                        _ => 0.0,
                     }
                 };
                 oriented.extend(crate::paint::graphics::transform_items(
@@ -907,14 +917,10 @@ fn layout_oriented_cell_content(
             let across = text.baseline;
             text.x = x
                 + pad
-                + if angle < 0.0 {
+                + if angle < 0.0 || left_to_right {
                     across
                 } else {
-                    if left_to_right {
-                        across
-                    } else {
-                        cross_height - across
-                    }
+                    cross_height - across
                 };
             text.baseline = if angle < 0.0 { height - along } else { along };
             text.run.rotation_deg += angle;
@@ -953,7 +959,7 @@ pub(crate) fn rotate_upright_items(
                     unicode_segmentation::UnicodeSegmentation::graphemes(text.text.as_str(), true)
                 {
                     let mut glyph = text.clone();
-                    glyph.text = cluster.to_owned();
+                    cluster.clone_into(&mut glyph.text);
                     glyph.width = ctx.measure(cluster, &text.run);
                     glyph.x = x;
                     if all || cluster.chars().any(crate::font::metrics::is_wide_character) {
@@ -996,6 +1002,7 @@ struct CellPlacement {
 /// against the table style here, not in [`layout_row`], which recurses once per
 /// nesting level (see [`row_flows`]).
 #[inline(never)]
+#[allow(clippy::too_many_arguments)]
 fn push_raw_cell(
     ctx: &LayoutContext<'_>,
     table: &Table,
@@ -1195,22 +1202,34 @@ fn column_widths(
                     conditions,
                     &cell.props,
                 );
+                let no_breaks = suppresses_breaks(ctx, table, &properties);
                 let _cell = crate::table_style::enter_cell(
                     table,
                     conditions,
-                    properties.no_wrap || properties.fit_text,
+                    no_breaks || properties.fit_text,
                 );
                 let margins = effective_margins(ctx, table, row, cell, conditions);
                 let (word, line) = intrinsic_cell_width(ctx, &cell.blocks, 0);
                 let demand = if properties.fit_text {
                     0.0
-                } else if properties.no_wrap {
+                } else if no_breaks {
                     line
+                } else if properties.no_wrap {
+                    // A fixed-width `noWrap` cell is never narrower than its
+                    // preferred width; its text still wraps (§17.4.30).
+                    let preferred = properties
+                        .width
+                        .filter(|width| width.kind == WidthKind::Dxa)
+                        .and_then(|width| width.value)
+                        .map_or(0.0, |value| {
+                            twips_to_px(value.max(0), ctx.options.scale) - margins.0 - margins.1
+                        });
+                    word.max(preferred)
                 } else {
                     word
                 };
                 let share = (demand + margins.0 + margins.1) / (end - column) as f64;
-                for value in &mut minimum[column..end] {
+                for value in minimum.iter_mut().take(end).skip(column) {
                     *value = value.max(share);
                 }
                 column = end;
@@ -1329,20 +1348,27 @@ fn cell_width_grid(
             let Some(preference) = preference else {
                 continue;
             };
-            let fixed: f64 = (start..end)
-                .filter(|&i| assigned[i])
-                .map(|i| widths[i])
+            let span = || widths.iter().zip(&assigned).take(end).skip(start);
+            let fixed: f64 = span().filter(|(_, &set)| set).map(|(width, _)| width).sum();
+            let free_count = span().filter(|(_, &set)| !set).count();
+            let weight: f64 = span()
+                .filter(|(_, &set)| !set)
+                .map(|(width, _)| width)
                 .sum();
-            let free: Vec<_> = (start..end).filter(|&i| !assigned[i]).collect();
-            let weight: f64 = free.iter().map(|&i| widths[i]).sum();
             let remaining = (preference - fixed).max(0.0);
-            for i in &free {
-                widths[*i] = if weight > 0.0 {
-                    remaining * widths[*i] / weight
+            for (width, set) in widths
+                .iter_mut()
+                .zip(assigned.iter_mut())
+                .take(end)
+                .skip(start)
+                .filter(|(_, set)| !**set)
+            {
+                *width = if weight > 0.0 {
+                    remaining * *width / weight
                 } else {
-                    remaining / free.len() as f64
+                    remaining / free_count as f64
                 };
-                assigned[*i] = true;
+                *set = true;
             }
         }
     }
@@ -1675,6 +1701,7 @@ pub(crate) fn layout_blocks_inline(
 /// [`layout_blocks_inline`], which recurses once per nested table.
 #[inline(never)]
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 fn place_cell_paragraph(
     ctx: &LayoutContext<'_>,
     para: &strict_ooxml_wml::model::Paragraph,
@@ -1818,12 +1845,6 @@ fn place_cell_paragraph(
                 items.extend(rest.iter().map(|item| offset_item(item, 0.0, *y)));
                 *y += line.height;
             }
-            Flow::Image(image) => {
-                let mut image = image;
-                image.y += *y;
-                *y += image.h;
-                items.push(Item::Image(image));
-            }
             Flow::Block {
                 items: block_items,
                 height,
@@ -1881,7 +1902,7 @@ fn append_table_flows(
                 page_frames.extend(row.page_frames);
                 *y += row.height;
             }
-            Flow::Line(_) | Flow::Image(_) | Flow::PageBreak | Flow::ColumnBreak => {}
+            Flow::Line(_) | Flow::PageBreak | Flow::ColumnBreak => {}
         }
     }
 }
@@ -2030,7 +2051,7 @@ pub(crate) fn framed_table_items(
                 }
                 y += height;
             }
-            Flow::Line(_) | Flow::Image(_) | Flow::PageBreak | Flow::ColumnBreak => {}
+            Flow::Line(_) | Flow::PageBreak | Flow::ColumnBreak => {}
         }
     }
     items
@@ -2192,13 +2213,6 @@ pub(crate) fn layout_frame_contents(
                     items.extend(backs);
                     items.extend(line.items.into_iter().map(Item::Text));
                     items.extend(rest);
-                    local_y += height;
-                }
-                Flow::Image(mut image) => {
-                    image.x += origin_x;
-                    image.y += origin_y + local_y;
-                    let height = image.h;
-                    items.push(Item::Image(image));
                     local_y += height;
                 }
                 Flow::Block {
@@ -2412,6 +2426,30 @@ fn shading_fill(ctx: &LayoutContext<'_>, cell: &CellProperties) -> Option<String
     cell.shading
         .as_ref()
         .and_then(|shading| crate::style::shading_fill_color(shading, ctx.document.theme.as_ref()))
+}
+
+/// Whether a cell's `w:noWrap` lays its text out without line breaks.
+///
+/// Under [`crate::CellNoWrap::Spec`] that holds only for the automatic table
+/// layout and a cell whose preferred width is not fixed (ISO/IEC 29500-1
+/// §17.4.30): a fixed `dxa` width keeps the text wrapping.
+fn suppresses_breaks(
+    ctx: &LayoutContext<'_>,
+    table: &Table,
+    properties: &strict_ooxml_wml::model::props::CellProperties,
+) -> bool {
+    if !properties.no_wrap {
+        return false;
+    }
+    match ctx.options.cell_no_wrap {
+        crate::CellNoWrap::Always => true,
+        crate::CellNoWrap::Spec => {
+            table.props.layout != Some(strict_ooxml_wml::model::values::TableLayout::Fixed)
+                && !properties
+                    .width
+                    .is_some_and(|width| width.kind == WidthKind::Dxa && width.value.is_some())
+        }
+    }
 }
 
 #[cfg(test)]

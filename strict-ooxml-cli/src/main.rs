@@ -15,7 +15,8 @@
 //!   [--no-floating] [--no-math] [--wps-times]` — renders Stage-4/5B/5C SVG pages (floating
 //!   heavy objects and OMML formulas can be disabled with `--no-floating` and
 //!   `--no-math`; `--wps-times` applies the Clio WPS Times calibration, see
-//!   `RenderOptions::wps_times_calibration`).
+//!   `RenderOptions::wps_times_calibration`). `render` and `to-pdf` take
+//!   `--cell-nowrap=spec|always` (`RenderOptions::cell_no_wrap`, default `spec`).
 //! - `write <file.docx> --out <file.docx>` — serializes the parsed model back
 //!   to a Strict package (Stage 8A) and prints what the writer could not
 //!   express.
@@ -70,7 +71,7 @@ use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
 use strict_ooxml::{
-    ConformancePolicy, Feature, FeatureStatus, Location, PageSelection, RenderOptions,
+    CellNoWrap, ConformancePolicy, Feature, FeatureStatus, Location, PageSelection, RenderOptions,
     StrictDocument, TransitionalNormalizer,
 };
 use strict_ooxml_core::error::StrictError;
@@ -149,7 +150,7 @@ fn print_usage() {
     eprintln!(
         "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|write|normalize> <file> \
          [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
-         [--no-floating] [--no-math] [--wps-times] [--transitional]"
+         [--no-floating] [--no-math] [--wps-times] [--cell-nowrap=spec|always] [--transitional]"
     );
     eprintln!();
     eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
@@ -436,6 +437,7 @@ struct RenderArgs {
     floating: bool,
     math: bool,
     wps_times: bool,
+    cell_no_wrap: CellNoWrap,
 }
 
 impl RenderArgs {
@@ -447,12 +449,16 @@ impl RenderArgs {
         let mut floating = true;
         let mut math = true;
         let mut wps_times = false;
+        let mut cell_no_wrap = CellNoWrap::default();
         let mut index = 0;
         while index < args.len() {
             match args[index].as_str() {
                 "--no-floating" => floating = false,
                 "--no-math" => math = false,
                 "--wps-times" => wps_times = true,
+                flag if flag.starts_with("--cell-nowrap=") => {
+                    cell_no_wrap = parse_cell_no_wrap(flag)?;
+                }
                 // Accepting the flag here rather than filtering it out of
                 // `args` keeps one source of truth for what the flag means.
                 "--transitional" => {}
@@ -497,6 +503,7 @@ impl RenderArgs {
             floating,
             math,
             wps_times,
+            cell_no_wrap,
         })
     }
 }
@@ -525,6 +532,13 @@ fn run_render(args: &[String]) -> ExitCode {
     print_loss(normalizer.as_deref(), code)
 }
 
+/// Parses `--cell-nowrap=spec|always` (`RenderOptions::cell_no_wrap`).
+fn parse_cell_no_wrap(flag: &str) -> Result<CellNoWrap, String> {
+    flag.strip_prefix("--cell-nowrap=")
+        .and_then(CellNoWrap::parse)
+        .ok_or_else(|| "'--cell-nowrap' expects 'spec' or 'always'".to_owned())
+}
+
 /// `to-pdf`: render the document to a PDF (`STAGE-8-TASK.md` §4).
 ///
 /// Exit codes follow `render`: `0` when the PDF is written and nothing was lost,
@@ -539,7 +553,9 @@ fn run_to_pdf(args: &[String]) -> ExitCode {
     };
     let (options, normalizer) = open_options(parsed.transitional);
     let code = match StrictDocument::open_path(&parsed.file, &options) {
-        Ok(document) => match document.render_pdf(&RenderOptions::default()) {
+        Ok(document) => match document
+            .render_pdf(&RenderOptions::default().cell_no_wrap(parsed.cell_no_wrap))
+        {
             Ok(output) => {
                 if !output.report.is_clean() {
                     eprintln!("warning: the render is not lossless");
@@ -607,6 +623,7 @@ struct WriteArgs {
     out: String,
     transitional: bool,
     report_out: Option<String>,
+    cell_no_wrap: CellNoWrap,
 }
 
 impl WriteArgs {
@@ -615,10 +632,14 @@ impl WriteArgs {
         let mut out: Option<String> = None;
         let mut transitional = false;
         let mut report_out = None;
+        let mut cell_no_wrap = CellNoWrap::default();
         let mut index = 0;
         while index < args.len() {
             match args[index].as_str() {
                 "--transitional" => transitional = true,
+                flag if flag.starts_with("--cell-nowrap=") => {
+                    cell_no_wrap = parse_cell_no_wrap(flag)?;
+                }
                 "--out" => {
                     index += 1;
                     out = Some(args.get(index).ok_or("'--out' requires a path")?.clone());
@@ -648,6 +669,7 @@ impl WriteArgs {
             out: out.ok_or("'write' requires --out <path>")?,
             transitional,
             report_out,
+            cell_no_wrap,
         })
     }
 }
@@ -897,6 +919,7 @@ fn render_parsed(document: &StrictDocument, parsed: &RenderArgs) -> ExitCode {
     render_options = render_options.floating(parsed.floating);
     render_options = render_options.math(parsed.math);
     render_options = render_options.wps_times_calibration(parsed.wps_times);
+    render_options = render_options.cell_no_wrap(parsed.cell_no_wrap);
     let rendered = match document.render_svg(&render_options) {
         Ok(rendered) => rendered,
         Err(error) => {

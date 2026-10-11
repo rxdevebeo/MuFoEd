@@ -94,9 +94,12 @@ fn floating_shape(simple: &str, point: &str, horizontal: &str, vertical: &str) -
 
 #[test]
 fn simple_position_takes_precedence_over_relative_position() {
-    let page = placed(floating_shape("1", "x=\"190500\" y=\"285750\"",
+    let page = placed(floating_shape(
+        "1",
+        "x=\"190500\" y=\"285750\"",
         "<wp:positionH relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionH>",
-        "<wp:positionV relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionV>"));
+        "<wp:positionV relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionV>",
+    ));
     let path = paths(&page).into_iter().next().expect("shape");
     assert!((path.x - 20.0).abs() < 0.01);
     assert!((path.y - 30.0).abs() < 0.01);

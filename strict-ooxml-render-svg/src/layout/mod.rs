@@ -376,8 +376,6 @@ impl TextLine {
 pub(crate) enum Flow {
     /// A text line.
     Line(TextLine),
-    /// An atomic image.
-    Image(ImageItem),
     /// An atomic pre-placed block (for example a table row).
     Block {
         /// Items already positioned relative to the block top-left.
@@ -752,8 +750,8 @@ pub(crate) fn body_geometry_for(
     ctx: Option<&LayoutContext<'_>>,
     gutter_at_top: bool,
 ) -> Geometry {
-    let mut geometry = geometry_for(section, scale, ctx, gutter_at_top);
     use strict_ooxml_wml::model::values::TextDirection;
+    let mut geometry = geometry_for(section, scale, ctx, gutter_at_top);
     let direction = section.and_then(|s| s.text_direction);
     let old = geometry;
     match direction {
@@ -791,6 +789,9 @@ pub(crate) fn body_geometry_for(
     );
     geometry
 }
+
+/// Heading numbers per outline level (`Heading 1`..`Heading 9`) for one page.
+pub(crate) type ChapterNumbers = [Option<(u32, crate::notes::NumberFormat)>; 9];
 
 /// Shared state for layout and media resolution.
 pub(crate) struct LayoutContext<'a> {
@@ -836,8 +837,7 @@ pub(crate) struct LayoutContext<'a> {
     /// Section whose body is currently being measured, including nested cells.
     pub(crate) current_section: std::cell::Cell<usize>,
     /// Numbered headings active on each page, carried between layout passes.
-    pub(crate) chapter_numbers:
-        std::cell::RefCell<Vec<[Option<(u32, crate::notes::NumberFormat)>; 9]>>,
+    pub(crate) chapter_numbers: std::cell::RefCell<Vec<ChapterNumbers>>,
     /// Document-wide paint-item counter for [`ResourceLimits::max_render_items`]
     /// (AUD-72). Reset at the start of each layout pass.
     pub(crate) render_items: std::cell::Cell<u64>,
@@ -1019,7 +1019,7 @@ impl LayoutContext<'_> {
             || complex
             || run.rtl.is_some()
             || run.kerning_pt.is_some()
-            || run.language != Default::default()
+            || run.language != strict_ooxml_wml::model::props::Language::default()
             || !self.metric_advances.get()
         {
             let shaped = crate::font::shape_run(&shown, &family, run, self.font);
@@ -1089,7 +1089,7 @@ impl LayoutContext<'_> {
             || crate::font::needs_complex_script(&shown)
             || run.rtl.is_some()
             || run.kerning_pt.is_some()
-            || run.language != Default::default()
+            || run.language != strict_ooxml_wml::model::props::Language::default()
             || !self.metric_advances.get()
         {
             TextAdvanceKind::Shaped

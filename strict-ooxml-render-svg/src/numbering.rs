@@ -109,9 +109,12 @@ impl NumberingMarkers {
         collect_blocks(&document.body.blocks, &mut |paragraph| {
             // The list a paragraph is in comes from its own `w:numPr` or from
             // its style's (`Heading 1`, `List Bullet`).
-            let numbering = crate::style::compute_paragraph(document, paragraph).numbering;
-            let marker =
-                numbering.and_then(|numbering| engine.marker(numbering.num_id, numbering.ilvl));
+            let computed = crate::style::compute_paragraph(document, paragraph);
+            // The number is formatted like the paragraph mark, then by the
+            // level's own `w:rPr`.
+            let marker = computed.numbering.and_then(|numbering| {
+                engine.marker(numbering.num_id, numbering.ilvl, computed.mark_run())
+            });
             if let Some(marker) = marker {
                 if is_known(&paragraph.location) {
                     out.by_location
@@ -165,7 +168,7 @@ impl<'a> Engine<'a> {
     }
 
     /// Computes the marker for `(num_id, ilvl)` and advances the counters.
-    fn marker(&mut self, num_id: u32, ilvl: u8) -> Option<NumberingMarker> {
+    fn marker(&mut self, num_id: u32, ilvl: u8, base: &ComputedRun) -> Option<NumberingMarker> {
         let table = self.table;
         let num = table.num(NumId(num_id))?;
         let abstract_num = table.resolved_abstract(NumId(num_id))?;
@@ -201,7 +204,8 @@ impl<'a> Engine<'a> {
         }
 
         let text = render_text(level, counters, abstract_num, override_, level.is_legal)?;
-        let mut run = ComputedRun::default();
+        let mut run = base.clone();
+        run.chapter_heading = None;
         apply_run_props(&mut run, &level.run, self.theme);
         let (indent_start_pt, first_line_pt) = match &level.paragraph.indentation {
             Some(indent) => indentation(indent),
@@ -210,7 +214,11 @@ impl<'a> Engine<'a> {
         Some(NumberingMarker {
             number: (!is_bullet).then(|| {
                 (
-                    counters[level_index].unwrap_or(start),
+                    counters
+                        .get(level_index)
+                        .copied()
+                        .flatten()
+                        .unwrap_or(start),
                     NumberFormat::from_strict(level.format.as_deref(), NumberFormat::Decimal),
                 )
             }),
@@ -382,12 +390,42 @@ mod tests {
             level(1, "decimal", "%1.%2"),
         ]);
         let mut engine = Engine::new(&table, None);
-        assert_eq!(engine.marker(1, 0).unwrap().text, "1.");
-        assert_eq!(engine.marker(1, 1).unwrap().text, "1.1");
-        assert_eq!(engine.marker(1, 1).unwrap().text, "1.2");
-        assert_eq!(engine.marker(1, 0).unwrap().text, "2.");
+        assert_eq!(
+            engine
+                .marker(1, 0, &crate::style::ComputedRun::default())
+                .unwrap()
+                .text,
+            "1."
+        );
+        assert_eq!(
+            engine
+                .marker(1, 1, &crate::style::ComputedRun::default())
+                .unwrap()
+                .text,
+            "1.1"
+        );
+        assert_eq!(
+            engine
+                .marker(1, 1, &crate::style::ComputedRun::default())
+                .unwrap()
+                .text,
+            "1.2"
+        );
+        assert_eq!(
+            engine
+                .marker(1, 0, &crate::style::ComputedRun::default())
+                .unwrap()
+                .text,
+            "2."
+        );
         // The deeper level restarts after the higher level is used again.
-        assert_eq!(engine.marker(1, 1).unwrap().text, "2.1");
+        assert_eq!(
+            engine
+                .marker(1, 1, &crate::style::ComputedRun::default())
+                .unwrap()
+                .text,
+            "2.1"
+        );
     }
 
     #[test]
@@ -414,9 +452,27 @@ mod tests {
             location: location(),
         });
         let mut engine = Engine::new(&table, None);
-        assert_eq!(engine.marker(1, 0).unwrap().text, "5.");
-        assert_eq!(engine.marker(1, 0).unwrap().text, "6.");
-        assert_eq!(engine.marker(1, 1).unwrap().text, "\u{2022}");
+        assert_eq!(
+            engine
+                .marker(1, 0, &crate::style::ComputedRun::default())
+                .unwrap()
+                .text,
+            "5."
+        );
+        assert_eq!(
+            engine
+                .marker(1, 0, &crate::style::ComputedRun::default())
+                .unwrap()
+                .text,
+            "6."
+        );
+        assert_eq!(
+            engine
+                .marker(1, 1, &crate::style::ComputedRun::default())
+                .unwrap()
+                .text,
+            "\u{2022}"
+        );
     }
 
     #[test]
@@ -426,8 +482,20 @@ mod tests {
             level(1, "upperLetter", "%2)"),
         ]);
         let mut engine = Engine::new(&table, None);
-        assert_eq!(engine.marker(1, 0).unwrap().text, "i)");
-        assert_eq!(engine.marker(1, 1).unwrap().text, "A)");
+        assert_eq!(
+            engine
+                .marker(1, 0, &crate::style::ComputedRun::default())
+                .unwrap()
+                .text,
+            "i)"
+        );
+        assert_eq!(
+            engine
+                .marker(1, 1, &crate::style::ComputedRun::default())
+                .unwrap()
+                .text,
+            "A)"
+        );
     }
 
     #[test]

@@ -705,6 +705,7 @@ impl PartParser<'_> {
     }
 
     /// Parses the children of a `w:tblPr`.
+    #[allow(clippy::too_many_lines)] // flat dispatch over the CT_TblPr children
     pub(crate) fn parse_table_properties(&mut self) -> Result<TableProperties> {
         let location = self.location();
         self.nested(|parser| {
@@ -892,6 +893,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `w:tcPr`.
+    #[allow(clippy::too_many_lines)] // flat dispatch over the CT_TcPr children
     pub(crate) fn parse_cell_properties(&mut self) -> Result<CellProperties> {
         let location = self.location();
         self.nested(|parser| {

@@ -11,9 +11,54 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use strict_ooxml::{
-    ConformancePolicy, OpenControl, OpenOptions, PageSelection, RenderOptions, StrictDocument,
-    TransitionalNormalizer,
+    CellNoWrap, ConformancePolicy, OpenControl, OpenOptions, PageSelection, RenderOptions,
+    StrictDocument, TransitionalNormalizer,
 };
+
+/// Render settings the viewer applies to every document.
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+pub struct RenderSettings {
+    /// Output scale, in px per inch.
+    pub scale: f64,
+    /// How `w:noWrap` cells are honoured; see [`RenderOptions::cell_no_wrap`].
+    #[serde(with = "cell_no_wrap_name")]
+    pub cell_no_wrap: CellNoWrap,
+}
+
+impl RenderSettings {
+    /// Settings at `scale` px per inch with the default `w:noWrap` handling.
+    #[must_use]
+    pub fn new(scale: f64) -> Self {
+        Self {
+            scale,
+            cell_no_wrap: CellNoWrap::default(),
+        }
+    }
+}
+
+/// `CellNoWrap` as its CLI name in the worker request.
+mod cell_no_wrap_name {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use strict_ooxml::CellNoWrap;
+
+    #[allow(clippy::trivially_copy_pass_by_ref)] // serde's `with` signature
+    pub(super) fn serialize<S: Serializer>(
+        value: &CellNoWrap,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(match value {
+            CellNoWrap::Spec => "spec",
+            CellNoWrap::Always => "always",
+        })
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<CellNoWrap, D::Error> {
+        let name = String::deserialize(deserializer)?;
+        CellNoWrap::parse(&name).ok_or_else(|| serde::de::Error::custom("unknown noWrap mode"))
+    }
+}
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::pipeline::{PipelineIssue, PipelineStage, PipelineSummary};
 
@@ -209,15 +254,15 @@ impl DocumentView {
 /// Returns the underlying error when the document cannot be opened or
 /// rendered. The caller turns that into a page with a note rather than a
 /// failed request, so one bad document does not break the viewer.
-pub fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<DocumentView> {
-    render_controlled(entry, transitional, scale, &OpenControl::new())
+pub fn render(entry: &Entry, transitional: bool, settings: RenderSettings) -> Result<DocumentView> {
+    render_controlled(entry, transitional, settings, &OpenControl::new())
 }
 
 /// Renders with a shared cancellation/deadline handle for both opening and painting.
 pub fn render_controlled(
     entry: &Entry,
     transitional: bool,
-    scale: f64,
+    settings: RenderSettings,
     control: &OpenControl,
 ) -> Result<DocumentView> {
     let options = if transitional {
@@ -241,7 +286,8 @@ pub fn render_controlled(
     };
     let render_options = RenderOptions::default()
         .control(control.clone())
-        .scale(scale)
+        .scale(settings.scale)
+        .cell_no_wrap(settings.cell_no_wrap)
         .floating(true)
         .math(true)
         .pages(PageSelection::All);
@@ -796,7 +842,8 @@ mod tests {
             path,
             size: 0,
         };
-        let result = super::render_controlled(&entry, false, 96.0, &control);
+        let result =
+            super::render_controlled(&entry, false, super::RenderSettings::new(96.0), &control);
         assert!(matches!(
             result,
             Err(strict_ooxml::StrictError::Cancelled { .. })
@@ -822,7 +869,7 @@ mod tests {
             path,
             size: 0,
         };
-        let view = super::render(&entry, false, 96.0).expect("render");
+        let view = super::render(&entry, false, super::RenderSettings::new(96.0)).expect("render");
         assert_eq!(view.pages.len(), 1);
         assert_eq!(view.pipeline.outcome, "degraded");
         assert!(view
@@ -860,9 +907,13 @@ mod tests {
                 path: path.clone(),
                 size: 0,
             };
-            let view =
-                super::render_controlled(&entry, false, 96.0, &strict_ooxml::OpenControl::new())
-                    .expect("render");
+            let view = super::render_controlled(
+                &entry,
+                false,
+                super::RenderSettings::new(96.0),
+                &strict_ooxml::OpenControl::new(),
+            )
+            .expect("render");
             assert_eq!(view.pages.len(), page_count);
             assert!(view.note.is_none());
             assert_eq!(

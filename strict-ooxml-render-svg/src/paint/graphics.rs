@@ -364,15 +364,15 @@ fn custom_text_box(
         }
     };
     let values: Option<Vec<_>> = rect.iter().map(|value| resolve(value)).collect();
-    let Some(values) = values else {
+    let Some(&[left, top, right, bottom]) = values.as_deref() else {
         ctx.warn("render.custom-text-rect: unresolved geometry guide in text rectangle".to_owned());
         return None;
     };
     Some((
-        x + values[0] * w / gw,
-        y + values[1] * h / gh,
-        ((values[2] - values[0]) * w / gw).max(1.0),
-        ((values[3] - values[1]) * h / gh).max(1.0),
+        x + left * w / gw,
+        y + top * h / gh,
+        ((right - left) * w / gw).max(1.0),
+        ((bottom - top) * h / gh).max(1.0),
     ))
 }
 
@@ -427,6 +427,7 @@ fn geometry_value(
 }
 
 /// DrawingML guide operators; angular values are in 1/60000 degree.
+#[allow(clippy::many_single_char_names)] // DrawingML w/h/x/y/matrix names
 fn geometry_formula(
     formula: &str,
     w: f64,
@@ -677,6 +678,7 @@ fn path_points(d: &str) -> Vec<(f64, f64)> {
 }
 
 /// Builds the items of a group by composing child coordinates.
+#[allow(clippy::many_single_char_names)] // DrawingML w/h/x/y/matrix names
 fn group_items(
     ctx: &LayoutContext<'_>,
     group: &GroupShape,
@@ -757,6 +759,7 @@ fn group_items(
 
 /// Retains an affine transform until painting, so glyphs and image crops are
 /// transformed together with their geometry in both backends.
+#[allow(clippy::many_single_char_names)] // DrawingML w/h/x/y/matrix names
 pub(crate) fn transform_items(items: Vec<Item>, matrix: [f64; 6]) -> Vec<Item> {
     if items.is_empty() {
         return items;
@@ -992,6 +995,7 @@ fn graphic_size(ctx: &LayoutContext<'_>, graphic: &Graphic, w: f64, h: f64) -> (
 }
 
 /// Builds items for a text box's blocks inside the frame.
+#[allow(clippy::too_many_lines)]
 fn text_box_items(
     ctx: &LayoutContext<'_>,
     text: &TextBox,
@@ -1095,8 +1099,7 @@ fn text_box_items(
                 row.split_points
                     .iter()
                     .copied()
-                    .filter(|point| *point > start && *point <= start + layout_height)
-                    .next_back()
+                    .rfind(|point| *point > start && *point <= start + layout_height)
                     .or_else(|| {
                         row.split_points
                             .iter()
@@ -1575,6 +1578,7 @@ fn custom_paths(custom: &CustomGeometry, w: f64, h: f64) -> Vec<ShapePath> {
         .collect()
 }
 
+#[allow(clippy::many_single_char_names, clippy::too_many_lines)]
 fn geometry_path_d(
     custom: &CustomGeometry,
     path: &strict_ooxml_wml::model::drawing::GeometryPath,

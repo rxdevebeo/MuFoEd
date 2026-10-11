@@ -35,7 +35,7 @@ pub(crate) fn color_mapping(document: &Document) -> ColorMappingGuard {
     COLOR_MAPPINGS.with(|mappings| {
         mappings
             .borrow_mut()
-            .push(document.settings.color_scheme_mapping.clone())
+            .push(document.settings.color_scheme_mapping.clone());
     });
     ColorMappingGuard
 }
@@ -175,7 +175,7 @@ pub struct ComputedRun {
 impl Default for ComputedRun {
     fn default() -> Self {
         Self {
-            language: Default::default(),
+            language: strict_ooxml_wml::model::props::Language::default(),
             bidi_override: false,
             bidi_embeddings: Vec::new(),
             latin_bold: false,
@@ -189,7 +189,7 @@ impl Default for ComputedRun {
             chapter_heading: None,
             snap_to_grid: true,
             balanced_spaces: false,
-            font_programs: Default::default(),
+            font_programs: std::sync::Arc::default(),
             grid_extra_pt: 0.0,
             kerning_pt: None,
             rtl: None,
@@ -318,6 +318,10 @@ pub struct ComputedParagraph {
     pub numbering: Option<NumberingRef>,
     /// Default run format for runs without explicit properties.
     pub default_run: ComputedRun,
+    /// Format of the paragraph mark when the paragraph's own `w:pPr/w:rPr`
+    /// sets one. It applies to the mark only (ISO/IEC 29500-1 §17.3.1.29):
+    /// the height of an empty paragraph and the list marker, never the text.
+    pub mark_run: Option<Box<ComputedRun>>,
 }
 
 impl Default for ComputedParagraph {
@@ -361,6 +365,7 @@ impl Default for ComputedParagraph {
             style: None,
             numbering: None,
             default_run: ComputedRun::default(),
+            mark_run: None,
         }
     }
 }
@@ -405,6 +410,13 @@ impl ComputedParagraph {
     pub fn first_line_offset_pt(&self) -> f64 {
         self.indent_start_pt + self.first_line_pt
     }
+
+    /// Format of the paragraph mark: the default run plus the mark's own
+    /// `w:rPr`.
+    #[must_use]
+    pub fn mark_run(&self) -> &ComputedRun {
+        self.mark_run.as_deref().unwrap_or(&self.default_run)
+    }
 }
 
 /// Computes the effective paragraph properties of `para`.
@@ -441,6 +453,9 @@ pub fn compute_paragraph(
     apply_paragraph_props_mode(&mut computed, &para.props, theme, ToggleMode::Direct);
     computed.no_wrap = crate::table_style::current_no_wrap();
     resolve_font_hints(document, &mut computed.default_run);
+    if let Some(mark_run) = computed.mark_run.as_deref_mut() {
+        resolve_font_hints(document, mark_run);
+    }
     computed.style = style_id.cloned();
     if let Some(style_id) = style_id {
         // chapStyle selects built-in Heading N, including styles based on it.
@@ -748,8 +763,14 @@ fn apply_paragraph_props_mode(
         }
     }
     if let Some(run) = &props.run_props {
-        // A style mark toggles. The paragraph's own mark assigns, once.
-        apply_run_props_mode(&mut computed.default_run, run, theme, mark);
+        if mark == ToggleMode::Direct {
+            // The paragraph's own mark formats the mark alone, not its runs.
+            let mut mark_run = computed.default_run.clone();
+            apply_run_props_mode(&mut mark_run, run, theme, mark);
+            computed.mark_run = Some(Box::new(mark_run));
+        } else {
+            apply_run_props_mode(&mut computed.default_run, run, theme, mark);
+        }
     }
 }
 
@@ -843,6 +864,7 @@ fn apply_direct_run_props(
 }
 
 /// Merges `props` onto `computed`.
+#[allow(clippy::too_many_lines)]
 fn apply_run_props_mode(
     computed: &mut ComputedRun,
     props: &RunProperties,
@@ -1475,7 +1497,12 @@ mod tests {
         assert!(computed.default_run.bold, "inherited from Base");
         assert!(computed.default_run.italic, "from Child");
         assert_eq!(computed.default_run.size_pt, 14.0, "from Base");
-        assert!(computed.default_run.underline.is_some(), "from pPr/rPr");
+        assert!(
+            computed.default_run.underline.is_none(),
+            "pPr/rPr formats the paragraph mark, not the text"
+        );
+        assert!(computed.mark_run().underline.is_some(), "from pPr/rPr");
+        assert!(computed.mark_run().bold, "the mark inherits the style");
     }
 
     #[test]

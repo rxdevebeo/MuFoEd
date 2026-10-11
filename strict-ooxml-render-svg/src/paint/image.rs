@@ -52,19 +52,11 @@ pub(crate) fn layout_inline_image(
         return None;
     }
     let extent = extent.unwrap_or_default();
+    // `wp:effectExtent` is room for effects around the picture: it widens the
+    // space the line reserves (see `inline_effect_margins`), never the picture
+    // itself (ISO/IEC 29500-1 §20.4.2.6).
     let mut w = emu_to_px(extent.cx.value(), ctx.options.scale);
     let mut h = emu_to_px(extent.cy.value(), ctx.options.scale);
-    // AUD-50: `wp:effectExtent` expands the occupied block.
-    if let Some(effect) = &inline.effect_extent {
-        w += emu_to_px(
-            effect.left.value() + effect.right.value(),
-            ctx.options.scale,
-        );
-        h += emu_to_px(
-            effect.top.value() + effect.bottom.value(),
-            ctx.options.scale,
-        );
-    }
     if w <= 0.0 {
         w = DEFAULT_IMAGE_PX;
     }
@@ -88,6 +80,21 @@ pub(crate) fn layout_inline_image(
         alt,
         transform: None,
         crop: picture.and_then(|picture| src_rect_crop(picture.src_rect)),
+    })
+}
+
+/// `wp:effectExtent` of an inline drawing as `[left, top, right, bottom]` px:
+/// the margins the line reserves around the drawing for its effects (AUD-50).
+pub(crate) fn inline_effect_margins(
+    ctx: &LayoutContext<'_>,
+    drawing: &strict_ooxml_wml::model::Drawing,
+) -> [f64; 4] {
+    let strict_ooxml_wml::model::DrawingKind::Inline(inline) = &drawing.kind else {
+        return [0.0; 4];
+    };
+    inline.effect_extent.as_ref().map_or([0.0; 4], |effect| {
+        [effect.left, effect.top, effect.right, effect.bottom]
+            .map(|value| emu_to_px(value.value(), ctx.options.scale).max(0.0))
     })
 }
 

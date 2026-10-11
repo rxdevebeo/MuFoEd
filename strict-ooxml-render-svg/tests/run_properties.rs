@@ -29,7 +29,10 @@ fn run_border_survives_parsing_and_is_drawn_on_all_four_sides() {
     let item = text(&doc, "Border");
     assert!(item.run.border.is_some());
     let ink = lines(&svg(&doc));
-    assert_eq!(ink.iter().filter(|(color, _)| color == "#ff0000").count(), 8);
+    assert_eq!(
+        ink.iter().filter(|(color, _)| color == "#ff0000").count(),
+        8
+    );
 }
 
 #[test]

@@ -102,6 +102,16 @@ const TA_CENTER: u16 = 0x0006;
 const TA_BOTTOM: u16 = 0x0008;
 const TA_BASELINE: u16 = 0x0018;
 const EMR_SET_TEXT_ALIGN: u32 = 22;
+// StrictLib patch: EMR_SETMAPMODE ([MS-EMF] 2.3.11.19).
+const EMR_SET_MAP_MODE: u32 = 17;
+const MM_TEXT: u32 = 1;
+const MM_LOMETRIC: u32 = 2;
+const MM_HIMETRIC: u32 = 3;
+const MM_LOENGLISH: u32 = 4;
+const MM_HIENGLISH: u32 = 5;
+const MM_TWIPS: u32 = 6;
+const MM_ISOTROPIC: u32 = 7;
+const MM_ANISOTROPIC: u32 = 8;
 // StrictLib patch: ExtTextOut carries a (dx, dy) pair per character.
 const ETO_PDY: u32 = 0x2000;
 // values and keeps DIB scanlines aligned to four bytes.
@@ -201,7 +211,7 @@ pub struct MetafileTextRun {
 }
 
 pub fn extract_metafile_text_runs(data: &[u8], content_type: Option<&str>) -> Vec<MetafileTextRun> {
-  if !looks_like_metafile(data, content_type) || !is_emf(data) || data.len() < EMF_HEADER_SIZE {
+  if !looks_like_metafile(data, content_type) || !is_emf(data) {
     return Vec::new();
   }
 
@@ -210,7 +220,7 @@ pub fn extract_metafile_text_runs(data: &[u8], content_type: Option<&str>) -> Ve
     Err(_) => return Vec::new(),
   };
   let mut runs = Vec::new();
-  let mut pos = EMF_HEADER_SIZE;
+  let mut pos = emf_header_size(data);
   while pos + EMF_RECORD_HEADER_SIZE <= data.len() {
     let Ok(record_type) = read_u32(data, pos) else {
       break;
@@ -323,11 +333,7 @@ fn decode_emf_as_raster(
   if !is_emf(data) {
     return Ok(None);
   }
-  if data.len() < EMF_HEADER_SIZE {
-    return Err("EMF header is truncated".into());
-  }
-
-  let mut pos = EMF_HEADER_SIZE;
+  let mut pos = emf_header_size(data);
   let mut bitmap_record = None;
   let mut bitmap_count = 0usize;
   let mut needs_vector_replay = false;
@@ -714,6 +720,14 @@ struct EmfVectorState {
   viewport_org_y: i32,
   viewport_ext_x: i32,
   viewport_ext_y: i32,
+  // StrictLib patch: the page space → device mapping follows GDI. `map_mode`
+  // selects how the window/viewport extents apply (signed: a negative extent
+  // flips the axis); device units then go to the canvas through the header's
+  // bounds, whose origin need not be (0, 0) (WQ-022, WQ-033).
+  map_mode: u32,
+  device_px_per_mm: (f32, f32),
+  bounds_origin: (i32, i32),
+  device_to_canvas: (f32, f32),
   world_transform: EmfTransform,
   brush_colors: std::collections::HashMap<u32, EmfColor>,
   pens: std::collections::HashMap<u32, EmfPen>,
@@ -744,6 +758,7 @@ struct EmfVectorSnapshot {
   viewport_org_y: i32,
   viewport_ext_x: i32,
   viewport_ext_y: i32,
+  map_mode: u32,
   world_transform: EmfTransform,
   current_brush: Option<EmfColor>,
   current_pen: Option<EmfPen>,
@@ -1122,18 +1137,33 @@ impl EmfVectorState {
     let natural_width = (right - left + 1).max(1) as usize;
     let natural_height = (bottom - top + 1).max(1) as usize;
     let (width, height) = options.resolved_canvas_size(natural_width, natural_height);
+    // szlDevice / szlMillimeters: the reference device's resolution, which the
+    // metric map modes need.
+    let px_per_mm = |device: usize, millimeters: usize| {
+      match (read_i32(data, device), read_i32(data, millimeters)) {
+        (Ok(px), Ok(mm)) if px > 0 && mm > 0 => px as f32 / mm as f32,
+        _ => 96.0 / 25.4,
+      }
+    };
 
     Ok(Self {
       width,
       height,
       window_org_x: 0,
       window_org_y: 0,
-      window_ext_x: natural_width as i32,
-      window_ext_y: natural_height as i32,
+      window_ext_x: 1,
+      window_ext_y: 1,
       viewport_org_x: 0,
       viewport_org_y: 0,
-      viewport_ext_x: width as i32,
-      viewport_ext_y: height as i32,
+      viewport_ext_x: 1,
+      viewport_ext_y: 1,
+      map_mode: MM_TEXT,
+      device_px_per_mm: (px_per_mm(72, 80), px_per_mm(76, 84)),
+      bounds_origin: (left, top),
+      device_to_canvas: (
+        width as f32 / natural_width as f32,
+        height as f32 / natural_height as f32,
+      ),
       world_transform: EmfTransform::identity(),
       brush_colors: std::collections::HashMap::new(),
       pens: std::collections::HashMap::new(),
@@ -1159,12 +1189,49 @@ impl EmfVectorState {
 
   fn map_point(&self, point: EmfPoint) -> (f32, f32) {
     let (x, y) = self.world_transform.apply(point);
-    let scale_x = self.viewport_ext_x as f32 / self.window_ext_x.max(1) as f32;
-    let scale_y = self.viewport_ext_y as f32 / self.window_ext_y.max(1) as f32;
+    let (scale_x, scale_y) = self.page_scale();
+    let device_x = self.viewport_org_x as f32 + (x - self.window_org_x as f32) * scale_x;
+    let device_y = self.viewport_org_y as f32 + (y - self.window_org_y as f32) * scale_y;
     (
-      self.viewport_org_x as f32 + (x - self.window_org_x as f32) * scale_x,
-      self.viewport_org_y as f32 + (y - self.window_org_y as f32) * scale_y,
+      (device_x - self.bounds_origin.0 as f32) * self.device_to_canvas.0,
+      (device_y - self.bounds_origin.1 as f32) * self.device_to_canvas.1,
     )
+  }
+
+  /// StrictLib patch: device units per page-space unit under the current map
+  /// mode ([MS-EMF] 2.1.21 MapMode). The extents keep their signs.
+  fn page_scale(&self) -> (f32, f32) {
+    let ratio = |viewport: i32, window: i32| {
+      if window == 0 {
+        1.0
+      } else {
+        viewport as f32 / window as f32
+      }
+    };
+    let metric = |units_per_mm: f32| {
+      (
+        self.device_px_per_mm.0 / units_per_mm,
+        -self.device_px_per_mm.1 / units_per_mm,
+      )
+    };
+    match self.map_mode {
+      MM_LOMETRIC => metric(10.0),
+      MM_HIMETRIC => metric(100.0),
+      MM_LOENGLISH => metric(100.0 / 25.4),
+      MM_HIENGLISH => metric(1000.0 / 25.4),
+      MM_TWIPS => metric(1440.0 / 25.4),
+      MM_ISOTROPIC => {
+        let x = ratio(self.viewport_ext_x, self.window_ext_x);
+        let y = ratio(self.viewport_ext_y, self.window_ext_y);
+        let scale = x.abs().min(y.abs());
+        (scale.copysign(x), scale.copysign(y))
+      }
+      MM_ANISOTROPIC => (
+        ratio(self.viewport_ext_x, self.window_ext_x),
+        ratio(self.viewport_ext_y, self.window_ext_y),
+      ),
+      _ => (1.0, 1.0),
+    }
   }
 
   /// StrictLib patch: the clip and bounds checks of `set_pixel`, shared with
@@ -1548,6 +1615,7 @@ impl EmfVectorState {
       viewport_org_y: self.viewport_org_y,
       viewport_ext_x: self.viewport_ext_x,
       viewport_ext_y: self.viewport_ext_y,
+      map_mode: self.map_mode,
       world_transform: self.world_transform,
       current_brush: self.current_brush,
       current_pen: self.current_pen,
@@ -1571,6 +1639,7 @@ impl EmfVectorState {
     self.viewport_org_y = saved.viewport_org_y;
     self.viewport_ext_x = saved.viewport_ext_x;
     self.viewport_ext_y = saved.viewport_ext_y;
+    self.map_mode = saved.map_mode;
     self.world_transform = saved.world_transform;
     self.current_brush = saved.current_brush;
     self.current_pen = saved.current_pen;
@@ -1968,7 +2037,7 @@ fn decode_vector_emf_as_png(
   options: RenderOptions,
 ) -> Result<DecodedMetafile, String> {
   let mut state = EmfVectorState::new_with_options(data, options)?;
-  let mut pos = EMF_HEADER_SIZE;
+  let mut pos = emf_header_size(data);
 
   while pos + EMF_RECORD_HEADER_SIZE <= data.len() {
     let record_type = read_u32(data, pos)?;
@@ -1985,8 +2054,11 @@ fn decode_vector_emf_as_png(
         state.window_org_y = read_i32(data, pos + 12)?;
       }
       EMR_SET_WINDOW_EXT_EX if record_size >= 16 => {
-        state.window_ext_x = read_i32(data, pos + 8)?.abs().max(1);
-        state.window_ext_y = read_i32(data, pos + 12)?.abs().max(1);
+        state.window_ext_x = read_i32(data, pos + 8)?;
+        state.window_ext_y = read_i32(data, pos + 12)?;
+      }
+      EMR_SET_MAP_MODE if record_size >= 12 => {
+        state.map_mode = read_u32(data, pos + 8)?;
       }
       EMR_SET_VIEWPORT_ORG_EX if record_size >= 16 => {
         state.viewport_org_x = read_i32(data, pos + 8)?;
@@ -2375,6 +2447,12 @@ impl WmfRenderState {
         viewport_org_y: 0,
         viewport_ext_x: width as i32,
         viewport_ext_y: height as i32,
+        // A WMF has no reference device: the window maps straight onto the
+        // canvas.
+        map_mode: MM_ANISOTROPIC,
+        device_px_per_mm: (96.0 / 25.4, 96.0 / 25.4),
+        bounds_origin: (0, 0),
+        device_to_canvas: (1.0, 1.0),
         world_transform: EmfTransform::identity(),
         brush_colors: std::collections::HashMap::new(),
         pens: std::collections::HashMap::new(),
@@ -4951,10 +5029,24 @@ fn rgb_to_png(rgb: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
   Ok(output)
 }
 
+// StrictLib patch: EMR_HEADER may carry the optional pixel-format and
+// OpenGL fields (MS-EMF 2.3.4.2: 88, 100 or 108 bytes, and producers write
+// longer ones, e.g. 124 or 156), so its size is read rather than required to be
+// 108; the record walk starts at the header's own `nSize` (WQ-027).
+const EMF_MIN_HEADER_SIZE: usize = 88;
+
 fn is_emf(data: &[u8]) -> bool {
-  data.len() >= EMF_HEADER_SIZE
+  data.len() >= EMF_MIN_HEADER_SIZE
     && matches!(read_u32(data, 0), Ok(1))
-    && matches!(read_u32(data, 4), Ok(size) if size as usize == EMF_HEADER_SIZE)
+    && matches!(
+      read_u32(data, 4),
+      Ok(size) if (EMF_MIN_HEADER_SIZE..=data.len()).contains(&(size as usize)) && size % 4 == 0
+    )
+}
+
+/// The size of the EMR_HEADER record: where the first record after it starts.
+fn emf_header_size(data: &[u8]) -> usize {
+  read_u32(data, 4).map_or(EMF_HEADER_SIZE, |size| size as usize)
 }
 
 fn extract_emr_ext_text_out_w(

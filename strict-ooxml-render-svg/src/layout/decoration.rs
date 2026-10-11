@@ -39,14 +39,23 @@ pub struct TextDecorations {
     pub over: Vec<Item>,
 }
 
+/// The fragment at `position` in visual order.
+fn item_at<'a>(items: &'a [TextItem], order: &[usize], position: usize) -> Option<&'a TextItem> {
+    order.get(position).and_then(|&index| items.get(index))
+}
+
 /// Paint one enclosing border for touching fragments with identical borders.
 pub(crate) fn merge_run_borders(items: &mut [TextItem], graphics: &mut Vec<Item>) {
     use super::border::{edge_items, Side};
-    let mut order: Vec<usize> = (0..items.len()).collect();
-    order.sort_by(|&a, &b| items[a].x.total_cmp(&items[b].x));
+    let mut order: Vec<(usize, f64)> = items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| (index, item.x))
+        .collect();
+    order.sort_by(|a, b| a.1.total_cmp(&b.1));
+    let order: Vec<usize> = order.into_iter().map(|(index, _)| index).collect();
     let mut start = 0;
-    while start < order.len() {
-        let first = &items[order[start]];
+    while let Some(first) = item_at(items, &order, start) {
         let Some(border) = first.run.border.clone() else {
             start += 1;
             continue;
@@ -56,10 +65,10 @@ pub(crate) fn merge_run_borders(items: &mut [TextItem], graphics: &mut Vec<Item>
             continue;
         }
         let px_per_pt = first.size_px / first.run.size_pt.max(0.1);
+        let first_x = first.x;
         let mut end = start + 1;
         let mut right = first.x + first.width;
-        while end < order.len() {
-            let next = &items[order[end]];
+        while let Some(next) = item_at(items, &order, end) {
             if next.run.border.as_ref() != Some(&border)
                 || next.run.rotation_deg != 0.0
                 || (next.x - right).abs() > 0.25
@@ -71,12 +80,14 @@ pub(crate) fn merge_run_borders(items: &mut [TextItem], graphics: &mut Vec<Item>
         }
         if end - start > 1 {
             let space = border.space_pt * px_per_pt;
-            let left = first.x - space;
+            let left = first_x - space;
             right += space;
             let mut top = f64::INFINITY;
             let mut bottom = f64::NEG_INFINITY;
-            for &index in &order[start..end] {
-                let item = &mut items[index];
+            for &index in order.iter().take(end).skip(start) {
+                let Some(item) = items.get_mut(index) else {
+                    continue;
+                };
                 top = top.min(item.baseline - item.size_px * BAND_TOP_EM - space);
                 bottom = bottom
                     .max(item.baseline + item.size_px * (BAND_HEIGHT_EM - BAND_TOP_EM) + space);
@@ -97,6 +108,7 @@ pub(crate) fn merge_run_borders(items: &mut [TextItem], graphics: &mut Vec<Item>
 
 /// Builds the decorations of one text fragment, in page px.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn text_decorations(item: &TextItem) -> TextDecorations {
     let mut decorations = TextDecorations::default();
     let run = &item.run;

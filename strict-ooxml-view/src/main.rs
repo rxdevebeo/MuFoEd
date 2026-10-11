@@ -6,7 +6,7 @@
 //! place — which is why it serves vector pages instead of rasterizing them.
 //!
 //! ```text
-//! strict-ooxml-view [DIR...] [--port N] [--transitional] [--scale N]
+//! strict-ooxml-view [DIR...] [--port N] [--transitional] [--scale N] [--cell-nowrap=spec|always]
 //! ```
 //!
 //! With no directory it serves every known corpus that contains documents, and
@@ -45,7 +45,7 @@ use std::time::Duration;
 use http::Response;
 #[cfg(test)]
 use strict_ooxml::OpenControl;
-use strict_ooxml_view::{discover, Cache, DocumentView, Entry};
+use strict_ooxml_view::{discover, Cache, DocumentView, Entry, RenderSettings};
 #[cfg(test)]
 use strict_ooxml_view::{failed, render_controlled};
 
@@ -162,7 +162,10 @@ fn main() -> ExitCode {
     let state = Arc::new(State {
         corpora,
         caches: Mutex::new(BTreeMap::new()),
-        scale: config.scale,
+        settings: RenderSettings {
+            scale: config.scale,
+            cell_no_wrap: config.cell_no_wrap,
+        },
     });
 
     let listener = match std::net::TcpListener::bind(("127.0.0.1", config.port)) {
@@ -213,13 +216,13 @@ struct State {
     corpora: Vec<Corpus>,
     /// Rendered pages, one cache per corpus so equal file names do not collide.
     caches: Mutex<BTreeMap<String, Cache>>,
-    /// Output scale, in px per inch.
+    /// Output scale (px per inch) and `w:noWrap` handling.
     ///
-    /// This is a DPI, not a multiplier: the renderer converts twips by
+    /// The scale is a DPI, not a multiplier: the renderer converts twips by
     /// dividing by 1440 and multiplying by this. Passing 1.0 renders an
     /// 8.5x11 inch page as 8.5x11 *pixels* — a postage stamp — and the
     /// content then overflows into a dozen pages.
-    scale: f64,
+    settings: RenderSettings,
 }
 
 impl State {
@@ -238,7 +241,7 @@ impl State {
         let view = Arc::new(render_bounded(
             entry,
             corpus.transitional,
-            self.scale,
+            self.settings,
             RENDER_TIMEOUT,
         ));
         self.caches
@@ -301,24 +304,24 @@ where
 fn render_bounded(
     entry: &Entry,
     transitional: bool,
-    scale: f64,
+    settings: RenderSettings,
     timeout: Duration,
 ) -> DocumentView {
-    worker::run(entry, transitional, scale, timeout)
+    worker::run(entry, transitional, settings, timeout)
 }
 
 #[cfg(test)]
 fn render_in_test_thread(
     entry: &Entry,
     transitional: bool,
-    scale: f64,
+    settings: RenderSettings,
     timeout: Duration,
 ) -> DocumentView {
     let job = entry.clone();
     let control = OpenControl::with_timeout(timeout);
     let worker_control = control.clone();
     let outcome = run_bounded(timeout, move || {
-        render_controlled(&job, transitional, scale, &worker_control)
+        render_controlled(&job, transitional, settings, &worker_control)
             .map_err(|error| error.to_string())
     });
     if matches!(outcome, Err(Unfinished::TimedOut)) {
@@ -614,6 +617,8 @@ struct Config {
     transitional: bool,
     /// Render scale.
     scale: f64,
+    /// `--cell-nowrap=spec|always`.
+    cell_no_wrap: strict_ooxml::CellNoWrap,
 }
 
 impl Config {
@@ -624,6 +629,7 @@ impl Config {
             port: 8181,
             transitional: false,
             scale: 96.0,
+            cell_no_wrap: strict_ooxml::CellNoWrap::default(),
         };
         let mut index = 0;
         while let Some(arg) = args.get(index) {
@@ -649,6 +655,16 @@ impl Config {
                         .filter(|scale: &f64| scale.is_finite() && *scale > 0.0)?;
                 }
                 "--transitional" => config.transitional = true,
+                other if other.starts_with("--cell-nowrap=") => {
+                    let Some(mode) = other
+                        .strip_prefix("--cell-nowrap=")
+                        .and_then(strict_ooxml::CellNoWrap::parse)
+                    else {
+                        eprintln!("error: --cell-nowrap expects 'spec' or 'always'");
+                        return None;
+                    };
+                    config.cell_no_wrap = mode;
+                }
                 "--help" | "-h" => {
                     print_usage();
                     std::process::exit(0);
@@ -759,12 +775,15 @@ fn unique_id(base: &str, used: &mut BTreeSet<String>) -> String {
 }
 
 fn print_usage() {
-    println!("usage: strict-ooxml-view [DIR...] [--port N] [--scale N] [--transitional]");
+    println!(
+        "usage: strict-ooxml-view [DIR...] [--port N] [--scale N] [--transitional] [--cell-nowrap=spec|always]"
+    );
     println!();
     println!("  DIR...            directories of .docx files");
     println!("                    (default: every known corpus that contains documents)");
     println!("  --port N          port to bind on 127.0.0.1 (default 8181)");
     println!("  --scale N         output DPI (default 96; 144 doubles the page size)");
+    println!("  --cell-nowrap=M   w:noWrap cells: spec (default, as ISO 29500) or always");
     println!("  --transitional    normalize every corpus, including Strict");
     println!();
     println!("known corpora:");
@@ -949,7 +968,12 @@ mod tests {
             path: PathBuf::from("does/not/exist/missing.docx"),
             size: 0,
         };
-        let view = render_bounded(&entry, false, 96.0, Duration::from_secs(30));
+        let view = render_bounded(
+            &entry,
+            false,
+            strict_ooxml_view::RenderSettings::new(96.0),
+            Duration::from_secs(30),
+        );
         assert_eq!(view.name, "missing.docx");
         assert!(view.pages.is_empty());
         assert!(view.note.is_some());

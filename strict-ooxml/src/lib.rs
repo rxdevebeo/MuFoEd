@@ -142,7 +142,7 @@ pub use strict_ooxml_render_pdf::{
 };
 #[cfg(feature = "svg")]
 pub use strict_ooxml_render_svg::{
-    MediaMode, Page, PageSelection, RenderError, RenderOptions, WrapCoordinates,
+    CellNoWrap, MediaMode, Page, PageSelection, RenderError, RenderOptions, WrapCoordinates,
 };
 #[cfg(feature = "report")]
 pub use strict_ooxml_report::{

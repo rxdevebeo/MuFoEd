@@ -57,8 +57,14 @@ pub(crate) fn radical_sign(width: f64, height: f64) -> String {
 #[must_use]
 pub(crate) fn delimiter(character: char, width: f64, height: f64) -> Option<String> {
     let segments: &[(&str, &[f64])] = match character {
-        '(' => &[("M", &[1.0, 0.0, 0.15, 0.5]), ("L", &[1.0, 1.0, 0.15, 0.5])],
-        ')' => &[("M", &[0.0, 0.0, 0.85, 0.5]), ("L", &[0.0, 1.0, 0.85, 0.5])],
+        '(' => &[
+            ("M", &[0.95, 0.0]),
+            ("C", &[0.05, 0.22, 0.05, 0.78, 0.95, 1.0]),
+        ],
+        ')' => &[
+            ("M", &[0.05, 0.0]),
+            ("C", &[0.95, 0.22, 0.95, 0.78, 0.05, 1.0]),
+        ],
         '[' => &[
             ("M", &[0.9, 0.0, 0.1, 0.0]),
             ("L", &[0.1, 0.0, 0.1, 1.0]),
@@ -231,11 +237,11 @@ mod tests {
         // A wider box widens the horizontal coordinates.
         assert_eq!(
             delimiter('(', 2.0, 20.0).expect("path"),
-            "M 2 0 0.3 10 L 2 20 0.3 10"
+            "M 1.9 0 C 0.1 4.4 0.1 15.6 1.9 20"
         );
         assert_eq!(
             delimiter('(', 4.0, 20.0).expect("path"),
-            "M 4 0 0.6 10 L 4 20 0.6 10"
+            "M 3.8 0 C 0.2 4.4 0.2 15.6 3.8 20"
         );
     }
 
