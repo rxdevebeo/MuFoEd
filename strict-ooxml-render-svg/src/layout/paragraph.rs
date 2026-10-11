@@ -901,6 +901,8 @@ fn push_small_caps(text: &str, run: &ComputedRun, out: &mut Vec<Seg>) {
 
 fn flatten_drawing(ctx: &LayoutContext<'_>, drawing: &Drawing, out: &mut Vec<Seg>) {
     match &drawing.kind {
+        // `wp:docPr/@hidden`: the object is in the document, not on the page.
+        DrawingKind::Anchor(anchor) if anchor.hidden == Some(true) => {}
         DrawingKind::Anchor(anchor) => out.push(Seg::Anchor(Box::new(anchor.clone()))),
         DrawingKind::Inline(_) => {
             if let Some(image) = layout_inline_image(ctx, drawing, 0.0, 0.0) {

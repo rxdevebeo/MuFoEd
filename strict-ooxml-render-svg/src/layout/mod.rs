@@ -195,6 +195,34 @@ pub struct ImageItem {
     pub alt: String,
     /// Optional SVG transform (rotation/flip) applied about the image centre.
     pub transform: Option<String>,
+    /// Share of the picture cut away on the left, top, right and bottom
+    /// (`a:srcRect`), as fractions of the picture. The rest is stretched over
+    /// the item's box. A negative share pads instead of cutting.
+    pub crop: Option<[f64; 4]>,
+}
+
+impl ImageItem {
+    /// The box the *whole* picture is drawn into so that its cropped part
+    /// fills `x, y, w, h`: `(x, y, w, h)` of the uncropped picture.
+    #[must_use]
+    pub fn uncropped_box(&self) -> (f64, f64, f64, f64) {
+        let Some([left, top, right, bottom]) = self.crop else {
+            return (self.x, self.y, self.w, self.h);
+        };
+        let visible_w = 1.0 - left - right;
+        let visible_h = 1.0 - top - bottom;
+        if visible_w <= 0.01 || visible_h <= 0.01 {
+            return (self.x, self.y, self.w, self.h);
+        }
+        let full_w = self.w / visible_w;
+        let full_h = self.h / visible_h;
+        (
+            self.x - left * full_w,
+            self.y - top * full_h,
+            full_w,
+            full_h,
+        )
+    }
 }
 
 /// One paint primitive.

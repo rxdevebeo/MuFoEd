@@ -130,10 +130,12 @@ pub(crate) fn picture_items(
         part: part.cloned(),
         alt,
         transform: xfrm_transform(picture.xfrm, x, y, w, h),
+        crop: crate::paint::image::src_rect_crop(picture.src_rect),
     })]
 }
 
 /// Builds the items of a shape (path + optional text box).
+#[allow(clippy::too_many_lines)]
 fn shape_items(
     ctx: &LayoutContext<'_>,
     shape: &Shape,
@@ -160,12 +162,19 @@ fn shape_items(
             part: part.cloned(),
             alt,
             transform: xfrm_transform(shape.xfrm, x, y, w, h),
+            crop: None,
         }));
     }
     let paths = shape_paths(shape, w, h);
-    let fill = shape.fill.as_ref().and_then(|fill| fill_color(ctx, fill));
+    let style = ShapeStyleColors::resolve(ctx, shape.style.as_ref());
+    // `a:spPr` decides; with no fill or outline of its own the shape takes the
+    // `wps:style` references (`a:fillRef`/`a:lnRef`), as Word draws it.
+    let fill = match &shape.fill {
+        Some(fill) => fill_color(ctx, fill),
+        None => style.fill.clone(),
+    };
     let paint = super::fills::resolve(ctx, shape, w, h);
-    let (stroke, stroke_w, dash) = stroke_paint(ctx, shape.stroke.as_ref());
+    let (stroke, stroke_w, dash) = stroke_paint(ctx, shape.stroke.as_ref(), &style);
     let (rotate_deg, flip_h, flip_v) = shape.xfrm.map_or((0.0, false, false), |xfrm| {
         (
             xfrm.rot.map_or(0.0, |rot| f64::from(rot) / 60_000.0),
@@ -173,20 +182,42 @@ fn shape_items(
             xfrm.flip_v,
         )
     });
+    let path_item = |d: String, fill: Option<String>, stroke: Option<String>| {
+        Item::Path(PathItem {
+            x,
+            y,
+            w,
+            h,
+            d,
+            fill,
+            paint: None,
+            stroke,
+            stroke_w,
+            dash: None,
+            rotate_deg,
+            flip_h,
+            flip_v,
+        })
+    };
     // AUD-49: one SVG `<path>` per `a:path`, each scaled by its own w/h.
     if paths.is_empty() {
         items.push(placeholder(x, y, w, h));
     } else {
-        for d in paths {
+        let mut last_stroked = None;
+        for path in paths {
+            let stroked = path.stroke.then(|| stroke.clone()).flatten();
+            if stroked.is_some() {
+                last_stroked = Some(path.d.clone());
+            }
             items.push(Item::Path(PathItem {
                 x,
                 y,
                 w,
                 h,
-                d,
-                fill: fill.clone(),
-                paint: paint.clone(),
-                stroke: stroke.clone(),
+                d: path.d,
+                fill: if path.fill { fill.clone() } else { None },
+                paint: if path.fill { paint.clone() } else { None },
+                stroke: stroked,
                 stroke_w,
                 dash: dash.clone(),
                 rotate_deg,
@@ -194,13 +225,247 @@ fn shape_items(
                 flip_v,
             }));
         }
+        // Line ends (`a:headEnd`/`a:tailEnd`) sit on the first and last point
+        // of the stroked outline, in the same local space and transform.
+        if let (Some(d), Some(color), Some(line)) = (last_stroked, &stroke, shape.stroke.as_ref()) {
+            for (kind, at_start) in [(&line.head_end, true), (&line.tail_end, false)] {
+                if let Some(kind) = kind.as_deref() {
+                    if let Some(head) = arrow_head(&d, at_start, kind, stroke_w) {
+                        let (fill, outline) = if kind == "arrow" {
+                            (None, Some(color.clone()))
+                        } else {
+                            (Some(color.clone()), None)
+                        };
+                        items.push(path_item(head, fill, outline));
+                    }
+                }
+            }
+        }
     }
     if let Some(text) = &shape.text {
         if !text.blocks.is_empty() {
-            items.extend(text_box_items(ctx, text, x, y, w, h));
+            let mut text_items = text_box_items(ctx, text, x, y, w, h);
+            // `a:fontRef` colours the text the runs leave on `auto`.
+            if let Some(color) = &style.font {
+                for item in &mut text_items {
+                    if let Item::Text(text) = item {
+                        if text.run.color.is_none() {
+                            text.run.color = Some(color.clone());
+                        }
+                    }
+                }
+            }
+            items.extend(text_items);
         }
     }
     items
+}
+
+/// The colours a `wps:style` block gives a shape, resolved through the theme.
+#[derive(Default)]
+struct ShapeStyleColors {
+    /// `a:fillRef` with an index of 1 or more.
+    fill: Option<String>,
+    /// `a:lnRef` colour and the width of its theme line style, in EMU.
+    line: Option<(String, i64)>,
+    /// `a:fontRef` colour.
+    font: Option<String>,
+}
+
+impl ShapeStyleColors {
+    fn resolve(
+        ctx: &LayoutContext<'_>,
+        style: Option<&strict_ooxml_wml::model::drawing::ShapeStyle>,
+    ) -> Self {
+        let Some(style) = style else {
+            return Self::default();
+        };
+        let theme = ctx.document.theme.as_ref();
+        let scheme = |name: Option<&str>| {
+            let hex = theme?.color(name?)?;
+            let digits = hex.strip_prefix('#').unwrap_or(hex);
+            (digits.len() == 6).then(|| format!("#{}", digits.to_ascii_lowercase()))
+        };
+        // Index 0 is "no style"; 1–3 pick the subtle, moderate and intense
+        // entries of the theme's lists, and 1001+ the background fills.
+        let index = |value: Option<&str>| {
+            value
+                .and_then(|value| value.trim().parse::<u32>().ok())
+                .unwrap_or(0)
+        };
+        let fill = (index(style.fill_ref.as_deref()) > 0)
+            .then(|| scheme(style.fill_ref_color.as_deref()))
+            .flatten();
+        // The Office theme's line styles are 0.5, 1 and 1.5 pt wide.
+        let line_index = index(style.line_ref.as_deref());
+        let line = (line_index > 0)
+            .then(|| scheme(style.line_ref_color.as_deref()))
+            .flatten()
+            .map(|color| (color, 6_350 * i64::from(line_index.min(3))));
+        Self {
+            fill,
+            line,
+            font: scheme(style.font_ref_color.as_deref()),
+        }
+    }
+}
+
+/// The outline of a line end at the start or end of `d`, in the same local
+/// coordinates, or `None` for `none` or a path too short to have a direction.
+///
+/// The sizes are Word's medium: three line widths, never under 6 px.
+fn arrow_head(d: &str, at_start: bool, kind: &str, stroke_w: f64) -> Option<String> {
+    if kind == "none" {
+        return None;
+    }
+    let points = path_points(d);
+    let (tip, from) = if at_start {
+        (*points.first()?, *points.get(1)?)
+    } else {
+        let count = points.len();
+        (
+            *points.get(count.checked_sub(1)?)?,
+            *points.get(count.checked_sub(2)?)?,
+        )
+    };
+    let (dx, dy) = (tip.0 - from.0, tip.1 - from.1);
+    let length = dx.hypot(dy);
+    if length < 1e-9 {
+        return None;
+    }
+    let (ux, uy) = (dx / length, dy / length);
+    let (nx, ny) = (-uy, ux);
+    let size = (stroke_w * 3.0).max(6.0);
+    let half = size / 2.0;
+    let f = crate::units::fmt_num;
+    let point = |along: f64, across: f64| {
+        format!(
+            "{} {}",
+            f(tip.0 - ux * along + nx * across),
+            f(tip.1 - uy * along + ny * across)
+        )
+    };
+    Some(match kind {
+        "diamond" => format!(
+            "M{} L{} L{} L{} Z",
+            point(-half, 0.0),
+            point(0.0, half),
+            point(half, 0.0),
+            point(0.0, -half)
+        ),
+        "oval" => format!(
+            "M{} A{h} {h} 0 1 0 {} A{h} {h} 0 1 0 {} Z",
+            point(0.0, -half),
+            point(0.0, half),
+            point(0.0, -half),
+            h = f(half)
+        ),
+        "stealth" => format!(
+            "M{} L{} L{} L{} Z",
+            point(0.0, 0.0),
+            point(size, half),
+            point(size * 0.7, 0.0),
+            point(size, -half)
+        ),
+        "arrow" => format!(
+            "M{} L{} L{}",
+            point(size, half),
+            point(0.0, 0.0),
+            point(size, -half)
+        ),
+        _ => format!(
+            "M{} L{} L{} Z",
+            point(0.0, 0.0),
+            point(size, half),
+            point(size, -half)
+        ),
+    })
+}
+
+/// The points an SVG path visits, in order: end points and the control
+/// points of curves, which give the tangent at either end.
+fn path_points(d: &str) -> Vec<(f64, f64)> {
+    let mut tokens = Vec::new();
+    let mut number = String::new();
+    for ch in d.chars() {
+        if ch.is_ascii_alphabetic() || ch == ' ' || ch == ',' {
+            if !number.is_empty() {
+                tokens.push(std::mem::take(&mut number));
+            }
+            if ch.is_ascii_alphabetic() {
+                tokens.push(ch.to_string());
+            }
+        } else if ch == '-' && !number.is_empty() && !number.ends_with('e') {
+            tokens.push(std::mem::take(&mut number));
+            number.push(ch);
+        } else {
+            number.push(ch);
+        }
+    }
+    if !number.is_empty() {
+        tokens.push(number);
+    }
+    let mut points = Vec::new();
+    let mut current = (0.0, 0.0);
+    let mut start = (0.0, 0.0);
+    let mut command = 'M';
+    let mut values: Vec<f64> = Vec::new();
+    let mut flush =
+        |command: char, values: &mut Vec<f64>, current: &mut (f64, f64), start: &mut (f64, f64)| {
+            let take = |values: &[f64], index: usize| values.get(index).copied().unwrap_or(0.0);
+            match command {
+                'M' | 'L' | 'C' => {
+                    for pair in values.chunks(2) {
+                        if let [x, y] = pair {
+                            *current = (*x, *y);
+                            points.push(*current);
+                        }
+                    }
+                    if command == 'M' {
+                        *start = *current;
+                    }
+                }
+                'H' => {
+                    for value in values.iter() {
+                        current.0 = *value;
+                        points.push(*current);
+                    }
+                }
+                'V' => {
+                    for value in values.iter() {
+                        current.1 = *value;
+                        points.push(*current);
+                    }
+                }
+                'A' => {
+                    for arc in values.chunks(7) {
+                        if arc.len() == 7 {
+                            *current = (take(arc, 5), take(arc, 6));
+                            points.push(*current);
+                        }
+                    }
+                }
+                'Z' => {
+                    *current = *start;
+                    points.push(*current);
+                }
+                _ => {}
+            }
+            values.clear();
+        };
+    for token in tokens {
+        if let Some(letter) = token.chars().next().filter(char::is_ascii_alphabetic) {
+            flush(command, &mut values, &mut current, &mut start);
+            command = letter.to_ascii_uppercase();
+            if command == 'Z' {
+                flush(command, &mut values, &mut current, &mut start);
+            }
+        } else if let Ok(value) = token.parse::<f64>() {
+            values.push(value);
+        }
+    }
+    flush(command, &mut values, &mut current, &mut start);
+    points
 }
 
 /// Builds the items of a group by composing child coordinates.
@@ -500,12 +765,47 @@ fn text_box_items(
         .collect()
 }
 
-/// Returns SVG path `d` strings for a shape in local coordinates (AUD-49).
-fn shape_paths(shape: &Shape, w: f64, h: f64) -> Vec<String> {
+/// One outline of a shape and whether it is filled and stroked.
+struct ShapePath {
+    d: String,
+    fill: bool,
+    stroke: bool,
+}
+
+/// Presets whose outline is open: a line or a connector has nothing to fill.
+const OPEN_PRESETS: &[&str] = &[
+    "line",
+    "straightConnector1",
+    "bentConnector2",
+    "bentConnector3",
+    "bentConnector4",
+    "bentConnector5",
+    "curvedConnector2",
+    "curvedConnector3",
+    "curvedConnector4",
+    "curvedConnector5",
+    "arc",
+];
+
+/// Returns the outlines of a shape in local coordinates (AUD-49).
+fn shape_paths(shape: &Shape, w: f64, h: f64) -> Vec<ShapePath> {
+    let closed = |d: String| ShapePath {
+        d,
+        fill: true,
+        stroke: true,
+    };
     match &shape.geometry {
-        strict_ooxml_wml::model::drawing::ShapeGeometry::None => vec![rect_path(w, h)],
+        strict_ooxml_wml::model::drawing::ShapeGeometry::None => vec![closed(rect_path(w, h))],
         strict_ooxml_wml::model::drawing::ShapeGeometry::Preset(preset) => {
-            preset_path(preset, w, h).into_iter().collect()
+            let open = OPEN_PRESETS.contains(&preset.as_ref());
+            preset_path(preset, w, h)
+                .into_iter()
+                .map(|d| ShapePath {
+                    d,
+                    fill: !open,
+                    stroke: true,
+                })
+                .collect()
         }
         strict_ooxml_wml::model::drawing::ShapeGeometry::Custom(custom) => {
             custom_paths(custom, w, h)
@@ -530,12 +830,20 @@ fn fill_color(ctx: &LayoutContext<'_>, fill: &ShapeFill) -> Option<String> {
 }
 
 /// Resolves a stroke to `(colour, width_px, dash)`.
+///
+/// An `a:ln` that names no colour, and a shape with no `a:ln` at all, take
+/// the `a:lnRef` of the shape's `wps:style`.
 fn stroke_paint(
     ctx: &LayoutContext<'_>,
     stroke: Option<&ShapeStroke>,
+    style: &ShapeStyleColors,
 ) -> (Option<String>, f64, Option<String>) {
+    let scale = ctx.options.scale;
     let Some(stroke) = stroke else {
-        return (None, 0.0, None);
+        return match &style.line {
+            Some((color, width)) => (Some(color.clone()), emu_to_px(*width, scale).max(0.5), None),
+            None => (None, 0.0, None),
+        };
     };
     if stroke.none {
         return (None, 0.0, None);
@@ -545,10 +853,13 @@ fn stroke_paint(
         .color
         .as_ref()
         .and_then(|color| resolve_shape_color(theme, color))
+        .or_else(|| style.line.as_ref().map(|(color, _)| color.clone()))
         .or_else(|| Some("#000000".to_owned()));
     let width = stroke
         .width
-        .map_or(1.0, |emu| emu_to_px(emu.value(), ctx.options.scale))
+        .map(strict_ooxml_wml::model::Emu::value)
+        .or_else(|| style.line.as_ref().map(|(_, width)| *width))
+        .map_or(1.0, |emu| emu_to_px(emu, scale))
         .max(0.5);
     let dash = stroke.dash.as_deref().map(dash_array);
     (color, width, dash)
@@ -657,7 +968,58 @@ fn preset_path(preset: &str, w: f64, h: f64) -> Option<String> {
                 f(cy)
             )
         }
-        "line" => format!("M0 0 L{} {}", f(w), f(h)),
+        "line" | "straightConnector1" => format!("M0 0 L{} {}", f(w), f(h)),
+        // Connectors at their default adjustments: an elbow at the far end,
+        // a dog-leg through the middle, an S-curve through the middle.
+        "bentConnector2" => format!("M0 0 H{} V{}", f(w), f(h)),
+        "bentConnector3" | "bentConnector4" | "bentConnector5" => {
+            format!("M0 0 H{} V{} H{}", f(w / 2.0), f(h), f(w))
+        }
+        "curvedConnector2" => format!("M0 0 C{} 0 {} {} {} {}", f(w), f(w), f(h), f(w), f(h)),
+        "curvedConnector3" | "curvedConnector4" | "curvedConnector5" => format!(
+            "M0 0 C{} 0 {} {} {} {}",
+            f(w / 2.0),
+            f(w / 2.0),
+            f(h),
+            f(w),
+            f(h)
+        ),
+        // `arc` at its default 270° → 0°: the quarter of the ellipse from the
+        // top centre to the right centre.
+        "arc" => format!(
+            "M{} 0 A{} {} 0 0 1 {} {}",
+            f(w / 2.0),
+            f(w / 2.0),
+            f(h / 2.0),
+            f(w),
+            f(h / 2.0)
+        ),
+        "mathMinus" => format!(
+            "M{} {} H{} V{} H{} Z",
+            f(w * 0.0735),
+            f(h * 0.3824),
+            f(w * 0.9265),
+            f(h * 0.6176),
+            f(w * 0.0735)
+        ),
+        "trapezoid" => format!(
+            "M0 {} L{} 0 H{} L{} {} Z",
+            f(h),
+            f(w * 0.25),
+            f(w * 0.75),
+            f(w),
+            f(h)
+        ),
+        "homePlate" => format!(
+            "M0 0 H{} L{} {} L{} {} H0 Z",
+            f(w * 0.75),
+            f(w),
+            f(h / 2.0),
+            f(w * 0.75),
+            f(h)
+        ),
+        "cloud" | "flowChartConnector" => preset_path("ellipse", w, h)?,
+        "star24" => star_path(24, w, h),
         "triangle" | "isosTriangle" => {
             format!("M{} 0 L{} {} L0 {} Z", f(w / 2.0), f(w), f(h), f(h))
         }
@@ -746,7 +1108,9 @@ fn preset_path(preset: &str, w: f64, h: f64) -> Option<String> {
             format!("M{a} 0 H{b} V{c} H{wv} V{d} H{b} V{hv} H{a} V{d} H0 V{c} H{a} Z")
         }
         "flowChartDecision" => preset_path("diamond", w, h)?,
-        "flowChartTerminator" => preset_path("roundRect", w, h)?,
+        "flowChartTerminator" | "flowChartAlternateProcess" | "round2SameRect" => {
+            preset_path("roundRect", w, h)?
+        }
         "flowChartDocument" => format!(
             "M0 0 H{} V{} C{} {} {} {} 0 {} Z",
             f(w),
@@ -763,12 +1127,18 @@ fn preset_path(preset: &str, w: f64, h: f64) -> Option<String> {
 }
 
 /// Returns one SVG `d` string per custom-geometry path (AUD-49).
-fn custom_paths(custom: &CustomGeometry, w: f64, h: f64) -> Vec<String> {
+fn custom_paths(custom: &CustomGeometry, w: f64, h: f64) -> Vec<ShapePath> {
     custom
         .paths
         .iter()
-        .map(|path| geometry_path_d(path, w, h))
-        .filter(|d| !d.is_empty())
+        .map(|path| ShapePath {
+            d: geometry_path_d(path, w, h),
+            // `a:path/@fill="none"` outlines without filling; `@stroke="0"`
+            // fills without outlining.
+            fill: path.fill.as_deref() != Some("none"),
+            stroke: path.stroke != Some(false),
+        })
+        .filter(|path| !path.d.is_empty())
         .collect()
 }
 

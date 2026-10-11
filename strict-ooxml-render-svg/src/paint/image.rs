@@ -87,7 +87,19 @@ pub(crate) fn layout_inline_image(
         part: part.cloned(),
         alt,
         transform: None,
+        crop: picture.and_then(|picture| src_rect_crop(picture.src_rect)),
     })
+}
+
+/// The `a:srcRect` of a picture as cut-away fractions, `None` when it cuts
+/// nothing. The attributes are thousandths of a percent.
+pub(crate) fn src_rect_crop(
+    rect: Option<strict_ooxml_wml::model::drawing::SrcRect>,
+) -> Option<[f64; 4]> {
+    let rect = rect?;
+    let crop =
+        [rect.left, rect.top, rect.right, rect.bottom].map(|value| f64::from(value) / 100_000.0);
+    crop.iter().any(|value| value.abs() > 1e-9).then_some(crop)
 }
 
 /// Resolves the `href`/data URI for a media part according to the media mode.
@@ -191,7 +203,33 @@ pub(crate) fn image_svg(out: &mut String, item: &ImageItem) {
     let transform = item.transform.as_deref().map_or_else(String::new, |value| {
         format!(" transform=\"{}\"", crate::paint::escape_attr(value))
     });
-    if let Some(href) = &item.href {
+    if let (Some(href), Some(_)) = (&item.href, item.crop) {
+        // The cropped part fills the box: the whole picture is drawn larger,
+        // inside a viewport the size of the box that clips the rest.
+        let (full_x, full_y, full_w, full_h) = item.uncropped_box();
+        let open = item.transform.as_deref().map_or_else(String::new, |value| {
+            format!("  <g transform=\"{}\">\n", crate::paint::escape_attr(value))
+        });
+        let close = if open.is_empty() { "" } else { "  </g>\n" };
+        let _ = write!(
+            out,
+            "{open}  <svg x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" viewBox=\"{} {} {} {}\" preserveAspectRatio=\"none\" overflow=\"hidden\"><image x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" preserveAspectRatio=\"none\" xlink:href=\"{}\">{}</image></svg>\n{close}",
+            crate::paint::coord(item.x),
+            crate::paint::coord(item.y),
+            crate::paint::coord(item.w.max(0.0)),
+            crate::paint::coord(item.h.max(0.0)),
+            crate::paint::coord(item.x),
+            crate::paint::coord(item.y),
+            crate::paint::coord(item.w.max(0.0)),
+            crate::paint::coord(item.h.max(0.0)),
+            crate::paint::coord(full_x),
+            crate::paint::coord(full_y),
+            crate::paint::coord(full_w.max(0.0)),
+            crate::paint::coord(full_h.max(0.0)),
+            crate::paint::escape_attr(href),
+            title,
+        );
+    } else if let Some(href) = &item.href {
         let _ = writeln!(
             out,
             "  <image x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" preserveAspectRatio=\"none\"{} xlink:href=\"{}\">{}</image>",

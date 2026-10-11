@@ -682,13 +682,26 @@ impl PageWriter<'_> {
         };
         self.images.insert(part.clone(), name.clone());
         self.content.save_state();
+        if image.crop.is_some() {
+            // `a:srcRect`: clip to the item's box and draw the whole picture
+            // larger behind it, as the SVG backend's viewport does.
+            self.content.rect(
+                self.x(image.x),
+                self.y(image.y + image.h),
+                self.x(image.w),
+                px_to_pt(image.h, self.scale) as f32,
+            );
+            self.content.clip_nonzero();
+            self.content.end_path();
+        }
+        let (x, y, w, h) = image.uncropped_box();
         self.content.transform([
-            self.x(image.w),
+            self.x(w),
             0.0,
             0.0,
-            px_to_pt(image.h, self.scale) as f32,
-            self.x(image.x),
-            self.y(image.y + image.h),
+            px_to_pt(h, self.scale) as f32,
+            self.x(x),
+            self.y(y + h),
         ]);
         self.content.x_object(Name(name.as_bytes()));
         self.content.restore_state();
