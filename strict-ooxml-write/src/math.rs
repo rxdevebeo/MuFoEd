@@ -720,19 +720,20 @@ fn math_run(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, run: &MathRun) {
     }
     // AUD-64: same preserve rule as `w:t` — edge whitespace or a double space
     // would be collapsed by an XML parser without `xml:space="preserve"`.
-    let needs_preserve = run.text.chars().next().is_some_and(char::is_whitespace)
-        || run
-            .text
-            .chars()
-            .next_back()
-            .is_some_and(char::is_whitespace)
-        || run.text.contains("  ");
-    xml.start("m:t");
-    if needs_preserve {
-        xml.attr("xml:space", "preserve");
+    for (index, text) in run.text.split('\n').enumerate() {
+        if index > 0 {
+            xml.empty("w:br");
+        }
+        let needs_preserve = text.chars().next().is_some_and(char::is_whitespace)
+            || text.chars().next_back().is_some_and(char::is_whitespace)
+            || text.contains("  ");
+        xml.start("m:t");
+        if needs_preserve {
+            xml.attr("xml:space", "preserve");
+        }
+        xml.text(text);
+        xml.end();
     }
-    xml.text(&run.text);
-    xml.end();
     xml.end();
 }
 

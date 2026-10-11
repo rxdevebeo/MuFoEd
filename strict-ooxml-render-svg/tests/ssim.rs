@@ -99,17 +99,12 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // layout's own invariant is now a unit test rather than a number of pixels.
     // Compact inline fraction parts reduce the bottom drift by 2 px (21 -> 19).
     // Real alphabets, compact grids and the radical degree notch improve 19 -> 12 px.
-    ("strict-stage5c", 0, 1.0, 12.0),
-    // AUD-50: several `m:oMath` children of one `m:oMathPara` are laid out one
-    // display line each (was: nodes merged into one horizontal expression).
-    // That adds roughly one formula height per multi-equation paragraph, so
-    // page 1's bottom ink edge moves by ≈240 px and its top edge settles at
-    // +3. Pins track the new stacking; `coverage/render-gates.toml` carries
-    // the matching override. Waiver `STAGE5C-P1-LAYOUT` tracks bringing the
-    // WPS reference (or a follow-up layout pass) back inside the old band.
-    // Real index outlines need an additional 0.82 px separation on the script
-    // row. Its propagated ink edge rounds to +2 px; class bounds stay unchanged.
-    ("strict-stage5c", 1, 3.0, 242.0),
+    // Correct delimiter centring above the baseline reduces 12 -> 5 px.
+    ("strict-stage5c", 0, 1.0, 5.0),
+    // WPS probes (2026-10-11): adjacent m:oMath objects share a baseline;
+    // explicit math-run breaks create lines. Removing implicit breaks improves
+    // the bottom drift from +193 px to +24 px, while preserving separate objects.
+    ("strict-stage5c", 1, 1.0, 24.0),
     // -2 -> 4: the same trade on the simplest formula page, where one fraction gets
     // 6 px taller. The page's SSIM went from 0.9632 to 0.9747.
     // Compact inline fraction parts bring the former +4 px bottom drift to zero.

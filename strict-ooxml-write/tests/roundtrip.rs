@@ -594,6 +594,47 @@ w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>";
     );
 }
 
+#[test]
+fn math_paragraph_preserves_explicit_breaks_and_equation_boundaries() {
+    for separator in ["", "<w:br/><w:cr/>"] {
+        let body = format!("<w:p><m:oMathPara><m:oMath><m:r><m:t>x=1</m:t>{separator}</m:r></m:oMath><m:oMath><m:r><m:t>y=2</m:t></m:r></m:oMath></m:oMathPara></w:p>");
+        let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+            .body(&body)
+            .build();
+        let package = open(&bytes).expect("open");
+        let document = parse(&package).expect("parse");
+        let written = write(&document, &package);
+        let reopened = open(&written.bytes).expect("reopen");
+        let reparsed = parse(&reopened).expect("reparse");
+        let display = reparsed.body.blocks[0]
+            .as_paragraph()
+            .expect("paragraph")
+            .inlines[0]
+            .as_math_paragraph()
+            .expect("display");
+        assert_eq!(display.equations.len(), 2);
+        assert_eq!(
+            display.equations[0].text(),
+            if separator.is_empty() {
+                "x=1"
+            } else {
+                "x=1\n\n"
+            }
+        );
+        assert_eq!(display.equations[1].text(), "y=2");
+        let xml = String::from_utf8(
+            reopened
+                .read_part(&PartId::new("/word/document.xml"))
+                .expect("document"),
+        )
+        .expect("utf-8");
+        assert_eq!(
+            xml.matches("<w:br").count(),
+            if separator.is_empty() { 0 } else { 2 }
+        );
+    }
+}
+
 /// AUD-43: tracked-change runs round-trip with the same revision markers.
 #[test]
 fn tracked_changes_round_trip() {

@@ -514,9 +514,25 @@ impl TransitionalNormalizer {
 
         let grouped = vml::grouped_text_boxes(subtree, context);
         if !grouped.is_empty() {
-            return Self::rewrite_vml_group(
-                writer, subtree, grouped, element, context, report, location,
-            );
+            let doc_pr_id = context.next_doc_pr_id();
+            if let Some((head, tail)) = vml::inline_group_events(subtree, context, doc_pr_id) {
+                Self::write_raw_events(writer, head, context)?;
+                for member in grouped {
+                    let (head, tail) = vml::group_member_events(&member.shape, report, &location);
+                    Self::write_raw_events(writer, head, context)?;
+                    for event in member.content {
+                        Self::rewrite_event(writer, event, context, report)?;
+                    }
+                    if matches!(member.shape, vml::Shape::TextBox(_)) {
+                        Self::write_raw_events(writer, vml::text_box_close(), context)?;
+                    }
+                    Self::write_raw_events(writer, tail, context)?;
+                    report.record("T7.vml-shape", 1);
+                }
+                Self::write_raw_events(writer, tail, context)?;
+                return Ok(());
+            }
+            return Self::rewrite_vml_group(writer, grouped, element, context, report, location);
         }
 
         let Some((shape, wrap)) = vml::classify(subtree, context) else {
@@ -650,21 +666,12 @@ impl TransitionalNormalizer {
     /// picture (when the first shape is one), then each label on its own.
     fn rewrite_vml_group(
         writer: &mut Writer<Vec<u8>>,
-        subtree: &[Event<'static>],
         grouped: Vec<vml::GroupedTextBox>,
         element: &str,
         context: &mut PartContext,
         report: &mut NormalizationReport,
         location: SourceLocation,
     ) -> Result<()> {
-        if let Some((shape, wrap)) = vml::classify(subtree, context) {
-            if matches!(shape, vml::Shape::Picture(_)) {
-                let doc_pr_id = context.next_doc_pr_id();
-                let (head, tail) = vml::shape_events(&shape, wrap, doc_pr_id, report, &location);
-                Self::write_raw_events(writer, head.into_iter().chain(tail), context)?;
-                report.record("T7.vml-shape", 1);
-            }
-        }
         let count = Self::write_grouped_text_boxes(writer, grouped, context, report)?;
         report.record("T7.vml-shape", count);
         report.record_loss(LossRecord {
@@ -686,7 +693,7 @@ impl TransitionalNormalizer {
     /// Writes every text box of a `v:group` as its own `DrawingML` shape.
     ///
     /// The caller has already decided this subtree is a group with labels. A
-    /// picture in the same group is written separately; these are only the labels.
+    /// Pictures use the same group coordinate mapping as the labels.
     fn write_grouped_text_boxes(
         writer: &mut Writer<Vec<u8>>,
         grouped: Vec<vml::GroupedTextBox>,
@@ -3419,6 +3426,47 @@ mod tests {
     /// which is 635000 EMU. The second label's half-points must still be there:
     /// a conversion that keeps one shape drops them.
     #[test]
+    fn vml_group_pictures_use_scaled_coordinates_and_are_not_duplicated() {
+        let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
+        let source = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:v="urn:schemas-microsoft-com:vml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<w:body><w:p><w:r><w:pict>
+<v:group coordsize="10000,5000" coordorigin="100,200" style="width:200pt;height:100pt;margin-left:10pt;margin-top:20pt;mso-position-horizontal-relative:char;mso-position-vertical-relative:line">
+<v:shape id="picture-one" style="left:100;top:200;width:10000;height:5000"><v:imagedata r:id="rId1"/></v:shape>
+<v:shape id="picture-two" style="left:2600;top:1200;width:5000;height:2500"><v:imagedata r:id="rId2"/></v:shape>
+<v:rect style="left:100;top:200;width:1000;height:500"><v:textbox><w:txbxContent><w:p><w:r><w:t>label</w:t></w:r></w:p></w:txbxContent></v:textbox></v:rect>
+</v:group></w:pict></w:r></w:p></w:body></w:document>"#;
+        let output = normalizer.normalize(&part(), source.as_bytes()).unwrap();
+        let text = String::from_utf8(output.into_owned()).unwrap();
+        assert_eq!(text.matches("<pic:pic>").count(), 2, "{text}");
+        for id in ["rId1", "rId2"] {
+            assert_eq!(
+                text.matches(&format!("r:embed=\"{id}\"")).count(),
+                1,
+                "{text}"
+            );
+        }
+        assert!(
+            text.contains(r#"cx="2540000" cy="1270000""#),
+            "200 x 100 pt: {text}"
+        );
+        assert!(
+            text.contains(r#"cx="1270000" cy="635000""#),
+            "100 x 50 pt: {text}"
+        );
+        assert!(
+            text.contains(r#"x="762000""#),
+            "second picture x = 60 pt: {text}"
+        );
+        assert!(
+            text.contains(r#"y="508000""#),
+            "second picture y = 40 pt: {text}"
+        );
+        assert_eq!(text.matches("<wps:txbx>").count(), 1, "{text}");
+        assert!(text.contains("label"), "{text}");
+    }
+
+    #[test]
     fn a_vml_group_keeps_every_text_box_size() {
         let normalizer = TransitionalNormalizer::with_options(shape_fixture_options());
         let source = r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -3449,8 +3497,8 @@ mod tests {
         assert!(text.contains(r#"<w:sz w:val="12"/>"#), "{text}");
         assert!(text.contains(r#"<w:szCs w:val="32"/>"#), "{text}");
         assert!(!text.contains(r#"w:val="99""#), "{text}");
-        assert!(text.contains(">635000<"), "50 pt offset: {text}");
-        assert!(text.contains(">254000<"), "20 pt offset: {text}");
+        assert!(text.contains(r#"x="635000""#), "50 pt offset: {text}");
+        assert!(text.contains(r#"y="254000""#), "20 pt offset: {text}");
         assert!(text.contains("one"), "{text}");
         assert!(text.contains("two"), "{text}");
     }

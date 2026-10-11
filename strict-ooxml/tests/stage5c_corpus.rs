@@ -137,7 +137,10 @@ fn the_math_repros_carry_formula_ink() {
             .render_svg(&strict_ooxml::RenderOptions::default())
             .expect("render");
         let svg = rendered[0].svg.clone();
-        assert!(svg.contains("STIX Two Math"), "{name}: no math font run");
+        assert!(
+            svg.contains("font-family=\"Strict Math\""),
+            "{name}: no math font run"
+        );
         assert!(
             svg.matches("<text").count() >= 8,
             "{name}: too few runs — the formula layer collapsed"

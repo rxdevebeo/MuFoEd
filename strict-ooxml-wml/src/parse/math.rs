@@ -406,7 +406,7 @@ fn parse_math_run(parser: &mut PartParser<'_>) -> Result<MathRun> {
                         }
                         // `w:br` inside a math run is a line break: represent it
                         // as a newline so the renderer honours it.
-                        if name.local() == "br" && crate::parse::is_wml(&name) {
+                        if matches!(name.local(), "br" | "cr") && crate::parse::is_wml(&name) {
                             text.push('\n');
                         } else {
                             parser.record_foreign(&name);

@@ -386,6 +386,20 @@ impl MathBox {
         self.place(child, dx, 0.0);
     }
 
+    /// Stacks a line below this box with a gap between their extents.
+    fn append_below(&mut self, child: MathBox, gap: f64) {
+        let dy = self.size.depth + child.size.height + gap;
+        self.place(child, 0.0, dy);
+    }
+
+    fn stack_line(&mut self, child: MathBox) {
+        if self.is_empty() {
+            *self = child;
+        } else {
+            self.append_below(child, 2.0);
+        }
+    }
+
     /// Returns a copy shifted by `(dx, dy)`.
     fn shifted(self, dx: f64, dy: f64) -> Self {
         let items = self
@@ -691,7 +705,54 @@ pub(crate) fn layout_inline_wrapped(
     )
 }
 
+fn split_explicit_math_lines(nodes: &[MathNode]) -> Option<Vec<Vec<MathNode>>> {
+    // The parser represents explicit w:br/w:cr in a math run as a newline.
+    // Split only when one exists; ordinary paragraphs need no node copies.
+    if nodes
+        .iter()
+        .any(|node| matches!(node, MathNode::Run(run) if run.text.contains('\n')))
+    {
+        let mut groups = vec![Vec::new()];
+        for node in nodes {
+            if let MathNode::Run(run) = node {
+                for (index, text) in run.text.split('\n').enumerate() {
+                    if index > 0 {
+                        groups.push(Vec::new());
+                    }
+                    if let Some(group) = groups.last_mut() {
+                        group.push(MathNode::Run(MathRun {
+                            text: text.to_owned(),
+                            field_char: run.field_char,
+                            properties: run.properties.clone(),
+                            run_properties: run.run_properties.clone(),
+                            location: run.location.clone(),
+                        }));
+                    }
+                }
+            } else if let Some(group) = groups.last_mut() {
+                group.push(node.clone());
+            }
+        }
+        return Some(groups);
+    }
+    None
+}
+
 fn layout_wrapped_nodes(frame: &Frame<'_, '_>, nodes: &[MathNode], width: f64) -> Vec<MathBox> {
+    if let Some(groups) = split_explicit_math_lines(nodes) {
+        return groups
+            .iter()
+            .flat_map(|group| layout_wrapped_nodes(frame, group, width))
+            .collect();
+    }
+    layout_soft_wrapped_nodes(frame, nodes, width)
+}
+
+fn layout_soft_wrapped_nodes(
+    frame: &Frame<'_, '_>,
+    nodes: &[MathNode],
+    width: f64,
+) -> Vec<MathBox> {
     let remaining = frame.budget.get();
     let original = layout_nodes(frame, nodes);
     if original.size.width <= width || width <= 0.0 {
@@ -807,21 +868,44 @@ pub(crate) fn layout_display(
     content_width: f64,
 ) -> MathBox {
     let budget = Cell::new(MAX_ITEMS);
-    // AUD-50: one display line per `m:oMath` child.
+    // Equation boundaries preserve separate OMML objects, not implicit breaks.
+    // WPS puts adjacent equations on a common baseline unless w:br intervenes.
+    let frame = base_frame(ctx, run, &budget, true);
     let mut boxed = MathBox::empty();
+    let mut line = MathBox::empty();
+    let mut trailing_break = false;
     for expression in &paragraph.equations {
-        for line in layout_wrapped_nodes(
-            &base_frame(ctx, run, &budget, true),
-            &expression.nodes,
-            content_width,
-        ) {
-            if boxed.is_empty() {
-                boxed = line;
-            } else {
-                let dy = boxed.size.height + boxed.size.depth + 2.0;
-                boxed.place(line, 0.0, dy);
+        for (wrapped_index, next) in layout_wrapped_nodes(&frame, &expression.nodes, content_width)
+            .into_iter()
+            .enumerate()
+        {
+            if wrapped_index > 0
+                || (!line.is_empty()
+                    && content_width > 0.0
+                    && line.size.width + next.size.width > content_width)
+            {
+                if line.is_empty() {
+                    line = MathBox::blank(Size::new(
+                        0.0,
+                        frame.row_ascent(),
+                        (frame.row_pitch() - frame.row_ascent()).max(0.0),
+                    ));
+                }
+                boxed.stack_line(std::mem::take(&mut line));
             }
+            trailing_break = wrapped_index > 0 && next.is_empty();
+            line.append(next);
         }
+    }
+    if line.is_empty() && trailing_break {
+        line = MathBox::blank(Size::new(
+            0.0,
+            frame.row_ascent(),
+            (frame.row_pitch() - frame.row_ascent()).max(0.0),
+        ));
+    }
+    if !line.is_empty() {
+        boxed.stack_line(line);
     }
     // `m:oMathParaPr/m:jc` places the display formula in the text column.
     let justification = paragraph
@@ -1433,7 +1517,7 @@ fn layout_delimiter(frame: &Frame<'_, '_>, delimiter: &Delimiter) -> MathBox {
     let gap = DELIMITER_GAP * frame.em();
 
     // The delimiters are centred on the content's vertical extent.
-    let middle = (content.size.height - content.size.depth) / 2.0;
+    let middle = (content.size.depth - content.size.height) / 2.0;
     let top = middle - height / 2.0;
     let content_width = content.size.width;
     let mut out = MathBox::empty();
@@ -1450,8 +1534,8 @@ fn layout_delimiter(frame: &Frame<'_, '_>, delimiter: &Delimiter) -> MathBox {
     }
     out.place(content, width + gap, 0.0);
     out.size.width = (2.0 * (width + gap) + content_width).max(out.size.width);
-    out.size.height = out.size.height.max(0.5 * height);
-    out.size.depth = out.size.depth.max(0.5 * height);
+    out.size.height = out.size.height.max(-top);
+    out.size.depth = out.size.depth.max(top + height);
     out
 }
 
@@ -2109,6 +2193,22 @@ mod tests {
         assert_eq!(out.size.width, 5.0);
         assert_eq!(out.size.height, 1.0);
         assert_eq!(out.size.depth, 3.0);
+    }
+
+    #[test]
+    fn stacked_equations_of_different_heights_keep_their_gap() {
+        let mut lines = part(20.0, 30.0, 2.0);
+        lines.append_below(part(10.0, 10.0, 4.0), 2.0);
+        lines.append_below(part(15.0, 45.0, 3.0), 2.0);
+        // Each line retains its full extent, separated by two 2 px gaps.
+        // The shorter second line must not inherit the first line's ascent;
+        // the taller third line must not overlap the preceding line.
+        assert_eq!(
+            lines.size.height + lines.size.depth,
+            32.0 + 14.0 + 48.0 + 4.0
+        );
+        assert_eq!(lines.size.height, 30.0);
+        assert_eq!(lines.size.width, 20.0);
     }
 
     #[test]

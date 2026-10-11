@@ -104,12 +104,15 @@ const EMU_PER_POINT: f64 = 914_400.0 / 72.0;
 ///
 /// `wps` is included because a VML text box / freeform becomes `wps:wsp`
 /// (AUD-37). The URI is vendor and identical in both families.
-pub const REQUIRED_NAMESPACES: [(&str, &str, &str); 4] = [
+pub const REQUIRED_NAMESPACES: [(&str, &str, &str); 5] = [
     ("a", NS_A, NS_TRANSITIONAL_A),
     ("wp", NS_WP, NS_TRANSITIONAL_WP),
     ("pic", NS_PIC, NS_TRANSITIONAL_PIC),
     ("wps", URI_SHAPE, URI_SHAPE),
+    ("wpg", URI_GROUP, URI_GROUP),
 ];
+
+const URI_GROUP: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup";
 
 /// A shape that is not a picture: where it is, how big, and what it is called.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -771,9 +774,10 @@ pub(crate) fn grouped_text_boxes(
                     continue;
                 };
                 if is_vml(&uri) && local == "group" {
-                    if let Some(frame) =
-                        group_frame(start).or_else(|| stack.last().map(|group| group.frame.clone()))
-                    {
+                    if let Some(frame) = stack.last().map_or_else(
+                        || group_frame(start),
+                        |parent| nested_group_frame(start, &parent.frame),
+                    ) {
                         stack.push(OpenGroup {
                             depth,
                             frame,
@@ -807,9 +811,12 @@ pub(crate) fn grouped_text_boxes(
                 let direct = stack.last().is_some_and(|group| group.depth == depth);
                 if is_vml(&uri) && is_group_member(&local) && direct {
                     if let Some(group) = stack.last() {
-                        if let Some(grouped) =
-                            finish_grouped(std::slice::from_ref(event), &group.frame, group.wrap)
-                        {
+                        if let Some(grouped) = finish_grouped(
+                            std::slice::from_ref(event),
+                            &group.frame,
+                            group.wrap,
+                            context,
+                        ) {
                             out.push(grouped);
                         }
                     }
@@ -827,7 +834,8 @@ pub(crate) fn grouped_text_boxes(
                     child_depth -= 1;
                     if child_depth == 0 {
                         if let Some(group) = stack.last() {
-                            if let Some(grouped) = finish_grouped(buffer, &group.frame, group.wrap)
+                            if let Some(grouped) =
+                                finish_grouped(buffer, &group.frame, group.wrap, context)
                             {
                                 out.push(grouped);
                             }
@@ -890,6 +898,65 @@ fn qualified(start: &BytesStart<'_>, context: &PartContext) -> Option<(String, S
     Some((local.to_owned(), uri))
 }
 
+fn nested_group_frame(start: &BytesStart<'_>, parent: &GroupFrame) -> Option<GroupFrame> {
+    let attrs = attributes_of(start.attributes().flatten());
+    let style_text = attrs.get("style").map_or("", String::as_str);
+    let numbers = style_numbers(style_text);
+    let child = VmlStyle::parse(style_text);
+    let sx = parent.width_pt / parent.coord_w;
+    let sy = parent.height_pt / parent.coord_h;
+    let physical = |value: Option<&str>, fallback: f64, scale: f64| {
+        value.map_or(fallback, |text| {
+            if text.chars().any(char::is_alphabetic) {
+                points_of(text).unwrap_or(fallback)
+            } else {
+                text.parse::<f64>().map_or(fallback, |n| n * scale)
+            }
+        })
+    };
+    let width_pt = physical(child.width_pt.as_deref(), parent.width_pt, sx);
+    let height_pt = physical(child.height_pt.as_deref(), parent.height_pt, sy);
+    let (coord_w, coord_h) = attrs
+        .get("coordsize")
+        .and_then(|v| pair(v))
+        .unwrap_or((parent.coord_w, parent.coord_h));
+    if coord_w == 0.0 || coord_h == 0.0 {
+        return None;
+    }
+    let (origin_x, origin_y) = attrs
+        .get("coordorigin")
+        .and_then(|v| pair(v))
+        .unwrap_or((0.0, 0.0));
+    let mut style = parent.style.clone();
+    let base_x = parent
+        .style
+        .margin_left
+        .as_deref()
+        .and_then(points_of)
+        .unwrap_or(0.0);
+    let base_y = parent
+        .style
+        .margin_top
+        .as_deref()
+        .and_then(points_of)
+        .unwrap_or(0.0);
+    style.margin_left = Some(format_pt(
+        base_x + (numbers.get("left").copied().unwrap_or(parent.origin_x) - parent.origin_x) * sx,
+    ));
+    style.margin_top = Some(format_pt(
+        base_y + (numbers.get("top").copied().unwrap_or(parent.origin_y) - parent.origin_y) * sy,
+    ));
+    Some(GroupFrame {
+        origin_x,
+        origin_y,
+        coord_w,
+        coord_h,
+        width_pt,
+        height_pt,
+        style,
+    })
+}
+
 fn group_frame(start: &BytesStart<'_>) -> Option<GroupFrame> {
     let attributes = attributes_of(start.attributes().flatten());
     let style = VmlStyle::parse(attributes.get("style").map_or("", String::as_str));
@@ -917,10 +984,105 @@ fn group_frame(start: &BytesStart<'_>) -> Option<GroupFrame> {
     })
 }
 
+/// Keeps an inline diagram in paragraph flow as one `DrawingML` group.
+pub(crate) fn inline_group_events(
+    subtree: &[Event<'static>],
+    context: &PartContext,
+    doc_pr_id: u32,
+) -> Option<(Vec<Event<'static>>, Vec<Event<'static>>)> {
+    let start = subtree.iter().find_map(|event| {
+        let Event::Start(start) = event else {
+            return None;
+        };
+        let (local, uri) = qualified(start, context)?;
+        (local == "group" && is_vml(&uri)).then_some(start)
+    })?;
+    let frame = group_frame(start)?;
+    if frame.style.absolute || frame.style.horizontal.is_some() {
+        return None;
+    }
+    let cx = emu(frame.style.width_pt.as_deref()?)?.to_string();
+    let cy = emu(frame.style.height_pt.as_deref()?)?.to_string();
+    let mut head = vec![
+        Event::Start(el("w:drawing", &[])),
+        Event::Start(el("wp:inline", &[])),
+        Event::Empty(el("wp:extent", &[("cx", &cx), ("cy", &cy)])),
+    ];
+    head.extend(doc_pr_events("VML group", None, doc_pr_id));
+    head.extend([
+        Event::Start(el("a:graphic", &[])),
+        Event::Start(el("a:graphicData", &[("uri", URI_GROUP)])),
+        Event::Start(el("wpg:wgp", &[])),
+        Event::Empty(el("wpg:cNvGrpSpPr", &[])),
+        Event::Start(el("wpg:grpSpPr", &[])),
+        Event::Start(el("a:xfrm", &[])),
+        Event::Empty(el("a:off", &[("x", "0"), ("y", "0")])),
+        Event::Empty(el("a:ext", &[("cx", &cx), ("cy", &cy)])),
+        Event::Empty(el("a:chOff", &[("x", "0"), ("y", "0")])),
+        Event::Empty(el("a:chExt", &[("cx", &cx), ("cy", &cy)])),
+        Event::End(BytesEnd::new("a:xfrm")),
+        Event::End(BytesEnd::new("wpg:grpSpPr")),
+    ]);
+    let tail = [
+        "wpg:wgp",
+        "a:graphicData",
+        "a:graphic",
+        "wp:inline",
+        "w:drawing",
+    ]
+    .into_iter()
+    .map(|name| Event::End(BytesEnd::new(name)))
+    .collect();
+    Some((head, tail))
+}
+
+/// Emits a child payload at its physical offset inside the group.
+pub(crate) fn group_member_events(
+    shape: &Shape,
+    report: &mut NormalizationReport,
+    location: &SourceLocation,
+) -> (Vec<Event<'static>>, Vec<Event<'static>>) {
+    let frame = shape.frame();
+    let (cx, cy) = extent_of(&frame.style, report, location, &frame.name);
+    let payload = graphic_events(shape, cx, cy);
+    let mut head = payload
+        .get(2..payload.len().saturating_sub(2))
+        .unwrap_or_default()
+        .to_vec();
+    let x = frame
+        .style
+        .margin_left
+        .as_deref()
+        .and_then(emu)
+        .unwrap_or(0)
+        .to_string();
+    let y = frame
+        .style
+        .margin_top
+        .as_deref()
+        .and_then(emu)
+        .unwrap_or(0)
+        .to_string();
+    for event in &mut head {
+        if matches!(event, Event::Empty(start) if start.name().as_ref() == b"a:off") {
+            *event = Event::Empty(el("a:off", &[("x", &x), ("y", &y)]));
+            break;
+        }
+    }
+    let mut tail = Vec::new();
+    if matches!(shape, Shape::TextBox(_)) {
+        if let Some(at) = head.iter().position(|event| matches!(event, Event::Start(start) if start.name().as_ref() == b"w:txbxContent")) {
+            tail = head.split_off(at + 1);
+        }
+    }
+    (head, tail)
+}
+
 fn finish_grouped(
     events: &[Event<'static>],
     frame: &GroupFrame,
     wrap: Wrap,
+    part_context: &PartContext,
 ) -> Option<GroupedTextBox> {
     let (Event::Start(start) | Event::Empty(start)) = events.first()? else {
         return None;
@@ -928,9 +1090,23 @@ fn finish_grouped(
     let name = String::from_utf8_lossy(start.name().as_ref()).into_owned();
     let local = name.rsplit(':').next().unwrap_or_default().to_owned();
     let attributes = attributes_of(start.attributes().flatten());
+    let picture_id = events.iter().find_map(|event| {
+        let (Event::Start(start) | Event::Empty(start)) = event else {
+            return None;
+        };
+        let (local, uri) = qualified(start, part_context)?;
+        if local == "imagedata" && is_vml(&uri) {
+            attributes_of(start.attributes().flatten())
+                .get("id")
+                .cloned()
+        } else {
+            None
+        }
+    });
     let content = textbox_children(events);
     let preset = match &content {
         Some(_) => preset_of(&local, &attributes).or(Some("rect")),
+        None if picture_id.is_some() => Some("rect"),
         None => Some(preset_of(&local, &attributes)?),
     };
     let style_text = attributes.get("style").map_or("", String::as_str);
@@ -988,6 +1164,13 @@ fn finish_grouped(
         preset,
         word_art: None,
     };
+    if let Some(rel_id) = picture_id {
+        return Some(GroupedTextBox {
+            shape: Shape::Picture(VmlPicture { shape, rel_id }),
+            wrap,
+            content: Vec::new(),
+        });
+    }
     Some(match content {
         Some(content) => GroupedTextBox {
             shape: Shape::TextBox(shape),

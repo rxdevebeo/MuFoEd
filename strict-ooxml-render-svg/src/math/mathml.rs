@@ -73,10 +73,7 @@ pub fn math_paragraph_to_mathml(paragraph: &MathParagraph) -> Result<String, Mat
         );
     }
     out.push('>');
-    for (index, expression) in paragraph.equations.iter().enumerate() {
-        if index > 0 {
-            out.push_str("<mspace linebreak=\"newline\"/>");
-        }
+    for expression in &paragraph.equations {
         write_nodes(&mut out, &expression.nodes)?;
     }
     out.push_str("</math>");
@@ -134,6 +131,22 @@ fn alignment_name(alignment: MathAlignment) -> &'static str {
 
 /// Writes a single run as `mi`/`mn`/`mo`/`mtext`, as MathML requires.
 fn write_run(out: &mut String, run: &MathRun) {
+    if run.text.contains('\n') {
+        for (index, text) in run.text.split('\n').enumerate() {
+            if index > 0 {
+                out.push_str("<mspace linebreak=\"newline\"/>");
+            }
+            let segment = MathRun {
+                text: text.to_owned(),
+                field_char: run.field_char,
+                properties: run.properties.clone(),
+                run_properties: run.run_properties.clone(),
+                location: run.location.clone(),
+            };
+            write_run(out, &segment);
+        }
+        return;
+    }
     let text = run.text.trim();
     if text.is_empty() {
         return;

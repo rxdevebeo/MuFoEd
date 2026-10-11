@@ -950,7 +950,11 @@ fn shift_item(item: Item, dx: f64, dy: f64) -> Item {
             path.y += dy;
             Item::Path(path)
         }
-        Item::Image(image) => Item::Image(image),
+        Item::Image(mut image) => {
+            image.x += dx;
+            image.y += dy;
+            Item::Image(image)
+        }
     }
 }
 
