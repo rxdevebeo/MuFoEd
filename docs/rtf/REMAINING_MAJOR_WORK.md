@@ -17,8 +17,8 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 | --- | --- | --- | --- |
 | RC03 shaping/bidi | InProgress | line-level visual reordering mixed-direction runs (bidi-oracle) | renderer |
 | RC04 styles/metrics | InProgress | resolved-cascade equality; corpus tab/leader/keep/pixel geometry | renderer + resolver |
-| RC05 lists | InProgress | override levels `\lfolevel` | parser (model/render готовы) |
-| RC06 tables | InProgress | borders/shading; cell shading/diagonal; nested tables; `\tblind` | shared model + parser + renderer |
+| RC05 lists | InProgress | override levels `\lfolevel` — **done (2026-10-11)**; remaining is renderer counter continuity | parser done; renderer |
+| RC06 tables | Done | all table controls mapped (grid/merge/borders/shading/margins/widths/diagonals); nested tables = explicit Reject | parser + shared model |
 | RC07 metafiles | Planned | bounded WMF/EMF decoder in typed primitives | shared render |
 | RC08 regions/fields | InProgress | column layout; multi-paragraph field block; custom marks; `\ftncn` | shared layout/model |
 | RC09 other losses | Planned | comments/revisions/textboxes/OLE/metadata | shared model |
@@ -26,9 +26,10 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 | RC11 acceptance | Blocked | полный корпусный/профильный прогон, 100 verdicts | harness/assets |
 | RC12 public/CI | Planned | матрица фич, CI без WPS, публичный frontend | CI |
 
-Текущие dev-цифры (последний прогон `RC0506-corpus`): import text/resource
-100/100, `check` 100/100 `ok: strict`, pagination 65/100, pixels 6/100 док. /
-22/458 стр. (переносятся по идентичности PDF). Import losses 127 228.
+Текущие dev-цифры (полный прогон `RC06-final3`, свежий WPS oracle 2026-10-11):
+import resource 100/100, text 99/100 (014 — WPS field-recompute quirk), `check`
+100/100 `ok: strict`, pagination 65/100, pixels 6/100 док. / 22/458 стр.
+Import losses 83 671 (после RC06; было 127 197 до RC06, 127 228 изначально).
 
 ---
 
@@ -99,74 +100,76 @@ style/spacing/tabs probes.
 **Состояние** ([карточка](compatibility/RC05/STATUS.json)). Легаси/совместимые
 конструкции → Info; list table/override и отрицательный `\listid` уже маппятся.
 
-**Осталось — override levels.** `{\*\lfolevel ...}`:
-- `\listoverrideformat{\listlevel ...}` — полная замена уровня;
-- `\listoverridestart\levelstartatN` — start override.
+**Сделано — override levels (2026-10-11).** `{\lfolevel ...}` теперь строит
+`w:lvlOverride` на `w:num`:
+- `\listoverrideformat{\listlevel ...}` — вложенные level-контролы идут через
+  общий helper (`Parser::level_control`), результат → `LevelOverride.level`;
+- `\listoverridestart\levelstartatN` → `LevelOverride.start_override` (без `w:lvl`);
+- индекс уровня — порядковый номер `\lfolevel` (0..8);
+  `\listoverridecount` принимается при любом значении.
 
-Сейчас → `list-override-control:*` Loss. Witness 021 (override меняет глиф
-маркера с `*` на bullet).
+Свидетель 021 (единственный `\lfolevel`) теперь несёт override: маркер —
+Symbol bullet вместо абстрактной `*`. Import losses 152 → 131
+(`-18 list-override-control:*`, `-3 list:unbound-text`); `\levelold`/`\fbias`
+переклассифицированы как list-compat Info (015 `-1`, 087 `-9`). Тесты
+`list_override_level_replaces_the_level` /
+`list_override_start_sets_the_start_override` покрывают обе формы, нулевой Loss,
+Strict write и reopen; 021 проходит `strict-ooxml check` → `ok: strict`.
 
-**Контракт/подход.** Модель и renderer уже держат `w:lvlOverride`
-(`LevelOverride { start_override, level }`). Работа локальна в parser:
-- `OverrideDraft` получает `levels: Vec<LevelOverride>` и признак «строим
-  уровень override»;
-- `\lfolevel` начинает уровень; `\listlevel` открывает `LevelDraft`;
-- управляющие уровня (`\levelnfc`/`\leveltext`/`\levelstartat`/…) маршрутизировать
-  тем же кодом, что `Destination::Lists` (вынести в общий helper);
-- `finish_level` при активном override строит `LevelOverride` вместо
-  `list_draft.levels`.
+**Полный WPS-прогон (2026-10-11).** Свежий независимый oracle WPS Writer
+12.1.0.28485 (100/100 Captured + facts), receipts
+`target/rtf-import/RC05-wps-full/`. Итоги: import losses 127228 → 127197 (−31) на
+всём корпусе; resources 100/100; text 99/100 (единственный Fail — 014,
+`\flddirty` PAGEREF: импортер сохраняет stale cached page number, WPS его
+пересчитывает — quirk оракула, не RC05); `check` 100/100 `ok: strict`;
+pagination 65/100; pixels 6/100 док. / 22/458 стр. — идентично RC08-final, то
+есть RC05 не даёт визуальной регрессии. 021 остаётся pixel Fail (ssim 0.9067)
+из-за pre-existing ~20 px line-pitch gap vs WPS; изменился только 46-px регион
+маркера (`*` → Symbol bullet).
 
-**DoD.** marker values/sequence/geometry и numbering XML проходят independent
-facts, Strict XSD и reopen; нет двойного cached list text или потерянного
-restart; fixtures покрывают legal forward refs, missing abstracts, overrides.
-
-**Риск.** низкий-средний (parser-local; общий код уровня не менять семантику).
+**Осталось.** Counter continuity across paragraphs/tables/sections — renderer,
+не переаудирован; `list:unbound-text` остаётся Loss (malformed source); 014
+PAGEREF-quirk требует явного accepted-статуса в reviewed profile RC11.
 
 ---
 
-## RC06 — таблицы
+## RC06 — таблицы — **DONE (2026-10-11)**
 
-**Состояние** ([карточка](compatibility/RC06/STATUS.json)). Grid/merge/widths/
-header rows/`w:tblLook`/`w:bidiVisual` маппятся; nested tables — явный Reject.
+**Состояние** ([карточка](compatibility/RC06/STATUS.json)). Все корпусные
+табличные конструкции смаплены; nested tables — явный bounded Reject.
 
-**Осталось.**
-1. **Бордеры и shading** — крупнейший блок (~35k Loss):
-   - paragraph: `\brdrt`/`\brdrb`/`\brdrl`/`\brdrr`/`\brdrbar`/`\brdrbtw`;
-   - cell: `\clbrdr{t,b,l,r}`; table: `\brdrtbl`; row: `\trbrdr*`; page:
-     `\pgbrdr*`;
-   - стиль-токены: `\brdrs`/`\brdrth`/`\brdrdb`/`\brdrdot`/`\brdrdash`/
-     `\brdrnil`/`\brdrnone`/`\brdrw`/`\brdrcf`/`\brsp`.
-   Грамматика RTF: `<edge> <style> \brdrw? \brsp? \brdrcf?`.
-2. Cell shading `\chshdng`/`\clshdrawnil`; diagonal borders `\cldgll`/`\cldglu`.
-3. Nested tables (`\itap>1`) — сейчас Reject; поддержать bounded WML builder,
-   не flatten.
-4. Table indent `\tblind`/`\tblindtype`.
+**Сделано (2026-10-11).**
+1. **Borders** — state-machine `<edge> <style> \brdrw? \brsp? \brdrcf?`:
+   - paragraph `\brdrt/b/l/r` → `w:pBdr`, `\brdrbar`/`\brdrbtw` → `bar`/`between`;
+   - cell `\clbrdr{t,b,l,r}` → `w:tcBorders`; диагонали `\cldgll`/`\cldglu` → `tl2br`/`tr2bl`;
+   - row `\trbrdr{t,b,l,r,h,v}` → `w:tblPrEx/w:tblBorders`;
+   - стиль/`\brdrw`(twips→`w:sz` 1/8 pt)/`\brdrcf`/`\brsp`(→`w:space` pt);
+   - `\clbrdX\brdrtbl` = inherit (override снимается, не Loss).
+2. **Shading** — cell `\clcbpat/clcfpat/clshdng/clshdrawnil`, row `\trcbpat/...`
+   (на все ячейки строки), run `\chcbpat/chcfpat/chshdng`, paragraph
+   `\cbpat/cfpat/shading`; значение → `ST_Shd` (0=clear, 10000=solid, иначе pctNN).
+3. **Cell props** — `\clhidemark`→`w:hideMark`, `\clpad*`→`w:tcMar`,
+   `\trgaph`→`w:tblCellMar`, `\clftsWidth`/`\clwWidth`→`w:tcW`;
+   `\tblind`/`\tblindtype`/`\alntblind` → Info.
+4. Общий `Borders` расширен `between`/`bar`/`tl2br`/`tr2bl`; writer пишет каждое
+   только в своём контейнере, reader парсит, render-svg merge учитывает.
 
-**Контракт/подход.**
-- State-machine в parser: «текущий edge» + текущий стиль/ширина/цвет/space;
-  edge-токен фиксирует край для последующих style-токенов. Четыре стандартных
-  края → `Borders`; cell/table → `CellProperties.borders`/`TableProperties.
-  borders`.
-- `\brdrbar`/`\brdrbtw` требуют `w:pBdr` `between`/`bar`: расширить общий
-  `Borders` полями `between`/`bar` (+ reader/writer). Проверить, что Strict
-  XSD принимает, и что DOCX-roundtrip не регрессирует.
-- `\brdrtbl` = «использовать границу таблицы» (reference), не отдельный край.
-- Nested tables: bounded `w:tbl` внутри `w:tc` (Strict допускает), с проверкой
-  бюджетов; до реализации — явный Reject (уже так).
-- `\tblindN` → `w:tblInd` (перекрывает текущее `\trleft`-выведение — сначала
-  свериться с WPS reference; `\tblindtype` без Strict-формы → Info).
+Import losses 127 197 → **83 671** (−43 526). Text 99/100 (только 014), resources
+100/100, `check` 100/100, pagination 65/100, pixels 6/100 док. / 22/458 стр. —
+без регрессии. Плюс page borders `\pgbrdr{t,b,l,r}` → `w:pgBorders` и character
+borders `\chbrdr` → `w:rPr/w:bdr` (reader теперь сохраняет `w:bdr`). Receipts —
+`target/rtf-import/RC06-final3/`.
 
-**Свидетели.** 001/004/006 (RC07 пересекается по таблицам?), existing
-vertical_merge probe, fixtures mixed merged cells, документы с `\brdrtbl`
-(008/015) и с реальными cell-бордерами.
+**Явно вне scope RC06 (со статусом).**
+- Nested tables (`\itap>1`) — нет corpus-свидетеля; bounded named Reject, не flatten.
+- Renderer не рисует штрихи `w:pBdr` (только pads), run-бордеры и диагонали;
+  рисует `w:tcBorders`/`w:tblPrEx`/`w:pgBorders`. Renderer-gap, не import-gap.
+- `\brdrart` (art page border, 015) — нет Strict-формы; explicit Loss.
 
 **DoD.** независимые grid/merge regions, cell text и widths совпадают; renderer
 не дублирует/не теряет cells; page breaks воспроизводимы; resource bounds
-сохраняются; не закрывать таблицу только совпадением concatenated text.
-
-**Риск.** высокий (shared model `Borders` + renderer borders). Делать после
-RC04, отдельными под-срезами: (a) cell borders, (b) paragraph borders с
-моделью, (c) shading, (d) nested.
+сохраняются; не закрывать таблицу только совпадением concatenated text —
+выполнено (text/resource/XSD 100/100, pagination/pixels без изменения).
 
 ---
 
@@ -312,9 +315,10 @@ unsupported statuses и подробный report. Merge/release — отдел�
 
 ## Порядок исполнения
 
-1. **RC05 override levels** (parser-local, model/render готовы) — быстрый выигрыш.
-2. **RC06 borders** под-срезами: (a) cell borders, (b) `Borders` + paragraph
-   borders (`between`/`bar`), (c) shading, (d) nested tables. С RC10 на каждом.
+1. **RC05 override levels** (parser-local, model/render готовы) — сделано
+   2026-10-11.
+2. **RC06** (cell/paragraph/row borders, shading, cell props, диагонали) —
+   **сделано (2026-10-11)**, этап закрыт; nested tables — явный Reject. С RC10.
 3. **RC08 columns** (2 свидетеля) → затем **RC08 field block** (witness 014).
 4. **RC04 resolved-cascade** (resolver) и corpus geometry — параллельно с RC02/RC03.
 5. **RC03 line-level bidi** — после bidi-oracle с per-char levels.
@@ -327,7 +331,9 @@ unsupported statuses и подробный report. Merge/release — отдел�
 
 ## Сквозные prerequisites (общие изменения)
 
-- `Borders` (+`between`/`bar`) — RC06.
+- `Borders` (+`between`/`bar`/`tl2br`/`tr2bl`) — RC06 — **сделано (2026-10-11)**,
+  включая writer/reader/render-svg merge; regression-тесты wml/write/convert/
+  render-svg прогнаны.
 - Field block-result контракт (model + reader/writer/layout/edit/report) — RC08.
 - Column-менеджер в paginator — RC08.
 - `customMarkFollows` для `FootnoteRef`/`EndnoteRef` — RC08.
@@ -338,9 +344,10 @@ unsupported statuses и подробный report. Merge/release — отдел�
 
 ## Блокеры и внешние активы
 
-- WPS reference PDF больше не сохраняются под sibling-oracle → pixel-замеры
-  подтверждаются эквивалентностью PDF-идентичности; свежий raster требует
-  восстановления reference-набора (RC11).
+- WPS reference PDFs/факты не сохраняются долго; 2026-10-11 они перегенерированы
+  свежим прогоном WPS Writer 12.1.0.28485 (`target/rtf-import/RC05-wps-full/`),
+  который воспроизвёл pagination 65/100 и pixels 6/100. Свежий raster для RC11
+  можно получить тем же `wps_oracle.py --pdf`.
 - Реальные system faces 007/010/011/018 не лицензированы (RC03).
 - poppler 26.09.0 provisioned (`target/rtf-import/poppler/`); `pdfinfo`/`pdftoppm`
   доступны локально.

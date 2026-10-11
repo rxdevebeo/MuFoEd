@@ -1,19 +1,27 @@
 {
   "card": "RC06",
-  "status": "InProgress",
-  "updated": "2026-10-10",
+  "status": "Done",
+  "updated": "2026-10-11",
   "scope": "tables",
   "base_commit": "e453e24",
   "dependencies": ["RC04"],
+  "summary": "All corpus table constructs are mapped: grid/merge/widths, row/cell borders, paragraph + row borders, cell/row/character/paragraph shading, cell margins, explicit cell widths, hideMark, diagonal cell borders and the \\brdrtbl inherit reference. The only unmapped table construct is nested tables (\\itap>1), which have no corpus witness and stay an explicit bounded Reject.",
   "implemented": [
-    "table conditional-formatting look maps to w:tblLook: \\tbllkhdrrows -> first_row, \\tbllkhdrcols -> first_column, \\tbllklastrow -> last_row, \\tbllklastcol -> last_column, \\tbllknocolband -> no_v_band (\\tbllknorowband -> no_h_band), applied at table creation from the first row and rendered by the table-style conditional pass.",
-    "table direction maps to w:bidiVisual: \\rtlrow sets it, \\ltrrow clears it.",
-    "the character-grid / table-growth / conditional band compat controls (\\cgrid, \\snaptogridincell, \\nocxsptable, \\nogrowautofit, \\usenormstyforlist, \\irow, \\irowband, \\lastrow) are Info (no WML equivalent), and the row/cell grid mapping, horizontal merge (\\clmgf/\\clmrg), vertical merge (\\clvmgf/\\clvmrg), vertical align, cell widths and the row grid were already mapped."
+    "table conditional-formatting look maps to w:tblLook: \\tbllkhdrrows -> first_row, \\tbllkhdrcols -> first_column, \\tbllklastrow -> last_row, \\tbllklastcol -> last_column, \\tbllknocolband -> no_v_band (\\tbllknorowband -> no_h_band), applied at table creation from the first row; \\rtlrow/\\ltrrow -> w:bidiVisual.",
+    "the character-grid / table-growth / layout compat controls (\\cgrid, \\snaptogridincell, \\nocxsptable, \\nogrowautofit, \\usenormstyforlist, \\irow, \\irowband, \\lastrow, \\lytcalctblwd) are Info (no WML equivalent).",
+    "borders are mapped by a parser state machine for the grammar `<edge> <style> \\brdrw? \\brsp? \\brdrcf?`: paragraph \\brdrt/b/l/r -> w:pBdr, \\brdrbar/\\brdrbtw -> w:pBdr bar/between, cell \\clbrdr{t,b,l,r} -> w:tcBorders, row \\trbrdr{t,b,l,r,h,v} -> w:tblPrEx/w:tblBorders, diagonal \\cldgll/\\cldglu -> w:tcBorders tl2br/tr2bl. Style tokens cover single/thick/double/dotted/dashed/nil/none/inset/outset/triple, the dash and thin-thick families and wave; \\brdrwN (twips) -> w:sz eighths clamped to ST_EighthsPoint, \\brdrcfN resolved through the colour table, \\brspN -> w:space points.",
+    "\\clbrdX\\brdrtbl makes the cell edge inherit the table border (the override is dropped); the token is not a loss.",
+    "shading is mapped for cells (\\clcbpat/\\clcfpat/\\clshdng/\\clshdrawnil -> w:tcBorders shading), rows (\\trcbpat/\\trcfpat/\\trshdng -> every cell of the row lacking its own shading), runs (\\chcbpat/\\chcfpat/\\chshdng -> w:rPr/w:shd) and paragraphs (\\cbpat/\\cfpat/\\shading). The RTF shading intensity maps to ST_Shd: 0 -> clear, 10000 -> solid, otherwise the nearest pctNN.",
+    "cell margins (\\clpad{t,b,l,r}) -> w:tcMar, the table half cell-gap (\\trgaph) -> w:tblCellMar left/right, hideMark (\\clhidemark) -> w:hideMark, and explicit cell width (\\clftsWidth/\\clwWidth) -> w:tcW (dxa/pct/auto/nil).",
+    "\\tblind/\\tblindtype/\\alntblind are Info: the indent is carried by the row position (\\trleft) and WPS writes no w:tblInd for the corpus.",
+    "page/section borders \\pgbrdr{t,b,l,r} -> the section w:pgBorders edges (style/width/colour/space); \\pgbrdrhead/\\pgbrdrfoot/\\pgbrdropt are Info and the art style \\brdrart has no Strict ST_Border form, so it drops the edge and stays an explicit Loss.",
+    "character borders \\chbrdr (+ style/width) -> the single run border w:rPr/w:bdr; the reader now retains w:bdr instead of discarding it. The shared Borders model gained between/bar/tl2br/tr2bl (writer emits each only in its own container, reader parses them)."
+  ],
+  "out_of_scope": [
+    "the shared renderer does not stroke w:pBdr edges (only their top/bottom pads affect spacing) and does not paint run borders or cell diagonals; it does draw w:tcBorders/w:tblPrEx/w:pgBorders. Renderer gap, not an import gap."
   ],
   "remaining": [
-    "borders/shading are entirely unmapped. Paragraph borders (\\brdrt/\\brdrb/\\brdrl/\\brdrr/\\brdrbar/\\brdrbtw), cell borders (\\clbrdr{t,b,l,r}), table borders (\\brdrtbl), row borders (\\trbrdr*), page borders (\\pgbrdr*) and the per-edge \\brdrs/\\brdrth/\\brdrdb/\\brdrdot/\\brdrdash/\\brdrw/\\brdrcf/\\brsp style tokens are all Loss (~35k events). The RTF grammar is `<edge> <style> \\brdrw? \\brsp? \\brdrcf?`; the four standard edges map cleanly to Borders, but \\brdrbar/\\brdrbtw need w:pBdr between/bar, which the shared Borders model does not carry yet.",
-    "cell shading (\\chshdng/\\clshdrawnil), diagonal cell borders (\\cldgll/\\cldglu) and the nested-table structure (currently explicitly Reject) remain unreviewed.",
-    "table indent \\tblind / \\tblindtype: the indent is already represented by the row position (\\trleft), and WPS writes no w:tblInd for the corpus; the type has no Strict form. Left as Loss pending a witness that needs it."
+    "nested tables (\\itap > 1): no corpus witness; kept as an explicit bounded Reject (`nested-table-structure`) rather than a flatten."
   ],
   "blocked": [],
   "checks": {
@@ -21,31 +29,92 @@
       "status": "Pass",
       "test": "strict-ooxml-rtf/tests/structure.rs::table_look_and_bidi_map_to_table_properties",
       "assertions": [
-        "\\tbllkhdrrows/\\tbllklastrow/\\tbllkhdrcols/\\tbllklastcol/\\tbllknocolband reach w:tblLook flags",
-        "\\rtlrow reaches w:bidiVisual",
-        "both survive import -> Strict write -> reopen"
+        "\\tbllk* reach w:tblLook flags, \\rtlrow reaches w:bidiVisual, both survive Strict write -> reopen"
       ]
     },
     "table_compat_controls": {
       "status": "Pass",
       "test": "strict-ooxml-rtf/tests/structure.rs::table_compat_controls_are_info_not_loss",
       "assertions": [
-        "\\cgrid/\\irow/\\irowband/\\lastrow/\\snaptogridincell inside a table row produce zero Loss and appear as Info"
+        "\\cgrid/\\irow/\\irowband/\\lastrow/\\snaptogridincell produce zero Loss and appear as Info"
+      ]
+    },
+    "cell_borders": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::cell_borders_map_to_tc_borders",
+      "assertions": [
+        "\\clbrdrt\\brdrs\\brdrw20\\brdrcf1 -> w:tcBorders/w:top single w:sz=8 colour FF0000; the other edges and styles reach their edges; zero Loss and reopen"
+      ]
+    },
+    "paragraph_borders": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::paragraph_borders_map_to_pbdr",
+      "assertions": [
+        "\\brdrt/\\brdrl -> w:pBdr top/left, \\brdrbar/\\brdrbtw -> bar/between; zero Loss and reopen"
+      ]
+    },
+    "row_borders": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::row_exception_borders_map_to_tbl_prex",
+      "assertions": [
+        "\\trbrdrt/\\trbrdrb reach RowProperties.exception_borders and survive w:tblPrEx reopen"
+      ]
+    },
+    "brdrtbl_inherit": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::brdrtbl_makes_the_cell_edge_inherit",
+      "assertions": [
+        "\\clbrdrt\\brdrtbl drops the cell top override (inherit) and is not a loss; a sibling \\clbrdrl\\brdrnil still lands"
+      ]
+    },
+    "cell_properties_and_shading": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::cell_shading_margins_width_and_diagonals",
+        "strict-ooxml-rtf/tests/structure.rs::table_gap_and_row_shading",
+        "strict-ooxml-rtf/tests/structure.rs::character_shading_maps_to_run_shading"
+      ],
+      "assertions": [
+        "\\clhidemark/\\clpad*/\\clftsWidth+\\clwWidth/\\clcbpat+\\clshdng/\\cldgll reach hideMark/margins/tcW/shd/tl2br; zero Loss and reopen",
+        "\\trgaph -> w:tblCellMar and \\trcbpat shades the row's cells; \\chshdng+\\chcbpat -> w:rPr/w:shd solid"
+      ]
+    },
+    "nested_tables": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::nested_tables_are_an_explicit_bounded_reject",
+      "assertions": [
+        "\\itap2 rejects with the named feature `nested-table-structure` (no flatten)"
+      ]
+    },
+    "page_and_character_borders": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::page_borders_map_to_pg_borders",
+        "strict-ooxml-rtf/tests/structure.rs::character_border_maps_to_run_border"
+      ],
+      "assertions": [
+        "\\pgbrdrt\\brdrs\\brdrw20\\brdrcf1 -> section w:pgBorders/w:top single sz=8 colour FF0000; \\pgbrdrb\\brdrdb -> w:bottom double; zero Loss and reopen",
+        "\\chbrdr\\brdrs\\brdrw10 -> w:rPr/w:bdr single sz=4 and survives reopen (reader retains w:bdr)"
       ]
     },
     "corpus_gates": {
       "status": "Measured",
-      "date": "2026-10-10",
+      "date": "2026-10-11",
+      "oracle": "WPS Writer 12.1.0.28485, the RC05 fresh references (target/rtf-import/RC05-wps-full/oracle)",
       "receipts": [
-        "target/rtf-import/RC0506-corpus/results.json",
-        "target/rtf-import/RC0506-visual/results.json"
+        "target/rtf-import/RC06a-cell-borders/",
+        "target/rtf-import/RC06b-borders/",
+        "target/rtf-import/RC06c-props/",
+        "target/rtf-import/RC06-final/",
+        "target/rtf-import/RC06-final3/"
       ],
       "results": {
-        "import_text_resource": "100/100 Pass",
-        "import_loss_events": "137380 -> 127228 (RC06 part: -1354; 5 documents gain w:tblLook/w:bidiVisual)",
-        "xsd_opc_check": "100/100 `strict-ooxml check` -> `ok: strict`",
-        "pagination": "65/100 Pass, every page count identical to RC08-final",
-        "pixels": "carried forward by exact PDF identity: all 100 rendered PDFs are byte-identical to RC08-final"
+        "import_text_resource": "100/100 resource Pass; text 99/100 (only 014, the pre-existing WPS PAGEREF field-recompute quirk) at every step.",
+        "import_loss_events": "127197 -> 123549 (cell borders) -> 87193 (paragraph + row borders) -> 83721 (cell props + shading) -> 83684 (compat) -> 83675 (character borders) -> 83671 (page borders). RC06 total: -43526.",
+        "remaining_table_losses": "none. The only border Losses left in the corpus are the four page-border art styles (\\brdrart, 015), which have no Strict ST_Border form.",
+        "xsd_opc_check": "100/100 `strict-ooxml check` -> `ok: strict` (includes w:tcBorders diagonals, w:pBdr bar/between, w:rPr/w:bdr, w:tblPrEx, w:pgBorders, w:shd).",
+        "pagination": "65/100 Pass, unchanged from the RC05 reference run.",
+        "pixels": "6/100 documents, 22/458 pages Pass, unchanged from RC05; the new borders/margins/widths/shading do not move any page verdict."
       }
     }
   }
