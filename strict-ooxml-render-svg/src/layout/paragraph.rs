@@ -1484,8 +1484,8 @@ fn anchor_exclusions(
             right: 0.0,
             bottom: 0.0,
             grid_line_pitch: None,
-            column_count: 1,
-            column_gap: 0.0,
+            columns: crate::layout::ColumnLayout::single(content_width),
+            active_column: 0,
         };
         return segments
             .iter()
@@ -1493,18 +1493,21 @@ fn anchor_exclusions(
                 let Seg::Anchor(anchor) = segment else {
                     return None;
                 };
-                wrap_exclusion(ctx, anchor, &geometry, content_left, 0.0)
+                wrap_exclusion(ctx, anchor, &geometry, content_left, 0.0, 0.0)
             })
             .collect();
     };
     let _ = content_width;
+    // The paginator lays every column out from `content_left` and paints it at
+    // its column's left edge, `host_x`.
+    let column_dx = host_x - content_left;
     segments
         .iter()
         .filter_map(|segment| {
             let Seg::Anchor(anchor) = segment else {
                 return None;
             };
-            wrap_exclusion(ctx, anchor, geometry, host_x, host_y)
+            wrap_exclusion(ctx, anchor, geometry, host_x, host_y, column_dx)
         })
         .collect()
 }
@@ -1640,10 +1643,14 @@ fn free_spans(sink: &LineSink<'_, '_>, left: f64, line_height: f64) -> Vec<(f64,
             continue;
         }
         if let Some(contour) = &exclusion.contour {
-            let occupied = contour.intervals(
-                sink.line_y + exclusion.page_y,
-                sink.line_y + line_height + exclusion.page_y,
-            );
+            let occupied: Vec<(f64, f64)> = contour
+                .intervals(
+                    sink.line_y + exclusion.page_y,
+                    sink.line_y + line_height + exclusion.page_y,
+                )
+                .into_iter()
+                .map(|(left, right)| (left - exclusion.page_dx, right - exclusion.page_dx))
+                .collect();
             if exclusion.side == WrapSide::Both {
                 for (left, right) in occupied {
                     subtract(&mut spans, left, right);

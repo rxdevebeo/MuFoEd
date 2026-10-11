@@ -331,7 +331,8 @@ pub struct Columns {
     pub count: Option<u16>,
     /// Default space between columns in twips.
     pub space: Option<Twips>,
-    /// Equal column widths.
+    /// Equal column widths (`w:equalWidth`). When the attribute is absent it
+    /// is `true` unless `w:col` children define the columns (§17.6.4).
     pub equal_width: bool,
     /// Draw a separator between columns.
     pub separator: bool,

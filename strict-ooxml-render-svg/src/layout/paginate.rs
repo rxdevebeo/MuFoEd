@@ -232,7 +232,7 @@ fn layout_once(
                 );
             }
         }
-        let width = paginator.geometry.column_width();
+        let width = paginator.column_width();
         let body_blocks = &ctx.document.body.blocks;
         let run_blocks = body_blocks.get(*start..*end).unwrap_or_default();
         paginator.body_lines = true;
@@ -251,7 +251,13 @@ fn layout_once(
     }
     let (mut layout, regions) = paginator.finish()?;
     crate::layout::floating::resolve(ctx, &mut layout.pages, &layout.anchors, sections)?;
-    crate::layout::sectionpage::apply(ctx, &mut layout.pages, &mut layout.line_marks, sections)?;
+    crate::layout::sectionpage::apply(
+        ctx,
+        &mut layout.pages,
+        &mut layout.line_marks,
+        &mut layout.column_regions,
+        sections,
+    )?;
     crate::layout::headerfooter::decorate_pages(
         ctx,
         &mut layout.pages,
@@ -351,8 +357,8 @@ fn layout_blocks(
         .into_strict());
     }
     ctx.set_block_depth(depth);
-    let left = paginator.geometry.left;
     let grid = paginator.geometry.grid_line_pitch;
+    let _ = width;
     // The space between two paragraphs is the **larger** of the first's
     // `w:after` and the second's `w:before`, not their sum: `06-strict-math-display`
     // leaves 27 px of white between a body paragraph and the `Heading2` that
@@ -382,6 +388,11 @@ fn layout_blocks(
                 continue;
             }
         }
+        // Each block is laid out for the column it starts in: columns may differ
+        // in width (`w:equalWidth="0"`), and a continuous section break may have
+        // changed the margins since the previous block.
+        let left = paginator.geometry.left;
+        let width = paginator.column_width();
         match block {
             Block::Paragraph(para) => {
                 let neighbors = paragraph_neighbors(ctx.document, blocks, index, false);
@@ -397,13 +408,8 @@ fn layout_blocks(
                 )?;
             }
             Block::Table(table) => {
-                ctx.frame_anchor.set((
-                    paginator.geometry.left,
-                    paginator.geometry.top,
-                    paginator.geometry.column_width(),
-                    paginator.geometry.width,
-                    paginator.geometry.height,
-                ));
+                ctx.frame_anchor
+                    .set(crate::layout::FrameAnchor::of(&paginator.host_geometry()));
                 if let Some(frame) = table_uniform_frame(table) {
                     place_framed_table(ctx, table, frame, paginator, depth)?;
                     pending_after = 0.0;
@@ -459,14 +465,18 @@ fn place_body_paragraph(
         ctx.options.scale,
     );
     let gap = pending_after.max(space_before);
-    let host_x = paginator.geometry.left;
+    // Lines are laid out from the content left edge and painted in their
+    // column: page-space wrap boxes move back by the column's offset.
+    let column_dx = paginator.column_offset();
+    let host_x = paginator.geometry.left + column_dx;
     let host_y_pred = paginator.geometry.top + paginator.cursor + gap;
     let local_exclusions: Vec<_> = paginator
         .wrap_exclusions
         .iter()
         .cloned()
-        .map(|exclusion| exclusion.into_paragraph_local(host_y_pred))
+        .map(|exclusion| exclusion.into_paragraph_local(host_y_pred, column_dx))
         .collect();
+    let host_geometry = paginator.host_geometry();
     let flow = layout_paragraph(
         ctx,
         para,
@@ -475,7 +485,7 @@ fn place_body_paragraph(
         grid,
         None,
         &local_exclusions,
-        Some((&paginator.geometry, host_x, host_y_pred)),
+        Some((&host_geometry, host_x, host_y_pred)),
         neighbors,
     );
     paginator.add_vspace(pending_after.max(flow.space_before));
@@ -513,8 +523,11 @@ fn place_body_paragraph(
             return Ok(0.0);
         }
     }
-    let page = paginator.pages.len();
-    let host_y = paginator.geometry.top + paginator.cursor;
+    // The paragraph's anchors hang off where its first flow lands, which an
+    // overflow may have moved to another column or page.
+    let expected = paginator.placement_here();
+    paginator.last_placed = None;
+    let mut host = None;
     for (index, item) in flow.flows.into_iter().enumerate() {
         if index > 0 && widow_break == Some(index) {
             paginator.overflow_break()?;
@@ -524,18 +537,11 @@ fn place_body_paragraph(
         } else {
             paginator.place(item)?;
         }
-    }
-    for anchor in flow.anchors {
-        if let Some(exclusion) = page_exclusion(ctx, &anchor, &paginator.geometry, host_x, host_y) {
-            paginator.wrap_exclusions.push(exclusion);
+        if host.is_none() {
+            host = paginator.last_placed;
         }
-        paginator.anchors.push(PendingAnchor {
-            page,
-            host_x,
-            host_y,
-            anchor,
-        });
     }
+    paginator.place_anchors(ctx, flow.anchors, host.unwrap_or(expected));
     Ok(flow.space_after + flow.border_after)
 }
 
@@ -555,15 +561,9 @@ fn place_frame_group(
     let scale = ctx.options.scale;
     let (origin_x, origin_y, frame_width) = frame_placement(
         frame,
-        paginator.geometry.left,
-        paginator.geometry.top,
-        paginator.geometry.column_width(),
-        paginator.geometry.content_height(),
-        paginator.geometry.width,
-        paginator.geometry.height,
+        &crate::layout::FrameAnchor::of(&paginator.host_geometry()),
         scale,
     );
-    let origin_x = origin_x + paginator.column_offset();
     paginator.started = true;
     let page = paginator.pages.len();
     let resume = ctx.frame_resume(frame);
@@ -586,12 +586,8 @@ fn place_frame_group(
             .v_space
             .map_or(0.0, |value| crate::units::twips_to_px(value.value(), scale));
         let (left, right) = if frame.wrap.as_deref() == Some("notBeside") {
-            (
-                paginator.geometry.left + paginator.column_offset(),
-                paginator.geometry.left
-                    + paginator.column_offset()
-                    + paginator.geometry.column_width(),
-            )
+            let (column_left, column_width) = paginator.host_geometry().active_column_box();
+            (column_left, column_left + column_width)
         } else {
             (
                 origin_x - horizontal_gap,
@@ -612,6 +608,7 @@ fn place_frame_group(
             page,
             host_x: origin_x,
             host_y,
+            column: paginator.column_index,
             anchor,
         });
     }
@@ -632,15 +629,9 @@ fn place_framed_table(
     let scale = ctx.options.scale;
     let (origin_x, origin_y, frame_width) = frame_placement(
         frame,
-        paginator.geometry.left,
-        paginator.geometry.top,
-        paginator.geometry.column_width(),
-        paginator.geometry.content_height(),
-        paginator.geometry.width,
-        paginator.geometry.height,
+        &crate::layout::FrameAnchor::of(&paginator.host_geometry()),
         scale,
     );
-    let origin_x = origin_x + paginator.column_offset();
     paginator.started = true;
     for item in framed_table_items(ctx, table, origin_x, origin_y, frame_width, depth) {
         paginator.push_item(item)?;
@@ -654,8 +645,10 @@ fn append_endnotes(ctx: &LayoutContext<'_>, paginator: &mut Paginator<'_>) -> Re
     if ids.is_empty() {
         return Ok(());
     }
+    // Endnotes continue in the body's columns: the separator and the notes
+    // take the width of the column they start in.
     let left = paginator.geometry.left;
-    let width = paginator.geometry.content_width();
+    let width = paginator.column_width();
     let line = Item::Line(LineItem {
         x1: left,
         y1: ENDNOTE_SEPARATOR_GAP,
@@ -718,53 +711,44 @@ fn append_note_blocks(
                     compute_paragraph(ctx.document, para).space_before_pt,
                     ctx.options.scale,
                 );
-                let host_x = paginator.geometry.left;
+                let column_dx = paginator.column_offset();
+                let host_x = paginator.geometry.left + column_dx;
                 let host_y_pred = paginator.geometry.top + paginator.cursor + space_before;
                 let local_exclusions: Vec<_> = paginator
                     .wrap_exclusions
                     .iter()
                     .cloned()
-                    .map(|exclusion| exclusion.into_paragraph_local(host_y_pred))
+                    .map(|exclusion| exclusion.into_paragraph_local(host_y_pred, column_dx))
                     .collect();
+                let host_geometry = paginator.host_geometry();
                 let flow = layout_paragraph(
                     ctx,
                     para,
-                    left,
-                    width,
+                    paginator.geometry.left,
+                    paginator.column_width(),
                     grid,
                     Some(marker),
                     &local_exclusions,
-                    Some((&paginator.geometry, host_x, host_y_pred)),
+                    Some((&host_geometry, host_x, host_y_pred)),
                     neighbors,
                 );
                 paginator.add_vspace(flow.space_before);
-                let host_y = paginator.geometry.top + paginator.cursor;
+                let expected = paginator.placement_here();
+                paginator.last_placed = None;
+                let mut host = None;
                 for item in flow.flows {
                     paginator.place(item)?;
-                }
-                for anchor in flow.anchors {
-                    if let Some(exclusion) =
-                        page_exclusion(ctx, &anchor, &paginator.geometry, host_x, host_y)
-                    {
-                        paginator.wrap_exclusions.push(exclusion);
+                    if host.is_none() {
+                        host = paginator.last_placed;
                     }
-                    paginator.anchors.push(PendingAnchor {
-                        page: paginator.pages.len(),
-                        host_x,
-                        host_y,
-                        anchor,
-                    });
                 }
+                paginator.place_anchors(ctx, flow.anchors, host.unwrap_or(expected));
                 paginator.add_vspace(flow.space_after);
             }
             Block::Table(table) => {
-                ctx.frame_anchor.set((
-                    paginator.geometry.left,
-                    paginator.geometry.top,
-                    paginator.geometry.content_width(),
-                    paginator.geometry.width,
-                    paginator.geometry.height,
-                ));
+                ctx.frame_anchor
+                    .set(crate::layout::FrameAnchor::of(&paginator.host_geometry()));
+                let (left, width) = (paginator.geometry.left, paginator.column_width());
                 for flow in layout_table(ctx, table, left, width, depth, true) {
                     paginator.place(flow)?;
                 }
@@ -811,16 +795,19 @@ struct Paginator<'a> {
     truncated: bool,
     /// Geometry deferred by a `continuous` section break until the next page.
     pending_geometry: Option<(Geometry, usize)>,
-    /// Footnote ids rendered on the current page, in order.
-    page_footnotes: Vec<u32>,
+    /// Footnote ids reserved in each body column of the current page, in
+    /// order. Footnotes follow the section's columns: each column keeps its own
+    /// area at the foot of the page (Word's "match section layout").
+    column_notes: Vec<Vec<u32>>,
     /// Footnote ids deferred to the next page (continuation).
     pending: Vec<u32>,
-    /// Sum of the current page's footnote heights, excluding the separator.
-    notes_height: f64,
-    /// Whether the current page's footnote area continues from the previous one.
+    /// Sum of each column's footnote heights, excluding the separator.
+    column_notes_height: Vec<f64>,
+    /// Whether the first column's footnote area continues from the previous page.
     continuation: bool,
-    /// Laid-out footnotes (items relative to the page's content left at `y = 0`).
-    note_cache: HashMap<u32, (Vec<Item>, f64)>,
+    /// Laid-out footnotes by id and laid-out width (`width_key`): items from
+    /// `x = 0`, `y = 0`, and the note's height.
+    note_cache: HashMap<(u32, i64), (Vec<Item>, f64)>,
     /// Header rows of the table currently being placed (`w:tblHeader`).
     table_headers: Vec<TableRowFlow>,
     /// Anchored (floating) objects recorded during pagination.
@@ -835,6 +822,57 @@ struct Paginator<'a> {
     line_marks: Vec<crate::layout::LineMark>,
     /// Whether lines being placed are body text (not endnotes).
     body_lines: bool,
+    /// Whether anything has been placed in the current column.
+    column_used: bool,
+    /// Where the last flow was placed.
+    last_placed: Option<PlacedAt>,
+    /// Flows placed in the current multi-column area of this page, in order:
+    /// what a continuous section break balances.
+    region_runs: Vec<RegionRun>,
+    /// Anchors hosted by a region run: `(anchor, run, wrap exclusion)`.
+    region_anchors: Vec<(usize, usize, Option<usize>)>,
+    /// Multi-column areas finished so far, for `w:sep`.
+    column_regions: Vec<crate::layout::ColumnRegion>,
+}
+
+/// Where a flow was placed.
+#[derive(Clone, Copy, Debug)]
+struct PlacedAt {
+    /// Page index.
+    page: usize,
+    /// Column (reading order).
+    column: usize,
+    /// Page x of the column's left edge.
+    x: f64,
+    /// Page y of the flow's top.
+    y: f64,
+    /// The region run it opened, when the page is in columns.
+    run: Option<usize>,
+}
+
+/// One placed flow (a line, an image, a block, a table row) of a
+/// multi-column area.
+#[derive(Clone, Debug)]
+struct RegionRun {
+    /// Column it sits in.
+    column: usize,
+    /// Body cursor of its top.
+    top: f64,
+    /// Space between it and the flow above it in its column.
+    gap: f64,
+    /// Its height.
+    height: f64,
+    /// Its paint items in `Paginator::current`.
+    items: std::ops::Range<usize>,
+    /// Its line-number marks.
+    marks: std::ops::Range<usize>,
+    /// Footnotes its line reserved in its column.
+    notes: Vec<u32>,
+}
+
+/// Cache key of a laid-out width: thousandths of a pixel.
+fn width_key(width: f64) -> i64 {
+    (width * 1000.0).round() as i64
 }
 
 impl<'a> Paginator<'a> {
@@ -845,6 +883,16 @@ impl<'a> Paginator<'a> {
         page_start: u32,
         page_format: crate::notes::NumberFormat,
     ) -> Self {
+        // A footnote is set in the width of the column that references it, so
+        // it is laid out once for every column width a section defines.
+        let mut widths = vec![width_key(geometry.content_width())];
+        for section in &ctx.document.sections {
+            let section = geometry_for(Some(&section.properties), ctx.options.scale, None);
+            widths.push(width_key(section.content_width()));
+            widths.extend((0..section.column_count()).map(|index| width_key(section.column_width(index))));
+        }
+        widths.sort_unstable();
+        widths.dedup();
         let mut note_cache = HashMap::new();
         for id in ctx.note_numbers.footnotes_in_order() {
             let marker = ctx
@@ -856,25 +904,27 @@ impl<'a> Paginator<'a> {
                 .ok()
                 .and_then(|id| ctx.document.footnotes.get(id))
             {
-                let mut items = Vec::new();
-                let mut y = 0.0;
-                let mut page_frames = Vec::new();
-                layout_blocks_inline(
-                    ctx,
-                    &note.blocks,
-                    geometry.left,
-                    geometry.content_width(),
-                    &mut y,
-                    &mut items,
-                    0,
-                    Some(&marker),
-                    false,
-                    &mut page_frames,
-                );
-                note_cache.insert(id, (items, y));
+                for key in &widths {
+                    let mut items = Vec::new();
+                    let mut y = 0.0;
+                    let mut page_frames = Vec::new();
+                    layout_blocks_inline(
+                        ctx,
+                        &note.blocks,
+                        0.0,
+                        *key as f64 / 1000.0,
+                        &mut y,
+                        &mut items,
+                        0,
+                        Some(&marker),
+                        false,
+                        &mut page_frames,
+                    );
+                    note_cache.insert((id, *key), (items, y));
+                }
             }
         }
-        let initial_column_count = geometry.column_count.max(1);
+        let initial_column_count = geometry.column_count();
         let mut paginator = Self {
             ctx,
             geometry,
@@ -895,9 +945,9 @@ impl<'a> Paginator<'a> {
             keep_empty_page: false,
             truncated: false,
             pending_geometry: None,
-            page_footnotes: Vec::new(),
+            column_notes: vec![Vec::new(); initial_column_count],
             pending: Vec::new(),
-            notes_height: 0.0,
+            column_notes_height: vec![0.0; initial_column_count],
             continuation: false,
             note_cache,
             table_headers: Vec::new(),
@@ -907,6 +957,11 @@ impl<'a> Paginator<'a> {
             page_regions: Vec::new(),
             line_marks: Vec::new(),
             body_lines: false,
+            column_used: false,
+            last_placed: None,
+            region_runs: Vec::new(),
+            region_anchors: Vec::new(),
+            column_regions: Vec::new(),
         };
         paginator.apply_page_regions();
         paginator
@@ -959,7 +1014,7 @@ impl<'a> Paginator<'a> {
         let break_type = break_type.unwrap_or(SectionType::NextPage);
         match break_type {
             SectionType::Continuous => {
-                // Same page; new geometry applies from the next page onward.
+                // Same page; the page-level properties apply from the next page.
                 self.pending_geometry = Some((geometry, section_index));
                 self.activate_columns(geometry);
                 Ok(())
@@ -982,17 +1037,24 @@ impl<'a> Paginator<'a> {
             }
             SectionType::NextColumn => {
                 let next_column = self.column_index.saturating_add(1);
-                if next_column < geometry.column_count.max(1) {
+                let same_columns = geometry.column_count() == self.geometry.column_count();
+                if same_columns && next_column < geometry.column_count() {
+                    // ISO/IEC 29500-1 §17.18.77: the section begins in the next
+                    // column of this page, at the top of the columns - not of the
+                    // page, which a continuous section above may already fill.
                     self.record_column_bottom();
-                    self.base_geometry = geometry;
-                    self.geometry = geometry;
-                    self.section_index = section_index;
+                    self.pending_geometry = Some((geometry, section_index));
+                    self.take_column_margins(&geometry);
                     self.column_index = next_column;
-                    self.column_start = 0.0;
-                    self.cursor = 0.0;
-                    self.column_bottoms = vec![0.0; geometry.column_count.max(1)];
-                    self.wrap_exclusions.clear();
-                    self.apply_page_regions();
+                    self.cursor = self.column_start;
+                    self.column_used = false;
+                    Ok(())
+                } else if !same_columns && self.started {
+                    // A different column layout has no "next column" to begin in:
+                    // it starts below the current columns, as after a continuous
+                    // break.
+                    self.pending_geometry = Some((geometry, section_index));
+                    self.activate_columns(geometry);
                     Ok(())
                 } else {
                     self.keep_empty_page = true;
@@ -1057,30 +1119,142 @@ impl<'a> Paginator<'a> {
         }
     }
 
-    /// Height of the current page's footnote area (separator included).
-    fn reserved_height(&self) -> f64 {
-        if self.page_footnotes.is_empty() {
+    /// Height of column `column`'s footnote area (separator included).
+    fn notes_area_height(&self, column: usize) -> f64 {
+        if self.column_notes.get(column).is_none_or(Vec::is_empty) {
             0.0
         } else {
-            FOOTNOTE_SEPARATOR_HEIGHT + self.notes_height + FOOTNOTE_BOTTOM_PAD
+            FOOTNOTE_SEPARATOR_HEIGHT
+                + self.column_notes_height.get(column).copied().unwrap_or(0.0)
+                + FOOTNOTE_BOTTOM_PAD
         }
     }
 
-    /// Body height available on the current page.
+    /// Height of the current column's footnote area (separator included).
+    fn reserved_height(&self) -> f64 {
+        self.notes_area_height(self.column_index)
+    }
+
+    /// Body height available in the current column.
     fn body_height(&self) -> f64 {
         (self.geometry.content_height() - self.reserved_height()).max(1.0)
     }
 
+    /// Width of the current column.
+    fn column_width(&self) -> f64 {
+        self.geometry.column_width(self.column_index)
+    }
+
+    /// How far right of the content left edge the current column starts.
     fn column_offset(&self) -> f64 {
         self.geometry.column_left(self.column_index) - self.geometry.left
     }
 
+    /// The page geometry with the current column active: what positions a
+    /// floating object or a frame relative to `column` / `text`.
+    fn host_geometry(&self) -> Geometry {
+        let mut geometry = self.geometry;
+        geometry.active_column = self.column_index;
+        geometry
+    }
+
+    /// Whether something already sits above the cursor in this column, so a
+    /// flow that does not fit can move on rather than being forced in. The
+    /// first column keeps the page test: whatever the page holds is above it.
+    fn has_content_above(&self) -> bool {
+        if self.column_index == 0 {
+            !self.current.is_empty()
+        } else {
+            self.column_used
+        }
+    }
+
+    /// Where the next flow would be placed.
+    fn placement_here(&self) -> PlacedAt {
+        PlacedAt {
+            page: self.pages.len(),
+            column: self.column_index,
+            x: self.geometry.column_left(self.column_index),
+            y: self.geometry.top + self.cursor,
+            run: None,
+        }
+    }
+
+    /// Records that a flow is about to be placed at the cursor. Returns the
+    /// item and line-mark counts before it, for [`Self::end_flow`].
+    fn begin_flow(&mut self) -> (usize, usize) {
+        self.column_used = true;
+        let mut here = self.placement_here();
+        here.run = (self.geometry.column_count() > 1).then_some(self.region_runs.len());
+        self.last_placed = Some(here);
+        (self.current.len(), self.line_marks.len())
+    }
+
+    /// Records a placed flow of `height` ending at the cursor, in a
+    /// multi-column area, for balancing.
+    fn end_flow(&mut self, start: (usize, usize), items_end: usize, height: f64, notes: Vec<u32>) {
+        if self.geometry.column_count() < 2 {
+            return;
+        }
+        let column = self.column_index;
+        let top = self.cursor - height;
+        let previous_end = self
+            .region_runs
+            .iter()
+            .rev()
+            .find(|run| run.column == column)
+            .map_or(self.column_start, |run| run.top + run.height);
+        self.region_runs.push(RegionRun {
+            column,
+            top,
+            gap: (top - previous_end).max(0.0),
+            height,
+            items: start.0..items_end,
+            marks: start.1..self.line_marks.len(),
+            notes,
+        });
+    }
+
+    /// Registers a paragraph's anchors at `host`, where its first flow landed,
+    /// with their wrap boxes when that is still the current page.
+    fn place_anchors(
+        &mut self,
+        ctx: &LayoutContext<'_>,
+        anchors: Vec<strict_ooxml_wml::model::drawing::AnchorDrawing>,
+        host: PlacedAt,
+    ) {
+        for anchor in anchors {
+            let mut geometry = self.geometry;
+            geometry.active_column = host.column;
+            let exclusion = if host.page == self.pages.len() {
+                page_exclusion(ctx, &anchor, &geometry, host.x, host.y).map(|exclusion| {
+                    self.wrap_exclusions.push(exclusion);
+                    self.wrap_exclusions.len() - 1
+                })
+            } else {
+                None
+            };
+            if let Some(run) = host.run.filter(|_| host.page == self.pages.len()) {
+                self.region_anchors.push((self.anchors.len(), run, exclusion));
+            }
+            self.anchors.push(PendingAnchor {
+                page: host.page,
+                host_x: host.x,
+                host_y: host.y,
+                column: host.column,
+                anchor,
+            });
+        }
+    }
+
     fn overflow_break(&mut self) -> Result<()> {
-        if self.column_index + 1 < self.geometry.column_count.max(1) {
+        if self.column_index + 1 < self.geometry.column_count() {
+            // The wrap boxes are page-space and still stand beside the next
+            // column; they are cleared with the page, not the column.
             self.record_column_bottom();
             self.column_index += 1;
             self.cursor = self.column_start;
-            self.wrap_exclusions.clear();
+            self.column_used = false;
             Ok(())
         } else {
             self.page_break()
@@ -1093,38 +1267,276 @@ impl<'a> Paginator<'a> {
         }
     }
 
-    fn activate_columns(&mut self, geometry: Geometry) {
-        let previous_count = self.geometry.column_count.max(1);
-        let previous_gap = self.geometry.column_gap;
-        let next_count = geometry.column_count.max(1);
-        if previous_count == next_count && (previous_gap - geometry.column_gap).abs() < 1e-6 {
-            self.geometry.column_count = next_count;
-            self.geometry.column_gap = geometry.column_gap;
-            return;
+    /// Takes the next section's left/right margins and columns on this page:
+    /// a continuous (or next-column) break keeps the page's size, top and
+    /// bottom, but the new section's text is set in its own frame.
+    fn take_column_margins(&mut self, geometry: &Geometry) {
+        for target in [&mut self.geometry, &mut self.base_geometry] {
+            target.left = geometry.left;
+            target.right = geometry.right;
+            target.columns = geometry.columns;
         }
+        let count = self.geometry.column_count();
+        self.column_bottoms.resize(count, self.column_start);
+        self.fit_note_columns();
+    }
+
+    /// Keeps one footnote list per column. Notes of columns that no longer
+    /// exist join the first column.
+    fn fit_note_columns(&mut self) {
+        let count = self.geometry.column_count();
+        if self.column_notes.len() > count {
+            let extra: Vec<u32> = self.column_notes.drain(count..).flatten().collect();
+            self.column_notes_height.truncate(count);
+            if let Some(first) = self.column_notes.first_mut() {
+                first.extend(extra);
+            }
+        }
+        self.column_notes.resize(count, Vec::new());
+        self.column_notes_height.resize(count, 0.0);
+        for column in 0..count {
+            let width = self.geometry.column_width(column);
+            self.column_notes_height[column] = self.column_notes[column]
+                .iter()
+                .map(|id| self.note_height_at(*id, width))
+                .sum();
+        }
+    }
+
+    /// Starts the next section's columns below the current ones (a continuous
+    /// break): the columns above are balanced first, as Word does.
+    fn activate_columns(&mut self, geometry: Geometry) {
+        let previous_count = self.geometry.column_count();
+        if previous_count > 1 {
+            self.balance_region();
+        }
+        self.close_region();
         let section_start = self
             .column_bottoms
             .iter()
             .copied()
             .fold(self.cursor, f64::max);
-        self.geometry.column_count = next_count;
-        self.geometry.column_gap = geometry.column_gap;
-        self.column_index = 0;
-        self.column_start = section_start;
-        self.cursor = section_start;
-        self.column_bottoms = vec![section_start; next_count];
-        self.wrap_exclusions.clear();
+        let next_count = geometry.column_count();
+        self.take_column_margins(&geometry);
+        if previous_count > 1 || next_count > 1 {
+            self.column_index = 0;
+            self.column_start = section_start;
+            self.cursor = section_start;
+            self.column_bottoms = vec![section_start; next_count];
+            self.column_used = false;
+        }
+        if previous_count != next_count {
+            // Footnotes reserved under the old columns stay on the page, in the
+            // first column of the new ones.
+            let notes: Vec<u32> = self.column_notes.drain(..).flatten().collect();
+            self.column_notes = vec![Vec::new(); next_count];
+            self.column_notes[0] = notes;
+            self.fit_note_columns();
+        }
+        self.region_runs.clear();
+        self.region_anchors.clear();
+    }
+
+    /// Records the current multi-column area of this page for its `w:sep`
+    /// lines.
+    fn close_region(&mut self) {
+        let columns = self.geometry.columns;
+        if columns.count() < 2 || !columns.separator {
+            return;
+        }
+        let bottom = self
+            .region_runs
+            .iter()
+            .map(|run| run.top + run.height)
+            .fold(f64::NEG_INFINITY, f64::max);
+        if !bottom.is_finite() || bottom <= self.column_start + 1e-6 {
+            return;
+        }
+        self.column_regions.push(crate::layout::ColumnRegion {
+            page: self.pages.len(),
+            left: self.geometry.left,
+            top: self.geometry.top + self.column_start,
+            bottom: self.geometry.top + bottom,
+            columns,
+        });
+    }
+
+    /// Balances the columns of the current area of this page: the lowest
+    /// column height that still holds its flows, in their order and with their
+    /// footnotes, then moves every flow (its items, line marks, footnotes,
+    /// anchors and their wrap boxes) to its new place.
+    fn balance_region(&mut self) {
+        let count = self.geometry.column_count();
+        if count < 2 || self.region_runs.len() < 2 {
+            return;
+        }
+        self.fit_note_columns();
+        let start = self.column_start;
+        let content = self.geometry.content_height();
+        let in_runs: std::collections::HashSet<u32> = self
+            .region_runs
+            .iter()
+            .flat_map(|run| run.notes.iter().copied())
+            .collect();
+        let fixed: Vec<Vec<u32>> = self
+            .column_notes
+            .iter()
+            .map(|notes| notes.iter().copied().filter(|id| !in_runs.contains(id)).collect())
+            .collect();
+        let widths: Vec<f64> = (0..count).map(|column| self.geometry.column_width(column)).collect();
+        let note_sum = |ids: &[u32], column: usize| -> f64 {
+            ids.iter().map(|id| self.note_height_at(*id, widths[column])).sum()
+        };
+        let area = |notes: usize, height: f64| {
+            if notes == 0 {
+                0.0
+            } else {
+                FOOTNOTE_SEPARATOR_HEIGHT + height + FOOTNOTE_BOTTOM_PAD
+            }
+        };
+        let runs = &self.region_runs;
+        let fill = |target: f64| -> Option<Vec<(usize, f64)>> {
+            let mut column = 0usize;
+            let mut y = 0.0f64;
+            let mut notes = (fixed[0].len(), note_sum(&fixed[0], 0));
+            let mut placed = Vec::with_capacity(runs.len());
+            for run in runs {
+                let mut run_notes = note_sum(&run.notes, column);
+                let need = if y > 0.0 { run.gap + run.height } else { run.height };
+                let with = area(notes.0 + run.notes.len(), notes.1 + run_notes);
+                if y > 0.0 && (y + need > target + 1e-6 || start + y + need + with > content + 1e-6) {
+                    column += 1;
+                    if column >= count {
+                        return None;
+                    }
+                    y = 0.0;
+                    notes = (fixed[column].len(), note_sum(&fixed[column], column));
+                    run_notes = note_sum(&run.notes, column);
+                }
+                let top = if y > 0.0 { y + run.gap } else { 0.0 };
+                placed.push((column, top));
+                y = top + run.height;
+                notes = (notes.0 + run.notes.len(), notes.1 + run_notes);
+            }
+            Some(placed)
+        };
+        let current_height = self
+            .region_runs
+            .iter()
+            .map(|run| run.top + run.height - start)
+            .fold(0.0f64, f64::max);
+        let tallest = self.region_runs.iter().map(|run| run.height).fold(0.0f64, f64::max);
+        if fill(current_height).is_none() {
+            return;
+        }
+        let (mut low, mut high) = (tallest, current_height.max(tallest));
+        for _ in 0..40 {
+            let middle = (low + high) / 2.0;
+            if fill(middle).is_some() {
+                high = middle;
+            } else {
+                low = middle;
+            }
+            if high - low < 0.01 {
+                break;
+            }
+        }
+        let Some(placed) = fill(high) else {
+            return;
+        };
+        self.apply_balance(&placed, fixed);
+    }
+
+    /// Moves the region's runs to `placed` (`(column, top above start)` each).
+    fn apply_balance(&mut self, placed: &[(usize, f64)], fixed: Vec<Vec<u32>>) {
+        let start = self.column_start;
+        let mut moves = Vec::with_capacity(placed.len());
+        for (run, (column, top)) in self.region_runs.iter_mut().zip(placed) {
+            let dx = self.geometry.column_left(*column) - self.geometry.column_left(run.column);
+            let dy = start + top - run.top;
+            moves.push((dx, dy));
+            for index in run.items.clone() {
+                if let Some(item) = self.current.get_mut(index) {
+                    *item = offset_item(item, dx, dy);
+                }
+            }
+            for index in run.marks.clone() {
+                if let Some(mark) = self.line_marks.get_mut(index) {
+                    mark.column_left += dx;
+                    mark.baseline += dy;
+                }
+            }
+            run.column = *column;
+            run.top = start + top;
+        }
+        for (anchor, run, exclusion) in &self.region_anchors {
+            let Some(&(dx, dy)) = moves.get(*run) else {
+                continue;
+            };
+            if let Some(pending) = self.anchors.get_mut(*anchor) {
+                pending.host_x += dx;
+                pending.host_y += dy;
+                pending.column = self.region_runs[*run].column;
+            }
+            if let Some(slot) = exclusion.and_then(|index| self.wrap_exclusions.get_mut(index)) {
+                *slot = slot.shifted(dx, dy);
+            }
+        }
+        let count = self.geometry.column_count();
+        let mut notes = fixed;
+        notes.resize(count, Vec::new());
+        let mut bottoms = vec![start; count];
+        for run in &self.region_runs {
+            notes[run.column].extend(run.notes.iter().copied());
+            bottoms[run.column] = bottoms[run.column].max(run.top + run.height);
+        }
+        self.column_notes = notes;
+        self.fit_note_columns();
+        self.column_bottoms = bottoms;
+        self.column_index = self.region_runs.last().map_or(0, |run| run.column);
+        self.cursor = self.column_bottoms[self.column_index];
     }
 
     fn reset_columns_for_page(&mut self) {
         self.column_index = 0;
         self.column_start = 0.0;
-        self.column_bottoms = vec![0.0; self.geometry.column_count.max(1)];
+        self.column_used = false;
+        self.column_bottoms = vec![0.0; self.geometry.column_count()];
+        self.region_runs.clear();
+        self.region_anchors.clear();
+        self.fit_note_columns();
     }
 
-    /// Height of one cached footnote.
+    /// Height of footnote `id` set in the current column.
     fn note_height(&self, id: u32) -> f64 {
-        self.note_cache.get(&id).map_or(0.0, |(_, height)| *height)
+        self.note_height_at(id, self.column_width())
+    }
+
+    /// Height of footnote `id` set `width` px wide.
+    fn note_height_at(&self, id: u32, width: f64) -> f64 {
+        self.note_layout(id, width).map_or(0.0, |(_, height)| *height)
+    }
+
+    /// Footnote `id` laid out `width` px wide, or at the nearest width it was.
+    fn note_layout(&self, id: u32, width: f64) -> Option<&(Vec<Item>, f64)> {
+        let key = width_key(width);
+        self.note_cache.get(&(id, key)).or_else(|| {
+            self.note_cache
+                .iter()
+                .filter(|((note, _), _)| *note == id)
+                .min_by_key(|((_, laid), _)| (laid - key).abs())
+                .map(|(_, layout)| layout)
+        })
+    }
+
+    /// Whether footnote `id` already has a place on this page.
+    fn has_note(&self, id: u32) -> bool {
+        self.column_notes.iter().any(|notes| notes.contains(&id))
+    }
+
+    /// Whether this page has any footnote area.
+    fn has_page_notes(&self) -> bool {
+        self.column_notes.iter().any(|notes| !notes.is_empty())
     }
 
     /// Where `w:widowControl` moves the first page break of a paragraph.
@@ -1151,7 +1563,7 @@ impl<'a> Paginator<'a> {
         let mut cursor = self.cursor;
         let mut fitting = 0;
         for height in &heights {
-            let empty = fitting == 0 && self.current.is_empty();
+            let empty = fitting == 0 && !self.has_content_above();
             if !empty && cursor + height > body {
                 break;
             }
@@ -1241,6 +1653,7 @@ impl<'a> Paginator<'a> {
             self.started = true;
             return Ok(());
         }
+        self.close_region();
         self.flush()?;
         if self.selection_exhausted() {
             // `PageSelection::Range` asked only for pages through `end`.
@@ -1250,8 +1663,8 @@ impl<'a> Paginator<'a> {
             self.started = true;
             self.keep_empty_page = false;
             self.pending.clear();
-            self.page_footnotes.clear();
-            self.notes_height = 0.0;
+            self.column_notes.iter_mut().for_each(Vec::clear);
+            self.column_notes_height.iter_mut().for_each(|height| *height = 0.0);
             self.continuation = false;
             return Ok(());
         }
@@ -1262,15 +1675,14 @@ impl<'a> Paginator<'a> {
         self.started = true;
         self.current = Vec::new();
         self.wrap_exclusions.clear();
+        // Notes carried over continue at the foot of the first column.
         let carried = std::mem::take(&mut self.pending);
         self.continuation = !carried.is_empty();
-        self.page_footnotes = carried;
-        self.notes_height = 0.0;
-        let ids = self.page_footnotes.clone();
-        for id in ids {
-            let height = self.note_height(id);
-            self.notes_height += height;
-        }
+        let count = self.geometry.column_count();
+        self.column_notes = vec![Vec::new(); count];
+        self.column_notes[0] = carried;
+        self.column_notes_height = vec![0.0; count];
+        self.fit_note_columns();
         self.apply_page_regions();
         Ok(())
     }
@@ -1280,7 +1692,7 @@ impl<'a> Paginator<'a> {
         let keep_empty = self.keep_empty_page;
         self.keep_empty_page = false;
         if self.current.is_empty()
-            && self.page_footnotes.is_empty()
+            && !self.has_page_notes()
             && !self.pages.is_empty()
             && !keep_empty
         {
@@ -1288,7 +1700,7 @@ impl<'a> Paginator<'a> {
             // page/section break.
             return Ok(());
         }
-        if !self.page_footnotes.is_empty() {
+        if self.has_page_notes() {
             let items = self.footnote_area_items();
             self.ctx.charge_items(items.len())?;
             self.current.extend(items);
@@ -1303,39 +1715,42 @@ impl<'a> Paginator<'a> {
         Ok(())
     }
 
-    /// Builds the absolute-positioned paint items of the current footnote area.
+    /// Builds the absolute-positioned paint items of the current footnote
+    /// areas: one at the foot of each column that has notes, as wide as it.
     fn footnote_area_items(&self) -> Vec<Item> {
-        let left = self.geometry.left;
-        let width = self.geometry.content_width();
         let bottom = self.geometry.height - self.geometry.bottom;
-        let total: f64 = self
-            .page_footnotes
-            .iter()
-            .map(|id| self.note_height(*id))
-            .sum();
         let area_bottom = bottom - FOOTNOTE_BOTTOM_PAD;
-        let area_top = area_bottom - FOOTNOTE_SEPARATOR_HEIGHT - total;
-        let separator_length = if self.continuation {
-            width
-        } else {
-            (width / 3.0).max(8.0)
-        };
-        let mut items = vec![Item::Line(LineItem {
-            x1: left,
-            y1: area_top,
-            x2: left + separator_length,
-            y2: area_top,
-            color: "#000000".to_owned(),
-            width: 1.0,
-            dashed: false,
-        })];
-        let mut y = area_top + FOOTNOTE_SEPARATOR_HEIGHT;
-        for id in &self.page_footnotes {
-            if let Some((note_items, height)) = self.note_cache.get(id) {
-                for item in note_items {
-                    items.push(offset_item(item, 0.0, y));
+        let mut items = Vec::new();
+        for (column, ids) in self.column_notes.iter().enumerate() {
+            if ids.is_empty() {
+                continue;
+            }
+            let left = self.geometry.column_left(column);
+            let width = self.geometry.column_width(column);
+            let total: f64 = ids.iter().map(|id| self.note_height_at(*id, width)).sum();
+            let area_top = area_bottom - FOOTNOTE_SEPARATOR_HEIGHT - total;
+            let separator_length = if self.continuation && column == 0 {
+                width
+            } else {
+                (width / 3.0).max(8.0)
+            };
+            items.push(Item::Line(LineItem {
+                x1: left,
+                y1: area_top,
+                x2: left + separator_length,
+                y2: area_top,
+                color: "#000000".to_owned(),
+                width: 1.0,
+                dashed: false,
+            }));
+            let mut y = area_top + FOOTNOTE_SEPARATOR_HEIGHT;
+            for id in ids {
+                if let Some((note_items, height)) = self.note_layout(*id, width) {
+                    for item in note_items {
+                        items.push(offset_item(item, left, y));
+                    }
+                    y += *height;
                 }
-                y += *height;
             }
         }
         items
@@ -1349,7 +1764,7 @@ impl<'a> Paginator<'a> {
     fn place_boundary_marker(&mut self, flow: Flow) -> Result<()> {
         if let Flow::Line(line) = &flow {
             let inkless = line.items.is_empty() && line.graphics.is_empty();
-            let fits = self.current.is_empty() || self.cursor + line.height <= self.body_height();
+            let fits = !self.has_content_above() || self.cursor + line.height <= self.body_height();
             if inkless && !fits {
                 return Ok(());
             }
@@ -1371,28 +1786,32 @@ impl<'a> Paginator<'a> {
             Flow::Line(line) => self.place_line(line),
             Flow::Image(image) => {
                 self.started = true;
-                if !self.current.is_empty() && self.cursor + image.h > self.body_height() {
+                if self.has_content_above() && self.cursor + image.h > self.body_height() {
                     self.overflow_break()?;
                     if self.selection_exhausted() {
                         return Ok(());
                     }
                 }
+                let start = self.begin_flow();
                 let mut image = image;
+                let height = image.h;
                 image.x += self.column_offset();
                 image.y += self.geometry.top + self.cursor;
-                self.cursor += image.h;
+                self.cursor += height;
                 self.record_column_bottom();
                 self.push_item(Item::Image(image))?;
+                self.end_flow(start, self.current.len(), height, Vec::new());
                 Ok(())
             }
             Flow::Block { items, height } => {
                 self.started = true;
-                if !self.current.is_empty() && self.cursor + height > self.body_height() {
+                if self.has_content_above() && self.cursor + height > self.body_height() {
                     self.overflow_break()?;
                     if self.selection_exhausted() {
                         return Ok(());
                     }
                 }
+                let start = self.begin_flow();
                 let dy = self.geometry.top + self.cursor;
                 let dx = self.column_offset();
                 for item in &items {
@@ -1400,6 +1819,7 @@ impl<'a> Paginator<'a> {
                 }
                 self.cursor += height;
                 self.record_column_bottom();
+                self.end_flow(start, self.current.len(), height, Vec::new());
                 Ok(())
             }
             Flow::TableRow(row) => self.place_table_row(&row),
@@ -1433,7 +1853,7 @@ impl<'a> Paginator<'a> {
             return Ok(());
         }
         self.started = true;
-        if !self.current.is_empty() && self.cursor + row.height > self.body_height() {
+        if self.has_content_above() && self.cursor + row.height > self.body_height() {
             self.overflow_break()?;
             if self.selection_exhausted() {
                 return Ok(());
@@ -1445,16 +1865,19 @@ impl<'a> Paginator<'a> {
 
     /// Places a row's items at the current cursor.
     fn place_row_items(&mut self, row: &TableRowFlow) -> Result<()> {
+        let start = self.begin_flow();
         let dy = self.geometry.top + self.cursor;
         let dx = self.column_offset();
         for item in &row.items {
             self.push_item(offset_item(item, dx, dy))?;
         }
+        let items_end = self.current.len();
         for item in &row.page_frames {
             self.push_item(item.clone())?;
         }
         self.cursor += row.height;
         self.record_column_bottom();
+        self.end_flow(start, items_end, row.height, Vec::new());
         Ok(())
     }
 
@@ -1462,7 +1885,7 @@ impl<'a> Paginator<'a> {
     fn repeat_table_headers(&mut self) -> Result<()> {
         let headers = self.table_headers.clone();
         for header in headers {
-            if !self.current.is_empty() && self.cursor + header.height > self.body_height() {
+            if self.has_content_above() && self.cursor + header.height > self.body_height() {
                 break;
             }
             self.place_row_items(&header)?;
@@ -1476,9 +1899,7 @@ impl<'a> Paginator<'a> {
         }
         // An empty paragraph at the very top must still produce a page.
         self.started = true;
-        if self.current.is_empty() {
-            self.reserve_line_footnotes(&line);
-        } else {
+        if self.has_content_above() {
             let extra = self.prospective_footnote_extra(&line);
             if self.cursor + line.height + extra > self.body_height() {
                 self.overflow_break()?;
@@ -1486,9 +1907,11 @@ impl<'a> Paginator<'a> {
                     return Ok(());
                 }
             }
-            self.reserve_line_footnotes(&line);
         }
+        let notes = self.reserve_line_footnotes(&line);
         self.resolve_fields(&mut line);
+        let start = self.begin_flow();
+        let height = line.height;
         if self.body_lines && !line.suppress_line_number {
             self.line_marks.push(crate::layout::LineMark {
                 page: self.pages.len(),
@@ -1511,8 +1934,9 @@ impl<'a> Paginator<'a> {
         for item in rest {
             self.push_item(item)?;
         }
-        self.cursor += line.height;
+        self.cursor += height;
         self.record_column_bottom();
+        self.end_flow(start, self.current.len(), height, notes);
         Ok(())
     }
 
@@ -1548,35 +1972,43 @@ impl<'a> Paginator<'a> {
         }
     }
 
-    /// Reserves the footnotes referenced on `line` on the current page.
-    fn reserve_line_footnotes(&mut self, line: &TextLine) {
-        let ids = line.footnote_refs.clone();
-        for id in ids {
-            self.reserve_footnote(id);
-        }
+    /// Reserves the footnotes referenced on `line` in the current column;
+    /// returns the ones it placed there.
+    fn reserve_line_footnotes(&mut self, line: &TextLine) -> Vec<u32> {
+        line.footnote_refs
+            .clone()
+            .into_iter()
+            .filter(|id| self.reserve_footnote(*id))
+            .collect()
     }
 
-    /// Reserves one footnote, or defers it to the next page when it cannot fit.
-    fn reserve_footnote(&mut self, id: u32) {
-        if self.page_footnotes.contains(&id) || self.pending.contains(&id) {
-            return;
+    /// Reserves one footnote in the current column, or defers it to the next
+    /// page when it cannot fit. Returns whether it was placed here.
+    fn reserve_footnote(&mut self, id: u32) -> bool {
+        if self.has_note(id) || self.pending.contains(&id) {
+            return false;
         }
         let height = self.note_height(id);
-        if self.notes_height + height <= self.geometry.content_height() {
-            self.page_footnotes.push(id);
-            self.notes_height += height;
+        let column = self.column_index;
+        self.fit_note_columns();
+        if self.column_notes_height[column] + height <= self.geometry.content_height() {
+            self.column_notes[column].push(id);
+            self.column_notes_height[column] += height;
+            true
         } else {
             self.pending.push(id);
+            false
         }
     }
 
-    /// Extra footnote height `line` would reserve on the current page.
+    /// Extra footnote height `line` would reserve in the current column.
     fn prospective_footnote_extra(&self, line: &TextLine) -> f64 {
-        let mut notes = self.notes_height;
-        let mut has_notes = !self.page_footnotes.is_empty();
+        let column = self.column_index;
+        let mut notes = self.column_notes_height.get(column).copied().unwrap_or(0.0);
+        let mut has_notes = self.column_notes.get(column).is_some_and(|ids| !ids.is_empty());
         let mut extra = 0.0;
         for id in &line.footnote_refs {
-            if self.page_footnotes.contains(id) || self.pending.contains(id) {
+            if self.has_note(*id) || self.pending.contains(id) {
                 continue;
             }
             let height = self.note_height(*id);
@@ -1605,6 +2037,7 @@ impl<'a> Paginator<'a> {
 
     fn finish(mut self) -> Result<(Layout, Vec<(f64, f64)>)> {
         if self.started && !self.truncated {
+            self.close_region();
             self.flush()?;
         }
         if self.pages.is_empty() && !self.selection_exhausted() {
@@ -1622,6 +2055,7 @@ impl<'a> Paginator<'a> {
                 anchors: self.anchors,
                 warnings: self.ctx.take_warnings(),
                 line_marks: self.line_marks,
+                column_regions: self.column_regions,
             },
             self.page_regions,
         ))

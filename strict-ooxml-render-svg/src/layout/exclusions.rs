@@ -106,20 +106,50 @@ pub(crate) struct PageExclusion {
 }
 
 impl PageExclusion {
+    /// The same exclusion moved by `(dx, dy)`: its object moved with the
+    /// lines that host it (column balancing).
+    #[must_use]
+    pub(crate) fn shifted(&self, dx: f64, dy: f64) -> Self {
+        Self {
+            left: self.left + dx,
+            right: self.right + dx,
+            top: self.top + dy,
+            bottom: self.bottom + dy,
+            side: self.side,
+            contour: self.contour.as_ref().map(|contour| {
+                Arc::new(Contour {
+                    points: contour
+                        .points
+                        .iter()
+                        .map(|(x, y)| (x + dx, y + dy))
+                        .collect(),
+                    through: contour.through,
+                    distance: contour.distance,
+                })
+            }),
+        }
+    }
+
     /// Converts page coordinates into paragraph-local ones for a host at `host_y`.
+    ///
+    /// `column_dx` is how far the paragraph's column is painted to the right
+    /// of where its lines are laid out (the paginator lays every column out
+    /// from the content left edge and moves the lines afterwards).
     #[must_use]
     pub(crate) fn into_paragraph_local(
         self,
         host_y: f64,
+        column_dx: f64,
     ) -> crate::layout::floating::WrapExclusion {
         crate::layout::floating::WrapExclusion {
-            left: self.left,
-            right: self.right,
+            left: self.left - column_dx,
+            right: self.right - column_dx,
             top: self.top - host_y,
             bottom: self.bottom - host_y,
             side: self.side,
             contour: self.contour,
             page_y: host_y,
+            page_dx: column_dx,
         }
     }
 }

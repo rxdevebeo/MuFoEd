@@ -371,10 +371,11 @@ pub(crate) struct Geometry {
     pub bottom: f64,
     /// Document-grid line pitch in px (`w:docGrid/@w:linePitch`), if any.
     pub grid_line_pitch: Option<f64>,
-    /// Number of equal-width body columns from `w:cols`.
-    pub column_count: usize,
-    /// Gap between body columns in px.
-    pub column_gap: f64,
+    /// Body text columns (`w:cols`).
+    pub columns: ColumnLayout,
+    /// The column the content being laid out sits in (reading order). Only the
+    /// paginator moves it; it picks the `column` box of a floating object.
+    pub active_column: usize,
 }
 
 impl Geometry {
@@ -390,18 +391,168 @@ impl Geometry {
         (self.height - self.top - self.bottom).max(1.0)
     }
 
-    /// Width of one equal-width body column.
+    /// Number of body columns.
     #[must_use]
-    pub(crate) fn column_width(&self) -> f64 {
-        let count = self.column_count.max(1);
-        let gaps = self.column_gap.max(0.0) * count.saturating_sub(1) as f64;
-        ((self.content_width() - gaps) / count as f64).max(1.0)
+    pub(crate) fn column_count(&self) -> usize {
+        self.columns.count()
     }
 
-    /// Left edge of a body column.
+    /// Width of body column `index` (reading order).
+    #[must_use]
+    pub(crate) fn column_width(&self, index: usize) -> f64 {
+        self.columns.width(index)
+    }
+
+    /// Page x of the left edge of body column `index` (reading order).
     #[must_use]
     pub(crate) fn column_left(&self, index: usize) -> f64 {
-        self.left + index as f64 * (self.column_width() + self.column_gap.max(0.0))
+        self.left + self.columns.offset(index)
+    }
+
+    /// Page x and width of the active column, the `column` reference box.
+    #[must_use]
+    pub(crate) fn active_column_box(&self) -> (f64, f64) {
+        (
+            self.column_left(self.active_column),
+            self.column_width(self.active_column),
+        )
+    }
+}
+
+/// Most text columns a section can define (`CT_Columns/w:col maxOccurs="45"`).
+pub(crate) const MAX_COLUMNS: usize = 45;
+
+/// Default `w:cols/@w:space`: Word's half inch.
+const DEFAULT_COLUMN_SPACE_TWIPS: i32 = 720;
+
+/// Text columns of a section (ISO/IEC 29500-1 §17.6.3, §17.6.4): each column's
+/// offset from the content left edge and its width, in reading order.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ColumnLayout {
+    count: usize,
+    /// `(offset, width)` per column, px. A right-to-left section (`w:bidi`)
+    /// already has its columns mirrored: column 0 is the rightmost.
+    boxes: [(f64, f64); MAX_COLUMNS],
+    /// Draw a line in the middle of each gap (`w:sep`).
+    pub separator: bool,
+}
+
+impl ColumnLayout {
+    /// One column filling the content width.
+    #[must_use]
+    pub(crate) fn single(content_width: f64) -> Self {
+        let mut boxes = [(0.0, 0.0); MAX_COLUMNS];
+        boxes[0] = (0.0, content_width.max(1.0));
+        Self {
+            count: 1,
+            boxes,
+            separator: false,
+        }
+    }
+
+    /// The columns `w:cols` defines within `content_width` px.
+    ///
+    /// With `equalWidth` the content width is divided by `num`, leaving `space`
+    /// after each column but the last. Otherwise every `w:col` is one column of
+    /// width `w`, followed by its `space` (0 when absent, as Word reads it); the
+    /// last column's space is ignored, and a column without `w` shares what the
+    /// others leave. More than [`MAX_COLUMNS`] columns are cut to that many.
+    #[must_use]
+    pub(crate) fn from_columns(
+        columns: Option<&strict_ooxml_wml::model::props::Columns>,
+        right_to_left: bool,
+        content_width: f64,
+        scale: f64,
+    ) -> Self {
+        let Some(columns) = columns else {
+            return Self::single(content_width);
+        };
+        let content_width = content_width.max(1.0);
+        let px = |twips: Option<Twips>, default: i32| {
+            twips_to_px(twips.map_or(default, Twips::value).max(0), scale)
+        };
+        let mut boxes = [(0.0, 0.0); MAX_COLUMNS];
+        let count = if columns.equal_width || columns.columns.is_empty() {
+            let count = columns.count.map_or(1, usize::from).clamp(1, MAX_COLUMNS);
+            let gap = px(columns.space, DEFAULT_COLUMN_SPACE_TWIPS);
+            let width = ((content_width - gap * (count - 1) as f64) / count as f64).max(1.0);
+            for (index, slot) in boxes.iter_mut().take(count).enumerate() {
+                *slot = (index as f64 * (width + gap), width);
+            }
+            count
+        } else {
+            let specs = &columns.columns[..columns.columns.len().min(MAX_COLUMNS)];
+            let count = specs.len();
+            let spaces: Vec<f64> = specs
+                .iter()
+                .enumerate()
+                .map(|(index, spec)| {
+                    if index + 1 == count {
+                        0.0
+                    } else {
+                        px(spec.space, 0)
+                    }
+                })
+                .collect();
+            let declared: f64 = specs
+                .iter()
+                .filter_map(|spec| spec.width)
+                .map(|width| px(Some(width), 0))
+                .sum();
+            let missing = specs.iter().filter(|spec| spec.width.is_none()).count();
+            let share = if missing == 0 {
+                0.0
+            } else {
+                ((content_width - declared - spaces.iter().sum::<f64>()) / missing as f64).max(1.0)
+            };
+            let mut offset = 0.0;
+            for (index, spec) in specs.iter().enumerate() {
+                let width = spec.width.map_or(share, |width| px(Some(width), 0)).max(1.0);
+                boxes[index] = (offset, width);
+                offset += width + spaces[index];
+            }
+            count
+        };
+        if right_to_left {
+            for slot in boxes.iter_mut().take(count) {
+                slot.0 = content_width - slot.0 - slot.1;
+            }
+        }
+        Self {
+            count,
+            boxes,
+            separator: columns.separator,
+        }
+    }
+
+    /// Number of columns (at least one).
+    #[must_use]
+    pub(crate) fn count(&self) -> usize {
+        self.count.max(1)
+    }
+
+    /// Offset of column `index` from the content left edge, px.
+    #[must_use]
+    pub(crate) fn offset(&self, index: usize) -> f64 {
+        self.boxes[index.min(self.count() - 1)].0
+    }
+
+    /// Width of column `index`, px.
+    #[must_use]
+    pub(crate) fn width(&self, index: usize) -> f64 {
+        self.boxes[index.min(self.count() - 1)].1.max(1.0)
+    }
+
+    /// Offsets (from the content left edge) of the separator lines: the middle
+    /// of every gap between neighbouring columns, left to right.
+    #[must_use]
+    pub(crate) fn gap_centres(&self) -> Vec<f64> {
+        let mut boxes: Vec<(f64, f64)> = self.boxes[..self.count()].to_vec();
+        boxes.sort_by(|a, b| a.0.total_cmp(&b.0));
+        boxes
+            .windows(2)
+            .map(|pair| (pair[0].0 + pair[0].1 + pair[1].0) / 2.0)
+            .collect()
     }
 }
 
@@ -481,17 +632,6 @@ pub(crate) fn geometry_for(
         .and_then(|grid| grid.line_pitch)
         .filter(|pitch| *pitch > 0)
         .map(|pitch| twips_to_px(pitch, scale));
-    let columns = section.and_then(|section| section.columns.as_ref());
-    let explicit_count = columns.map_or(0, |columns| columns.columns.len());
-    let column_count = columns
-        .and_then(|columns| columns.count)
-        .map_or(explicit_count.max(1), usize::from)
-        .max(1);
-    // ISO/IEC 29500's default column spacing is 720 twips.
-    let column_gap = columns.and_then(|columns| columns.space).map_or_else(
-        || twips_to_px(720, scale),
-        |space| twips_to_px(space.value(), scale),
-    );
     // `w:pgMar/@w:gutter` widens the binding-side margin: the left one, or the
     // right one under `w:rtlGutter`.
     let gutter = margins
@@ -503,16 +643,24 @@ pub(crate) fn geometry_for(
     } else {
         (gutter, 0.0)
     };
+    let left = value(margins.left, DEFAULT_MARGIN) + left_gutter;
+    let right = value(margins.right, DEFAULT_MARGIN) + right_gutter;
+    let columns = ColumnLayout::from_columns(
+        section.and_then(|section| section.columns.as_ref()),
+        section.is_some_and(|section| section.bidi),
+        width - left - right,
+        scale,
+    );
     Geometry {
         width,
         height,
-        left: value(margins.left, DEFAULT_MARGIN) + left_gutter,
+        left,
         top: value(margins.top, DEFAULT_MARGIN),
-        right: value(margins.right, DEFAULT_MARGIN) + right_gutter,
+        right,
         bottom: value(margins.bottom, DEFAULT_MARGIN),
         grid_line_pitch,
-        column_count,
-        column_gap,
+        columns,
+        active_column: 0,
     }
 }
 
@@ -563,7 +711,7 @@ pub(crate) struct LayoutContext<'a> {
     ///
     /// Body pagination writes the current section here before a table. A page
     /// anchor uses the page box; a margin or text anchor uses the content box.
-    pub(crate) frame_anchor: std::cell::Cell<(f64, f64, f64, f64, f64)>,
+    pub(crate) frame_anchor: std::cell::Cell<FrameAnchor>,
     /// Height of a static header/footer part at a given content box.
     ///
     /// Key is `(part, left.to_bits, content_width.to_bits)`. Parts that contain
@@ -795,6 +943,65 @@ pub(crate) struct Layout {
     pub warnings: Vec<String>,
     /// Body text lines that `w:lnNumType` numbers.
     pub line_marks: Vec<LineMark>,
+    /// Multi-column areas of the body, for the `w:sep` lines between columns.
+    pub column_regions: Vec<ColumnRegion>,
+}
+
+/// The part of one page a multi-column layout occupied: where the line
+/// between its columns (`w:cols/@w:sep`) runs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ColumnRegion {
+    /// Zero-based page index.
+    pub page: usize,
+    /// Page x of the content left edge the column offsets start from.
+    pub left: f64,
+    /// Page y of the top of the columns.
+    pub top: f64,
+    /// Page y of the bottom of the longest column.
+    pub bottom: f64,
+    /// The columns.
+    pub columns: ColumnLayout,
+}
+
+/// Reference boxes of a frame (`w:framePr`) or a floating table (`w:tblpPr`):
+/// `page`, `margin` and `text` - the column the frame is anchored in
+/// (ISO/IEC 29500-1 §17.3.1.11, §17.4.58).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct FrameAnchor {
+    /// Page x of the left margin.
+    pub margin_x: f64,
+    /// Page y of the top margin.
+    pub margin_y: f64,
+    /// Width between the margins.
+    pub content_width: f64,
+    /// Height between the margins.
+    pub content_height: f64,
+    /// Page x of the column the frame's text sits in.
+    pub column_x: f64,
+    /// Width of that column.
+    pub column_width: f64,
+    /// Page width.
+    pub page_width: f64,
+    /// Page height.
+    pub page_height: f64,
+}
+
+impl FrameAnchor {
+    /// The boxes of `geometry`, with its active column as the `text` box.
+    #[must_use]
+    pub(crate) fn of(geometry: &Geometry) -> Self {
+        let (column_x, column_width) = geometry.active_column_box();
+        Self {
+            margin_x: geometry.left,
+            margin_y: geometry.top,
+            content_width: geometry.content_width(),
+            content_height: geometry.content_height(),
+            column_x,
+            column_width,
+            page_width: geometry.width,
+            page_height: geometry.height,
+        }
+    }
 }
 
 /// A body line placed on a page, for line numbering.

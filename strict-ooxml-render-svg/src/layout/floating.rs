@@ -19,6 +19,9 @@ pub(crate) struct PendingAnchor {
     pub host_x: f64,
     /// Absolute page y of the paragraph top, in px.
     pub host_y: f64,
+    /// Body column (reading order) the host paragraph started in: the
+    /// `column` reference box of the anchor.
+    pub column: usize,
     /// The parsed anchor.
     pub anchor: AnchorDrawing,
 }
@@ -42,7 +45,8 @@ pub(crate) fn resolve(
             .get(pending.page)
             .and_then(|page| sections.get(page.section_index))
             .map(|section| &section.properties);
-        let geometry = geometry_for(section, scale, None);
+        let mut geometry = geometry_for(section, scale, None);
+        geometry.active_column = pending.column;
         let w = resolved_axis(
             ctx,
             pending.anchor.size_rel_h.as_ref(),
@@ -180,9 +184,17 @@ fn size_span(relative: Option<&str>, horizontal: bool, geometry: &Geometry) -> O
                 geometry.height
             }
         }
-        Some("margin" | "column") => {
+        Some("margin") => {
             if horizontal {
                 geometry.content_width()
+            } else {
+                geometry.content_height()
+            }
+        }
+        // ISO/IEC 29500-1 §20.4.3.4: the column the anchor sits in.
+        Some("column") => {
+            if horizontal {
+                geometry.active_column_box().1
             } else {
                 geometry.content_height()
             }
@@ -201,8 +213,9 @@ fn horizontal_box(relative: Option<&str>, geometry: &Geometry, host_x: f64) -> (
         Some("page") => (0.0, geometry.width),
         Some("rightMargin" | "outsideMargin") => (geometry.width - geometry.right, geometry.right),
         Some("leftMargin" | "insideMargin") => (0.0, geometry.left),
-        Some("margin" | "column") => (geometry.left, geometry.content_width()),
-        _ => (host_x, geometry.content_width()),
+        Some("margin") => (geometry.left, geometry.content_width()),
+        Some("column") => geometry.active_column_box(),
+        _ => (host_x, geometry.active_column_box().1),
     }
 }
 
@@ -247,6 +260,10 @@ pub(crate) struct WrapExclusion {
     pub contour: Option<Arc<Contour>>,
     /// Paragraph origin for sampling the page-space contour.
     pub page_y: f64,
+    /// Page x of the paragraph's local x = 0 minus the paragraph `left`: how
+    /// far the column the paragraph is laid out for sits from the first one.
+    /// Page-space contour intervals are moved back by it.
+    pub page_dx: f64,
 }
 
 /// Resolved width/height for an anchor, matching paint placement (`sizeRel` wins).
@@ -305,11 +322,9 @@ pub(crate) fn page_exclusion(
         emu_to_px(i64::from(anchor_dist.or(wrap_dist).unwrap_or(0)), scale)
     };
     let (left, right, side) = if top_and_bottom {
-        (
-            geometry.left,
-            geometry.left + geometry.content_width(),
-            WrapSide::Both,
-        )
+        // Text stays off the object's lines across the column it sits in.
+        let (column_left, column_width) = geometry.active_column_box();
+        (column_left, column_left + column_width, WrapSide::Both)
     } else {
         let side = match wrap.wrap_text.as_deref() {
             Some("left") => WrapSide::Left,
@@ -375,13 +390,17 @@ pub(crate) fn page_exclusion(
 }
 
 /// Paragraph-local wrap box for line breaking (Square / TopAndBottom).
+///
+/// `column_dx` is how far right of the paragraph's layout origin its column
+/// is painted; the box is moved back by it.
 pub(crate) fn wrap_exclusion(
     ctx: &LayoutContext<'_>,
     anchor: &AnchorDrawing,
     geometry: &Geometry,
     host_x: f64,
     host_y: f64,
+    column_dx: f64,
 ) -> Option<WrapExclusion> {
     page_exclusion(ctx, anchor, geometry, host_x, host_y)
-        .map(|exclusion| exclusion.into_paragraph_local(host_y))
+        .map(|exclusion| exclusion.into_paragraph_local(host_y, column_dx))
 }

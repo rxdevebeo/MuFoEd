@@ -92,8 +92,11 @@ pub(crate) fn decorate_pages(
             right: margins.right,
             bottom: margins.bottom,
             grid_line_pitch: None,
-            column_count: 1,
-            column_gap: margins.column_gap,
+            // Headers and footers are never set in columns.
+            columns: crate::layout::ColumnLayout::single(
+                page.width_px - margins.left - margins.right,
+            ),
+            active_column: 0,
         };
         let content_width = geometry.content_width();
         let left = geometry.left;

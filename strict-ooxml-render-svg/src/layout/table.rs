@@ -486,7 +486,7 @@ fn layout_oriented_cell_content(
         _ => return layout_cell_content(ctx, blocks, x, width, depth, escape_frames),
     };
     let available = along_height
-        .unwrap_or_else(|| ctx.frame_anchor.get().4.max(width))
+        .unwrap_or_else(|| ctx.frame_anchor.get().page_height.max(width))
         .max(1.0);
     let (mut items, cross_height, frames) =
         layout_cell_content(ctx, blocks, 0.0, available, depth, escape_frames);
@@ -1270,18 +1270,8 @@ fn push_uniform_framed_table(
     let Some(frame) = table_uniform_frame(table) else {
         return false;
     };
-    let (margin_x, margin_y, content_width, page_width, page_height) = ctx.frame_anchor.get();
     let scale = ctx.options.scale;
-    let (origin_x, origin_y, frame_width) = frame_placement(
-        frame,
-        margin_x,
-        margin_y,
-        content_width,
-        content_width,
-        page_width,
-        page_height,
-        scale,
-    );
+    let (origin_x, origin_y, frame_width) = frame_placement(frame, &ctx.frame_anchor.get(), scale);
     page_frames.extend(framed_table_items(
         ctx,
         table,
@@ -1295,36 +1285,32 @@ fn push_uniform_framed_table(
 
 /// Resolves frame origin and width against the current page/margin box.
 #[must_use]
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn frame_placement(
     frame: &FrameProperties,
-    margin_x: f64,
-    margin_y: f64,
-    content_width: f64,
-    content_height: f64,
-    page_width: f64,
-    page_height: f64,
+    anchor: &crate::layout::FrameAnchor,
     scale: f64,
 ) -> (f64, f64, f64) {
-    let frame_width = frame.width.map_or(content_width.max(1.0), |width| {
+    // `w:hAnchor="text"` is the column the frame's paragraph sits in; an
+    // auto-width frame takes that column's width (§17.3.1.11).
+    let frame_width = frame.width.map_or(anchor.column_width.max(1.0), |width| {
         twips_to_px(width.value(), scale)
     });
     let frame_height = frame
         .height
         .map_or(0.0, |height| twips_to_px(height.value(), scale));
-    let box_w = match frame.h_anchor.as_deref() {
-        Some("margin" | "text") => content_width,
-        _ => page_width,
+    let (base_x, box_w) = match frame.h_anchor.as_deref() {
+        Some("text") => (anchor.column_x, anchor.column_width),
+        Some("margin") => (anchor.margin_x, anchor.content_width),
+        _ => (0.0, anchor.page_width),
     };
-    let box_h = match frame.v_anchor.as_deref() {
-        Some("margin" | "text") => content_height,
-        _ => page_height,
+    let (base_y, box_h) = match frame.v_anchor.as_deref() {
+        Some("margin" | "text") => (anchor.margin_y, anchor.content_height),
+        _ => (0.0, anchor.page_height),
     };
     let origin_x = frame_origin(
         frame.x,
         frame.x_align.as_deref(),
-        frame.h_anchor.as_deref(),
-        margin_x,
+        base_x,
         box_w,
         frame_width,
         scale,
@@ -1332,8 +1318,7 @@ pub(crate) fn frame_placement(
     let origin_y = frame_origin(
         frame.y,
         frame.y_align.as_deref(),
-        frame.v_anchor.as_deref(),
-        margin_y,
+        base_y,
         box_h,
         frame_height,
         scale,
@@ -1341,24 +1326,20 @@ pub(crate) fn frame_placement(
     (origin_x, origin_y, frame_width)
 }
 
-/// Page origin of a frame. A missing anchor, and `page`, are the page edge.
+/// Page origin of a frame along one axis, from its anchor box: `base` is the
+/// box's page coordinate (0 for the page), `box_extent` its size.
 ///
 /// `w:xAlign`/`w:yAlign` replace a raw offset: center and right/bottom are
-/// measured in the anchor box (the page, or the margin box).
+/// measured in the anchor box.
 pub(crate) fn frame_origin(
     twips: Option<i32>,
     align: Option<&str>,
-    anchor: Option<&str>,
-    margin: f64,
+    base: f64,
     box_extent: f64,
     frame_extent: f64,
     scale: f64,
 ) -> f64 {
     let offset = crate::units::twips_to_px(twips.unwrap_or(0), scale);
-    let base = match anchor {
-        Some("margin" | "text") => margin,
-        _ => 0.0,
-    };
     match align {
         Some("center") => base + (box_extent - frame_extent) * 0.5 + offset,
         Some("right" | "outside" | "bottom") => base + box_extent - frame_extent - offset,
@@ -1456,7 +1437,10 @@ pub(crate) fn layout_frame_contents(
                     items.extend(row.page_frames);
                     local_y += row.height;
                 }
-                Flow::PageBreak | Flow::ColumnBreak => break,
+                // ISO/IEC 29500-1 §17.18.4: page breaks in a frame are ignored
+                // (unless `w:showBreaksInFrames`, which is not modelled), and a
+                // frame has no columns for a column break to move to.
+                Flow::PageBreak | Flow::ColumnBreak => {}
             }
         }
         if let Some(exact) = para_exact {
@@ -1482,17 +1466,7 @@ fn cell_frame_items(ctx: &LayoutContext<'_>, blocks: &[Block]) -> Vec<Item> {
         return Vec::new();
     };
     let scale = ctx.options.scale;
-    let (margin_x, margin_y, content_width, page_width, page_height) = ctx.frame_anchor.get();
-    let (origin_x, origin_y, frame_width) = frame_placement(
-        frame,
-        margin_x,
-        margin_y,
-        content_width,
-        content_width,
-        page_width,
-        page_height,
-        scale,
-    );
+    let (origin_x, origin_y, frame_width) = frame_placement(frame, &ctx.frame_anchor.get(), scale);
     let resume = ctx.frame_resume(frame);
     let (items, _anchors, height) =
         layout_frame_contents(ctx, blocks, origin_x, origin_y + resume, frame_width);

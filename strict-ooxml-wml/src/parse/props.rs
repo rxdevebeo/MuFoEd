@@ -1293,14 +1293,11 @@ impl PartParser<'_> {
     /// Parses `w:cols`.
     fn parse_columns(&mut self, attrs: &[Attr]) -> Result<Columns> {
         self.nested(|parser| {
-            let equal_width = match wml_attr(attrs, "equalWidth") {
-                None => true,
-                Some(value) => matches!(value, "true" | "on" | "1"),
-            };
+            let equal_width = wml_attr(attrs, "equalWidth").map(|value| matches!(value, "true" | "on" | "1"));
             let mut columns = Columns {
                 count: parser.measure_u16(attrs, "num", "w:cols"),
                 space: parser.measure_twips(attrs, "space", "w:cols"),
-                equal_width,
+                equal_width: equal_width.unwrap_or(true),
                 separator: attr_on(attrs, "sep"),
                 columns: Vec::new(),
             };
@@ -1319,6 +1316,14 @@ impl PartParser<'_> {
                     XmlEvent::Text(_) | XmlEvent::CData(_) => {}
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of columns")),
                 }
+            }
+            // ISO/IEC 29500-1 §17.6.4: without `equalWidth` the columns are the
+            // `w:col` children ("num ... is ignored ... if equalWidth is not
+            // set"). Word writes equal columns as `num`/`space` with neither the
+            // attribute nor children, so equal widths remain the reading when
+            // there is no `w:col` to follow.
+            if equal_width.is_none() {
+                columns.equal_width = columns.columns.is_empty();
             }
             Ok(columns)
         })

@@ -6,10 +6,12 @@
 //! landed on it.
 
 use strict_ooxml_core::error::Result;
-use strict_ooxml_wml::model::props::{LineNumbering, Section, SectionProperties};
+use strict_ooxml_wml::model::props::{LineNumbering, Section};
 use strict_ooxml_wml::model::values::{LineNumberRestart, VerticalJc};
 
-use crate::layout::{geometry_for, Item, LayoutContext, LineItem, LineMark, PlacedPage, TextItem};
+use crate::layout::{
+    geometry_for, ColumnRegion, Item, LayoutContext, LineItem, LineMark, PlacedPage, TextItem,
+};
 use crate::style::ComputedRun;
 use crate::units::twips_to_px;
 
@@ -23,6 +25,7 @@ pub(crate) fn apply(
     ctx: &LayoutContext<'_>,
     pages: &mut [PlacedPage],
     marks: &mut [LineMark],
+    regions: &mut [ColumnRegion],
     sections: &[Section],
 ) -> Result<()> {
     let scale = ctx.options.scale;
@@ -52,8 +55,12 @@ pub(crate) fn apply(
             for mark in marks.iter_mut().filter(|mark| mark.page == index) {
                 mark.baseline += shift;
             }
+            for region in regions.iter_mut().filter(|region| region.page == index) {
+                region.top += shift;
+                region.bottom += shift;
+            }
         }
-        let separators = column_separators(section, page, &geometry, body_top, body_bottom);
+        let separators = column_separators(regions, index);
         ctx.charge_items(separators.len())?;
         page.items.extend(separators);
     }
@@ -75,37 +82,25 @@ fn content_bottom(page: &PlacedPage, top: f64, bottom: f64) -> f64 {
         .fold(top, f64::max)
 }
 
-/// Lines between the columns of a `w:cols/@w:sep` section, as tall as the
-/// body content of the page.
-fn column_separators(
-    section: &SectionProperties,
-    page: &PlacedPage,
-    geometry: &crate::layout::Geometry,
-    top: f64,
-    bottom: f64,
-) -> Vec<Item> {
-    let draws = section
-        .columns
-        .as_ref()
-        .is_some_and(|columns| columns.separator);
-    if !draws || geometry.column_count < 2 {
-        return Vec::new();
-    }
-    let end = content_bottom(page, top, bottom);
-    if end <= top {
-        return Vec::new();
-    }
-    (1..geometry.column_count)
-        .map(|index| {
-            let x = geometry.column_left(index) - geometry.column_gap.max(0.0) / 2.0;
-            Item::Line(LineItem {
-                x1: x,
-                y1: top,
-                x2: x,
-                y2: end,
-                color: "#000000".to_owned(),
-                width: 0.75,
-                dashed: false,
+/// Lines between the columns of a `w:cols/@w:sep` section (ISO/IEC 29500-1
+/// §17.6.4): in the middle of each gap, from the top of the columns to the
+/// bottom of the longest one, for every multi-column area of page `page`.
+fn column_separators(regions: &[ColumnRegion], page: usize) -> Vec<Item> {
+    regions
+        .iter()
+        .filter(|region| region.page == page && region.columns.separator)
+        .flat_map(|region| {
+            region.columns.gap_centres().into_iter().map(|offset| {
+                let x = region.left + offset;
+                Item::Line(LineItem {
+                    x1: x,
+                    y1: region.top,
+                    x2: x,
+                    y2: region.bottom,
+                    color: "#000000".to_owned(),
+                    width: 0.75,
+                    dashed: false,
+                })
             })
         })
         .collect()
