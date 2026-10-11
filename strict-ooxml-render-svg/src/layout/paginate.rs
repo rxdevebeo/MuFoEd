@@ -1519,7 +1519,7 @@ impl<'a> Paginator<'a> {
             SectionType::Continuous => {
                 // Same page; the page-level properties apply from the next page.
                 self.pending_geometry = Some((geometry, section_index));
-                self.activate_columns(geometry);
+                self.activate_columns(&geometry);
                 Ok(())
             }
             SectionType::NextPage => {
@@ -1557,7 +1557,7 @@ impl<'a> Paginator<'a> {
                     // it starts below the current columns, as after a continuous
                     // break.
                     self.pending_geometry = Some((geometry, section_index));
-                    self.activate_columns(geometry);
+                    self.activate_columns(&geometry);
                     Ok(())
                 } else {
                     self.keep_empty_page = true;
@@ -1894,7 +1894,7 @@ impl<'a> Paginator<'a> {
 
     /// Starts the next section's columns below the current ones (a continuous
     /// break): the columns above are balanced first, as Word does.
-    fn activate_columns(&mut self, geometry: Geometry) {
+    fn activate_columns(&mut self, geometry: &Geometry) {
         let previous_count = self.geometry.column_count();
         if previous_count > 1 {
             self.balance_region();
@@ -1906,7 +1906,7 @@ impl<'a> Paginator<'a> {
             .copied()
             .fold(self.cursor, f64::max);
         let next_count = geometry.column_count();
-        self.take_column_margins(&geometry);
+        self.take_column_margins(geometry);
         if previous_count > 1 || next_count > 1 {
             self.column_index = 0;
             self.column_start = section_start;
@@ -1919,7 +1919,9 @@ impl<'a> Paginator<'a> {
             // first column of the new ones.
             let notes: Vec<u32> = self.column_notes.drain(..).flatten().collect();
             self.column_notes = vec![Vec::new(); next_count];
-            self.column_notes[0] = notes;
+            if let Some(first) = self.column_notes.first_mut() {
+                *first = notes;
+            }
             self.fit_note_columns();
         }
         self.region_runs.clear();
@@ -1982,10 +1984,10 @@ impl<'a> Paginator<'a> {
             .map(|column| self.geometry.column_width(column))
             .collect();
         let note_sum = |ids: &[u32], column: usize| -> f64 {
-            ids.iter()
-                .map(|id| self.note_height_at(*id, widths[column]))
-                .sum()
+            let width = widths.get(column).copied().unwrap_or(1.0);
+            ids.iter().map(|id| self.note_height_at(*id, width)).sum()
         };
+        let fixed_in = |column: usize| fixed.get(column).map_or(&[][..], Vec::as_slice);
         let area = |notes: usize, height: f64| {
             if notes == 0 {
                 0.0
@@ -1997,7 +1999,7 @@ impl<'a> Paginator<'a> {
         let fill = |target: f64| -> Option<Vec<(usize, f64)>> {
             let mut column = 0usize;
             let mut y = 0.0f64;
-            let mut notes = (fixed[0].len(), note_sum(&fixed[0], 0));
+            let mut notes = (fixed_in(0).len(), note_sum(fixed_in(0), 0));
             let mut placed = Vec::with_capacity(runs.len());
             for run in runs {
                 let mut run_notes = note_sum(&run.notes, column);
@@ -2014,7 +2016,7 @@ impl<'a> Paginator<'a> {
                         return None;
                     }
                     y = 0.0;
-                    notes = (fixed[column].len(), note_sum(&fixed[column], column));
+                    notes = (fixed_in(column).len(), note_sum(fixed_in(column), column));
                     run_notes = note_sum(&run.notes, column);
                 }
                 let top = if y > 0.0 { y + run.gap } else { 0.0 };
@@ -2039,7 +2041,7 @@ impl<'a> Paginator<'a> {
         }
         let (mut low, mut high) = (tallest, current_height.max(tallest));
         for _ in 0..40 {
-            let middle = (low + high) / 2.0;
+            let middle = f64::midpoint(low, high);
             if fill(middle).is_some() {
                 high = middle;
             } else {
@@ -2081,10 +2083,11 @@ impl<'a> Paginator<'a> {
             let Some(&(dx, dy)) = moves.get(*run) else {
                 continue;
             };
-            if let Some(pending) = self.anchors.get_mut(*anchor) {
+            let column = self.region_runs.get(*run).map(|moved| moved.column);
+            if let (Some(pending), Some(column)) = (self.anchors.get_mut(*anchor), column) {
                 pending.host_x += dx;
                 pending.host_y += dy;
-                pending.column = self.region_runs[*run].column;
+                pending.column = column;
             }
             if let Some(slot) = exclusion.and_then(|index| self.wrap_exclusions.get_mut(index)) {
                 *slot = slot.shifted(dx, dy);
@@ -2095,14 +2098,22 @@ impl<'a> Paginator<'a> {
         notes.resize(count, Vec::new());
         let mut bottoms = vec![start; count];
         for run in &self.region_runs {
-            notes[run.column].extend(run.notes.iter().copied());
-            bottoms[run.column] = bottoms[run.column].max(run.top + run.height);
+            if let Some(list) = notes.get_mut(run.column) {
+                list.extend(run.notes.iter().copied());
+            }
+            if let Some(bottom) = bottoms.get_mut(run.column) {
+                *bottom = bottom.max(run.top + run.height);
+            }
         }
         self.column_notes = notes;
         self.fit_note_columns();
         self.column_bottoms = bottoms;
         self.column_index = self.region_runs.last().map_or(0, |run| run.column);
-        self.cursor = self.column_bottoms[self.column_index];
+        self.cursor = self
+            .column_bottoms
+            .get(self.column_index)
+            .copied()
+            .unwrap_or(start);
     }
 
     fn reset_columns_for_page(&mut self) {
@@ -2333,7 +2344,9 @@ impl<'a> Paginator<'a> {
         self.continuation = !carried.is_empty();
         let count = self.geometry.column_count();
         self.column_notes = vec![Vec::new(); count];
-        self.column_notes[0] = carried;
+        if let Some(first) = self.column_notes.first_mut() {
+            *first = carried;
+        }
         self.column_notes_height = vec![0.0; count];
         self.fit_note_columns();
         self.apply_page_regions();

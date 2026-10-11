@@ -226,6 +226,46 @@ fn parses_rich_table_properties() {
 }
 
 #[test]
+fn columns_without_equal_width_follow_their_col_children() {
+    // ISO/IEC 29500-1 §17.6.4: num and space are ignored, and the col
+    // elements define the columns, when equalWidth is not set.
+    let unset = paragraph_inline(
+        "<w:p/><w:sectPr><w:cols w:num=\"3\"><w:col w:w=\"2000\"/><w:col w:w=\"4000\"/></w:cols></w:sectPr>",
+    );
+    assert!(
+        !unset.sections[0]
+            .properties
+            .columns
+            .as_ref()
+            .unwrap()
+            .equal_width
+    );
+    // Word writes equal columns with neither the attribute nor children.
+    let plain =
+        paragraph_inline("<w:p/><w:sectPr><w:cols w:num=\"2\" w:space=\"720\"/></w:sectPr>");
+    assert!(
+        plain.sections[0]
+            .properties
+            .columns
+            .as_ref()
+            .unwrap()
+            .equal_width
+    );
+    // An explicit value is kept either way.
+    let explicit = paragraph_inline(
+        "<w:p/><w:sectPr><w:cols w:num=\"2\" w:equalWidth=\"true\"><w:col w:w=\"2000\"/></w:cols></w:sectPr>",
+    );
+    assert!(
+        explicit.sections[0]
+            .properties
+            .columns
+            .as_ref()
+            .unwrap()
+            .equal_width
+    );
+}
+
+#[test]
 fn parses_richer_section_properties() {
     let body = "<w:p/><w:sectPr>\
 <w:lnNumType w:countBy=\"5\" w:start=\"1\" w:restart=\"newPage\" w:distance=\"240\"/>\

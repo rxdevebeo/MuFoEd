@@ -506,7 +506,9 @@ impl ColumnLayout {
     #[must_use]
     pub(crate) fn single(content_width: f64) -> Self {
         let mut boxes = [(0.0, 0.0); MAX_COLUMNS];
-        boxes[0] = (0.0, content_width.max(1.0));
+        if let Some(first) = boxes.first_mut() {
+            *first = (0.0, content_width.max(1.0));
+        }
         Self {
             count: 1,
             boxes,
@@ -545,7 +547,7 @@ impl ColumnLayout {
             }
             count
         } else {
-            let specs = &columns.columns[..columns.columns.len().min(MAX_COLUMNS)];
+            let specs: Vec<_> = columns.columns.iter().take(MAX_COLUMNS).collect();
             let count = specs.len();
             let spaces: Vec<f64> = specs
                 .iter()
@@ -570,13 +572,13 @@ impl ColumnLayout {
                 ((content_width - declared - spaces.iter().sum::<f64>()) / missing as f64).max(1.0)
             };
             let mut offset = 0.0;
-            for (index, spec) in specs.iter().enumerate() {
+            for ((slot, spec), space) in boxes.iter_mut().zip(&specs).zip(&spaces) {
                 let width = spec
                     .width
                     .map_or(share, |width| px(Some(width), 0))
                     .max(1.0);
-                boxes[index] = (offset, width);
-                offset += width + spaces[index];
+                *slot = (offset, width);
+                offset += width + space;
             }
             count
         };
@@ -601,24 +603,33 @@ impl ColumnLayout {
     /// Offset of column `index` from the content left edge, px.
     #[must_use]
     pub(crate) fn offset(&self, index: usize) -> f64 {
-        self.boxes[index.min(self.count() - 1)].0
+        self.column(index).0
     }
 
     /// Width of column `index`, px.
     #[must_use]
     pub(crate) fn width(&self, index: usize) -> f64 {
-        self.boxes[index.min(self.count() - 1)].1.max(1.0)
+        self.column(index).1.max(1.0)
+    }
+
+    /// `(offset, width)` of column `index`; past the last, the last.
+    fn column(&self, index: usize) -> (f64, f64) {
+        self.boxes
+            .get(index.min(self.count() - 1))
+            .copied()
+            .unwrap_or((0.0, 1.0))
     }
 
     /// Offsets (from the content left edge) of the separator lines: the middle
     /// of every gap between neighbouring columns, left to right.
     #[must_use]
     pub(crate) fn gap_centres(&self) -> Vec<f64> {
-        let mut boxes: Vec<(f64, f64)> = self.boxes[..self.count()].to_vec();
+        let mut boxes: Vec<(f64, f64)> = self.boxes.iter().take(self.count()).copied().collect();
         boxes.sort_by(|a, b| a.0.total_cmp(&b.0));
         boxes
-            .windows(2)
-            .map(|pair| (pair[0].0 + pair[0].1 + pair[1].0) / 2.0)
+            .iter()
+            .zip(boxes.iter().skip(1))
+            .map(|(left, right)| f64::midpoint(left.0 + left.1, right.0))
             .collect()
     }
 }
