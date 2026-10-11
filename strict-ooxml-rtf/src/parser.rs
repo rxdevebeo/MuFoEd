@@ -4153,13 +4153,50 @@ impl Parser<'_> {
             "pgbrdrhead" | "pgbrdrfoot" | "pgbrdropt" => {
                 return self.issue(span, Severity::Info, format!("page-border-compat:{name}"));
             }
-            // Revision save identifiers (`\insrsid`/`\charrsid`/`\pararsid`):
-            // non-visual merge metadata. The model carries optional `w:rsid*`
-            // slots the renderer never reads, and the RTF stream's decimal ids
-            // and their per-run/per-paragraph placement are not reconstructed
-            // here, so they are named Info rather than dropped as a Loss.
-            "insrsid" | "charrsid" | "pararsid" => {
+            // Revision save identifiers (`\insrsid`/`\charrsid`/`\pararsid`) and
+            // their table/section/style twins (`\styrsid`/`\tblrsid`/`\sectrsid`/
+            // `\rsidroot`): non-visual merge metadata. The model carries optional
+            // `w:rsid*` slots the renderer never reads, and the RTF stream's
+            // decimal ids and their placement are not reconstructed here, so they
+            // are named Info rather than dropped as a Loss.
+            "insrsid" | "charrsid" | "pararsid" | "styrsid" | "tblrsid" | "sectrsid"
+            | "rsidroot" => {
                 return self.issue(span, Severity::Info, format!("rsid-compat:{name}"));
+            }
+            // Word view/screen settings: no effect on the rendered document.
+            "viewkind" | "vieww" | "viewh" | "viewscale" | "viewbksp" => {
+                return self.issue(span, Severity::Info, format!("view-compat:{name}"));
+            }
+            // Word for Mac compatibility flags with no Strict analogue.
+            "cocoartf" | "cocoasubrtf" | "cocoaplatform" | "cocoatextscaling"
+            | "cocoascreenfonts" => {
+                return self.issue(span, Severity::Info, format!("cocoa-compat:{name}"));
+            }
+            // Drawing-grid display settings: screen-only, never rendered.
+            "dghorigin" | "dgvorigin" | "dghspace" | "dgvspace" | "dghshow" | "dgvshow"
+            | "dgmargin" => {
+                return self.issue(span, Severity::Info, format!("drawing-grid-compat:{name}"));
+            }
+            // Math layout settings (`w:mathPr`): no Strict model slot and no text
+            // content of their own.
+            "mbrkBin" | "mbrkBinSub" | "mdispDef" | "mdefJc" | "mlMargin" | "mrMargin"
+            | "mnaryLim" | "mintLim" | "msmallFrac" | "mmathFont" | "mwrapIndent"
+            | "mwrapRight" | "mpreSp" | "mpostSp" | "minterSp" | "mintraSp" | "mmathPr" => {
+                return self.issue(span, Severity::Info, format!("math-compat:{name}"));
+            }
+            // Word application settings that do not change the rendered document.
+            "nouicompat" | "validatexml" | "showxmlerrors" | "saveinvalidxml"
+            | "ignoremixedcontent" | "nofeaturethrottle" | "donotembedlingdata"
+            | "donotembedsysfont" | "formshade" | "sunhideused" | "relyonvml" | "grfdocevents"
+            | "trackmoves" | "trackformatting" | "showplaceholdtext" | "allowfieldendsel"
+            | "webhidden" | "slocked" | "sautoupd" | "lvltentative" | "noqfpromote" => {
+                return self.issue(span, Severity::Info, format!("settings-compat:{name}"));
+            }
+            // `\widowctrl` asserts the Strict default (`w:widowControl` on), and
+            // `\additive` is a style-sheet merge flag whose effect is already
+            // folded into the resolved styles.
+            "widowctrl" | "additive" => {
+                return self.issue(span, Severity::Info, format!("compat:{name}"));
             }
             // Word 6/7 auto-spacing and font-alignment hints whose bare form is
             // the Strict default, so a mapping would write nothing back:

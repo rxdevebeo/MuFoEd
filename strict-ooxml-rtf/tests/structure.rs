@@ -540,6 +540,34 @@ fn legacy_layout_and_revision_controls_are_info_not_losses() {
 /// WPS itself writes no `w:suppressAutoHyphens` for it, so it only names the
 /// default no-hyphenation behaviour and is Info.
 #[test]
+fn document_settings_and_compat_controls_are_info() {
+    // View, revision-id, Cocoa, drawing-grid, math and application settings
+    // carry no rendered content, so they are named Info rather than losses.
+    let source = br"{\rtf1\viewkind4\viewscale100\styrsid1234\tblrsid1\sectrsid2\rsidroot3\cocoartf1038\dghorigin1701\mmathPr\mbrkBin0\widowctrl\additive\nouicompat text}";
+    let imported = import(source, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    for feature in [
+        "view-compat:viewkind",
+        "rsid-compat:styrsid",
+        "cocoa-compat:cocoartf",
+        "drawing-grid-compat:dghorigin",
+        "math-compat:mmathPr",
+        "compat:widowctrl",
+        "settings-compat:nouicompat",
+    ] {
+        assert!(
+            imported.report.issues.iter().any(|i| i.feature == feature),
+            "missing {feature}: {:?}",
+            imported.report.issues
+        );
+    }
+}
+
+#[test]
 fn non_default_legacy_layout_controls_stay_losses() {
     let imported = import(
         br"{\rtf1 A\hyphpar0 B\adjustright0 C}",
