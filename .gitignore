@@ -72,3 +72,6 @@ __pycache__/
 # the viewer's own build directory and its render output
 /target-viewer/
 /strict-ooxml-view/render_out/
+
+# WPS reference QA store (xtool/wps-qa).
+/wps-qa/
