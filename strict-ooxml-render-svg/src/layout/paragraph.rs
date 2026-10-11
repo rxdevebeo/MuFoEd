@@ -992,6 +992,7 @@ fn build_lines(
             marker.run.clone(),
             marker.suffix.clone(),
             marker.pic_bullet,
+            marker.justification,
         )
     });
 
@@ -1186,7 +1187,7 @@ fn build_lines(
     let anchors = sink.anchors;
 
     // Prepend the numbering marker to the first line, if any.
-    if let Some((marker_text, marker_run, suffix, pic_bullet)) = &marker {
+    if let Some((marker_text, marker_run, suffix, pic_bullet, justification)) = &marker {
         if let Some(Flow::Line(first)) = flows.iter_mut().find(|flow| matches!(flow, Flow::Line(_)))
         {
             let size_px = ctx.size_px(marker_run.size_pt);
@@ -1208,7 +1209,15 @@ fn build_lines(
                 .as_ref()
                 .map_or_else(|| ctx.measure(marker_text, marker_run), |(_, width)| *width);
             let clearance = marker_clearance(ctx, marker_run, suffix.as_deref());
-            let mut marker_x = first_x;
+            // `w:lvlJc`: a right-aligned marker ends on the number position
+            // and a centred one straddles it.
+            let mut marker_x = match justification {
+                Some(strict_ooxml_wml::model::values::Justification::End) => first_x - width,
+                Some(strict_ooxml_wml::model::values::Justification::Center) => {
+                    first_x - width / 2.0
+                }
+                _ => first_x,
+            };
             // The text anchor stays where the paragraph declared it. A marker
             // that would share that anchor, or that is wider than the hanging
             // gap, moves left by the suffix clearance.

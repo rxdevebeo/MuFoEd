@@ -33,6 +33,9 @@ pub(crate) struct NumberingMarker {
     /// The picture bullet the level names (`w:lvlPicBulletId`), when the
     /// numbering part defines it; drawn in place of `text`.
     pub pic_bullet: Option<u32>,
+    /// How the marker sits on its position (`w:lvlJc`): left of it starts
+    /// there, right of it ends there, centre straddles it.
+    pub justification: Option<strict_ooxml_wml::model::values::Justification>,
 }
 
 /// Markers for every numbered paragraph.
@@ -57,7 +60,12 @@ impl NumberingMarkers {
         let mut engine = Engine::new(&document.numbering, document.theme.as_ref());
         let mut out = Self::default();
         collect_blocks(&document.body.blocks, &mut |paragraph| {
-            if let Some(marker) = engine.marker_for_paragraph(paragraph) {
+            // The list a paragraph is in comes from its own `w:numPr` or from
+            // its style's (`Heading 1`, `List Bullet`).
+            let numbering = crate::style::compute_paragraph(document, paragraph).numbering;
+            let marker =
+                numbering.and_then(|numbering| engine.marker(numbering.num_id, numbering.ilvl));
+            if let Some(marker) = marker {
                 if is_known(&paragraph.location) {
                     out.by_location
                         .insert(paragraph.location.clone(), marker.clone());
@@ -107,14 +115,6 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// Computes the marker for a paragraph, if it is numbered.
-    fn marker_for_paragraph(&mut self, paragraph: &Paragraph) -> Option<NumberingMarker> {
-        let numbering = paragraph.props.numbering?;
-        let num_id = numbering.num_id?.0;
-        let ilvl = numbering.ilvl.map_or(0, |ilvl| ilvl.0);
-        self.marker(num_id, ilvl)
-    }
-
     /// Computes the marker for `(num_id, ilvl)` and advances the counters.
     fn marker(&mut self, num_id: u32, ilvl: u8) -> Option<NumberingMarker> {
         let table = self.table;
@@ -151,7 +151,7 @@ impl<'a> Engine<'a> {
             }
         }
 
-        let text = render_text(level, counters, abstract_num, override_)?;
+        let text = render_text(level, counters, abstract_num, override_, level.is_legal)?;
         let mut run = ComputedRun::default();
         apply_run_props(&mut run, &level.run, self.theme);
         let (indent_start_pt, first_line_pt) = match &level.paragraph.indentation {
@@ -167,6 +167,7 @@ impl<'a> Engine<'a> {
             pic_bullet: level
                 .pic_bullet_id
                 .filter(|id| self.table.pic_bullet(*id).is_some()),
+            justification: level.justification,
         })
     }
 }
@@ -191,6 +192,7 @@ fn render_text(
     counters: &[Option<u32>; 9],
     abstract_num: &AbstractNum,
     override_: Override<'_>,
+    legal: bool,
 ) -> Option<String> {
     let template = level.text.as_deref()?;
     // A bullet level renders its literal glyph.
@@ -204,7 +206,7 @@ fn render_text(
             if let Some(digit) = chars.peek().and_then(|value| value.to_digit(10)) {
                 chars.next();
                 let referenced = u8::try_from(digit).unwrap_or(1);
-                let value = placeholder_value(counters, abstract_num, override_, referenced);
+                let value = placeholder_value(counters, abstract_num, override_, referenced, legal);
                 out.push_str(&value);
                 continue;
             }
@@ -220,14 +222,21 @@ fn placeholder_value(
     abstract_num: &AbstractNum,
     override_: Override<'_>,
     referenced: u8,
+    legal: bool,
 ) -> String {
     let index = usize::from(referenced.saturating_sub(1)).min(8);
     let ilvl = u8::try_from(index).unwrap_or(0);
     let level = effective_level(abstract_num, override_, ilvl);
-    let format = NumberFormat::from_strict(
-        level.and_then(|level| level.format.as_deref()),
-        NumberFormat::Decimal,
-    );
+    // `w:isLgl` writes every level of the number in Arabic digits ("1.1",
+    // not "I.a").
+    let format = if legal {
+        NumberFormat::Decimal
+    } else {
+        NumberFormat::from_strict(
+            level.and_then(|level| level.format.as_deref()),
+            NumberFormat::Decimal,
+        )
+    };
     let start = level.and_then(|level| level.start).unwrap_or(1);
     let value = counters.get(index).copied().flatten().unwrap_or(start);
     format.format(value)

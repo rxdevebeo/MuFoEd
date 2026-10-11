@@ -497,6 +497,10 @@ fn apply_paragraph_props_mode(
                 num_id: num_id.0,
                 ilvl: numbering.ilvl.map_or(0, |ilvl| ilvl.0),
             });
+        } else if let (Some(ilvl), Some(inherited)) = (numbering.ilvl, computed.numbering.as_mut())
+        {
+            // `w:ilvl` alone moves the inherited list to another level.
+            inherited.ilvl = ilvl.0;
         }
     }
     if let Some(run) = &props.run_props {

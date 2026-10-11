@@ -116,101 +116,147 @@ fn letters(number: u32) -> String {
 /// Numbering of the notes referenced by a document, in document order.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct NoteNumbering {
-    footnotes: HashMap<u32, u32>,
-    endnotes: HashMap<u32, u32>,
-    /// Number format for footnotes.
-    pub footnote_format: NumberFormat,
-    /// Number format for endnotes.
-    pub endnote_format: NumberFormat,
+    footnotes: HashMap<u32, (u32, NumberFormat)>,
+    endnotes: HashMap<u32, (u32, NumberFormat)>,
+    /// Reference order of the footnotes (numbers alone do not give it once a
+    /// section restarts them).
+    footnote_order: Vec<u32>,
+    /// Reference order of the endnotes.
+    endnote_order: Vec<u32>,
 }
 
 impl NoteNumbering {
-    /// Builds the numbering for `document` from its settings and last section.
+    /// Builds the numbering for `document`.
+    ///
+    /// Each note takes the `w:footnotePr`/`w:endnotePr` of the section its
+    /// reference is in, over the document settings: the number format, the
+    /// start value, and whether numbering restarts with the section
+    /// (`w:numRestart="eachSect"`).
     #[must_use]
     pub(crate) fn build(document: &Document) -> Self {
-        let section = document.sections.last().map(|section| &section.properties);
-        let mut footnote_props = document.settings.footnote_properties.clone();
-        let mut endnote_props = document.settings.endnote_properties.clone();
-        if let Some(section) = section {
-            footnote_props.merge_from(&section.footnote_properties);
-            endnote_props.merge_from(&section.endnote_properties);
-        }
-
         let mut refs = NoteRefs::default();
-        collect_blocks(&document.body.blocks, &mut refs);
-        let footnotes = number(&refs.footnotes, &footnote_props);
-        let endnotes = number(&refs.endnotes, &endnote_props);
-
+        for block in &document.body.blocks {
+            collect_blocks(std::slice::from_ref(block), &mut refs);
+            if ends_section(block) {
+                refs.section += 1;
+            }
+        }
+        let props = |section: usize, endnote: bool| {
+            let mut props = if endnote {
+                document.settings.endnote_properties.clone()
+            } else {
+                document.settings.footnote_properties.clone()
+            };
+            let section = document
+                .sections
+                .get(section)
+                .or_else(|| document.sections.last())
+                .map(|section| &section.properties);
+            if let Some(section) = section {
+                props.merge_from(if endnote {
+                    &section.endnote_properties
+                } else {
+                    &section.footnote_properties
+                });
+            }
+            props
+        };
+        let (footnotes, footnote_order) = number(
+            &refs.footnotes,
+            |section| props(section, false),
+            NumberFormat::Decimal,
+        );
+        let (endnotes, endnote_order) = number(
+            &refs.endnotes,
+            |section| props(section, true),
+            NumberFormat::LowerRoman,
+        );
         Self {
             footnotes,
             endnotes,
-            footnote_format: NumberFormat::from_strict(
-                footnote_props.num_format.as_deref(),
-                NumberFormat::Decimal,
-            ),
-            endnote_format: NumberFormat::from_strict(
-                endnote_props.num_format.as_deref(),
-                NumberFormat::LowerRoman,
-            ),
+            footnote_order,
+            endnote_order,
         }
     }
 
     /// Returns the number and format for a footnote id.
     #[must_use]
     pub(crate) fn footnote_number(&self, id: u32) -> Option<(u32, NumberFormat)> {
-        self.footnotes
-            .get(&id)
-            .map(|&number| (number, self.footnote_format))
+        self.footnotes.get(&id).copied()
     }
 
     /// Returns the number and format for an endnote id.
     #[must_use]
     pub(crate) fn endnote_number(&self, id: u32) -> Option<(u32, NumberFormat)> {
-        self.endnotes
-            .get(&id)
-            .map(|&number| (number, self.endnote_format))
+        self.endnotes.get(&id).copied()
     }
 
     /// Returns all footnote ids in numbering order.
     #[must_use]
     pub(crate) fn footnotes_in_order(&self) -> Vec<u32> {
-        ordered(&self.footnotes)
+        self.footnote_order.clone()
     }
 
     /// Returns all endnote ids in numbering order.
     #[must_use]
     pub(crate) fn endnotes_in_order(&self) -> Vec<u32> {
-        ordered(&self.endnotes)
+        self.endnote_order.clone()
     }
 }
 
-/// Returns the keys of `map` sorted by their assigned number.
-fn ordered(map: &HashMap<u32, u32>) -> Vec<u32> {
-    let mut entries: Vec<(u32, u32)> = map.iter().map(|(&id, &n)| (n, id)).collect();
-    entries.sort_unstable();
-    entries.into_iter().map(|(_, id)| id).collect()
-}
-
-/// Assigns sequential numbers to `ids` (first occurrence wins).
-fn number(ids: &[u32], props: &NoteProperties) -> HashMap<u32, u32> {
-    let start = props.num_start.unwrap_or(1);
+/// Assigns numbers to `ids` (first occurrence wins), restarting at a section
+/// whose properties say `eachSect`. Returns the numbers and the order of the
+/// first references.
+fn number(
+    ids: &[(u32, usize)],
+    props: impl Fn(usize) -> NoteProperties,
+    default_format: NumberFormat,
+) -> (HashMap<u32, (u32, NumberFormat)>, Vec<u32>) {
     let mut map = HashMap::new();
-    let mut next = start;
-    for &id in ids {
+    let mut order = Vec::new();
+    let mut next: u32 = 1;
+    let mut current_section: Option<usize> = None;
+    for &(id, section) in ids {
         if map.contains_key(&id) {
             continue;
         }
-        map.insert(id, next);
-        next = next.saturating_add(1);
+        let props = props(section);
+        let restart = match current_section {
+            None => true,
+            Some(previous) => {
+                previous != section && props.num_restart.as_deref() == Some("eachSect")
+            }
+        };
+        current_section = Some(section);
+        let value = if restart {
+            props.num_start.unwrap_or(1)
+        } else {
+            next
+        };
+        let format = NumberFormat::from_strict(props.num_format.as_deref(), default_format);
+        map.insert(id, (value, format));
+        order.push(id);
+        next = value.saturating_add(1);
     }
-    map
+    (map, order)
 }
 
-/// Footnote/endnote reference ids collected in document order.
+/// Whether a top-level body block ends a section (it carries `w:sectPr`).
+fn ends_section(block: &Block) -> bool {
+    match block {
+        Block::Paragraph(para) => para.props.section.is_some(),
+        Block::SdtBlock(sdt) => sdt.blocks.iter().any(ends_section),
+        _ => false,
+    }
+}
+
+/// Footnote/endnote reference ids collected in document order, with the index
+/// of the section each reference is in.
 #[derive(Default)]
 struct NoteRefs {
-    footnotes: Vec<u32>,
-    endnotes: Vec<u32>,
+    footnotes: Vec<(u32, usize)>,
+    endnotes: Vec<(u32, usize)>,
+    section: usize,
 }
 
 /// Collects note references from a block sequence.
@@ -241,8 +287,10 @@ fn collect_inlines(inlines: &[Inline], refs: &mut NoteRefs) {
             Inline::Run(run) => {
                 for content in &run.content {
                     match content {
-                        RunContent::FootnoteRef(id) => refs.footnotes.push(*id),
-                        RunContent::EndnoteRef(id) => refs.endnotes.push(*id),
+                        RunContent::FootnoteRef(id) => {
+                            refs.footnotes.push((*id, refs.section));
+                        }
+                        RunContent::EndnoteRef(id) => refs.endnotes.push((*id, refs.section)),
                         _ => {}
                     }
                 }
@@ -251,8 +299,8 @@ fn collect_inlines(inlines: &[Inline], refs: &mut NoteRefs) {
             Inline::Field(field) => collect_inlines(&field.inlines, refs),
             Inline::SdtInline(sdt) => collect_inlines(&sdt.inlines, refs),
             Inline::Directional(dir) => collect_inlines(&dir.inlines, refs),
-            Inline::FootnoteRef(id) => refs.footnotes.push(*id),
-            Inline::EndnoteRef(id) => refs.endnotes.push(*id),
+            Inline::FootnoteRef(id) => refs.footnotes.push((*id, refs.section)),
+            Inline::EndnoteRef(id) => refs.endnotes.push((*id, refs.section)),
             _ => {}
         }
     }
