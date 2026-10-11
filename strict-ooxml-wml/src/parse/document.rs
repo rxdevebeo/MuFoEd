@@ -886,6 +886,9 @@ impl PartParser<'_> {
                 *props = self.parse_run_properties()?;
             }
             RunKind::Separator => {
+                content.push(RunContent::NoteSeparator(
+                    name.local() == "continuationSeparator",
+                ));
                 let feature = feature_id_for(name);
                 self.record(
                     &feature,

@@ -4,8 +4,7 @@
 use strict_ooxml_wml::model::drawing::AnchorDrawing;
 use strict_ooxml_wml::model::props::{CellProperties, FrameProperties};
 use strict_ooxml_wml::model::values::{
-    Borders, CellMargins, HeightRule, TextDirection, Twips, VerticalJc, VerticalMerge, Width,
-    WidthKind,
+    Borders, HeightRule, TextDirection, Twips, VerticalJc, VerticalMerge, Width, WidthKind,
 };
 use strict_ooxml_wml::model::{Block, Table};
 
@@ -18,6 +17,55 @@ use crate::units::twips_to_px;
 const DEFAULT_CELL_MARGIN: i32 = 108;
 /// Default vertical cell margin in twips (`CT_TblCellMar` top/bottom is `0`).
 const DEFAULT_CELL_MARGIN_VERTICAL: i32 = 0;
+
+thread_local! {
+    static CELL_HEIGHT_REQUIRED: std::cell::RefCell<Vec<bool>> = const { std::cell::RefCell::new(Vec::new()) };
+    static CELL_ANCHORS: std::cell::RefCell<Vec<Vec<crate::layout::RowAnchor>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+struct CellAnchorGuard;
+impl CellAnchorGuard {
+    fn enter() -> Self {
+        CELL_ANCHORS.with(|stack| stack.borrow_mut().push(Vec::new()));
+        CELL_HEIGHT_REQUIRED.with(|stack| stack.borrow_mut().push(false));
+        Self
+    }
+    fn needs_height(&self) -> bool {
+        CELL_HEIGHT_REQUIRED.with(|stack| stack.borrow().last().copied().unwrap_or(false))
+    }
+    fn take(&self) -> Vec<crate::layout::RowAnchor> {
+        CELL_ANCHORS
+            .with(|stack| std::mem::take(stack.borrow_mut().last_mut().expect("cell anchor scope")))
+    }
+}
+impl Drop for CellAnchorGuard {
+    fn drop(&mut self) {
+        CELL_ANCHORS.with(|stack| {
+            stack.borrow_mut().pop();
+        });
+        CELL_HEIGHT_REQUIRED.with(|stack| {
+            stack.borrow_mut().pop();
+        });
+    }
+}
+/// Measure an automatic row before applying cell-relative floating exclusions.
+pub(crate) fn cell_anchor_wrap_enabled(anchor: &AnchorDrawing) -> bool {
+    CELL_ANCHORS.with(|stack| {
+        stack.borrow().is_empty()
+            || (anchor.layout_in_cell
+                && crate::table_style::current_text_flow().is_some_and(|flow| flow.1.is_some()))
+    })
+}
+fn capture_anchor(anchor: crate::layout::RowAnchor) -> bool {
+    CELL_ANCHORS.with(|stack| {
+        let mut stack = stack.borrow_mut();
+        if let Some(anchors) = stack.last_mut() {
+            anchors.push(anchor);
+            true
+        } else {
+            false
+        }
+    })
+}
 
 /// Vertical merge state of a cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +98,7 @@ struct RawCell {
     items: Vec<Item>,
     /// Page-absolute frames taken out of the cell flow.
     page_frames: Vec<Item>,
+    anchors: Vec<crate::layout::RowAnchor>,
     margin_top: f64,
     content_height: f64,
     margin_bottom: f64,
@@ -76,6 +125,9 @@ pub(crate) fn layout_table(
     depth: u32,
     escape_frames: bool,
 ) -> Vec<Flow> {
+    let resolved_table = crate::table_style::resolve_table(ctx.document, table);
+    let _numbering_aliases = crate::numbering::alias_table(table, &resolved_table);
+    let table = &resolved_table;
     let scale = ctx.options.scale;
     let column_count = column_count(table);
     if column_count == 0 {
@@ -95,7 +147,7 @@ pub(crate) fn layout_table(
 
     let mut rows: Vec<RawRow> = Vec::with_capacity(table.rows.len());
     for (row_index, row) in table.rows.iter().enumerate() {
-        let raw = layout_row(
+        let mut raw = layout_row(
             ctx,
             table,
             row_index,
@@ -104,7 +156,34 @@ pub(crate) fn layout_table(
             depth,
             escape_frames,
             skip_cell_h_margins,
+            None,
         );
+        if raw.needs_cell_height {
+            for _ in 0..3 {
+                let previous = raw.height.max(1.0);
+                let declared = row
+                    .props
+                    .height
+                    .as_ref()
+                    .and_then(|h| h.value)
+                    .map_or(0.0, |h| twips_to_px(h.value(), scale));
+                let cell_height = previous.max(declared);
+                raw = layout_row(
+                    ctx,
+                    table,
+                    row_index,
+                    &widths,
+                    table_x,
+                    depth,
+                    escape_frames,
+                    skip_cell_h_margins,
+                    Some(cell_height),
+                );
+                if (raw.height - previous).abs() < 0.001 {
+                    break;
+                }
+            }
+        }
         let mut height = raw.height;
         if let Some(declared) = &row.props.height {
             let value = declared
@@ -167,7 +246,12 @@ fn fit_rotated_merges(rows: &mut [RawRow]) {
                 cell.vmerge == VState::Restart
                     && matches!(
                         cell.properties.text_direction,
-                        Some(TextDirection::BtLr | TextDirection::TbRl)
+                        Some(
+                            TextDirection::BtLr
+                                | TextDirection::TbRl
+                                | TextDirection::TbRlV
+                                | TextDirection::TbLrV
+                        )
                     )
             })
             .map(|cell| {
@@ -249,6 +333,8 @@ fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flo
     for (row_index, row) in rows.iter().enumerate() {
         let mut items = Vec::new();
         let mut page_frames = Vec::new();
+        let mut anchors = Vec::new();
+        let mut bands = Vec::new();
         let row_end = row
             .cells
             .iter()
@@ -287,9 +373,15 @@ fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flo
             if paint_text {
                 let shift = vertical_align_shift(rows, row_index, cell);
                 for item in &cell.items {
-                    items.push(offset_item(item, 0.0, cell.margin_top + shift));
+                    let item = offset_item(item, 0.0, cell.margin_top + shift);
+                    bands.push(item_vertical_bounds(ctx, &item));
+                    items.push(item);
                 }
                 page_frames.extend(cell.page_frames.iter().cloned());
+                anchors.extend(cell.anchors.iter().cloned().map(|mut anchor| {
+                    anchor.y += cell.margin_top + shift;
+                    anchor
+                }));
             }
             // Edges shared with another cell take the table's insideH/insideV
             // when the cell does not set its own (TableGrid draws its grid
@@ -320,9 +412,169 @@ fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flo
             height: row.height,
             header: row.header,
             page_frames,
+            anchors,
+            split_points: if row.header
+                || table
+                    .rows
+                    .get(row_index)
+                    .is_some_and(|row| row.props.cant_split)
+            {
+                Vec::new()
+            } else {
+                row_split_points(bands, row.height)
+            },
         }));
     }
     flows
+}
+
+/// Occupied vertical ink interval, used to keep a page break out of content.
+pub(crate) fn item_vertical_bounds(ctx: &LayoutContext<'_>, item: &Item) -> (f64, f64) {
+    match item {
+        Item::Group(group) => (group.bounds[1], group.bounds[1] + group.bounds[3]),
+        Item::Text(text) => {
+            let family = crate::style::chosen_family(&text.run, &text.text);
+            let metrics = crate::font::embedded::run_metrics(&text.run, &family, ctx.font);
+            let top = -metrics.ascent_em() * text.size_px;
+            let bottom = metrics.descender * text.size_px;
+            let (sin, cos) = text.run.rotation_deg.to_radians().sin_cos();
+            let ys = [
+                top * cos,
+                bottom * cos,
+                text.width * sin + top * cos,
+                text.width * sin + bottom * cos,
+            ];
+            (
+                text.baseline + ys.iter().copied().fold(f64::INFINITY, f64::min),
+                text.baseline + ys.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+            )
+        }
+        Item::Rect(rect) => (
+            rect.y - rect.stroke_w / 2.0,
+            rect.y + rect.h + rect.stroke_w / 2.0,
+        ),
+        Item::Line(line) => (
+            line.y1.min(line.y2) - line.width / 2.0,
+            line.y1.max(line.y2) + line.width / 2.0,
+        ),
+        Item::Path(path) => {
+            let (sin, cos) = path.rotate_deg.to_radians().sin_cos();
+            let half = (path.w * sin.abs() + path.h * cos.abs() + path.stroke_w) / 2.0;
+            (path.y + path.h / 2.0 - half, path.y + path.h / 2.0 + half)
+        }
+        Item::Image(image) => (image.y, image.y + image.h),
+    }
+}
+
+/// Union the occupied intervals across every cell before selecting boundaries.
+pub(crate) fn row_split_points(mut bands: Vec<(f64, f64)>, height: f64) -> Vec<f64> {
+    bands.retain(|(top, bottom)| top.is_finite() && bottom.is_finite() && bottom >= top);
+    bands.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut points = Vec::new();
+    let mut end = 0.0_f64;
+    for (top, bottom) in bands {
+        if top > end + 0.01 && end > 0.0 && end < height {
+            points.push((end + top) / 2.0);
+        }
+        end = end.max(bottom);
+    }
+    if end > 0.0 && end < height - 0.01 {
+        points.push((end + height) / 2.0);
+    }
+    points
+}
+
+/// Paint one vertical row slice. Decorations extend across each fragment;
+/// safe boundaries ensure images, paths and glyphs are never cut in half.
+pub(crate) fn row_fragment(row: &TableRowFlow, start: f64, end: f64) -> TableRowFlow {
+    let mut items = Vec::new();
+    for item in &row.items {
+        let clipped = match item {
+            Item::Rect(rect) => {
+                let top = rect.y.max(start);
+                let bottom = (rect.y + rect.h).min(end);
+                if bottom <= top {
+                    continue;
+                }
+                let mut rect = rect.clone();
+                rect.y = top;
+                rect.h = bottom - top;
+                Item::Rect(rect)
+            }
+            Item::Line(line) => {
+                let mut line = line.clone();
+                if (line.y2 - line.y1).abs() < 1e-9 {
+                    if line.y1.abs() < 0.01 {
+                        line.y1 = start;
+                        line.y2 = start;
+                    } else if (line.y1 - row.height).abs() < 0.01 {
+                        line.y1 = end;
+                        line.y2 = end;
+                    } else if line.y1 < start || line.y1 >= end {
+                        continue;
+                    }
+                } else {
+                    let low = line.y1.min(line.y2).max(start);
+                    let high = line.y1.max(line.y2).min(end);
+                    if high <= low {
+                        continue;
+                    }
+                    let x_at = |y: f64| {
+                        line.x1 + (line.x2 - line.x1) * (y - line.y1) / (line.y2 - line.y1)
+                    };
+                    let (y1, y2) = if line.y1 < line.y2 {
+                        (low, high)
+                    } else {
+                        (high, low)
+                    };
+                    let (x1, x2) = (x_at(y1), x_at(y2));
+                    line.x1 = x1;
+                    line.x2 = x2;
+                    line.y1 = y1;
+                    line.y2 = y2;
+                }
+                Item::Line(line)
+            }
+            Item::Text(text) if text.baseline >= start && text.baseline < end => item.clone(),
+            Item::Path(path) if path.y + path.h / 2.0 >= start && path.y + path.h / 2.0 < end => {
+                item.clone()
+            }
+            Item::Image(image)
+                if image.y + image.h / 2.0 >= start && image.y + image.h / 2.0 < end =>
+            {
+                item.clone()
+            }
+            Item::Group(group)
+                if group.bounds[1] + group.bounds[3] / 2.0 >= start
+                    && group.bounds[1] + group.bounds[3] / 2.0 < end =>
+            {
+                item.clone()
+            }
+            _ => continue,
+        };
+        items.push(offset_item(&clipped, 0.0, -start));
+    }
+    TableRowFlow {
+        anchors: row
+            .anchors
+            .iter()
+            .filter(|anchor| anchor.y >= start && (anchor.y < end || end >= row.height))
+            .cloned()
+            .map(|mut anchor| {
+                anchor.y -= start;
+                anchor
+            })
+            .collect(),
+        items,
+        height: end - start,
+        header: false,
+        page_frames: if start == 0.0 {
+            row.page_frames.clone()
+        } else {
+            Vec::new()
+        },
+        split_points: Vec::new(),
+    }
 }
 
 /// Sums a slice of widths, or nothing at all when the range is out of bounds.
@@ -336,6 +588,7 @@ fn sum_slice(range: Option<&[f64]>) -> f64 {
 
 /// One laid-out row: its cells and the height its content asked for.
 struct LaidOutRow {
+    needs_cell_height: bool,
     cells: Vec<RawCell>,
     height: f64,
 }
@@ -351,9 +604,11 @@ fn layout_row(
     depth: u32,
     escape_frames: bool,
     skip_cell_h_margins: bool,
+    row_height_override: Option<f64>,
 ) -> LaidOutRow {
     let Some(row) = table.rows.get(row_index) else {
         return LaidOutRow {
+            needs_cell_height: false,
             cells: Vec::new(),
             height: 0.0,
         };
@@ -376,6 +631,7 @@ fn layout_row(
     let mut column = omitted_columns(row.props.grid_before);
     let mut cells = Vec::with_capacity(row.cells.len());
     let mut max_content: f64 = 0.0;
+    let mut needs_cell_height = false;
     for cell in &row.cells {
         let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
         let span = span.min(widths.len().saturating_sub(column).max(1));
@@ -408,15 +664,20 @@ fn layout_row(
         let end = column.saturating_add(span).min(widths.len());
         let width: f64 = sum_slice(widths.get(column..end)).max(f64::MIN_POSITIVE);
         let cell_content_width = (width - margins.0 - margins.1).max(1.0);
-        let cell_style = crate::table_style::enter_cell(table, conditions);
-        let direction = crate::table_style::resolve_cell_properties(
+        let properties = crate::table_style::resolve_cell_properties(
             ctx.document,
             table,
             conditions,
             &cell.props,
-        )
-        .text_direction;
-        let (items, content_height, page_frames) = layout_oriented_cell_content(
+        );
+        let cell_style = crate::table_style::enter_cell(
+            table,
+            conditions,
+            properties.no_wrap || properties.fit_text,
+        );
+        let direction = properties.text_direction;
+        let anchor_scope = CellAnchorGuard::enter();
+        let (mut items, mut content_height, page_frames) = layout_oriented_cell_content(
             ctx,
             &cell.blocks,
             x + margins.0,
@@ -432,16 +693,45 @@ fn layout_row(
                 span,
                 cell.props.vertical_merge,
             )
+            .or(row_height_override)
             .map(|height| (height - margins.2 - margins.3).max(1.0)),
         );
+        if properties.hide_mark && cell.blocks.iter().all(|block| {
+            matches!(block, Block::Paragraph(paragraph) if paragraph.inlines.is_empty())
+        }) {
+            items.clear();
+            content_height = 0.0;
+        }
+        if properties.fit_text && !items.is_empty() {
+            let measured =
+                crate::paint::graphics::transform_items(items, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+            let width = match measured.first() {
+                Some(Item::Group(group)) => group.bounds[2],
+                _ => 0.0,
+            };
+            let factor = (cell_content_width / width.max(1.0)).min(1.0);
+            items = crate::paint::graphics::transform_items(
+                measured,
+                [factor, 0.0, 0.0, 1.0, (x + margins.0) * (1.0 - factor), 0.0],
+            );
+        }
         drop(cell_style);
         let height = content_height + margins.2 + margins.3;
         if cell.props.vertical_merge != Some(VerticalMerge::Continue)
             && !(cell.props.vertical_merge == Some(VerticalMerge::Restart)
-                && matches!(direction, Some(TextDirection::BtLr | TextDirection::TbRl)))
+                && matches!(
+                    direction,
+                    Some(
+                        TextDirection::BtLr
+                            | TextDirection::TbRl
+                            | TextDirection::TbRlV
+                            | TextDirection::TbLrV
+                    )
+                ))
         {
             max_content = max_content.max(height);
         }
+        needs_cell_height |= anchor_scope.needs_height();
         push_raw_cell(
             ctx,
             table,
@@ -459,10 +749,12 @@ fn layout_row(
             },
             items,
             page_frames,
+            anchor_scope.take(),
         );
         column += span;
     }
     LaidOutRow {
+        needs_cell_height,
         cells,
         height: max_content,
     }
@@ -480,22 +772,116 @@ fn layout_oriented_cell_content(
     direction: Option<TextDirection>,
     along_height: Option<f64>,
 ) -> (Vec<Item>, f64, Vec<Item>) {
-    let angle = match direction {
-        Some(TextDirection::BtLr) => -90.0,
-        Some(TextDirection::TbRl) => 90.0,
-        _ => return layout_cell_content(ctx, blocks, x, width, depth, escape_frames),
+    let section = ctx
+        .field_env
+        .get()
+        .map_or(ctx.current_section.get(), |env| {
+            env.section_index.saturating_sub(1)
+        });
+    let parent = crate::table_style::current_text_flow()
+        .map(|flow| flow.0)
+        .or_else(|| {
+            ctx.document
+                .sections
+                .get(section)
+                .and_then(|s| s.properties.text_direction)
+        })
+        .unwrap_or(TextDirection::LrTb);
+    let desired = direction.unwrap_or(parent);
+    let _flow_direction = crate::table_style::enter_text_flow(desired, along_height);
+    let direction_angle = |direction| match direction {
+        TextDirection::BtLr => -90.0_f64,
+        TextDirection::TbRl | TextDirection::TbRlV | TextDirection::TbLrV => 90.0,
+        _ => 0.0,
     };
-    let available = along_height
-        .unwrap_or_else(|| ctx.frame_anchor.get().page_height.max(width))
-        .max(1.0);
+    let angle = direction_angle(desired) - direction_angle(parent);
+    let rotated = |direction| {
+        matches!(
+            direction,
+            TextDirection::LrTbV | TextDirection::TbRlV | TextDirection::TbLrV
+        )
+    };
+    if angle == 0.0 {
+        let (mut items, height, frames) =
+            layout_cell_content(ctx, blocks, x, width, depth, escape_frames);
+        if rotated(desired) && !rotated(parent) {
+            items = rotate_east_asian_items(ctx, items);
+        }
+        return (items, height, frames);
+    }
+    let left_to_right = desired == TextDirection::TbLrV;
+    let available = if angle.abs() == 180.0 {
+        width
+    } else {
+        along_height
+            .unwrap_or_else(|| ctx.frame_anchor.get().page_height.max(width))
+            .max(1.0)
+    };
     let (mut items, cross_height, frames) =
         layout_cell_content(ctx, blocks, 0.0, available, depth, escape_frames);
-    if !frames.is_empty() || items.iter().any(|item| !matches!(item, Item::Text(_))) {
-        ctx.warn(
-            "render.vertical-cell-content: rotated cell with non-text content is not yet supported"
-                .to_owned(),
+    if rotated(desired) && !rotated(parent) {
+        items = rotate_east_asian_items(ctx, items);
+    }
+    if angle.abs() == 180.0 {
+        return (
+            crate::paint::graphics::transform_items(
+                items,
+                [-1.0, 0.0, 0.0, -1.0, x + width, cross_height],
+            ),
+            cross_height,
+            frames,
         );
-        return layout_cell_content(ctx, blocks, x, width, depth, escape_frames);
+    }
+    if items.iter().any(|item| !matches!(item, Item::Text(_))) {
+        let measured =
+            crate::paint::graphics::transform_items(items, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        let bounds = match measured.first() {
+            Some(Item::Group(group)) => group.bounds,
+            _ => [0.0; 4],
+        };
+        let height = along_height.unwrap_or(bounds[2].max(0.0));
+        let left = if along_height.is_some() {
+            0.0
+        } else {
+            bounds[0]
+        };
+        let pad = ((width - cross_height) / 2.0).max(0.0);
+        let matrix = if angle < 0.0 {
+            [0.0, -1.0, 1.0, 0.0, x + pad, height + left]
+        } else {
+            [0.0, 1.0, -1.0, 0.0, x + pad + cross_height, -left]
+        };
+        if left_to_right {
+            let mut oriented = Vec::new();
+            for item in measured.into_iter().flat_map(|item| match item {
+                Item::Group(group) => group.items,
+                other => vec![other],
+            }) {
+                let center = match &item {
+                    Item::Text(text) => text.baseline,
+                    _ => {
+                        let bounds = crate::paint::graphics::transform_items(
+                            vec![item.clone()],
+                            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                        );
+                        match bounds.first() {
+                            Some(Item::Group(group)) => group.bounds[1] + group.bounds[3] / 2.0,
+                            _ => 0.0,
+                        }
+                    }
+                };
+                oriented.extend(crate::paint::graphics::transform_items(
+                    vec![item],
+                    [0.0, 1.0, -1.0, 0.0, x + pad + 2.0 * center, -left],
+                ));
+            }
+            return (oriented, height, frames);
+        }
+        return (
+            crate::paint::graphics::transform_items(measured, matrix),
+            height,
+            frames,
+        );
     }
     let left = items
         .iter()
@@ -524,13 +910,72 @@ fn layout_oriented_cell_content(
                 + if angle < 0.0 {
                     across
                 } else {
-                    cross_height - across
+                    if left_to_right {
+                        across
+                    } else {
+                        cross_height - across
+                    }
                 };
             text.baseline = if angle < 0.0 { height - along } else { along };
-            text.run.rotation_deg = angle;
+            text.run.rotation_deg += angle;
         }
     }
     (items, height, frames)
+}
+
+/// Word's `tbV` retains horizontal flow but rotates East Asian glyphs 270°.
+pub(crate) fn rotate_east_asian_items(ctx: &LayoutContext<'_>, items: Vec<Item>) -> Vec<Item> {
+    rotate_upright_items(ctx, items, false)
+}
+
+/// Keeps each grapheme upright when a vertical container rotates its flow.
+pub(crate) fn rotate_upright_items(
+    ctx: &LayoutContext<'_>,
+    items: Vec<Item>,
+    all: bool,
+) -> Vec<Item> {
+    let mut out = Vec::new();
+    for item in items {
+        match item {
+            Item::Group(mut group) => {
+                group.items = rotate_upright_items(ctx, group.items, all);
+                out.push(Item::Group(group));
+            }
+            Item::Text(text)
+                if all
+                    || text
+                        .text
+                        .chars()
+                        .any(crate::font::metrics::is_wide_character) =>
+            {
+                let mut x = text.x;
+                for cluster in
+                    unicode_segmentation::UnicodeSegmentation::graphemes(text.text.as_str(), true)
+                {
+                    let mut glyph = text.clone();
+                    glyph.text = cluster.to_owned();
+                    glyph.width = ctx.measure(cluster, &text.run);
+                    glyph.x = x;
+                    if all || cluster.chars().any(crate::font::metrics::is_wide_character) {
+                        let family = crate::style::chosen_family(&text.run, cluster);
+                        let ascent =
+                            crate::font::embedded::run_metrics(&text.run, &family, ctx.font)
+                                .ascent_em()
+                                * text.size_px;
+                        let cx = x + glyph.width / 2.0;
+                        let cy = text.baseline - ascent + text.size_px / 2.0;
+                        glyph.x = cx + text.baseline - cy;
+                        glyph.baseline = cy + glyph.width / 2.0;
+                        glyph.run.rotation_deg -= 90.0;
+                    }
+                    x += glyph.width;
+                    out.push(Item::Text(glyph));
+                }
+            }
+            item => out.push(item),
+        }
+    }
+    out
 }
 
 /// Where a laid-out cell sits in its row.
@@ -559,6 +1004,7 @@ fn push_raw_cell(
     placement: CellPlacement,
     items: Vec<Item>,
     page_frames: Vec<Item>,
+    anchors: Vec<crate::layout::RowAnchor>,
 ) {
     cells.push(RawCell {
         col: placement.col,
@@ -573,6 +1019,7 @@ fn push_raw_cell(
         ),
         items,
         page_frames,
+        anchors,
         margin_top: placement.margin_top,
         margin_bottom: placement.margin_bottom,
         content_height: placement.content_height,
@@ -633,7 +1080,9 @@ fn vertical_align_shift(rows: &[RawRow], row: usize, cell: &RawCell) -> f64 {
     };
     if matches!(
         cell.properties.text_direction,
-        Some(TextDirection::BtLr | TextDirection::TbRl)
+        Some(
+            TextDirection::BtLr | TextDirection::TbRl | TextDirection::TbRlV | TextDirection::TbLrV
+        )
     ) {
         return 0.0;
     }
@@ -674,11 +1123,13 @@ fn column_count(table: &Table) -> usize {
         .rows
         .iter()
         .map(|row| {
-            let cells = row.cells
+            let cells = row
+                .cells
                 .iter()
                 .map(|cell| usize::from(cell.props.grid_span.unwrap_or(1)))
                 .sum::<usize>();
-            cells.saturating_add(omitted_columns(row.props.grid_before))
+            cells
+                .saturating_add(omitted_columns(row.props.grid_before))
                 .saturating_add(omitted_columns(row.props.grid_after))
         })
         .max()
@@ -716,48 +1167,186 @@ fn column_widths(
         .take(column_count)
         .map(|col| twips_to_px(col.width.map_or(0, Twips::value), scale))
         .collect();
-    if grid.iter().sum::<f64>() > 0.0 {
-        return split_widths(total, &grid, column_count);
-    }
     // No usable `w:tblGrid`: the cells' own `w:tcW` are the next best word on
     // the column widths, before an equal split.
-    let from_cells = cell_width_grid(table, column_count).map(|twips| {
-        twips
-            .into_iter()
-            .map(|value| twips_to_px(value, scale))
-            .collect::<Vec<_>>()
-    });
-    split_widths(total, from_cells.as_deref().unwrap_or(&grid), column_count)
+    let preferred = cell_width_grid(ctx, table, column_count, total, &grid);
+    let mut widths = split_widths(total, &preferred, column_count);
+    if table.props.layout != Some(strict_ooxml_wml::model::values::TableLayout::Fixed) {
+        let mut minimum = vec![1.0_f64; column_count];
+        for (row_index, row) in table.rows.iter().enumerate() {
+            let mut column = omitted_columns(row.props.grid_before);
+            for cell in &row.cells {
+                let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
+                let end = column.saturating_add(span).min(column_count);
+                if column >= end {
+                    break;
+                }
+                let conditions = crate::table_style::cell_conditions(
+                    ctx.document,
+                    table,
+                    row_index,
+                    column,
+                    span,
+                    column_count,
+                );
+                let properties = crate::table_style::resolve_cell_properties(
+                    ctx.document,
+                    table,
+                    conditions,
+                    &cell.props,
+                );
+                let _cell = crate::table_style::enter_cell(
+                    table,
+                    conditions,
+                    properties.no_wrap || properties.fit_text,
+                );
+                let margins = effective_margins(ctx, table, row, cell, conditions);
+                let (word, line) = intrinsic_cell_width(ctx, &cell.blocks, 0);
+                let demand = if properties.fit_text {
+                    0.0
+                } else if properties.no_wrap {
+                    line
+                } else {
+                    word
+                };
+                let share = (demand + margins.0 + margins.1) / (end - column) as f64;
+                for value in &mut minimum[column..end] {
+                    *value = value.max(share);
+                }
+                column = end;
+            }
+        }
+        let minimum_sum: f64 = minimum.iter().sum();
+        if minimum_sum >= total {
+            widths = split_widths(total, &minimum, column_count);
+        } else {
+            let weights: Vec<_> = widths
+                .iter()
+                .zip(&minimum)
+                .map(|(width, min)| (width - min).max(0.0))
+                .collect();
+            let weight_sum: f64 = weights.iter().sum();
+            widths = minimum
+                .iter()
+                .zip(weights)
+                .map(|(min, weight)| {
+                    min + (total - minimum_sum)
+                        * if weight_sum > 0.0 {
+                            weight / weight_sum
+                        } else {
+                            1.0 / column_count as f64
+                        }
+                })
+                .collect();
+        }
+    }
+    widths
 }
 
-/// Column widths in twips from the first row whose cells all give a `dxa`
-/// `w:tcW`, a spanning cell's width shared equally by its columns.
-fn cell_width_grid(table: &Table, column_count: usize) -> Option<Vec<i32>> {
-    table.rows.iter().find_map(|row| {
-        let mut widths = Vec::with_capacity(column_count);
-        let before = omitted_columns(row.props.grid_before);
-        if before > 0 {
-            let width = row.props.width_before.filter(|width| width.kind == WidthKind::Dxa)?.value?;
-            widths.extend(std::iter::repeat_n(width / i32::try_from(before).ok()?, before));
+/// Minimum unbreakable text width and maximum unwrapped paragraph width.
+fn intrinsic_cell_width(ctx: &LayoutContext<'_>, blocks: &[Block], depth: u32) -> (f64, f64) {
+    if depth > ctx.options.limits.max_block_nesting {
+        return (0.0, 0.0);
+    }
+    let mut word = 0.0_f64;
+    let mut longest = 0.0_f64;
+    for block in blocks {
+        match block {
+            Block::Paragraph(paragraph) => {
+                let (minimum, line) = super::paragraph::intrinsic_widths(ctx, paragraph);
+                word = word.max(minimum);
+                longest = longest.max(line);
+            }
+            Block::Table(table) => {
+                for row in &table.rows {
+                    let mut row_minimum = 0.0;
+                    let mut row_maximum = 0.0;
+                    for cell in &row.cells {
+                        let (minimum, maximum) = intrinsic_cell_width(ctx, &cell.blocks, depth + 1);
+                        let padding = twips_to_px(DEFAULT_CELL_MARGIN * 2, ctx.options.scale);
+                        row_minimum += minimum + padding;
+                        row_maximum += maximum + padding;
+                    }
+                    word = word.max(row_minimum);
+                    longest = longest.max(row_maximum);
+                }
+            }
+            Block::SdtBlock(sdt) => {
+                let (nested_word, nested_line) = intrinsic_cell_width(ctx, &sdt.blocks, depth + 1);
+                word = word.max(nested_word);
+                longest = longest.max(nested_line);
+            }
+            _ => {}
+        }
+    }
+    (word, longest)
+}
+
+/// Preferred cell widths constrain even a partial/stale grid. Earlier rows
+/// establish columns; spanning preferences retain the grid's proportions.
+fn cell_width_grid(
+    ctx: &LayoutContext<'_>,
+    table: &Table,
+    column_count: usize,
+    total: f64,
+    grid: &[f64],
+) -> Vec<f64> {
+    let mut widths = split_widths(total, grid, column_count);
+    let mut assigned = vec![false; column_count];
+    let preferred = |width: Option<Width>| {
+        let width = width?;
+        let value = width.value?.max(0);
+        match width.kind {
+            WidthKind::Dxa => Some(twips_to_px(value, ctx.options.scale)),
+            WidthKind::Pct => Some(total * f64::from(value) / 5000.0),
+            WidthKind::Auto | WidthKind::Nil => None,
+        }
+        .filter(|width| *width > 0.0)
+    };
+    for row in &table.rows {
+        let mut column = omitted_columns(row.props.grid_before).min(column_count);
+        let mut constraints = Vec::with_capacity(row.cells.len() + 2);
+        if column > 0 {
+            constraints.push((0, column, preferred(row.props.width_before)));
         }
         for cell in &row.cells {
-            let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
-            let width = cell
-                .props
-                .width
-                .filter(|width| width.kind == WidthKind::Dxa)
-                .and_then(|width| width.value)
-                .filter(|value| *value > 0)?;
-            let share = width / i32::try_from(span).unwrap_or(i32::MAX).max(1);
-            widths.extend(std::iter::repeat_n(share, span));
+            let end = column
+                .saturating_add(usize::from(cell.props.grid_span.unwrap_or(1)).max(1))
+                .min(column_count);
+            if column >= end {
+                break;
+            }
+            constraints.push((column, end, preferred(cell.props.width)));
+            column = end;
         }
-        let after = omitted_columns(row.props.grid_after);
-        if after > 0 {
-            let width = row.props.width_after.filter(|width| width.kind == WidthKind::Dxa)?.value?;
-            widths.extend(std::iter::repeat_n(width / i32::try_from(after).ok()?, after));
+        let end = column
+            .saturating_add(omitted_columns(row.props.grid_after))
+            .min(column_count);
+        if end > column {
+            constraints.push((column, end, preferred(row.props.width_after)));
         }
-        (widths.len() == column_count).then_some(widths)
-    })
+        for (start, end, preference) in constraints {
+            let Some(preference) = preference else {
+                continue;
+            };
+            let fixed: f64 = (start..end)
+                .filter(|&i| assigned[i])
+                .map(|i| widths[i])
+                .sum();
+            let free: Vec<_> = (start..end).filter(|&i| !assigned[i]).collect();
+            let weight: f64 = free.iter().map(|&i| widths[i]).sum();
+            let remaining = (preference - fixed).max(0.0);
+            for i in &free {
+                widths[*i] = if weight > 0.0 {
+                    remaining * widths[*i] / weight
+                } else {
+                    remaining / free.len() as f64
+                };
+                assigned[*i] = true;
+            }
+        }
+    }
+    widths
 }
 
 /// Divides `total` between `column_count` columns, given the widths `grid`
@@ -814,7 +1403,7 @@ fn split_widths(total: f64, grid: &[f64], column_count: usize) -> Vec<f64> {
 }
 
 /// Total table width in px (clamped to the content box).
-fn table_total_width(ctx: &LayoutContext<'_>, table: &Table, content_width: f64) -> f64 {
+pub(crate) fn table_total_width(ctx: &LayoutContext<'_>, table: &Table, content_width: f64) -> f64 {
     let scale = ctx.options.scale;
     let width = match table.props.width {
         // A non-positive dxa (including the common `w:w="0"`) is not a 1 px
@@ -861,10 +1450,14 @@ fn table_x(
     content_width: f64,
     total_width: f64,
 ) -> f64 {
-    let indent = table
-        .props
-        .indent
-        .map_or(0.0, |value| twips_to_px(value.value(), ctx.options.scale));
+    let indent = match table.props.indent_kind {
+        None | Some(WidthKind::Dxa) => table
+            .props
+            .indent
+            .map_or(0.0, |value| twips_to_px(value.value(), ctx.options.scale)),
+        // `tblInd` has no percentage or automatic indentation semantics.
+        Some(WidthKind::Auto | WidthKind::Nil | WidthKind::Pct) => 0.0,
+    };
     let mut x = content_left + indent;
     // Prefer the first row's `w:jc` when set (AUD-46), else the table's.
     let alignment = table
@@ -927,15 +1520,25 @@ fn effective_margins(
     conditions: u16,
 ) -> (f64, f64, f64, f64) {
     let scale = ctx.options.scale;
-    let source = if cell.props.margins != CellMargins::default() {
-        cell.props.margins
-    } else if row.props.cell_margins != CellMargins::default() {
-        row.props.cell_margins
-    } else if table.props.cell_margins != CellMargins::default() {
-        table.props.cell_margins
-    } else {
-        crate::table_style::style_cell_margins(ctx.document, table, conditions)
-    };
+    let mut source = crate::table_style::style_cell_margins(ctx.document, table, conditions);
+    for layer in [
+        table.props.cell_margins,
+        row.props.cell_margins,
+        cell.props.margins,
+    ] {
+        if layer.start.is_some() {
+            source.start = layer.start;
+        }
+        if layer.end.is_some() {
+            source.end = layer.end;
+        }
+        if layer.top.is_some() {
+            source.top = layer.top;
+        }
+        if layer.bottom.is_some() {
+            source.bottom = layer.bottom;
+        }
+    }
     let value = |margin: Option<Twips>, default: i32| {
         twips_to_px(margin.map_or(default, Twips::value), scale)
     };
@@ -1004,6 +1607,7 @@ pub(crate) fn layout_blocks_inline(
         return;
     }
     ctx.set_block_depth(depth);
+    let mut exclusions = Vec::new();
     let mut index = 0;
     while let Some(block) = blocks.get(index) {
         if escape_frames {
@@ -1034,6 +1638,7 @@ pub(crate) fn layout_blocks_inline(
                     items,
                     (note_marker, neighbors),
                     page_frames,
+                    &mut exclusions,
                 );
             }
             Block::Table(table) => {
@@ -1079,18 +1684,121 @@ fn place_cell_paragraph(
     items: &mut Vec<Item>,
     (note_marker, neighbors): (Option<&str>, crate::layout::paragraph::ParagraphNeighbors),
     page_frames: &mut Vec<Item>,
+    exclusions: &mut Vec<crate::layout::exclusions::PageExclusion>,
 ) {
+    let grid = if ctx
+        .document
+        .settings
+        .compat_flags
+        .adjust_line_height_in_table
+    {
+        let index = ctx
+            .field_env
+            .get()
+            .map_or(ctx.current_section.get(), |env| {
+                env.section_index.saturating_sub(1)
+            });
+        crate::layout::geometry_for(
+            ctx.document
+                .sections
+                .get(index)
+                .map(|section| &section.properties),
+            ctx.options.scale,
+            None,
+            ctx.document.settings.gutter_at_top,
+        )
+        .grid_line_pitch
+    } else {
+        None
+    };
+    let geometry = crate::layout::Geometry {
+        width: left + width,
+        height: crate::table_style::current_text_flow()
+            .and_then(|flow| flow.1)
+            .unwrap_or_else(|| ctx.frame_anchor.get().content_height.max(width)),
+        left,
+        top: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+        grid_line_pitch: grid,
+        columns: crate::layout::ColumnLayout::single(width),
+        active_column: 0,
+    };
+    let host_y = *y;
+    let local_exclusions: Vec<_> = exclusions
+        .iter()
+        .cloned()
+        .map(|exclusion| exclusion.into_paragraph_local(host_y, 0.0))
+        .collect();
     let flow = layout_paragraph(
         ctx,
         para,
         left,
         width,
-        None,
+        grid,
         note_marker,
-        &[],
-        None,
+        &local_exclusions,
+        Some((&geometry, left, host_y)),
         neighbors,
     );
+    let mut front_anchors = Vec::new();
+    if ctx.options.floating {
+        for anchor in &flow.anchors {
+            let geometry = if anchor.layout_in_cell {
+                geometry
+            } else {
+                let index = ctx.current_section.get();
+                crate::layout::geometry_for(
+                    ctx.document
+                        .sections
+                        .get(index)
+                        .map(|section| &section.properties),
+                    ctx.options.scale,
+                    None,
+                    ctx.document.settings.gutter_at_top,
+                )
+            };
+            let Some((w, h)) = crate::layout::floating::resolved_extent(ctx, anchor, &geometry)
+            else {
+                continue;
+            };
+            let (ax, ay) = crate::layout::floating::anchor_position(
+                anchor,
+                &geometry,
+                left,
+                host_y,
+                w,
+                h,
+                ctx.options.scale,
+            );
+            let anchor_items = crate::paint::graphics::anchor_items(ctx, anchor, ax, ay, w, h);
+            if anchor.layout_in_cell {
+                CELL_HEIGHT_REQUIRED.with(|stack| {
+                    if let Some(required) = stack.borrow_mut().last_mut() {
+                        *required = true;
+                    }
+                });
+                if anchor.behind_doc {
+                    items.splice(0..0, anchor_items);
+                } else {
+                    front_anchors.extend(anchor_items);
+                }
+                if cell_anchor_wrap_enabled(anchor) {
+                    if let Some(exclusion) = crate::layout::floating::page_exclusion(
+                        ctx, anchor, &geometry, left, host_y,
+                    ) {
+                        exclusions.push(exclusion);
+                    }
+                }
+            } else if !capture_anchor(crate::layout::RowAnchor {
+                anchor: anchor.clone(),
+                x: left,
+                y: host_y,
+            }) {
+                page_frames.extend(anchor_items);
+            }
+        }
+    }
     *y += flow.space_before + flow.border_before;
     for item in flow.flows {
         match item {
@@ -1129,12 +1837,17 @@ fn place_cell_paragraph(
                 for item in &row.items {
                     items.push(offset_item(item, 0.0, *y));
                 }
+                for mut anchor in row.anchors {
+                    anchor.y += *y;
+                    capture_anchor(anchor);
+                }
                 page_frames.extend(row.page_frames);
                 *y += row.height;
             }
             Flow::PageBreak | Flow::ColumnBreak => {}
         }
     }
+    items.extend(front_anchors);
     *y += flow.space_after + flow.border_after;
 }
 
@@ -1160,6 +1873,10 @@ fn append_table_flows(
             Flow::TableRow(row) => {
                 for item in &row.items {
                     items.push(offset_item(item, 0.0, *y));
+                }
+                for mut anchor in row.anchors {
+                    anchor.y += *y;
+                    capture_anchor(anchor);
                 }
                 page_frames.extend(row.page_frames);
                 *y += row.height;
@@ -1228,6 +1945,55 @@ fn blocks_uniform_frame<'a>(blocks: &'a [Block], found: &mut Option<&'a FramePro
     true
 }
 
+/// Carry page anchors through inline/frame containers without losing their hosts.
+fn append_row_anchors(
+    ctx: &LayoutContext<'_>,
+    anchors: Vec<crate::layout::RowAnchor>,
+    dx: f64,
+    dy: f64,
+    items: &mut Vec<Item>,
+) {
+    for mut anchor in anchors {
+        anchor.x += dx;
+        anchor.y += dy;
+        if capture_anchor(anchor.clone()) {
+            continue;
+        }
+        let section = ctx
+            .document
+            .sections
+            .get(ctx.current_section.get())
+            .map(|s| &s.properties);
+        let geometry = crate::layout::body_geometry_for(
+            section,
+            ctx.options.scale,
+            None,
+            ctx.document.settings.gutter_at_top,
+        );
+        let Some((w, h)) = crate::layout::floating::resolved_extent(ctx, &anchor.anchor, &geometry)
+        else {
+            continue;
+        };
+        let (x, y) = crate::layout::floating::anchor_position(
+            &anchor.anchor,
+            &geometry,
+            anchor.x,
+            anchor.y,
+            w,
+            h,
+            ctx.options.scale,
+        );
+        items.extend(crate::paint::graphics::anchor_items(
+            ctx,
+            &anchor.anchor,
+            x,
+            y,
+            w,
+            h,
+        ));
+    }
+}
+
 /// Lays a uniformly framed table out as one container at the frame origin.
 pub(crate) fn framed_table_items(
     ctx: &LayoutContext<'_>,
@@ -1251,6 +2017,7 @@ pub(crate) fn framed_table_items(
                 for item in &row.items {
                     items.push(offset_item(item, 0.0, y));
                 }
+                append_row_anchors(ctx, row.anchors, 0.0, y, &mut items);
                 items.extend(row.page_frames);
                 y += row.height;
             }
@@ -1447,6 +2214,7 @@ pub(crate) fn layout_frame_contents(
                     for item in &row.items {
                         items.push(offset_item(item, origin_x, origin_y + local_y));
                     }
+                    append_row_anchors(ctx, row.anchors, origin_x, origin_y + local_y, &mut items);
                     items.extend(row.page_frames);
                     local_y += row.height;
                 }
@@ -1490,6 +2258,11 @@ fn cell_frame_items(ctx: &LayoutContext<'_>, blocks: &[Block]) -> Vec<Item> {
 /// Offsets a paint item by `(dx, dy)`.
 pub(crate) fn offset_item(item: &Item, dx: f64, dy: f64) -> Item {
     match item {
+        Item::Group(group) => {
+            let mut group = group.clone();
+            group.offset(dx, dy);
+            Item::Group(group)
+        }
         Item::Text(text) => Item::Text(crate::layout::TextItem {
             x: text.x + dx,
             baseline: text.baseline + dy,

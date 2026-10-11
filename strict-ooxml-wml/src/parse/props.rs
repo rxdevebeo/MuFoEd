@@ -226,7 +226,7 @@ impl PartParser<'_> {
                                 parser.record(
                                     "w:framePr",
                                     SupportStatus::Partial,
-                                    Some("text frame kept in flow".to_owned()),
+                                    Some("text frame positioning retained for layout".to_owned()),
                                     Some(parser.location()),
                                 );
                                 parser.skip_element()?;
@@ -760,13 +760,28 @@ impl PartParser<'_> {
                             }
                             "bidiVisual" => {
                                 props.bidi_visual = parse_on_off(&attrs).unwrap_or(false);
+                                props.bidi_visual_state = if props.bidi_visual {
+                                    crate::model::values::TriState::On
+                                } else {
+                                    crate::model::values::TriState::Off
+                                };
+                            }
+                            "tblOverlap" => {
+                                props.allow_overlap =
+                                    wml_attr(&attrs, "val").and_then(|value| match value {
+                                        "never" => Some(false),
+                                        "overlap" => Some(true),
+                                        _ => None,
+                                    });
                             }
                             "tblpPr" => {
                                 props.positioning = Some(Self::parse_tblp_pr(&attrs, parser));
                                 parser.record(
                                     "w:tblpPr",
                                     SupportStatus::Partial,
-                                    Some("floating table kept in flow".to_owned()),
+                                    Some(
+                                        "floating table positioning retained for layout".to_owned(),
+                                    ),
                                     Some(parser.location()),
                                 );
                             }
@@ -825,7 +840,14 @@ impl PartParser<'_> {
                                     );
                                 }
                             }
-                            "cantSplit" => props.cant_split = parse_on_off(&attrs).unwrap_or(false),
+                            "cantSplit" => {
+                                props.cant_split = parse_on_off(&attrs).unwrap_or(false);
+                                props.cant_split_state = if props.cant_split {
+                                    crate::model::values::TriState::On
+                                } else {
+                                    crate::model::values::TriState::Off
+                                };
+                            }
                             "tblCellMar" => {
                                 props.cell_margins = parser.parse_cell_margins()?;
                                 continue;
@@ -933,9 +955,30 @@ impl PartParser<'_> {
                                 props.margins = parser.parse_cell_margins()?;
                                 continue;
                             }
-                            "hideMark" => props.hide_mark = parse_on_off(&attrs).unwrap_or(false),
-                            "tcFitText" => props.fit_text = parse_on_off(&attrs).unwrap_or(false),
-                            "noWrap" => props.no_wrap = parse_on_off(&attrs).unwrap_or(false),
+                            "hideMark" => {
+                                props.hide_mark = parse_on_off(&attrs).unwrap_or(false);
+                                props.hide_mark_state = if props.hide_mark {
+                                    crate::model::values::TriState::On
+                                } else {
+                                    crate::model::values::TriState::Off
+                                };
+                            }
+                            "tcFitText" => {
+                                props.fit_text = parse_on_off(&attrs).unwrap_or(false);
+                                props.fit_text_state = if props.fit_text {
+                                    crate::model::values::TriState::On
+                                } else {
+                                    crate::model::values::TriState::Off
+                                };
+                            }
+                            "noWrap" => {
+                                props.no_wrap = parse_on_off(&attrs).unwrap_or(false);
+                                props.no_wrap_state = if props.no_wrap {
+                                    crate::model::values::TriState::On
+                                } else {
+                                    crate::model::values::TriState::Off
+                                };
+                            }
                             "tcPrChange" => {
                                 record_property_change(parser, "w:tcPrChange")?;
                                 continue;
@@ -1270,6 +1313,7 @@ impl PartParser<'_> {
             theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade")
                 .map(Box::new),
             shadow: attr_on(attrs, "shadow"),
+            frame: attr_on(attrs, "frame"),
         }
     }
 
@@ -1292,7 +1336,8 @@ impl PartParser<'_> {
     /// Parses `w:cols`.
     fn parse_columns(&mut self, attrs: &[Attr]) -> Result<Columns> {
         self.nested(|parser| {
-            let equal_width = wml_attr(attrs, "equalWidth").map(|value| matches!(value, "true" | "on" | "1"));
+            let equal_width =
+                wml_attr(attrs, "equalWidth").map(|value| matches!(value, "true" | "on" | "1"));
             let mut columns = Columns {
                 count: parser.measure_u16(attrs, "num", "w:cols"),
                 space: parser.measure_twips(attrs, "space", "w:cols"),

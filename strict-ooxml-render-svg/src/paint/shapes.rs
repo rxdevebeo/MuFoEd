@@ -144,7 +144,7 @@ fn paint_definition(out: &mut String, id: &str, paint: &PathPaint) {
 }
 
 /// Builds the SVG transform (translation + rotation/flips) for a path.
-fn path_transform(path: &PathItem) -> String {
+pub(crate) fn path_transform(path: &PathItem) -> String {
     let mut parts = vec![format!(
         "translate({} {})",
         crate::units::fmt_num(path.x),

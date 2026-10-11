@@ -7,7 +7,9 @@ use strict_ooxml_core::error::Result;
 use strict_ooxml_wml::model::props::Section;
 
 use crate::layout::exclusions::{Contour, PageExclusion};
-use crate::layout::{geometry_for, Geometry, Item, LayoutContext, PlacedPage};
+#[cfg(test)]
+use crate::layout::geometry_for;
+use crate::layout::{Geometry, Item, LayoutContext, PlacedPage};
 use crate::units::emu_to_px;
 use std::sync::Arc;
 
@@ -40,12 +42,18 @@ pub(crate) fn resolve(
     // Behind-document objects are inserted at the page front; the rest appended.
     let mut behind: Vec<(usize, i64, Vec<Item>)> = Vec::new();
     let mut front: Vec<(usize, i64, Vec<Item>)> = Vec::new();
+    let mut occupied: Vec<(usize, [f64; 4], bool)> = Vec::new();
     for pending in anchors {
         let section = pages
             .get(pending.page)
             .and_then(|page| sections.get(page.section_index))
             .map(|section| &section.properties);
-        let mut geometry = geometry_for(section, scale, None);
+        let mut geometry = crate::layout::body_geometry_for(
+            section,
+            scale,
+            None,
+            ctx.document.settings.gutter_at_top,
+        );
         geometry.active_column = pending.column;
         let w = resolved_axis(
             ctx,
@@ -70,11 +78,38 @@ pub(crate) fn resolve(
         if w <= 0.0 || h <= 0.0 {
             continue;
         }
-        let (x, y) = anchor_position(&pending.anchor, &geometry, pending.host_x, pending.host_y, w, h, scale);
+        let (x, mut y) = anchor_position(
+            &pending.anchor,
+            &geometry,
+            pending.host_x,
+            pending.host_y,
+            w,
+            h,
+            scale,
+        );
+        for _ in 0..=occupied.len() {
+            let bottom = occupied
+                .iter()
+                .filter(|(page, rect, allowed)| {
+                    *page == pending.page
+                        && (!pending.anchor.allow_overlap || !allowed)
+                        && x < rect[0] + rect[2]
+                        && x + w > rect[0]
+                        && y < rect[1] + rect[3]
+                        && y + h > rect[1]
+                })
+                .map(|(_, rect, _)| rect[1] + rect[3])
+                .fold(y, f64::max);
+            if bottom <= y + 0.001 {
+                break;
+            }
+            y = bottom;
+        }
         let items = crate::paint::graphics::anchor_items(ctx, &pending.anchor, x, y, w, h);
         if items.is_empty() {
             continue;
         }
+        occupied.push((pending.page, [x, y, w, h], pending.anchor.allow_overlap));
         let order = pending.anchor.relative_height.map_or(0, i64::from);
         let entry = (pending.page, order, items);
         if pending.anchor.behind_doc {
@@ -87,7 +122,7 @@ pub(crate) fn resolve(
     front.sort_by_key(|(page, order, _)| (*page, *order));
     for (page, _, mut items) in behind {
         if let Some(page) = pages.get_mut(page) {
-            ctx.charge_items(items.len())?;
+            ctx.charge_items(items.iter().map(|item| item.leaves().count()).sum())?;
             let mut combined = std::mem::take(&mut items);
             combined.append(&mut page.items);
             page.items = combined;
@@ -95,7 +130,7 @@ pub(crate) fn resolve(
     }
     for (page, _, items) in front {
         if let Some(page) = pages.get_mut(page) {
-            ctx.charge_items(items.len())?;
+            ctx.charge_items(items.iter().map(|item| item.leaves().count()).sum())?;
             page.items.extend(items);
         }
     }
@@ -113,10 +148,13 @@ fn resolve_h(pos: Option<&Position>, geometry: &Geometry, host_x: f64, w: f64, s
             _ => origin,
         };
     }
-    let offset = pos
-        .and_then(|pos| pos.percent_offset)
-        .map_or_else(|| pos.and_then(|pos| pos.offset).map_or(0.0, |offset: Emu| emu_to_px(offset.value(), scale)),
-            |percent| span * f64::from(percent) / 100_000.0);
+    let offset = pos.and_then(|pos| pos.percent_offset).map_or_else(
+        || {
+            pos.and_then(|pos| pos.offset)
+                .map_or(0.0, |offset: Emu| emu_to_px(offset.value(), scale))
+        },
+        |percent| span * f64::from(percent) / 100_000.0,
+    );
     origin + offset
 }
 
@@ -131,22 +169,35 @@ fn resolve_v(pos: Option<&Position>, geometry: &Geometry, host_y: f64, h: f64, s
             _ => origin,
         };
     }
-    let offset = pos
-        .and_then(|pos| pos.percent_offset)
-        .map_or_else(|| pos.and_then(|pos| pos.offset).map_or(0.0, |offset: Emu| emu_to_px(offset.value(), scale)),
-            |percent| span * f64::from(percent) / 100_000.0);
+    let offset = pos.and_then(|pos| pos.percent_offset).map_or_else(
+        || {
+            pos.and_then(|pos| pos.offset)
+                .map_or(0.0, |offset: Emu| emu_to_px(offset.value(), scale))
+        },
+        |percent| span * f64::from(percent) / 100_000.0,
+    );
     origin + offset
 }
 
 /// Shared origin for both painting and text exclusions.
 #[allow(clippy::too_many_arguments)]
-fn anchor_position(anchor: &AnchorDrawing, geometry: &Geometry, host_x: f64, host_y: f64, w: f64, h: f64, scale: f64) -> (f64, f64) {
+pub(crate) fn anchor_position(
+    anchor: &AnchorDrawing,
+    geometry: &Geometry,
+    host_x: f64,
+    host_y: f64,
+    w: f64,
+    h: f64,
+    scale: f64,
+) -> (f64, f64) {
     if anchor.simple_pos {
         let (x, y) = anchor.simple_pos_point.unwrap_or((0, 0));
         return (emu_to_px(x, scale), emu_to_px(y, scale));
     }
-    (resolve_h(anchor.position_h.as_ref(), geometry, host_x, w, scale),
-     resolve_v(anchor.position_v.as_ref(), geometry, host_y, h, scale))
+    (
+        resolve_h(anchor.position_h.as_ref(), geometry, host_x, w, scale),
+        resolve_v(anchor.position_v.as_ref(), geometry, host_y, h, scale),
+    )
 }
 
 /// Length of one axis. A positive `wp14` percent replaces the fallback extent.
@@ -320,6 +371,14 @@ pub(crate) fn page_exclusion(
     let dist = |anchor_dist: Option<u32>, wrap_dist: Option<u32>| {
         emu_to_px(i64::from(anchor_dist.or(wrap_dist).unwrap_or(0)), scale)
     };
+    let effects = anchor.effect_extent.unwrap_or_default();
+    let effect = |value: strict_ooxml_wml::model::Emu| {
+        if matches!(wrap.kind, WrapKind::Square | WrapKind::TopAndBottom) {
+            emu_to_px(value.value().max(0), scale)
+        } else {
+            0.0
+        }
+    };
     let (left, right, side) = if top_and_bottom {
         // Text stays off the object's lines across the column it sits in.
         let (column_left, column_width) = geometry.active_column_box();
@@ -332,16 +391,16 @@ pub(crate) fn page_exclusion(
             _ => WrapSide::Both,
         };
         (
-            x - dist(anchor.dist_left, wrap.dist_left),
-            x + width + dist(anchor.dist_right, wrap.dist_right),
+            x - dist(anchor.dist_left, wrap.dist_left) - effect(effects.left),
+            x + width + dist(anchor.dist_right, wrap.dist_right) + effect(effects.right),
             side,
         )
     };
     let distances = [
-        dist(anchor.dist_left, wrap.dist_left),
-        dist(anchor.dist_right, wrap.dist_right),
-        dist(anchor.dist_top, wrap.dist_top),
-        dist(anchor.dist_bottom, wrap.dist_bottom),
+        dist(anchor.dist_left, wrap.dist_left) + effect(effects.left),
+        dist(anchor.dist_right, wrap.dist_right) + effect(effects.right),
+        dist(anchor.dist_top, wrap.dist_top) + effect(effects.top),
+        dist(anchor.dist_bottom, wrap.dist_bottom) + effect(effects.bottom),
     ];
     let contour = if matches!(wrap.kind, WrapKind::Tight | WrapKind::Through) {
         let source = anchor.extent?;
@@ -410,7 +469,7 @@ mod tests {
 
     #[test]
     fn percentage_offsets_use_the_reference_span_including_negative_offsets() {
-        let geometry = geometry_for(None, 1.0, None);
+        let geometry = geometry_for(None, 1.0, None, false);
         let position = Position {
             relative_from: Some("margin".into()),
             percent_offset: Some(25_000),
@@ -419,7 +478,10 @@ mod tests {
         };
         let x = resolve_h(Some(&position), &geometry, 0.0, 10.0, 1.0);
         assert!((x - geometry.left - geometry.content_width() / 4.0).abs() < 1e-9);
-        let position = Position { percent_offset: Some(-50_000), ..position };
+        let position = Position {
+            percent_offset: Some(-50_000),
+            ..position
+        };
         let y = resolve_v(Some(&position), &geometry, 0.0, 10.0, 1.0);
         assert!((y - geometry.top + geometry.content_height() / 2.0).abs() < 1e-9);
     }

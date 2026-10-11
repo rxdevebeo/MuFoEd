@@ -202,8 +202,12 @@ pub struct TableProperties {
     pub indent_kind: Option<super::values::WidthKind>,
     /// Visual right-to-left table (`w:bidiVisual`).
     pub bidi_visual: bool,
+    /// Presence of bidiVisual, including explicit false in style overrides.
+    pub bidi_visual_state: crate::model::values::TriState,
     /// Floating-table positioning (`w:tblpPr`), AUD-46. Render stays in-flow.
     pub positioning: Option<TablePositioning>,
+    /// Whether other floating tables may overlap this table (absent means yes).
+    pub allow_overlap: Option<bool>,
     /// Spacing between cells (`w:tblCellSpacing`), AUD-46.
     pub cell_spacing: Option<Width>,
     /// Rows in one style band (`w:tblStyleRowBandSize`).
@@ -224,6 +228,8 @@ pub struct RowProperties {
     pub header: TriState,
     /// Do not split the row across pages (`w:cantSplit`).
     pub cant_split: bool,
+    /// Explicit presence/value of `w:cantSplit` for style inheritance.
+    pub cant_split_state: TriState,
     /// Row cell margins (`w:tblCellMar`).
     pub cell_margins: CellMargins,
     /// Grid columns before the row (`w:gridBefore`).
@@ -275,10 +281,16 @@ pub struct CellProperties {
     pub margins: CellMargins,
     /// Hide the cell mark (`w:hideMark`).
     pub hide_mark: bool,
+    /// Presence-aware value, including an explicit false override.
+    pub hide_mark_state: TriState,
     /// Fit text (`w:tcFitText`).
     pub fit_text: bool,
+    /// Presence-aware value, including an explicit false override.
+    pub fit_text_state: TriState,
     /// Do not wrap text (`w:noWrap`).
     pub no_wrap: bool,
+    /// Presence-aware value, including an explicit false override.
+    pub no_wrap_state: TriState,
     /// Source location of `w:tcPr`.
     pub location: Option<SourceLocation>,
 }
@@ -579,6 +591,8 @@ pub struct PageBorder {
     pub theme_color: Option<Box<ThemeColorRef>>,
     /// Shadow (`w:shadow`).
     pub shadow: bool,
+    /// Reverse compound border appearance.
+    pub frame: bool,
 }
 
 /// Page borders (`w:pgBorders`), Stage 5B.

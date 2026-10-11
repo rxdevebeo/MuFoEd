@@ -50,7 +50,7 @@ pub(crate) fn apply(
         if !has_visible_edge(borders) {
             continue;
         }
-        let mut geometry = geometry_for(section, scale, None);
+        let mut geometry = geometry_for(section, scale, None, ctx.document.settings.gutter_at_top);
         // An even page of a mirrored document has its margins swapped.
         if mirrored && index % 2 == 1 {
             std::mem::swap(&mut geometry.left, &mut geometry.right);
@@ -152,6 +152,8 @@ fn edge_line(
     )
     .unwrap_or_else(|| "#000000".to_owned());
     let border = ResolvedBorder {
+        frame: edge.frame,
+        shadow: edge.shadow,
         style,
         width_pt: edge
             .size

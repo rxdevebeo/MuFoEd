@@ -411,12 +411,12 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
                 }
                 if let Some(distance) = array.max_distance {
                     xml.start("m:maxDist");
-                    xml.attr_m("val", distance);
+                    xml.attr_m("val", if distance { "1" } else { "0" });
                     xml.end();
                 }
                 if let Some(distance) = array.object_distance {
                     xml.start("m:objDist");
-                    xml.attr_m("val", distance);
+                    xml.attr_m("val", if distance { "1" } else { "0" });
                     xml.end();
                 }
                 if let Some(rule) = &array.row_spacing_rule {
@@ -518,6 +518,19 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
         N::BorderBox(border_box) => {
             xml.start("m:borderBox");
             xml.start("m:borderBoxPr");
+            for (name, value) in ["m:hideTop", "m:hideBot", "m:hideLeft", "m:hideRight"]
+                .into_iter()
+                .zip(border_box.hide_edges)
+                .chain(
+                    ["m:strikeH", "m:strikeV", "m:strikeBLTR", "m:strikeTLBR"]
+                        .into_iter()
+                        .zip(border_box.strikes),
+                )
+            {
+                if let Some(value) = value {
+                    xml.empty_attr(name, "m:val", if value { "1" } else { "0" });
+                }
+            }
             if let Some(value) = border_box.alignment {
                 if let Some(value) = x_align(value) {
                     xml.empty_attr("m:aln", "m:val", value);
@@ -600,8 +613,8 @@ fn math_node(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, node: &MathNode) {
 fn argument(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, name: &'static str, argument: &MathArgument) {
     let properties = &argument.properties;
     let inexpressible = [
-        ("m:lit", properties.literal == Some(true)),
-        ("m:nor", properties.normal == Some(true)),
+        ("m:lit", properties.literal.is_some()),
+        ("m:nor", properties.normal.is_some()),
         ("m:scr", properties.script.is_some()),
         ("m:sty", properties.style.is_some()),
         (
@@ -738,21 +751,30 @@ fn math_run(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, run: &MathRun) {
 }
 
 fn run_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, properties: &MathRunProperties) {
-    if !properties.literal
+    if properties.literal_value.is_none()
+        && properties.normal_value.is_none()
+        && !properties.literal
         && !properties.normal
         && properties.script.is_none()
         && properties.style.is_none()
         && properties.alignment.is_none()
+        && properties.alignment_point.is_none()
         && properties.control.is_none()
     {
         return;
     }
     xml.start("m:rPr");
-    if properties.literal {
-        xml.empty("m:lit");
-    }
-    if properties.normal {
-        xml.empty("m:nor");
+    for (name, value, legacy) in [
+        ("m:lit", properties.literal_value, properties.literal),
+        ("m:nor", properties.normal_value, properties.normal),
+    ] {
+        if value == Some(false) {
+            xml.start(name);
+            xml.attr_m("val", "0");
+            xml.end();
+        } else if value == Some(true) || legacy {
+            xml.empty(name);
+        }
     }
     if let Some(value) = properties.script {
         xml.start("m:scr");
@@ -764,7 +786,9 @@ fn run_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, properties: &MathRunPr
         xml.attr_m("val", style(value));
         xml.end();
     }
-    if let Some(value) = properties.alignment {
+    if let Some(value) = properties.alignment_point {
+        xml.empty_attr("m:aln", "m:val", bool_str(value));
+    } else if let Some(value) = properties.alignment {
         if value != MathAlignment::Unset {
             // `m:aln` is `CT_OnOff`: the element is the assertion, and
             // `m:val` is a boolean. There is no lexical form that says which
@@ -899,7 +923,10 @@ mod tests {
             nodes: vec![MathNode::Run(MathRun {
                 field_char: None,
                 properties: MathRunProperties {
+                    alignment_point: None,
                     literal: true,
+                    literal_value: None,
+                    normal_value: None,
                     normal: false,
                     r#break: None,
                     script: Some(strict_ooxml_wml::model::math::MathScript::Fraktur),

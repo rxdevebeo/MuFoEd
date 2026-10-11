@@ -368,11 +368,11 @@ pub struct BuiltinFontProvider {
 /// advances is the one that gets embedded, which is what makes the PDF's text
 /// positions agree with the layout.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FaceSource {
+pub struct FaceSource<'a> {
     /// The bundled family name (the metric-compatible substitute).
-    pub family: &'static str,
+    pub family: &'a str,
     /// The raw font program.
-    pub data: &'static [u8],
+    pub data: &'a [u8],
     /// The `wght` instance to apply, when the face is a variable font.
     pub weight: Option<f32>,
     /// Whether one face serves every `(bold, italic)` combination.
@@ -384,7 +384,7 @@ pub struct FaceSource {
 /// `family` goes through [`map_family`], so `Calibri` yields the Carlito face —
 /// the same substitution the layout used, which is the point.
 #[must_use]
-pub fn face_source(family: &str, bold: bool, italic: bool) -> Option<FaceSource> {
+pub fn face_source(family: &str, bold: bool, italic: bool) -> Option<FaceSource<'static>> {
     let mapped = map_family(family);
     let exact = FACE_SPECS
         .iter()

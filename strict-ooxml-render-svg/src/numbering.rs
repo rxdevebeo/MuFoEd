@@ -20,6 +20,7 @@ use crate::style::{apply_run_props, ComputedRun};
 /// The marker computed for one numbered paragraph.
 #[derive(Clone, Debug)]
 pub(crate) struct NumberingMarker {
+    pub number: Option<(u32, NumberFormat)>,
     /// Rendered marker text (`1.`, `1.1`, `•`, …).
     pub text: String,
     /// Effective run format of the marker.
@@ -53,6 +54,52 @@ pub(crate) struct NumberingMarkers {
     by_location: HashMap<SourceLocation, NumberingMarker>,
 }
 
+thread_local! {
+    static PARAGRAPH_ALIASES: std::cell::RefCell<Vec<HashMap<usize, usize>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+pub(crate) struct NumberingAliasGuard;
+impl Drop for NumberingAliasGuard {
+    fn drop(&mut self) {
+        PARAGRAPH_ALIASES.with(|maps| {
+            maps.borrow_mut().pop();
+        });
+    }
+}
+
+/// Keeps marker identity while a temporary table carries resolved properties.
+pub(crate) fn alias_table(source: &Table, target: &Table) -> NumberingAliasGuard {
+    let mut originals = Vec::new();
+    let mut copies = Vec::new();
+    for row in &source.rows {
+        for cell in &row.cells {
+            collect_blocks(&cell.blocks, &mut |p| originals.push(address(p)));
+        }
+    }
+    for row in &target.rows {
+        for cell in &row.cells {
+            collect_blocks(&cell.blocks, &mut |p| copies.push(address(p)));
+        }
+    }
+    let aliases = copies
+        .into_iter()
+        .zip(originals)
+        .map(|(copy, original)| (copy, canonical_address(original)))
+        .collect();
+    PARAGRAPH_ALIASES.with(|maps| maps.borrow_mut().push(aliases));
+    NumberingAliasGuard
+}
+
+fn canonical_address(address: usize) -> usize {
+    PARAGRAPH_ALIASES.with(|maps| {
+        maps.borrow()
+            .iter()
+            .rev()
+            .find_map(|map| map.get(&address).copied())
+            .unwrap_or(address)
+    })
+}
+
 impl NumberingMarkers {
     /// Builds the markers for `document`.
     #[must_use]
@@ -80,11 +127,13 @@ impl NumberingMarkers {
     /// built from.
     #[must_use]
     pub(crate) fn get(&self, paragraph: &Paragraph) -> Option<&NumberingMarker> {
-        self.by_address.get(&address(paragraph)).or_else(|| {
-            is_known(&paragraph.location)
-                .then(|| self.by_location.get(&paragraph.location))
-                .flatten()
-        })
+        self.by_address
+            .get(&canonical_address(address(paragraph)))
+            .or_else(|| {
+                is_known(&paragraph.location)
+                    .then(|| self.by_location.get(&paragraph.location))
+                    .flatten()
+            })
     }
 }
 
@@ -159,6 +208,12 @@ impl<'a> Engine<'a> {
             None => (None, None),
         };
         Some(NumberingMarker {
+            number: (!is_bullet).then(|| {
+                (
+                    counters[level_index].unwrap_or(start),
+                    NumberFormat::from_strict(level.format.as_deref(), NumberFormat::Decimal),
+                )
+            }),
             text,
             run,
             indent_start_pt,

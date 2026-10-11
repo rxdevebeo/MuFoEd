@@ -65,7 +65,46 @@ struct CellStyle {
 thread_local! {
     /// Innermost cell last. `None` is a cell of a table without a style, which
     /// must shadow the style of the table around it.
-    static CELL_STYLES: RefCell<Vec<Option<CellStyle>>> = const { RefCell::new(Vec::new()) };
+    static CELL_STYLES: RefCell<Vec<(Option<CellStyle>, bool)>> = const { RefCell::new(Vec::new()) };
+    static WRAP_OVERRIDES: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Restores a drawing container's wrapping policy when it leaves scope.
+pub(crate) struct WrapGuard;
+impl Drop for WrapGuard {
+    fn drop(&mut self) {
+        WRAP_OVERRIDES.with(|stack| {
+            stack.borrow_mut().pop();
+        });
+    }
+}
+thread_local! {
+    static TEXT_FLOWS: RefCell<Vec<(strict_ooxml_wml::model::values::TextDirection, Option<f64>)>> = const { RefCell::new(Vec::new()) };
+}
+pub(crate) struct TextFlowGuard;
+impl Drop for TextFlowGuard {
+    fn drop(&mut self) {
+        TEXT_FLOWS.with(|flows| {
+            flows.borrow_mut().pop();
+        });
+    }
+}
+pub(crate) fn enter_text_flow(
+    direction: strict_ooxml_wml::model::values::TextDirection,
+    height: Option<f64>,
+) -> TextFlowGuard {
+    TEXT_FLOWS.with(|flows| flows.borrow_mut().push((direction, height)));
+    TextFlowGuard
+}
+pub(crate) fn current_text_flow(
+) -> Option<(strict_ooxml_wml::model::values::TextDirection, Option<f64>)> {
+    TEXT_FLOWS.with(|flows| flows.borrow().last().copied())
+}
+
+/// Sets wrapping for a drawing's text container independently of its host cell.
+pub(crate) fn wrap_override(no_wrap: bool) -> WrapGuard {
+    WRAP_OVERRIDES.with(|stack| stack.borrow_mut().push(no_wrap));
+    WrapGuard
 }
 
 /// Leaves the cell entered by [`enter_cell`] when dropped.
@@ -83,13 +122,13 @@ impl Drop for CellStyleGuard {
 /// Makes `table`'s style, narrowed to `conditions`, the style of the cell
 /// paragraphs laid out until the guard drops.
 #[inline(never)]
-pub(crate) fn enter_cell(table: &Table, conditions: u16) -> CellStyleGuard {
+pub(crate) fn enter_cell(table: &Table, conditions: u16, no_wrap: bool) -> CellStyleGuard {
     let entry = table
         .props
         .style
         .clone()
         .map(|style| CellStyle { style, conditions });
-    CELL_STYLES.with(|stack| stack.borrow_mut().push(entry));
+    CELL_STYLES.with(|stack| stack.borrow_mut().push((entry, no_wrap)));
     CellStyleGuard
 }
 
@@ -99,9 +138,18 @@ pub(crate) fn current_cell() -> Option<(StyleId, u16)> {
         stack
             .borrow()
             .last()
-            .and_then(Option::as_ref)
+            .and_then(|(entry, _)| entry.as_ref())
             .map(|entry| (entry.style.clone(), entry.conditions))
     })
+}
+
+/// Whether the innermost cell suppresses soft line wrapping.
+pub(crate) fn current_no_wrap() -> bool {
+    WRAP_OVERRIDES
+        .with(|stack| stack.borrow().last().copied())
+        .unwrap_or_else(|| {
+            CELL_STYLES.with(|stack| stack.borrow().last().is_some_and(|(_, no_wrap)| *no_wrap))
+        })
 }
 
 /// `style` and its `basedOn` ancestors, furthest ancestor first.
@@ -146,6 +194,173 @@ fn table_style<'a>(document: &'a Document, table: &Table) -> Option<&'a Style> {
         .style
         .as_ref()
         .and_then(|id| document.styles.get(id))
+}
+
+fn merge_table(
+    target: &mut strict_ooxml_wml::model::props::TableProperties,
+    layer: &strict_ooxml_wml::model::props::TableProperties,
+) {
+    macro_rules! overlay { ($($field:ident),*) => { $(if layer.$field.is_some() { target.$field.clone_from(&layer.$field); })* }; }
+    overlay!(
+        style,
+        width,
+        alignment,
+        layout,
+        shading,
+        look,
+        indent,
+        indent_kind,
+        positioning,
+        allow_overlap,
+        cell_spacing,
+        style_row_band_size,
+        style_col_band_size
+    );
+    merge_margins(&mut target.cell_margins, &layer.cell_margins);
+    merge_borders(&mut target.borders, &layer.borders);
+    if layer.bidi_visual_state != strict_ooxml_wml::model::values::TriState::Absent {
+        target.bidi_visual_state = layer.bidi_visual_state;
+        target.bidi_visual = layer.bidi_visual_state.is_on();
+    } else if layer.bidi_visual {
+        target.bidi_visual = true;
+    }
+}
+
+fn merge_row(
+    target: &mut strict_ooxml_wml::model::props::RowProperties,
+    layer: &strict_ooxml_wml::model::props::RowProperties,
+) {
+    use strict_ooxml_wml::model::values::TriState;
+    macro_rules! overlay { ($($field:ident),*) => { $(if layer.$field.is_some() { target.$field.clone_from(&layer.$field); })* }; }
+    overlay!(
+        height,
+        grid_before,
+        grid_after,
+        width_before,
+        width_after,
+        alignment,
+        cell_spacing,
+        exception
+    );
+    if layer.header != TriState::Absent {
+        target.header = layer.header;
+    }
+    if layer.cant_split_state != TriState::Absent {
+        target.cant_split_state = layer.cant_split_state;
+        target.cant_split = layer.cant_split_state.is_on();
+    } else if layer.cant_split {
+        target.cant_split = true;
+    }
+    merge_margins(&mut target.cell_margins, &layer.cell_margins);
+    merge_borders(&mut target.exception_borders, &layer.exception_borders);
+}
+
+/// Resolves table and row properties before width and pagination decisions.
+pub(crate) fn resolve_table(document: &Document, table: &Table) -> Table {
+    let Some(style) = table_style(document, table) else {
+        return table.clone();
+    };
+    let mut resolved = table.clone();
+    let mut properties = strict_ooxml_wml::model::props::TableProperties::default();
+    for ancestor in chain(document, style) {
+        merge_table(&mut properties, &ancestor.table);
+    }
+    for condition in conditions(document, style, WHOLE_TABLE) {
+        merge_table(&mut properties, &condition.table);
+    }
+    merge_table(&mut properties, &table.props);
+    resolved.props = properties;
+    let columns = table
+        .rows
+        .iter()
+        .map(|row| {
+            row.cells
+                .iter()
+                .map(|cell| usize::from(cell.props.grid_span.unwrap_or(1)).max(1))
+                .sum::<usize>()
+                .saturating_add(row.props.grid_before.unwrap_or(0) as usize)
+                .saturating_add(row.props.grid_after.unwrap_or(0) as usize)
+        })
+        .max()
+        .unwrap_or(1);
+    for (index, row) in resolved.rows.iter_mut().enumerate() {
+        let mask = cell_conditions(document, table, index, 0, columns, columns)
+            & (WHOLE_TABLE | BAND1_HORZ | BAND2_HORZ | FIRST_ROW | LAST_ROW);
+        let mut properties = strict_ooxml_wml::model::props::RowProperties::default();
+        let mut exception = strict_ooxml_wml::model::props::TableProperties::default();
+        for ancestor in chain(document, style) {
+            merge_row(&mut properties, &ancestor.row);
+        }
+        for condition in conditions(document, style, mask) {
+            merge_row(&mut properties, &condition.row);
+            merge_table(&mut exception, &condition.table);
+        }
+        if let Some(direct) = row.props.exception.as_deref() {
+            merge_table(&mut exception, direct);
+        }
+        merge_borders(&mut properties.exception_borders, &exception.borders);
+        merge_margins(&mut properties.cell_margins, &exception.cell_margins);
+        if exception.cell_spacing.is_some() {
+            properties.cell_spacing = exception.cell_spacing;
+        }
+        if exception.alignment.is_some() {
+            properties.alignment = exception.alignment;
+        }
+        merge_row(&mut properties, &row.props);
+        properties.exception = Some(Box::new(exception));
+        row.props = properties;
+        let mut column = usize::try_from(row.props.grid_before.unwrap_or(0)).unwrap_or(0);
+        for cell in &mut row.cells {
+            let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
+            let mask = cell_conditions(document, table, index, column, span, columns);
+            let mut defaults = strict_ooxml_wml::model::props::TableProperties::default();
+            for ancestor in chain(document, style) {
+                merge_table(&mut defaults, &ancestor.table);
+            }
+            for condition in conditions(document, style, mask) {
+                merge_table(&mut defaults, &condition.table);
+            }
+            merge_table(&mut defaults, &table.props);
+            if let Some(exception) = table.rows[index].props.exception.as_deref() {
+                merge_table(&mut defaults, exception);
+            }
+            let mut effective = CellProperties::default();
+            effective.margins = defaults.cell_margins;
+            effective.shading = defaults.shading;
+            effective.borders.top = if index == 0 {
+                defaults.borders.top.clone()
+            } else {
+                defaults.borders.inside_horizontal.clone()
+            };
+            effective.borders.bottom = if index + 1 == table.rows.len() {
+                defaults.borders.bottom.clone()
+            } else {
+                defaults.borders.inside_horizontal.clone()
+            };
+            effective.borders.start = if column == 0 {
+                defaults.borders.start.clone()
+            } else {
+                defaults.borders.inside_vertical.clone()
+            };
+            effective.borders.end = if column + span >= columns {
+                defaults.borders.end.clone()
+            } else {
+                defaults.borders.inside_vertical.clone()
+            };
+            merge_cell(&mut effective, &style_cell_layer(document, style, mask));
+            merge_margins(
+                &mut effective.margins,
+                &table.rows[index].props.cell_margins,
+            );
+            merge_cell(&mut effective, &cell.props);
+            effective.location = cell.props.location.clone();
+            effective.grid_span = cell.props.grid_span;
+            effective.vertical_merge = cell.props.vertical_merge;
+            cell.props = effective;
+            column += span;
+        }
+    }
+    resolved
 }
 
 /// Rows or columns per band: direct, then the style chain, then `1`.
@@ -258,6 +473,33 @@ fn merge_margins(target: &mut CellMargins, layer: &CellMargins) {
 
 /// Overlays the style-carried cell properties of `layer` onto `target`.
 fn merge_cell(target: &mut CellProperties, layer: &CellProperties) {
+    if layer.width.is_some() {
+        target.width = layer.width;
+    }
+    if layer.hide_mark_state != strict_ooxml_wml::model::values::TriState::Absent {
+        target.hide_mark_state = layer.hide_mark_state;
+        target.hide_mark = layer.hide_mark_state.is_on();
+    } else if layer.hide_mark {
+        target.hide_mark = true;
+    }
+    if layer.fit_text_state != strict_ooxml_wml::model::values::TriState::Absent {
+        target.fit_text_state = layer.fit_text_state;
+        target.fit_text = layer.fit_text_state.is_on();
+    } else if layer.fit_text {
+        target.fit_text = true;
+    }
+    if layer.no_wrap_state != strict_ooxml_wml::model::values::TriState::Absent {
+        target.no_wrap_state = layer.no_wrap_state;
+        target.no_wrap = layer.no_wrap_state.is_on();
+    } else if layer.no_wrap {
+        target.no_wrap = true;
+    }
+    if layer.diagonal_down.is_some() {
+        target.diagonal_down = layer.diagonal_down.clone();
+    }
+    if layer.diagonal_up.is_some() {
+        target.diagonal_up = layer.diagonal_up.clone();
+    }
     if layer.shading.is_some() {
         target.shading.clone_from(&layer.shading);
     }
@@ -265,6 +507,9 @@ fn merge_cell(target: &mut CellProperties, layer: &CellProperties) {
     merge_margins(&mut target.margins, &layer.margins);
     if layer.vertical_align.is_some() {
         target.vertical_align = layer.vertical_align;
+    }
+    if layer.text_direction.is_some() {
+        target.text_direction = layer.text_direction;
     }
 }
 
@@ -290,23 +535,17 @@ pub(crate) fn resolve_cell_properties(
     mask: u16,
     direct: &CellProperties,
 ) -> CellProperties {
-    let mut resolved = direct.clone();
-    let Some(style) = table_style(document, table) else {
-        return resolved;
-    };
-    let layer = style_cell_layer(document, style, mask);
-    if resolved.shading.is_none() {
-        resolved.shading = layer.shading;
+    let mut resolved = table_style(document, table).map_or_else(CellProperties::default, |style| {
+        style_cell_layer(document, style, mask)
+    });
+    // Structural properties (merge/span/width) remain those of the cell.
+    if direct.width.is_some() {
+        resolved.width = direct.width;
     }
-    let mut borders = layer.borders;
-    merge_borders(&mut borders, &direct.borders);
-    resolved.borders = borders;
-    if resolved.vertical_align.is_none() {
-        resolved.vertical_align = layer.vertical_align;
-    }
-    if resolved.text_direction.is_none() {
-        resolved.text_direction = layer.text_direction;
-    }
+    resolved.grid_span = direct.grid_span;
+    resolved.location = direct.location.clone();
+    resolved.vertical_merge = direct.vertical_merge;
+    merge_cell(&mut resolved, direct);
     resolved
 }
 
@@ -320,6 +559,9 @@ pub(crate) fn style_cell_margins(document: &Document, table: &Table, mask: u16) 
     let mut margins = CellMargins::default();
     for ancestor in chain(document, style) {
         merge_margins(&mut margins, &ancestor.table.cell_margins);
+    }
+    for condition in conditions(document, style, mask) {
+        merge_margins(&mut margins, &condition.table.cell_margins);
     }
     merge_margins(
         &mut margins,

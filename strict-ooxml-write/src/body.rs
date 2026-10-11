@@ -367,6 +367,13 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent,
             xml.attr_w("leader", leader.as_ref());
             xml.end();
         }
+        RunContent::NoteSeparator(continuation) => {
+            xml.empty(if *continuation {
+                "w:continuationSeparator"
+            } else {
+                "w:separator"
+            });
+        }
         RunContent::NoteRef => {
             // The note's own number is substituted by the renderer; writing the
             // element keeps the note body round-trippable. Which of the two
@@ -418,17 +425,10 @@ fn form_field_element(xml: &mut XmlWriter, element: &FormFieldElement) {
 
 /// Writes `w:t` or `w:delText`, including the `xml:space` attribute the model recorded.
 ///
-/// The attribute is only written when the text actually needs it: leading or
-/// trailing whitespace is stripped by an XML parser without `preserve`, so a
-/// text node without edge whitespace does not carry it.
+/// Preserve the recorded whitespace policy; adding `preserve` to a default
+/// node would change its visible leading/trailing whitespace on round trip.
 fn text_node(xml: &mut XmlWriter, node: &TextNode, tag: &str) {
-    let needs_preserve = matches!(node.space, Space::Preserve)
-        || node.text.chars().next().is_some_and(char::is_whitespace)
-        || node
-            .text
-            .chars()
-            .next_back()
-            .is_some_and(char::is_whitespace);
+    let needs_preserve = matches!(node.space, Space::Preserve);
     if node.text.is_empty() && !needs_preserve {
         xml.empty(tag);
         return;
@@ -977,12 +977,9 @@ mod tests {
     }
 
     #[test]
-    fn leading_whitespace_forces_xml_space_preserve() {
+    fn leading_whitespace_keeps_default_space_policy() {
         let text = render(&[text_paragraph(" lead", Space::Default)]);
-        assert!(
-            text.contains("<w:t xml:space=\"preserve\"> lead</w:t>"),
-            "{text}"
-        );
+        assert!(text.contains("<w:t> lead</w:t>"), "{text}");
     }
 
     #[test]

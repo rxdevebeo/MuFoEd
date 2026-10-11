@@ -33,7 +33,12 @@ pub(crate) fn apply(
         let Some(section) = sections.get(page.section_index).map(|s| &s.properties) else {
             continue;
         };
-        let geometry = geometry_for(Some(section), scale, None);
+        let geometry = crate::layout::body_geometry_for(
+            Some(section),
+            scale,
+            None,
+            ctx.document.settings.gutter_at_top,
+        );
         let body_top = geometry.top;
         let body_bottom = page.height_px - geometry.bottom;
         let shift = match section.vertical_align {
@@ -67,11 +72,67 @@ pub(crate) fn apply(
     line_numbers(ctx, pages, marks, sections)
 }
 
+/// Restore physical page coordinates before adding horizontal headers/footers.
+pub(crate) fn orient_body(ctx: &LayoutContext<'_>, pages: &mut [PlacedPage], sections: &[Section]) {
+    use strict_ooxml_wml::model::values::TextDirection;
+    for page in pages {
+        let properties = sections.get(page.section_index).map(|s| &s.properties);
+        let direction = properties.and_then(|s| s.text_direction);
+        let physical = geometry_for(
+            properties,
+            ctx.options.scale,
+            None,
+            ctx.document.settings.gutter_at_top,
+        );
+        let matrix = match direction {
+            Some(TextDirection::TbRl | TextDirection::TbRlV) => {
+                Some([0.0, 1.0, -1.0, 0.0, physical.width, 0.0])
+            }
+            Some(TextDirection::BtLr) => Some([0.0, -1.0, 1.0, 0.0, 0.0, physical.height]),
+            Some(TextDirection::TbLrV) => None,
+            _ => None,
+        };
+        let mut items = std::mem::take(&mut page.items);
+        if matches!(
+            direction,
+            Some(TextDirection::TbRlV | TextDirection::TbLrV | TextDirection::LrTbV)
+        ) {
+            items = crate::layout::table::rotate_east_asian_items(ctx, items);
+        }
+        page.items = if direction == Some(TextDirection::TbLrV) {
+            items
+                .into_iter()
+                .flat_map(|item| {
+                    let center = match &item {
+                        Item::Text(text) => text.baseline,
+                        _ => {
+                            let (top, bottom) =
+                                crate::layout::table::item_vertical_bounds(ctx, &item);
+                            (top + bottom) / 2.0
+                        }
+                    };
+                    crate::paint::graphics::transform_items(
+                        vec![item],
+                        [0.0, 1.0, -1.0, 0.0, 2.0 * center, 0.0],
+                    )
+                })
+                .collect()
+        } else if let Some(matrix) = matrix {
+            crate::paint::graphics::transform_items(items, matrix)
+        } else {
+            items
+        };
+        page.width_px = physical.width;
+        page.height_px = physical.height;
+    }
+}
+
 /// The lowest painted point of the body, px from the page top.
 fn content_bottom(page: &PlacedPage, top: f64, bottom: f64) -> f64 {
     page.items
         .iter()
         .map(|item| match item {
+            Item::Group(group) => group.bounds[1] + group.bounds[3],
             Item::Text(text) => text.baseline + text.size_px * 0.25,
             Item::Rect(rect) => rect.y + rect.h,
             Item::Line(line) => line.y1.max(line.y2),
@@ -213,7 +274,7 @@ pub(crate) fn mirror_margins(
             continue;
         }
         let section = sections.get(page.section_index).map(|s| &s.properties);
-        let geometry = geometry_for(section, scale, None);
+        let geometry = geometry_for(section, scale, None, ctx.document.settings.gutter_at_top);
         let dx = geometry.right - geometry.left;
         if dx.abs() < 1e-9 {
             continue;

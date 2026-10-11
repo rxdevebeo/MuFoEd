@@ -304,7 +304,7 @@ pub struct CompatFlags {
     pub space_for_underline: bool,
     /// `w:balanceSingleByteDoubleByteWidth` — balance single and double byte widths.
     pub balance_single_byte_double_byte_width: bool,
-    /// `w:doNotLeaveBackslashAlone` — do not leave a backslash alone at line end.
+    /// `w:doNotLeaveBackslashAlone` — display backslashes as yen signs.
     pub do_not_leave_backslash_alone: bool,
     /// `w:ulTrailSpace` — underline trailing spaces.
     pub underline_trailing_space: bool,
@@ -312,7 +312,7 @@ pub struct CompatFlags {
     pub do_not_expand_shift_return: bool,
     /// `w:adjustLineHeightInTable` — add document grid line pitch to line height.
     pub adjust_line_height_in_table: bool,
-    /// `w:applyBreakingRules` — apply East Asian breaking rules.
+    /// `w:applyBreakingRules` — legacy Ethiopic and Amharic line breaking.
     pub apply_breaking_rules: bool,
 }
 
@@ -452,11 +452,11 @@ pub struct MathProperties {
     pub math_font: Option<Arc<str>>,
     /// `m:brkBin` — where a binary operator may break.
     pub break_binary_operator: Option<Arc<str>>,
-    /// `m:brkBinSub` — how a binary operator breaks in a subscript.
+    /// `m:brkBinSub` — signs used when repeating a subtraction at a line break.
     pub break_binary_sub: Option<Arc<str>>,
     /// `m:smallFrac` — render fractions smaller than a line at line height.
     pub small_fraction: Option<Arc<str>>,
-    /// `m:dispDef` — display the equation by default.
+    /// `m:dispDef` — override paragraph settings with display math defaults.
     pub display_default: Option<Arc<str>>,
     /// `m:lMargin` — left margin of an equation, twips.
     pub left_margin: Option<Arc<str>>,

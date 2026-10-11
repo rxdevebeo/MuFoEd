@@ -29,7 +29,7 @@ use strict_ooxml_wml::model::props::RunProperties;
 
 use super::shapes;
 use crate::layout::{Item, LayoutContext, LineItem, PathItem, RectItem, TextItem};
-use crate::style::ComputedRun;
+use crate::style::{ComputedParagraph, ComputedRun};
 
 /// The math family requested by Word documents, mapped to the bundled face.
 pub(crate) const MATH_FAMILY: &str = "Cambria Math";
@@ -257,6 +257,7 @@ fn classify(node: &MathNode) -> Atom {
         // The class comes from the function's *name*, which is what carries the
         // operator semantics: `ln` is an operator, its argument is ordinary.
         MathNode::Function(function) => classify_argument(&function.name),
+        MathNode::Phantom(phantom) if phantom.transparent => classify_argument(&phantom.argument),
         _ => Atom::Ordinary,
     }
 }
@@ -331,6 +332,8 @@ impl Size {
 pub(crate) struct MathBox {
     /// Compact fractions must retain their complete numerator/denominator box.
     pub inline_fraction: bool,
+    /// Horizontal positions of OMML alignment points, including nested runs.
+    pub alignment_points: Vec<f64>,
     /// Geometry relative to the construct's baseline.
     pub size: Size,
     /// Paint items in the construct's coordinate system.
@@ -342,6 +345,7 @@ impl MathBox {
     const fn empty() -> Self {
         Self {
             inline_fraction: false,
+            alignment_points: Vec::new(),
             size: Size::ZERO,
             items: Vec::new(),
         }
@@ -351,6 +355,7 @@ impl MathBox {
     fn blank(size: Size) -> Self {
         Self {
             inline_fraction: false,
+            alignment_points: Vec::new(),
             size: Size::new(size.width, size.height, size.depth),
             items: Vec::new(),
         }
@@ -359,6 +364,8 @@ impl MathBox {
     /// Places `child` at `(dx, dy)` relative to this construct's baseline.
     fn place(&mut self, child: MathBox, dx: f64, dy: f64) {
         self.inline_fraction |= child.inline_fraction;
+        self.alignment_points
+            .extend(child.alignment_points.iter().map(|point| point + dx));
         self.size = Size::new(
             self.size.width.max(dx + child.size.width),
             self.size.height.max(child.size.height - dy),
@@ -392,11 +399,11 @@ impl MathBox {
         self.place(child, 0.0, dy);
     }
 
-    fn stack_line(&mut self, child: MathBox) {
+    fn stack_line(&mut self, child: MathBox, gap: f64) {
         if self.is_empty() {
             *self = child;
         } else {
-            self.append_below(child, 2.0);
+            self.append_below(child, gap);
         }
     }
 
@@ -409,6 +416,11 @@ impl MathBox {
             .collect();
         Self {
             inline_fraction: self.inline_fraction,
+            alignment_points: self
+                .alignment_points
+                .into_iter()
+                .map(|point| point + dx)
+                .collect(),
             size: self.size,
             items,
         }
@@ -432,6 +444,10 @@ fn translate(item: Item, dx: f64, dy: f64) -> Item {
     let dx = crate::units::finite(dx);
     let dy = crate::units::finite(dy);
     match item {
+        Item::Group(mut group) => {
+            group.offset(dx, dy);
+            Item::Group(group)
+        }
         Item::Text(mut text) => {
             text.x += dx;
             text.baseline += dy;
@@ -465,6 +481,12 @@ fn translate(item: Item, dx: f64, dy: f64) -> Item {
 /// The layout state inherited down the formula tree.
 #[derive(Clone, Copy)]
 struct Frame<'a, 'b> {
+    available_width: f64,
+    argument_style: Option<MathStyle>,
+    argument_script: Option<MathScript>,
+    argument_literal: bool,
+    argument_normal: bool,
+    equation_array: bool,
     ctx: &'b LayoutContext<'a>,
     /// Current font size in px.
     size_px: f64,
@@ -550,7 +572,15 @@ impl Frame<'_, '_> {
     /// alphabet glyphs in each styled face. Text remains searchable unchanged.
     fn math_run(&self, style: MathStyle) -> ComputedRun {
         let mut run = self.run.clone();
-        MATH_FAMILY.clone_into(&mut run.family);
+        run.font_programs = std::sync::Arc::clone(&self.ctx.font_programs);
+        self.ctx
+            .document
+            .settings
+            .math_properties
+            .as_ref()
+            .and_then(|properties| properties.math_font.as_deref())
+            .unwrap_or(MATH_FAMILY)
+            .clone_into(&mut run.family);
         run.complex_family = None;
         run.east_asia_family = None;
         run.size_pt = crate::units::PT_PER_INCH * self.size_px / self.ctx.options.scale;
@@ -573,9 +603,12 @@ impl Frame<'_, '_> {
         let family = crate::style::chosen_family(run, text);
         let width: f64 = text
             .chars()
-            .map(|ch| self.ctx.font.advance_em(&family, ch, run.bold, run.italic) * self.size_px)
+            .map(|ch| {
+                crate::font::embedded::run_advance_em(run, &family, ch, self.ctx.font)
+                    * self.size_px
+            })
             .sum();
-        let metrics = self.ctx.font.metrics(&family, run.bold, run.italic);
+        let metrics = crate::font::embedded::run_metrics(run, &family, self.ctx.font);
         if !self.nominal_text {
             if let Some((above, below)) = text
                 .chars()
@@ -625,6 +658,7 @@ impl Frame<'_, '_> {
         }));
         MathBox {
             inline_fraction: false,
+            alignment_points: Vec::new(),
             size,
             items: item.into_iter().collect(),
         }
@@ -684,6 +718,12 @@ fn base_frame<'a, 'b>(
     display: bool,
 ) -> Frame<'a, 'b> {
     Frame {
+        available_width: 0.0,
+        argument_style: None,
+        argument_script: None,
+        argument_literal: false,
+        argument_normal: false,
+        equation_array: false,
         ctx,
         size_px: ctx.size_px(run.size_pt),
         level: 0,
@@ -744,13 +784,17 @@ fn split_explicit_math_lines(nodes: &[MathNode]) -> Option<Vec<Vec<MathNode>>> {
 }
 
 fn layout_wrapped_nodes(frame: &Frame<'_, '_>, nodes: &[MathNode], width: f64) -> Vec<MathBox> {
+    let frame = Frame {
+        available_width: width,
+        ..*frame
+    };
     if let Some(groups) = split_explicit_math_lines(nodes) {
         return groups
             .iter()
-            .flat_map(|group| layout_wrapped_nodes(frame, group, width))
+            .flat_map(|group| layout_wrapped_nodes(&frame, group, width))
             .collect();
     }
-    layout_soft_wrapped_nodes(frame, nodes, width)
+    layout_soft_wrapped_nodes(&frame, nodes, width)
 }
 
 fn layout_soft_wrapped_nodes(
@@ -758,6 +802,16 @@ fn layout_soft_wrapped_nodes(
     nodes: &[MathNode],
     width: f64,
 ) -> Vec<MathBox> {
+    let settings = frame.ctx.document.settings.math_properties.as_ref();
+    let break_after =
+        settings.and_then(|settings| settings.break_binary_operator.as_deref()) == Some("after");
+    let repeat_operator =
+        settings.and_then(|settings| settings.break_binary_operator.as_deref()) == Some("repeat");
+    let wrap_indent = settings
+        .filter(|_| frame.display && use_display_defaults(frame.ctx))
+        .and_then(|settings| settings.wrap_indent.as_deref())
+        .and_then(|value| value.parse::<i32>().ok())
+        .map_or(0.0, |value| frame.twips(value.max(0)));
     let remaining = frame.budget.get();
     let original = layout_nodes(frame, nodes);
     if original.size.width <= width || width <= 0.0 {
@@ -788,12 +842,17 @@ fn layout_soft_wrapped_nodes(
                             && c != 'E'
                     })
                 {
-                    if index == 0 {
+                    let boundary = if break_after {
+                        index + ch.len_utf8()
+                    } else {
+                        index
+                    };
+                    if boundary == 0 {
                         if let Some(first) = starts.first_mut() {
                             first.1 = true;
                         }
                     } else {
-                        starts.push((index, true));
+                        starts.push((boundary, true));
                     }
                 }
                 if !ch.is_whitespace() {
@@ -835,12 +894,98 @@ fn layout_soft_wrapped_nodes(
     let mut lines = Vec::new();
     let mut line = MathBox::empty();
     let mut previous = None;
-    for group in groups {
-        let next = layout_nodes(frame, &group);
+    let mut groups = groups.into_iter().peekable();
+    while let Some(mut group) = groups.next() {
+        let group_budget = frame.budget.get();
+        let mut next = layout_nodes(frame, &group);
         let mut gap = previous
             .zip(group.first().map(classify))
             .map_or(0.0, |(left, right)| atom_gap(left, right) * frame.em());
-        if !line.is_empty() && line.size.width + gap + next.size.width > width {
+        let line_width = if lines.is_empty() {
+            width
+        } else {
+            (width - wrap_indent).max(1.0)
+        };
+        let repeat_reserve = if repeat_operator {
+            groups
+                .peek()
+                .and_then(|group| group.first())
+                .and_then(|node| {
+                    let MathNode::Run(run) = node else {
+                        return None;
+                    };
+                    let ch = run.text.chars().find(|ch| !ch.is_whitespace())?;
+                    if !BINARY_CHARS.contains(ch) && !RELATION_CHARS.contains(ch) {
+                        return None;
+                    }
+                    let sign = if matches!(ch, '-' | '\u{2212}')
+                        && settings.and_then(|s| s.break_binary_sub.as_deref()) == Some("+-")
+                    {
+                        '+'
+                    } else {
+                        ch
+                    };
+                    Some(
+                        frame
+                            .text_size(
+                                &sign.to_string(),
+                                &frame.math_run(effective_style(&run.properties)),
+                            )
+                            .width
+                            + atom_gap(
+                                group.last().map(classify).unwrap_or(Atom::Ordinary),
+                                Atom::Binary,
+                            ) * frame.em(),
+                    )
+                })
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        if !line.is_empty() && line.size.width + gap + next.size.width + repeat_reserve > line_width
+        {
+            if repeat_operator {
+                if let Some(MathNode::Run(first)) = group.first_mut() {
+                    if let Some((index, ch)) = first
+                        .text
+                        .char_indices()
+                        .find(|(_, ch)| !ch.is_whitespace())
+                    {
+                        if BINARY_CHARS.contains(ch) || RELATION_CHARS.contains(ch) {
+                            let mut repeated = first.clone();
+                            let mut before = ch;
+                            let mut after = ch;
+                            if matches!(ch, '-' | '−') {
+                                match settings
+                                    .and_then(|settings| settings.break_binary_sub.as_deref())
+                                {
+                                    Some("+-") => before = '+',
+                                    Some("-+") => after = '+',
+                                    _ => {}
+                                }
+                            }
+                            repeated.text = before.to_string();
+                            // Rebuild only the following group if its displayed
+                            // sign changed. Charge the repeated sign separately.
+                            if after != ch {
+                                drop(next);
+                                frame.budget.set(group_budget);
+                                first.text.replace_range(
+                                    index..index + ch.len_utf8(),
+                                    &after.to_string(),
+                                );
+                                next = layout_nodes(frame, &group);
+                            }
+                            let repeated = layout_nodes(frame, &[MathNode::Run(repeated)]);
+                            line.append_gap(
+                                repeated,
+                                atom_gap(previous.unwrap_or(Atom::Ordinary), Atom::Binary)
+                                    * frame.em(),
+                            );
+                        }
+                    }
+                }
+            }
             lines.push(line);
             line = MathBox::empty();
             gap = 0.0;
@@ -850,6 +995,19 @@ fn layout_soft_wrapped_nodes(
     }
     if !line.is_empty() {
         lines.push(line);
+    }
+    let wrap_right = settings
+        .filter(|_| frame.display && use_display_defaults(frame.ctx))
+        .and_then(|settings| settings.wrap_right.as_deref())
+        .is_some_and(|value| matches!(value, "1" | "true" | "on"));
+    for line in lines.iter_mut().skip(1) {
+        let offset = if wrap_right {
+            (width - line.size.width).max(0.0)
+        } else {
+            wrap_indent
+        };
+        *line = std::mem::take(line).shifted(offset, 0.0);
+        line.size.width += offset;
     }
     if lines.iter().any(|line| line.size.width > width + 0.25) {
         frame.ctx.warn(
@@ -871,23 +1029,53 @@ pub(crate) fn layout_display(
     run: &ComputedRun,
     content_left: f64,
     content_width: f64,
+    paragraph_style: &ComputedParagraph,
 ) -> MathBox {
     let budget = Cell::new(MAX_ITEMS);
+    let settings = ctx.document.settings.math_properties.as_ref();
+    let display_defaults = use_display_defaults(ctx);
+    let spacing = |value: Option<&str>| {
+        value
+            .and_then(|value| value.parse::<i32>().ok())
+            .map_or(0.0, |value| {
+                crate::units::twips_to_px(value.max(0), ctx.options.scale)
+            })
+    };
+    let left_margin = if display_defaults {
+        spacing(settings.and_then(|settings| settings.left_margin.as_deref()))
+    } else {
+        0.0
+    };
+    let right_margin = if display_defaults {
+        spacing(settings.and_then(|settings| settings.right_margin.as_deref()))
+    } else {
+        0.0
+    };
+    let available = (crate::units::finite(content_width) - left_margin - right_margin).max(0.0);
+    let inter_spacing = spacing(settings.and_then(|settings| settings.inter_space.as_deref()));
+    let line_gap = settings
+        .and_then(|settings| settings.intra_space.as_deref())
+        .map_or(2.0, |value| spacing(Some(value)));
     // Equation boundaries preserve separate OMML objects, not implicit breaks.
     // WPS puts adjacent equations on a common baseline unless w:br intervenes.
     let frame = base_frame(ctx, run, &budget, true);
     let mut boxed = MathBox::empty();
     let mut line = MathBox::empty();
     let mut trailing_break = false;
-    for expression in &paragraph.equations {
-        for (wrapped_index, next) in layout_wrapped_nodes(&frame, &expression.nodes, content_width)
+    for (expression_index, expression) in paragraph.equations.iter().enumerate() {
+        for (wrapped_index, next) in layout_wrapped_nodes(&frame, &expression.nodes, available)
             .into_iter()
             .enumerate()
         {
+            let gap = if expression_index > 0 && wrapped_index == 0 && !line.is_empty() {
+                inter_spacing
+            } else {
+                0.0
+            };
             if wrapped_index > 0
                 || (!line.is_empty()
-                    && content_width > 0.0
-                    && line.size.width + next.size.width > content_width)
+                    && available > 0.0
+                    && line.size.width + gap + next.size.width > available)
             {
                 if line.is_empty() {
                     line = MathBox::blank(Size::new(
@@ -896,10 +1084,10 @@ pub(crate) fn layout_display(
                         (frame.row_pitch() - frame.row_ascent()).max(0.0),
                     ));
                 }
-                boxed.stack_line(std::mem::take(&mut line));
+                boxed.stack_line(std::mem::take(&mut line), line_gap);
             }
             trailing_break = wrapped_index > 0 && next.is_empty();
-            line.append(next);
+            line.append_gap(next, if line.is_empty() { 0.0 } else { gap });
         }
     }
     if line.is_empty() && trailing_break {
@@ -910,18 +1098,26 @@ pub(crate) fn layout_display(
         ));
     }
     if !line.is_empty() {
-        boxed.stack_line(line);
+        boxed.stack_line(line, line_gap);
     }
     // `m:oMathParaPr/m:jc` places the display formula in the text column.
     // Without one, the document's `m:mathPr/m:defJc` decides, and without that
     // Word's default, `centerGroup`.
-    let settings = ctx.document.settings.math_properties.as_ref();
     let justification = paragraph
         .properties
         .as_ref()
         .and_then(|properties| properties.justification)
         .filter(|justification| *justification != MathJustification::Default)
         .unwrap_or_else(|| {
+            if !display_defaults {
+                return match paragraph_style.alignment {
+                    strict_ooxml_wml::model::values::Justification::End => MathJustification::Right,
+                    strict_ooxml_wml::model::values::Justification::Center => {
+                        MathJustification::Center
+                    }
+                    _ => MathJustification::Left,
+                };
+            }
             match settings.and_then(|settings| settings.default_justification.as_deref()) {
                 Some("left") => MathJustification::Left,
                 Some("right") => MathJustification::Right,
@@ -930,17 +1126,6 @@ pub(crate) fn layout_display(
             }
         });
     // `m:lMargin`/`m:rMargin` narrow the column a display formula sits in.
-    let margin = |value: Option<&str>| {
-        value
-            .and_then(|value| value.parse::<i32>().ok())
-            .filter(|twips| *twips > 0)
-            .map_or(0.0, |twips| {
-                crate::units::twips_to_px(twips, ctx.options.scale)
-            })
-    };
-    let left_margin = margin(settings.and_then(|settings| settings.left_margin.as_deref()));
-    let right_margin = margin(settings.and_then(|settings| settings.right_margin.as_deref()));
-    let available = (crate::units::finite(content_width) - left_margin - right_margin).max(0.0);
     let shift = match justification {
         MathJustification::Left | MathJustification::Default => 0.0,
         MathJustification::Right => (available - boxed.size.width).max(0.0),
@@ -952,6 +1137,15 @@ pub(crate) fn layout_display(
         crate::units::finite(content_left) + left_margin + shift,
         0.0,
     )
+}
+
+pub(crate) fn use_display_defaults(ctx: &LayoutContext<'_>) -> bool {
+    !ctx.document
+        .settings
+        .math_properties
+        .as_ref()
+        .and_then(|props| props.display_default.as_deref())
+        .is_some_and(|value| matches!(value, "0" | "false" | "off"))
 }
 
 /// Lays out a list of sibling nodes as one horizontal list.
@@ -976,7 +1170,17 @@ fn layout_nodes(frame: &Frame<'_, '_>, nodes: &[MathNode]) -> MathBox {
 
 /// Lays out an argument (`m:e` and its `m:argPr`).
 fn layout_argument(frame: &Frame<'_, '_>, argument: &MathArgument) -> MathBox {
-    let mut boxed = layout_nodes(frame, &argument.nodes);
+    let argument_frame = Frame {
+        argument_style: argument.properties.style.or(frame.argument_style),
+        argument_script: argument.properties.script.or(frame.argument_script),
+        argument_literal: argument
+            .properties
+            .literal
+            .unwrap_or(frame.argument_literal),
+        argument_normal: argument.properties.normal.unwrap_or(frame.argument_normal),
+        ..*frame
+    };
+    let mut boxed = layout_nodes(&argument_frame, &argument.nodes);
     if let Some(control) = argument.properties.control.as_deref() {
         apply_control(frame, &mut boxed, control);
     }
@@ -1001,13 +1205,22 @@ fn apply_control(frame: &Frame<'_, '_>, boxed: &mut MathBox, control: &RunProper
         "#000000".to_owned()
     };
     for item in &mut boxed.items {
-        match item {
-            Item::Text(text) => text.run.color = Some(color.clone()),
-            Item::Line(line) => line.color.clone_from(&color),
-            Item::Path(path) => path.stroke = Some(color.clone()),
-            Item::Rect(rect) => rect.stroke = Some(color.clone()),
-            Item::Image(_) => {}
+        recolor_item(item, &color);
+    }
+}
+
+fn recolor_item(item: &mut Item, color: &str) {
+    match item {
+        Item::Text(text) => text.run.color = Some(color.to_owned()),
+        Item::Line(line) => line.color = color.to_owned(),
+        Item::Path(path) => path.stroke = Some(color.to_owned()),
+        Item::Rect(rect) => rect.stroke = Some(color.to_owned()),
+        Item::Group(group) => {
+            for child in &mut group.items {
+                recolor_item(child, color);
+            }
         }
+        Item::Image(_) => {}
     }
 }
 
@@ -1041,13 +1254,33 @@ fn layout_node(frame: &Frame<'_, '_>, node: &MathNode) -> MathBox {
 /// Lays out a math run (`m:r`).
 fn layout_run(frame: &Frame<'_, '_>, run: &MathRun) -> MathBox {
     if run.text.is_empty() {
-        return MathBox::empty();
+        let mut empty = MathBox::empty();
+        if run.properties.alignment_point == Some(true) {
+            empty.alignment_points.push(0.0);
+        }
+        return empty;
     }
-    let style = effective_style(&run.properties);
+    let mut properties = run.properties.clone();
+    properties.style = properties.style.or(frame.argument_style);
+    properties.script = properties.script.or(frame.argument_script);
+    properties.literal = properties
+        .literal_value
+        .unwrap_or(properties.literal || frame.argument_literal);
+    properties.normal = properties
+        .normal_value
+        .unwrap_or(properties.normal || frame.argument_normal);
+    let style = effective_style(&properties);
     let mut format = frame.math_run(style);
-    if !run.properties.normal {
-        let family = match run.properties.script.unwrap_or_default() {
-            MathScript::Roman => MATH_FAMILY,
+    if !properties.normal {
+        let family = match properties.script.unwrap_or_default() {
+            MathScript::Roman => frame
+                .ctx
+                .document
+                .settings
+                .math_properties
+                .as_ref()
+                .and_then(|properties| properties.math_font.as_deref())
+                .unwrap_or(MATH_FAMILY),
             MathScript::Script => "Strict Math Script",
             MathScript::Fraktur => "Strict Math Fraktur",
             MathScript::DoubleStruck => "Strict Math DoubleStruck",
@@ -1056,7 +1289,21 @@ fn layout_run(frame: &Frame<'_, '_>, run: &MathRun) -> MathBox {
         };
         family.clone_into(&mut format.family);
     }
-    let mut boxed = frame.text(0.0, 0.0, &run.text, format);
+    let mut boxed = if frame.equation_array && run.text.contains('&') && !properties.literal {
+        let mut joined = MathBox::empty();
+        for (index, text) in run.text.split('&').enumerate() {
+            if index > 0 {
+                joined.alignment_points.push(joined.size.width);
+            }
+            joined.append(frame.text(0.0, 0.0, text, format.clone()));
+        }
+        joined
+    } else {
+        frame.text(0.0, 0.0, &run.text, format)
+    };
+    if properties.alignment_point == Some(true) {
+        boxed.alignment_points.insert(0, 0.0);
+    }
     if let Some(control) = run.properties.control.as_deref() {
         apply_control(frame, &mut boxed, control);
     }
@@ -1113,8 +1360,17 @@ fn fraction_part_placements(
 fn layout_fraction(frame: &Frame<'_, '_>, fraction: &Fraction) -> MathBox {
     // Inline fractions use script-sized parts; a line-height cap cannot
     // substitute for actually drawing the compact mathematical style.
-    let compact =
-        (!frame.display || fraction.small_fraction) && fraction.bar_type.as_deref() != Some("lin");
+    let compact = (!frame.display
+        || fraction.small_fraction
+        || frame
+            .ctx
+            .document
+            .settings
+            .math_properties
+            .as_ref()
+            .and_then(|properties| properties.small_fraction.as_deref())
+            .is_some_and(|value| matches!(value, "1" | "true" | "on")))
+        && fraction.bar_type.as_deref() != Some("lin");
     let argument_frame = if compact {
         Frame {
             size_px: frame.size_px * 0.7,
@@ -1529,6 +1785,7 @@ fn nary_operator(
     }));
     MathBox {
         inline_fraction: false,
+        alignment_points: Vec::new(),
         size: Size::new(width, height / 2.0 + axis, (height / 2.0 - axis).max(0.0)),
         items: item.into_iter().collect(),
     }
@@ -1559,7 +1816,17 @@ fn layout_delimiter(frame: &Frame<'_, '_>, delimiter: &Delimiter) -> MathBox {
     // `m:grow` (the default) stretches the delimiters over the content; with
     // `m:grow="0"` they keep the height of the plain glyph.
     let plain = frame.text_size("(", &frame.math_run(MathStyle::Plain));
-    let extent = content.size.height.max(content.size.depth);
+    let centered = delimiter.shape.as_deref() != Some("match");
+    let middle = if centered {
+        -frame.axis()
+    } else {
+        (content.size.depth - content.size.height) / 2.0
+    };
+    let extent = if centered {
+        2.0 * (content.size.height + middle).max(content.size.depth - middle)
+    } else {
+        content.size.height + content.size.depth
+    };
     let height = match delimiter.grow {
         Some(false) => (plain.height + plain.depth).max(MIN_DELIMITER_HEIGHT_PX),
         _ => (extent + 2.0 * DELIMITER_GAP * frame.em()).max(MIN_DELIMITER_HEIGHT_PX),
@@ -1568,7 +1835,6 @@ fn layout_delimiter(frame: &Frame<'_, '_>, delimiter: &Delimiter) -> MathBox {
     let gap = DELIMITER_GAP * frame.em();
 
     // The delimiters are centred on the content's vertical extent.
-    let middle = (content.size.depth - content.size.height) / 2.0;
     let top = middle - height / 2.0;
     let content_width = content.size.width;
     let mut out = MathBox::empty();
@@ -1798,35 +2064,34 @@ impl Grid {
     }
 }
 
-/// Resolves the `m:cSp` inter-column spacing of a math grid, in px.
-///
-/// ISO/IEC 29500-1 §22.1.2.16: `m:cSp` is `ST_UnsignedTwipsMeasure` when
-/// `m:cGpRule` is `exact`/`atLeast` and a hundredth of the current font size
-/// otherwise.
+/// Resolves `m:cGp` using the numeric `m:cGpRule` lexical space.
 fn grid_column_gap(
     frame: &Frame<'_, '_>,
     rule: Option<&str>,
     spacing: Option<i32>,
-    default_em: f64,
+    _default_em: f64,
 ) -> f64 {
     match (rule, spacing) {
-        (Some("exact" | "atLeast"), Some(value)) => default_em * frame.em() + frame.twips(value),
-        (_, Some(value)) => (f64::from(value) / 100.0 * frame.em()).max(default_em * frame.em()),
-        _ => default_em * frame.em(),
+        (Some("1"), _) => 1.5 * frame.em(),
+        (Some("2"), _) => 2.0 * frame.em(),
+        (Some("3" | "exact"), value) => frame.twips(value.unwrap_or(0).max(0)),
+        (Some("4"), value) => f64::from(value.unwrap_or(0).max(0)) * 0.5 * frame.em(),
+        _ => frame.em(),
     }
 }
 
 /// Resolves the `m:rSp` row spacing of a math grid, in px.
 ///
-/// ISO/IEC 29500-1 §22.1.2.79: with `m:rSpRule` `exact`/`atLeast` the value is
-/// `ST_UnsignedTwipsMeasure` added to the row pitch; with the rule `1` it is a
-/// hundredth of the current font size that sets the pitch itself. A row is
-/// never compressed below one line of the math font.
+/// Numeric rules 0/1/2 select single/1.5/double spacing; rule 3 uses
+/// points and rule 4 uses half-lines. Oversized cells keep their ink extent.
 fn grid_row_pitch(frame: &Frame<'_, '_>, rule: Option<&str>, spacing: Option<i32>) -> f64 {
     let natural = frame.row_pitch();
     match (rule, spacing) {
+        (Some("1"), _) => 1.5 * natural,
+        (Some("2"), _) => 2.0 * natural,
+        (Some("3"), value) => frame.points(value.unwrap_or(0).max(0)),
+        (Some("4"), value) => f64::from(value.unwrap_or(0).max(0)) * 0.5 * natural,
         (Some("exact" | "atLeast"), Some(value)) => natural + frame.twips(value).max(0.0),
-        (_, Some(value)) => (f64::from(value) / 100.0 * frame.em()).max(natural),
         _ => natural,
     }
 }
@@ -1836,7 +2101,7 @@ fn layout_matrix(frame: &Frame<'_, '_>, matrix: &Matrix) -> MathBox {
     let column_gap = grid_column_gap(
         frame,
         matrix.column_group_rule.as_deref(),
-        matrix.column_spacing,
+        matrix.column_group_spacing,
         COLUMN_GAP,
     );
     let row_pitch = grid_row_pitch(
@@ -1849,12 +2114,18 @@ fn layout_matrix(frame: &Frame<'_, '_>, matrix: &Matrix) -> MathBox {
         .iter()
         .map(|row| {
             row.iter()
-                .map(|argument| layout_argument(frame, argument))
+                .map(|argument| {
+                    if argument.nodes.is_empty() && !matrix.hide_placeholders {
+                        frame.text(0.0, 0.0, "\u{25a1}", frame.math_run(MathStyle::Plain))
+                    } else {
+                        layout_argument(frame, argument)
+                    }
+                })
                 .collect()
         })
         .collect();
     let columns = matrix.rows.iter().map(Vec::len).max().unwrap_or(0);
-    let grid = Grid::new(
+    let mut grid = Grid::new(
         rows,
         columns,
         column_gap,
@@ -1867,6 +2138,12 @@ fn layout_matrix(frame: &Frame<'_, '_>, matrix: &Matrix) -> MathBox {
         matrix.base_justification,
         matrix.columns.clone(),
     );
+    let minimum = matrix
+        .column_spacing
+        .map_or(0.0, |width| frame.twips(width.max(0)));
+    for width in &mut grid.column_widths {
+        *width = width.max(minimum);
+    }
     let mut out = grid.place(frame.axis(), frame.display);
     if let Some(control) = matrix.control.as_deref() {
         apply_control(frame, &mut out, control);
@@ -1876,15 +2153,63 @@ fn layout_matrix(frame: &Frame<'_, '_>, matrix: &Matrix) -> MathBox {
 
 /// Lays out `m:eqArr`.
 fn layout_equation_array(frame: &Frame<'_, '_>, array: &EquationArray) -> MathBox {
+    let array_frame = Frame {
+        equation_array: true,
+        ..*frame
+    };
+    let frame = &array_frame;
     let row_pitch = grid_row_pitch(frame, array.row_spacing_rule.as_deref(), array.row_spacing);
     let rows: Vec<Vec<MathBox>> = array
         .rows
         .iter()
-        .map(|row| vec![layout_argument(frame, row)])
+        .map(|row| {
+            let mut boxed = layout_argument(frame, row);
+            if boxed.alignment_points.is_empty() {
+                return vec![boxed];
+            }
+            boxed.alignment_points.sort_by(f64::total_cmp);
+            boxed
+                .alignment_points
+                .retain(|point| point.is_finite() && *point >= 0.0 && *point <= boxed.size.width);
+            if boxed.alignment_points.len() > 128 {
+                frame
+                    .ctx
+                    .warn("render.math-alignment: alignment point limit exceeded".to_owned());
+                boxed.alignment_points.truncate(128);
+            }
+            let mut boundaries = vec![0.0];
+            boundaries.extend(&boxed.alignment_points);
+            boundaries.push(boxed.size.width);
+            boundaries
+                .windows(2)
+                .map(|pair| {
+                    let width = pair[1] - pair[0];
+                    let mut items = crate::paint::graphics::transform_items(
+                        boxed.items.clone(),
+                        [1.0, 0.0, 0.0, 1.0, -pair[0], 0.0],
+                    );
+                    if let Some(Item::Group(group)) = items.first_mut() {
+                        group.clip = Some([
+                            pair[0],
+                            -boxed.size.height,
+                            width,
+                            boxed.size.height + boxed.size.depth,
+                        ]);
+                    }
+                    MathBox {
+                        inline_fraction: boxed.inline_fraction,
+                        alignment_points: Vec::new(),
+                        size: Size::new(width, boxed.size.height, boxed.size.depth),
+                        items,
+                    }
+                })
+                .collect()
+        })
         .collect();
-    let grid = Grid::new(
+    let columns = rows.iter().map(Vec::len).max().unwrap_or(1);
+    let mut grid = Grid::new(
         rows,
-        1,
+        columns,
         0.0,
         row_pitch,
         if frame.display {
@@ -1893,9 +2218,39 @@ fn layout_equation_array(frame: &Frame<'_, '_>, array: &EquationArray) -> MathBo
             0.0
         },
         array.base_justification,
-        Vec::new(),
+        if columns > 1 {
+            (0..columns)
+                .map(|index| MatrixColumn {
+                    count: Some(1),
+                    justification: Some(if index % 2 == 0 {
+                        MathAlignment::Right
+                    } else {
+                        MathAlignment::Left
+                    }),
+                })
+                .collect()
+        } else {
+            Vec::new()
+        },
     );
+    let natural_width: f64 = grid.column_widths.iter().sum();
+    let target_width = if array.max_distance == Some(true) && columns > 1 {
+        natural_width.max(frame.available_width)
+    } else {
+        natural_width
+    };
+    let extra = target_width - natural_width;
+    if array.object_distance == Some(true) && columns > 1 {
+        let spacers = columns.div_ceil(2);
+        for width in grid.column_widths.iter_mut().step_by(2) {
+            *width += extra / spacers as f64;
+        }
+    }
     let mut out = grid.place(frame.axis(), frame.display);
+    if extra > 0.0 && array.object_distance != Some(true) {
+        out = out.shifted(extra / 2.0, 0.0);
+    }
+    out.size.width = target_width;
 
     if let Some(control) = array.control.as_deref() {
         apply_control(frame, &mut out, control);
@@ -1953,14 +2308,23 @@ fn layout_bar(frame: &Frame<'_, '_>, bar: &Bar) -> MathBox {
 
 /// Lays out `m:groupChr`.
 fn layout_group_character(frame: &Frame<'_, '_>, group: &GroupCharacter) -> MathBox {
-    let position = group.position.unwrap_or(MathPosition::Top);
+    let position = group.position.unwrap_or(MathPosition::Bottom);
     let mut base = layout_argument(frame, &group.base);
     if let Some(control) = group.control.as_deref() {
         apply_control(frame, &mut base, control);
     }
     let character = group.chr.unwrap_or('\u{23DF}');
     let run = frame.math_run(MathStyle::Plain);
-    let marker = frame.text(0.0, 0.0, &character.to_string(), run);
+    let mut marker = frame.text(0.0, 0.0, &character.to_string(), run);
+    if matches!(position, MathPosition::Top | MathPosition::Bottom)
+        && base.size.width > marker.size.width
+        && marker.size.width > 0.0
+    {
+        let scale = base.size.width / marker.size.width;
+        marker.items =
+            crate::paint::graphics::transform_items(marker.items, [scale, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        marker.size.width = base.size.width;
+    }
     let gap = GROUP_GAP * frame.em();
     let side_gap = SCRIPT_GAP * frame.em();
     let mut out = MathBox::empty();
@@ -1973,8 +2337,18 @@ fn layout_group_character(frame: &Frame<'_, '_>, group: &GroupCharacter) -> Math
             } else {
                 (base, marker)
             };
-            let dy = (left.size.height - right.size.height) / 2.0
-                + (left.size.depth - right.size.depth) / 2.0;
+            let dy = match group.vertical_justification.unwrap_or_default() {
+                strict_ooxml_wml::model::math::MathVerticalJc::Top => {
+                    right.size.height - left.size.height
+                }
+                strict_ooxml_wml::model::math::MathVerticalJc::Bottom => {
+                    left.size.depth - right.size.depth
+                }
+                strict_ooxml_wml::model::math::MathVerticalJc::Center => {
+                    (right.size.height - left.size.height + left.size.depth - right.size.depth)
+                        / 2.0
+                }
+            };
             out.append(left);
             out.append_gap(right.shifted(0.0, dy), side_gap);
         }
@@ -1992,6 +2366,15 @@ fn layout_group_character(frame: &Frame<'_, '_>, group: &GroupCharacter) -> Math
                 out.place(marker, dx, dy);
             }
             out.size.width = width;
+            // The group character determines the baseline of the entire object.
+            // Absent vertJc means top; a present element without val means bot.
+            use strict_ooxml_wml::model::math::MathVerticalJc;
+            let baseline = match group.vertical_justification.unwrap_or(MathVerticalJc::Top) {
+                MathVerticalJc::Top => out.size.height,
+                MathVerticalJc::Bottom => -out.size.depth,
+                MathVerticalJc::Center => (out.size.height - out.size.depth) / 2.0,
+            };
+            out = out.rebased(baseline);
         }
     }
     out
@@ -2025,6 +2408,67 @@ fn layout_border_box(frame: &Frame<'_, '_>, border: &BorderBox) -> MathBox {
     let mut out = boxed_rectangle(frame, inner, pad);
     if border.shadow {
         out.items.insert(0, shadow_rectangle(frame, &out));
+    }
+    if border.hide_edges.iter().any(|value| *value == Some(true))
+        || border.strikes.iter().any(|value| *value == Some(true))
+    {
+        if let Some(index) = out
+            .items
+            .iter()
+            .position(|item| matches!(item, Item::Rect(rect) if rect.stroke.is_some()))
+        {
+            if let Item::Rect(rect) = out.items.remove(index) {
+                let (left, top, right, bottom) = (rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
+                let center_x = (left + right) / 2.0;
+                let center_y = (top + bottom) / 2.0;
+                for (visible, x1, y1, x2, y2) in [
+                    (border.hide_edges[0] != Some(true), left, top, right, top),
+                    (
+                        border.hide_edges[1] != Some(true),
+                        left,
+                        bottom,
+                        right,
+                        bottom,
+                    ),
+                    (border.hide_edges[2] != Some(true), left, top, left, bottom),
+                    (
+                        border.hide_edges[3] != Some(true),
+                        right,
+                        top,
+                        right,
+                        bottom,
+                    ),
+                    (
+                        border.strikes[0] == Some(true),
+                        left,
+                        center_y,
+                        right,
+                        center_y,
+                    ),
+                    (
+                        border.strikes[1] == Some(true),
+                        center_x,
+                        top,
+                        center_x,
+                        bottom,
+                    ),
+                    (border.strikes[2] == Some(true), left, bottom, right, top),
+                    (border.strikes[3] == Some(true), left, top, right, bottom),
+                ] {
+                    if visible {
+                        out.items.push(Item::Line(crate::layout::LineItem {
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                            color: rect.stroke.clone().unwrap_or_else(|| "#000000".to_owned()),
+                            width: rect.stroke_w,
+                            dashed: false,
+                        }));
+                    }
+                }
+            }
+        }
     }
     out
 }
@@ -2061,6 +2505,7 @@ fn boxed_rectangle(frame: &Frame<'_, '_>, inner: MathBox, pad: f64) -> MathBox {
     let depth = inner.size.depth + 2.0 * pad;
     let mut out = MathBox {
         inline_fraction: false,
+        alignment_points: Vec::new(),
         size: Size::ZERO,
         items: vec![Item::Rect(RectItem {
             x: 0.0,
@@ -2093,9 +2538,11 @@ fn layout_phantom(frame: &Frame<'_, '_>, phantom: &Phantom) -> MathBox {
     if phantom.zero_descent {
         size.depth = 0.0;
     }
-    if !phantom.show {
+    if !phantom.show && !phantom.show_all {
         // The space is reserved but nothing is drawn.
-        return MathBox::blank(size);
+        let mut blank = MathBox::blank(size);
+        blank.alignment_points = inner.alignment_points;
+        return blank;
     }
     let dx = ((size.width - inner.size.width) / 2.0).max(0.0);
     let dy = (size.height - inner.size.height) / 2.0 - size.depth + inner.size.depth;
@@ -2160,6 +2607,7 @@ mod tests {
     fn part(width: f64, height: f64, depth: f64) -> MathBox {
         MathBox {
             inline_fraction: false,
+            alignment_points: Vec::new(),
             size: Size::new(width, height, depth),
             items: Vec::new(),
         }
@@ -2240,6 +2688,7 @@ mod tests {
     fn place_grows_the_box_in_both_directions() {
         let child = MathBox {
             inline_fraction: false,
+            alignment_points: Vec::new(),
             size: Size::new(4.0, 3.0, 1.0),
             items: Vec::new(),
         };
@@ -2272,6 +2721,7 @@ mod tests {
     fn place_above_the_baseline_grows_the_ascent() {
         let child = MathBox {
             inline_fraction: false,
+            alignment_points: Vec::new(),
             size: Size::new(2.0, 8.0, 0.0),
             items: Vec::new(),
         };

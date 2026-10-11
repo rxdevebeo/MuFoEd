@@ -795,7 +795,9 @@ pub fn table_properties(xml: &mut XmlWriter, props: &TableProperties) {
         && props.indent.is_none()
         && props.indent_kind.is_none()
         && !props.bidi_visual
+        && props.bidi_visual_state == TriState::Absent
         && props.positioning.is_none()
+        && props.allow_overlap.is_none()
         && props.cell_spacing.is_none()
         && props.style_row_band_size.is_none()
         && props.style_col_band_size.is_none()
@@ -837,7 +839,21 @@ fn table_child(xml: &mut XmlWriter, props: &TableProperties, name: &str) {
                 tblp_pr(xml, positioning);
             }
         }
-        "bidiVisual" if props.bidi_visual => xml.empty("w:bidiVisual"),
+        "tblOverlap" => {
+            if let Some(overlap) = props.allow_overlap {
+                xml.empty_attr_w(
+                    "w:tblOverlap",
+                    "val",
+                    if overlap { "overlap" } else { "never" },
+                );
+            }
+        }
+        "bidiVisual" => match props.bidi_visual_state {
+            TriState::Off => xml.empty_attr_w("w:bidiVisual", "val", "0"),
+            TriState::On => xml.empty("w:bidiVisual"),
+            TriState::Absent if props.bidi_visual => xml.empty("w:bidiVisual"),
+            TriState::Absent => {}
+        },
         "tblW" => {
             if let Some(width) = &props.width {
                 width_element(xml, "w:tblW", width);
@@ -953,6 +969,7 @@ pub fn row_properties(xml: &mut XmlWriter, props: &RowProperties) {
     if props.height.is_none()
         && props.header == TriState::Absent
         && !props.cant_split
+        && props.cant_split_state == TriState::Absent
         && props.grid_before.is_none()
         && props.grid_after.is_none()
         && props.width_before.is_none()
@@ -994,6 +1011,13 @@ fn row_child(xml: &mut XmlWriter, props: &RowProperties, name: &str) {
         "wAfter" => {
             if let Some(width) = &props.width_after {
                 width_element(xml, "w:wAfter", width);
+            }
+        }
+        "cantSplit" if props.cant_split_state != TriState::Absent => {
+            if props.cant_split_state.is_on() {
+                xml.empty("w:cantSplit");
+            } else {
+                xml.empty_attr("w:cantSplit", "w:val", "0");
             }
         }
         "cantSplit" if props.cant_split => xml.empty("w:cantSplit"),
@@ -1103,20 +1127,38 @@ fn cell_child(xml: &mut XmlWriter, props: &CellProperties, name: &str) {
                 shading_element(xml, shading);
             }
         }
-        "noWrap" if props.no_wrap => xml.empty("w:noWrap"),
+        "noWrap" => {
+            if props.no_wrap_state == TriState::Off {
+                xml.empty_attr_w("w:noWrap", "val", "0");
+            } else if props.no_wrap || props.no_wrap_state.is_on() {
+                xml.empty("w:noWrap");
+            }
+        }
         "tcMar" => cell_margins(xml, "w:tcMar", &props.margins),
         "textDirection" => {
             if let Some(direction) = &props.text_direction {
                 xml.empty_attr_w("w:textDirection", "val", direction.as_str());
             }
         }
-        "tcFitText" if props.fit_text => xml.empty("w:tcFitText"),
+        "tcFitText" => {
+            if props.fit_text_state == TriState::Off {
+                xml.empty_attr_w("w:tcFitText", "val", "0");
+            } else if props.fit_text || props.fit_text_state.is_on() {
+                xml.empty("w:tcFitText");
+            }
+        }
         "vAlign" => {
             if let Some(align) = &props.vertical_align {
                 xml.empty_attr_w("w:vAlign", "val", align.as_str());
             }
         }
-        "hideMark" if props.hide_mark => xml.empty("w:hideMark"),
+        "hideMark" => {
+            if props.hide_mark_state == TriState::Off {
+                xml.empty_attr_w("w:hideMark", "val", "0");
+            } else if props.hide_mark || props.hide_mark_state.is_on() {
+                xml.empty("w:hideMark");
+            }
+        }
         _ => {}
     }
 }
@@ -1426,6 +1468,9 @@ fn page_border_edge(xml: &mut XmlWriter, local: &str, border: &PageBorder) {
     // that go with `w:themeColor` are attributes for the same reason.
     xml.attr_w_opt("color", border.color.as_ref().map(Color::as_str));
     write_theme_color_attrs(xml, border.theme_color.as_deref(), ThemeAttrNames::Color);
+    if border.frame {
+        xml.attr_w("frame", "true");
+    }
     if border.shadow {
         xml.attr_w("shadow", "true");
     }
