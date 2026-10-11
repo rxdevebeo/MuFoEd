@@ -34,10 +34,15 @@ pub struct ComputedRun {
     pub bold: bool,
     /// Italic.
     pub italic: bool,
-    /// Underline.
-    pub underline: bool,
-    /// Strikethrough (single or double).
+    /// Underline style (`w:u/@w:val`), `None` when the run is not underlined.
+    pub underline: Option<Underline>,
+    /// Underline colour (`w:u/@w:color`, `@w:themeColor`), `#rrggbb`. `None`
+    /// draws the underline in the text colour.
+    pub underline_color: Option<String>,
+    /// Single strikethrough (`w:strike`).
     pub strike: bool,
+    /// Double strikethrough (`w:dstrike`).
+    pub double_strike: bool,
     /// Text colour (`#rrggbb`), or `None` for the default (black).
     pub color: Option<String>,
     /// Highlight fill colour (`#rrggbb`).
@@ -46,10 +51,23 @@ pub struct ComputedRun {
     pub vert_align: VertAlign,
     /// All-capitals (`w:caps`).
     pub caps: bool,
+    /// Small capitals (`w:smallCaps`): lowercase letters are drawn as smaller
+    /// capitals.
+    pub small_caps: bool,
+    /// Baseline raise (positive) or lowering (negative) from `w:position`, in
+    /// points.
+    pub position_pt: f64,
+    /// Run shading fill (`w:rPr/w:shd`), `#rrggbb`.
+    pub shading: Option<String>,
     /// Hidden text (`w:vanish`).
     pub vanish: bool,
     /// Complex-script face (`w:rFonts/@w:cs`). Latin and Cyrillic keep [`Self::family`].
     pub complex_family: Option<String>,
+    /// East Asian face (`w:rFonts/@w:eastAsia` or `@w:eastAsiaTheme`), used for
+    /// CJK text.
+    pub east_asia_family: Option<String>,
+    /// Substitute for an unavailable East Asian face.
+    pub east_asia_family_fallback: Option<String>,
     /// Character width scale (`w:w`). `1.0` is 100% of the normal advance.
     pub char_scale: f64,
 }
@@ -65,14 +83,21 @@ impl Default for ComputedRun {
             spacing_pt: 0.0,
             bold: false,
             italic: false,
-            underline: false,
+            underline: None,
+            underline_color: None,
             strike: false,
+            double_strike: false,
             color: None,
             highlight: None,
             vert_align: VertAlign::Baseline,
             caps: false,
+            small_caps: false,
+            position_pt: 0.0,
+            shading: None,
             vanish: false,
             complex_family: None,
+            east_asia_family: None,
+            east_asia_family_fallback: None,
             char_scale: 1.0,
         }
     }
@@ -217,6 +242,11 @@ pub fn compute_run(
     }
     apply_direct_run_props(&mut computed, &run.props, theme);
     resolve_font_hints(document, &mut computed);
+    // `auto` text colour follows the run's own shading: Word draws it white
+    // on a dark fill.
+    if computed.color.is_none() && computed.shading.as_deref().is_some_and(is_dark) {
+        computed.color = Some("#ffffff".to_owned());
+    }
     computed
 }
 
@@ -224,6 +254,10 @@ fn resolve_font_hints(document: &Document, run: &mut ComputedRun) {
     run.family_fallback = font_hint_substitute(document, &run.family);
     run.complex_family_fallback = run
         .complex_family
+        .as_deref()
+        .and_then(|family| font_hint_substitute(document, family));
+    run.east_asia_family_fallback = run
+        .east_asia_family
         .as_deref()
         .and_then(|family| font_hint_substitute(document, family));
 }
@@ -472,11 +506,25 @@ fn apply_run_props_mode(
     }
     apply_toggle(&mut computed.bold, props.bold, mode);
     apply_toggle(&mut computed.italic, props.italic, mode);
-    if let Some(underline) = &props.underline {
-        computed.underline = !matches!(underline, Underline::None);
+    if let Some(underline) = props.underline {
+        computed.underline = (underline != Underline::None).then_some(underline);
+    }
+    if let Some(color) = props
+        .underline_theme
+        .as_deref()
+        .and_then(|reference| resolve_theme_color(reference, theme))
+        .or_else(|| props.underline_color.as_ref().and_then(parse_color))
+    {
+        computed.underline_color = Some(color);
+    } else if props
+        .underline_color
+        .as_ref()
+        .is_some_and(|color| color.as_str().eq_ignore_ascii_case("auto"))
+    {
+        computed.underline_color = None;
     }
     apply_toggle(&mut computed.strike, props.strike, mode);
-    apply_toggle(&mut computed.strike, props.double_strike, mode);
+    apply_toggle(&mut computed.double_strike, props.double_strike, mode);
     if let Some(color) = &props.color {
         computed.color = parse_color(color);
     }
@@ -493,6 +541,13 @@ fn apply_run_props_mode(
     }
     if let Some(spacing) = props.spacing {
         computed.spacing_pt = f64::from(spacing.value()) / 20.0;
+    }
+    if let Some(position) = props.position {
+        // `w:position` is in half-points; positive raises the text.
+        computed.position_pt = f64::from(position.value()) / 2.0;
+    }
+    if let Some(shading) = &props.shading {
+        computed.shading = shading_fill_color(shading, theme);
     }
     if let Some(scale) = props.scale {
         // `w:w` is a percentage of the normal advance (`100` and `100%`).
@@ -538,6 +593,7 @@ fn apply_run_props_mode(
         computed.vert_align = vert;
     }
     apply_toggle(&mut computed.caps, props.caps, mode);
+    apply_toggle(&mut computed.small_caps, props.small_caps, mode);
     apply_toggle(&mut computed.vanish, props.vanish, mode);
 }
 
@@ -555,6 +611,13 @@ fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts, theme: Option<&Theme>)
         // Kept for complex-script characters. It must not replace ascii/hAnsi:
         // a Cyrillic run with `w:cs` still uses the Latin face (A11).
         computed.complex_family = Some(family.to_string());
+    } else if let Some(family) = theme_font(fonts.cs_theme.as_deref(), theme) {
+        computed.complex_family = Some(family);
+    }
+    if let Some(family) = fonts.east_asia.as_ref() {
+        computed.east_asia_family = Some(family.to_string());
+    } else if let Some(family) = theme_font(fonts.east_asia_theme.as_deref(), theme) {
+        computed.east_asia_family = Some(family);
     }
 }
 
@@ -569,6 +632,11 @@ pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
         (
             run.complex_family.as_deref().unwrap_or(&run.family),
             run.complex_family_fallback.as_deref(),
+        )
+    } else if run.east_asia_family.is_some() && script_is_east_asian_only(text) {
+        (
+            run.east_asia_family.as_deref().unwrap_or(&run.family),
+            run.east_asia_family_fallback.as_deref(),
         )
     } else {
         (run.family.as_str(), run.family_fallback.as_deref())
@@ -659,6 +727,20 @@ pub(crate) fn script_is_complex_only(text: &str) -> bool {
     complex
 }
 
+/// Whether `text` is East Asian (CJK) script, with no Latin or Cyrillic letters.
+pub(crate) fn script_is_east_asian_only(text: &str) -> bool {
+    let mut east_asian = false;
+    for ch in text.chars() {
+        if is_latin_or_cyrillic(ch) {
+            return false;
+        }
+        if crate::font::metrics::is_wide_character(ch) {
+            east_asian = true;
+        }
+    }
+    east_asian
+}
+
 fn is_latin_or_cyrillic(ch: char) -> bool {
     matches!(
         ch,
@@ -682,7 +764,12 @@ fn is_complex_script(ch: char) -> bool {
 /// Resolves a `w:*Theme` font reference through `theme`.
 fn theme_font(reference: Option<&str>, theme: Option<&Theme>) -> Option<String> {
     let reference = reference?;
-    theme?.font(reference).map(ToString::to_string)
+    // A theme slot can be present but empty (`<a:cs typeface=""/>`): that names
+    // no face, so it must not replace the inherited one.
+    theme?
+        .font(reference)
+        .filter(|name| !name.trim().is_empty())
+        .map(ToString::to_string)
 }
 
 /// Resolves a themed run colour (`w:themeColor`/`themeTint`/`themeShade`).
@@ -749,14 +836,84 @@ fn apply_toggle(computed: &mut bool, state: TriState, mode: ToggleMode) {
     }
 }
 
-/// The fill of a `w:shd` as `#rrggbb`: `w:themeFill` (with tint/shade) when the
-/// theme resolves it, else `w:fill`. `None` for `auto` or nothing usable.
+/// The colour a `w:shd` paints, as `#rrggbb`, or `None` for no shading.
+///
+/// The background is `w:themeFill` (with tint/shade) when the theme resolves
+/// it, else `w:fill`. `w:val` lays a pattern in the foreground colour
+/// (`w:themeColor`, else `w:color`) over it: `solid` covers it, `pctN` covers
+/// N percent, and the hatches cover the share of a tile their lines take. The
+/// pattern is painted as that blend rather than as a tile — at text sizes the
+/// eye sees the mix, and both backends can fill a rectangle. `auto` is white
+/// as a background and black as a foreground, as in Word.
 pub(crate) fn shading_fill_color(shading: &Shading, theme: Option<&Theme>) -> Option<String> {
-    shading
+    let fill = shading
         .theme_fill
         .as_ref()
         .and_then(|reference| resolve_theme_color(reference, theme))
-        .or_else(|| shading.fill.as_ref().and_then(parse_color))
+        .or_else(|| shading.fill.as_ref().and_then(parse_color));
+    let pattern = shading.pattern.as_deref().unwrap_or("clear");
+    if pattern == "nil" {
+        return None;
+    }
+    let coverage = shading_pattern_coverage(pattern);
+    if coverage == 0 {
+        return fill;
+    }
+    let foreground = shading
+        .theme_color
+        .as_deref()
+        .and_then(|reference| resolve_theme_color(reference, theme))
+        .or_else(|| shading.color.as_ref().and_then(parse_color))
+        .unwrap_or_else(|| "#000000".to_owned());
+    let background = fill.unwrap_or_else(|| "#ffffff".to_owned());
+    blend_hex(&background, &foreground, coverage)
+}
+
+/// Share of a `w:shd` tile the foreground covers (`ST_Shd`), in thousandths:
+/// `0` for `clear` and for values this renderer does not know.
+fn shading_pattern_coverage(pattern: &str) -> u32 {
+    if pattern == "solid" {
+        return 1000;
+    }
+    if let Some(percent) = pattern
+        .strip_prefix("pct")
+        .and_then(|value| value.parse::<u32>().ok())
+    {
+        return percent.min(100) * 10;
+    }
+    match pattern {
+        "horzStripe" | "vertStripe" | "reverseDiagStripe" | "diagStripe" => 500,
+        "horzCross" | "diagCross" => 750,
+        "thinHorzStripe" | "thinVertStripe" | "thinReverseDiagStripe" | "thinDiagStripe" => 250,
+        "thinHorzCross" | "thinDiagCross" => 440,
+        _ => 0,
+    }
+}
+
+/// Mixes two `#rrggbb` colours: `per_mille` thousandths of `top` over `base`.
+fn blend_hex(base: &str, top: &str, per_mille: u32) -> Option<String> {
+    let (br, bg, bb) = parse_hex(base)?;
+    let (tr, tg, tb) = parse_hex(top)?;
+    let amount = per_mille.min(1000);
+    let mix = |b: u8, t: u8| -> u8 {
+        let value = (u32::from(b) * (1000 - amount) + u32::from(t) * amount + 500) / 1000;
+        u8::try_from(value).unwrap_or(u8::MAX)
+    };
+    Some(format!(
+        "#{:02x}{:02x}{:02x}",
+        mix(br, tr),
+        mix(bg, tg),
+        mix(bb, tb)
+    ))
+}
+
+/// Whether a `#rrggbb` colour is dark enough that Word draws `auto` text on it
+/// in white.
+fn is_dark(color: &str) -> bool {
+    parse_hex(color).is_some_and(|(red, green, blue)| {
+        let luminance = 0.299 * f64::from(red) + 0.587 * f64::from(green) + 0.114 * f64::from(blue);
+        luminance < 128.0
+    })
 }
 
 /// Parses a `w:color` value into `#rrggbb` (or `None` for `auto`/invalid).
@@ -950,7 +1107,7 @@ mod tests {
         assert!(computed.default_run.bold, "inherited from Base");
         assert!(computed.default_run.italic, "from Child");
         assert_eq!(computed.default_run.size_pt, 14.0, "from Base");
-        assert!(computed.default_run.underline, "from pPr/rPr");
+        assert!(computed.default_run.underline.is_some(), "from pPr/rPr");
     }
 
     #[test]

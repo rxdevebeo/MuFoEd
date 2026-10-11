@@ -27,7 +27,8 @@ pub(crate) fn text_ink_right(item: &TextItem) -> Option<f64> {
     })
 }
 
-/// Writes one text fragment, optionally with a highlight rectangle behind it.
+/// Writes one text fragment with its shading, highlight, underline and
+/// strikethrough.
 pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
     if item.run.rotation_deg != 0.0 {
         let _ = writeln!(
@@ -38,27 +39,22 @@ pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
             coord(item.baseline)
         );
     }
+    // Decorations are geometry shared with the PDF backend, rotated with the
+    // text they belong to.
+    let decorations = crate::layout::text_decorations(item);
+    for decoration in &decorations.behind {
+        super::item_svg(out, decoration);
+    }
     text_svg_unrotated(out, item);
+    for decoration in &decorations.over {
+        super::item_svg(out, decoration);
+    }
     if item.run.rotation_deg != 0.0 {
         out.push_str("</g>\n");
     }
 }
 
 fn text_svg_unrotated(out: &mut String, item: &TextItem) {
-    if let Some(highlight) = &item.run.highlight {
-        // Highlight: an approximate box around the glyphs.
-        let height = item.size_px * 1.2;
-        let top = item.baseline - item.size_px * 0.9;
-        let _ = writeln!(
-            out,
-            "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
-            coord(item.x),
-            coord(top),
-            coord(item.width),
-            coord(height),
-            super::escape_attr(highlight),
-        );
-    }
     let shown = crate::font::present_text(&item.run.family, &item.text);
     let family = crate::style::chosen_family(&item.run, &item.text);
     let fill = item
@@ -76,15 +72,6 @@ fn text_svg_unrotated(out: &mut String, item: &TextItem) {
     }
     if item.run.italic {
         attributes.push_str(" font-style=\"italic\"");
-    }
-    let decoration = match (item.run.underline, item.run.strike) {
-        (true, true) => Some("underline line-through"),
-        (true, false) => Some("underline"),
-        (false, true) => Some("line-through"),
-        (false, false) => None,
-    };
-    if let Some(decoration) = decoration {
-        let _ = write!(attributes, " text-decoration=\"{decoration}\"");
     }
     // Explicit per-scalar x from the shared shaper so the browser does not
     // re-shape against a different face (F07). Ligature clusters share one x.

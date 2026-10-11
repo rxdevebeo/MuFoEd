@@ -475,13 +475,17 @@ impl PageWriter<'_> {
             self.content.fill_nonzero();
         }
         for item in &page.items {
-            match item {
-                Item::Rect(rect) => self.rect(rect),
-                Item::Line(line) => self.line(line),
-                Item::Path(path) => self.path(path),
-                Item::Image(image) => self.image(image),
-                Item::Text(text) => self.text(text),
-            }
+            self.item(item);
+        }
+    }
+
+    fn item(&mut self, item: &Item) {
+        match item {
+            Item::Rect(rect) => self.rect(rect),
+            Item::Line(line) => self.line(line),
+            Item::Path(path) => self.path(path),
+            Item::Image(image) => self.image(image),
+            Item::Text(text) => self.text(text),
         }
     }
 
@@ -692,7 +696,7 @@ impl PageWriter<'_> {
 
     fn text(&mut self, text: &TextItem) {
         if text.run.rotation_deg == 0.0 {
-            self.text_unrotated(text);
+            self.decorated_text(text);
             return;
         }
         let (sin, cos) = (-text.run.rotation_deg.to_radians()).sin_cos();
@@ -707,8 +711,21 @@ impl PageWriter<'_> {
             (x - cos * x + sin * y) as f32,
             (y - sin * x - cos * y) as f32,
         ]);
-        self.text_unrotated(text);
+        self.decorated_text(text);
         self.content.restore_state();
+    }
+
+    /// Draws a fragment with the shading, highlight, underline and
+    /// strikethrough the SVG backend draws for it, from the same geometry.
+    fn decorated_text(&mut self, text: &TextItem) {
+        let decorations = strict_ooxml_render_svg::layout::text_decorations(text);
+        for decoration in &decorations.behind {
+            self.item(decoration);
+        }
+        self.text_unrotated(text);
+        for decoration in &decorations.over {
+            self.item(decoration);
+        }
     }
 
     fn text_unrotated(&mut self, text: &TextItem) {

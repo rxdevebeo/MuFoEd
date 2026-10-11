@@ -4,6 +4,7 @@
 //! pagination → a list of [`PlacedPage`]s holding paint [`Item`]s. Painting
 //! (`crate::paint`) is the only place that knows SVG.
 
+pub mod decoration;
 pub(crate) mod exclusions;
 pub(crate) mod floating;
 pub(crate) mod headerfooter;
@@ -23,6 +24,7 @@ use crate::font::FontProvider;
 use crate::style::ComputedRun;
 use crate::units::twips_to_px;
 use crate::{MediaMode, MediaSource, RenderOptions};
+pub use decoration::{text_decorations, TextDecorations};
 pub(crate) use paragraph::formula_ink;
 
 /// Which advance geometry produced [`TextItem::width`] and must be used to paint.

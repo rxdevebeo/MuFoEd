@@ -34,16 +34,21 @@ pub(crate) fn render_page(page: &PlacedPage, background: bool) -> String {
         );
     }
     for item in &page.items {
-        match item {
-            Item::Rect(rect) => shapes::rect_svg(&mut out, rect),
-            Item::Line(line) => shapes::line_svg(&mut out, line),
-            Item::Text(item) => text::text_svg(&mut out, item),
-            Item::Image(item) => image::image_svg(&mut out, item),
-            Item::Path(item) => shapes::path_svg(&mut out, item),
-        }
+        item_svg(&mut out, item);
     }
     out.push_str("</svg>\n");
     out
+}
+
+/// Writes one paint item.
+pub(crate) fn item_svg(out: &mut String, item: &Item) {
+    match item {
+        Item::Rect(rect) => shapes::rect_svg(out, rect),
+        Item::Line(line) => shapes::line_svg(out, line),
+        Item::Text(item) => text::text_svg(out, item),
+        Item::Image(item) => image::image_svg(out, item),
+        Item::Path(item) => shapes::path_svg(out, item),
+    }
 }
 
 pub(crate) use strict_ooxml_core::xml::escape::{escape_attr, escape_text};

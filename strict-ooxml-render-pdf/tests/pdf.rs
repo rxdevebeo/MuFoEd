@@ -722,3 +722,43 @@ fn styled_math_embeds_real_glyphs_and_preserves_source_unicode() {
         assert_eq!(decode_single_face_cids(&pdf, &content), "xα+3");
     }
 }
+
+/// Underline, strikethrough and highlight reach the PDF: they are geometry the
+/// SVG backend draws too, not SVG text attributes the PDF had no word for.
+#[test]
+fn run_decorations_are_drawn_in_the_pdf() {
+    let plain = strict_ooxml_testkit::docx::DocxBuilder::strict()
+        .body("<w:p><w:r><w:t>Plain</w:t></w:r></w:p>")
+        .build();
+    let decorated = strict_ooxml_testkit::docx::DocxBuilder::strict()
+        .body(
+            "<w:p><w:r><w:rPr><w:u w:val=\"double\" w:color=\"FF0000\"/><w:strike/>\
+             <w:highlight w:val=\"yellow\"/></w:rPr><w:t>Plain</w:t></w:r></w:p>",
+        )
+        .build();
+    let strokes = |bytes: &[u8]| {
+        let (pdf, _svg, _report) = to_pdf(bytes);
+        extracted_text(&pdf)
+            .lines()
+            .filter(|line| line.trim() == "S")
+            .count()
+    };
+    let fills = |bytes: &[u8]| {
+        let (pdf, _svg, _report) = to_pdf(bytes);
+        extracted_text(&pdf)
+            .lines()
+            .filter(|line| line.trim() == "f")
+            .count()
+    };
+    assert_eq!(
+        strokes(&decorated),
+        strokes(&plain) + 3,
+        "two underline strokes and one strikethrough"
+    );
+    assert_eq!(fills(&decorated), fills(&plain) + 1, "the highlight band");
+    let (pdf, _svg, _report) = to_pdf(&decorated);
+    assert!(
+        extracted_text(&pdf).contains("1 0 0 RG"),
+        "the underline is red"
+    );
+}

@@ -524,7 +524,12 @@ fn flatten_run(
             RunContent::InstrText(text) => field.on_instr(text),
             _ if field.suppressed() => {}
             RunContent::Text(text) => {
-                if !text.text.is_empty() {
+                if text.text.is_empty() {
+                    continue;
+                }
+                if run_style.small_caps && !run_style.caps {
+                    push_small_caps(&text.text, &run_style, out);
+                } else {
                     out.push(Seg::Text(
                         apply_caps(&text.text, &run_style),
                         run_style.clone(),
@@ -539,7 +544,20 @@ fn flatten_run(
             | RunContent::CarriageReturn => out.push(Seg::Break),
             RunContent::Drawing(drawing) => flatten_drawing(ctx, drawing, out),
             RunContent::Symbol(symbol) => {
-                out.push(Seg::Text(symbol.character.to_string(), run_style.clone()));
+                // `w:sym` names its own face (Symbol, Wingdings): the
+                // character is a private-use code in that face, not in the
+                // run's.
+                let mut symbol_style = run_style.clone();
+                if !symbol.font.trim().is_empty() {
+                    symbol.font.as_ref().clone_into(&mut symbol_style.family);
+                    symbol_style.family_fallback = None;
+                    symbol_style.complex_family = None;
+                    symbol_style.east_asia_family = None;
+                }
+                out.push(Seg::Text(
+                    symbol_character(&symbol.font, symbol.character).to_string(),
+                    symbol_style,
+                ));
             }
             RunContent::NoBreakHyphen => {
                 out.push(Seg::Text("\u{2011}".to_owned(), run_style.clone()));
@@ -568,6 +586,64 @@ fn flatten_run(
             | RunContent::Ptab { .. }
             | RunContent::Opaque(_) => {}
         }
+    }
+}
+
+/// The character a `w:sym` stands for in its face.
+///
+/// The parser folds `F0xx` codes to `00xx`, which is the byte the symbol face
+/// stores; the stand-in table of [`crate::font::present_text`] is keyed by
+/// the private-use form Word writes. A byte with a stand-in goes back to that
+/// form, so a Symbol `a` is painted as `α` rather than as a Latin `a`.
+fn symbol_character(font: &str, character: char) -> char {
+    let code = u32::from(character);
+    if code > 0xFF {
+        return character;
+    }
+    let Some(private) = char::from_u32(0xF000 + code) else {
+        return character;
+    };
+    let mut buffer = [0u8; 4];
+    let private_text: &str = private.encode_utf8(&mut buffer);
+    if crate::font::present_text(font, private_text) == private_text {
+        character
+    } else {
+        private
+    }
+}
+
+/// Size of a small-capital letter relative to the run size (`w:smallCaps`).
+///
+/// Word synthesises small capitals by scaling capitals, as LibreOffice does
+/// at the same ratio.
+const SMALL_CAPS_SCALE: f64 = 0.8;
+
+/// Splits a `w:smallCaps` run into full-size and small-capital pieces.
+///
+/// Lowercase letters become capitals at [`SMALL_CAPS_SCALE`]; everything
+/// else keeps the run's size. The pieces are consecutive segments, so a word
+/// stays a word for wrapping the same way a word with mixed formatting does.
+fn push_small_caps(text: &str, run: &ComputedRun, out: &mut Vec<Seg>) {
+    let mut small = run.clone();
+    small.size_pt = run.size_pt * SMALL_CAPS_SCALE;
+    let mut piece = String::new();
+    let mut piece_is_small = false;
+    for ch in text.chars() {
+        let is_small = ch.is_lowercase();
+        if is_small != piece_is_small && !piece.is_empty() {
+            let style = if piece_is_small { &small } else { run };
+            out.push(Seg::Text(std::mem::take(&mut piece), style.clone()));
+        }
+        piece_is_small = is_small;
+        if is_small {
+            piece.extend(ch.to_uppercase());
+        } else {
+            piece.push(ch);
+        }
+    }
+    if !piece.is_empty() {
+        let style = if piece_is_small { &small } else { run };
+        out.push(Seg::Text(piece, style.clone()));
     }
 }
 
@@ -1932,9 +2008,15 @@ fn push_field_marker(
     *x += width;
 }
 
-/// Adjusts a superscript/subscript item's size and baseline.
+/// Adjusts a superscript/subscript item's size and baseline, and applies the
+/// run's `w:position` raise or lowering.
 fn apply_vertical_align(item: &mut TextItem) {
     let base = item.size_px;
+    if item.run.position_pt != 0.0 && item.run.size_pt > 0.0 {
+        // `size_px` is `size_pt` at the page scale, so the ratio converts the
+        // raise to px without the layout context.
+        item.baseline -= item.run.position_pt * base / item.run.size_pt;
+    }
     match item.run.vert_align {
         VertAlign::Superscript => {
             item.baseline -= base * 0.33;

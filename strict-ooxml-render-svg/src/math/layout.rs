@@ -552,11 +552,16 @@ impl Frame<'_, '_> {
         let mut run = self.run.clone();
         MATH_FAMILY.clone_into(&mut run.family);
         run.complex_family = None;
+        run.east_asia_family = None;
         run.size_pt = crate::units::PT_PER_INCH * self.size_px / self.ctx.options.scale;
         run.highlight = None;
-        run.underline = false;
+        run.shading = None;
+        run.underline = None;
         run.strike = false;
+        run.double_strike = false;
         run.caps = false;
+        run.small_caps = false;
+        run.position_pt = 0.0;
         run.vert_align = strict_ooxml_wml::model::values::VertAlign::Baseline;
         run.italic = matches!(style, MathStyle::Italic | MathStyle::BoldItalic);
         run.bold = matches!(style, MathStyle::Bold | MathStyle::BoldItalic);
