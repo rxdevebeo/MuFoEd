@@ -984,7 +984,7 @@ fn place_cell_paragraph(
                 page_frames.extend(row.page_frames);
                 *y += row.height;
             }
-            Flow::PageBreak => {}
+            Flow::PageBreak | Flow::ColumnBreak => {}
         }
     }
     *y += flow.space_after + flow.border_after;
@@ -1016,7 +1016,7 @@ fn append_table_flows(
                 page_frames.extend(row.page_frames);
                 *y += row.height;
             }
-            Flow::Line(_) | Flow::Image(_) | Flow::PageBreak => {}
+            Flow::Line(_) | Flow::Image(_) | Flow::PageBreak | Flow::ColumnBreak => {}
         }
     }
 }
@@ -1115,7 +1115,7 @@ pub(crate) fn framed_table_items(
                 }
                 y += height;
             }
-            Flow::Line(_) | Flow::Image(_) | Flow::PageBreak => {}
+            Flow::Line(_) | Flow::Image(_) | Flow::PageBreak | Flow::ColumnBreak => {}
         }
     }
     items
@@ -1309,7 +1309,7 @@ pub(crate) fn layout_frame_contents(
                     items.extend(row.page_frames);
                     local_y += row.height;
                 }
-                Flow::PageBreak => break,
+                Flow::PageBreak | Flow::ColumnBreak => break,
             }
         }
         if let Some(exact) = para_exact {

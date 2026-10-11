@@ -92,6 +92,8 @@ pub(crate) fn decorate_pages(
             right: margins.right,
             bottom: margins.bottom,
             grid_line_pitch: None,
+            column_count: 1,
+            column_gap: margins.column_gap,
         };
         let content_width = geometry.content_width();
         let left = geometry.left;

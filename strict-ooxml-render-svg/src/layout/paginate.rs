@@ -232,7 +232,7 @@ fn layout_once(
                 );
             }
         }
-        let width = paginator.geometry.content_width();
+        let width = paginator.geometry.column_width();
         let body_blocks = &ctx.document.body.blocks;
         let run_blocks = body_blocks.get(*start..*end).unwrap_or_default();
         layout_blocks(ctx, run_blocks, width, &mut paginator, 0)?;
@@ -385,7 +385,7 @@ fn layout_blocks(
                 ctx.frame_anchor.set((
                     paginator.geometry.left,
                     paginator.geometry.top,
-                    paginator.geometry.content_width(),
+                    paginator.geometry.column_width(),
                     paginator.geometry.width,
                     paginator.geometry.height,
                 ));
@@ -471,11 +471,11 @@ fn place_body_paragraph(
                 Flow::Image(image) => image.h,
                 Flow::Block { height, .. } => *height,
                 Flow::TableRow(row) => row.height,
-                Flow::PageBreak => 0.0,
+                Flow::PageBreak | Flow::ColumnBreak => 0.0,
             })
             .sum();
-        if !paginator.at_page_top() && paginator.cursor + total > paginator.body_height() {
-            paginator.page_break()?;
+        if !paginator.at_column_top() && paginator.cursor + total > paginator.body_height() {
+            paginator.overflow_break()?;
             if paginator.selection_exhausted() {
                 return Ok(0.0);
             }
@@ -525,12 +525,13 @@ fn place_frame_group(
         frame,
         paginator.geometry.left,
         paginator.geometry.top,
-        paginator.geometry.content_width(),
+        paginator.geometry.column_width(),
         paginator.geometry.content_height(),
         paginator.geometry.width,
         paginator.geometry.height,
         scale,
     );
+    let origin_x = origin_x + paginator.column_offset();
     paginator.started = true;
     let page = paginator.pages.len();
     let resume = ctx.frame_resume(frame);
@@ -554,8 +555,10 @@ fn place_frame_group(
             .map_or(0.0, |value| crate::units::twips_to_px(value.value(), scale));
         let (left, right) = if frame.wrap.as_deref() == Some("notBeside") {
             (
-                paginator.geometry.left,
-                paginator.geometry.left + paginator.geometry.content_width(),
+                paginator.geometry.left + paginator.column_offset(),
+                paginator.geometry.left
+                    + paginator.column_offset()
+                    + paginator.geometry.column_width(),
             )
         } else {
             (
@@ -599,12 +602,13 @@ fn place_framed_table(
         frame,
         paginator.geometry.left,
         paginator.geometry.top,
-        paginator.geometry.content_width(),
+        paginator.geometry.column_width(),
         paginator.geometry.content_height(),
         paginator.geometry.width,
         paginator.geometry.height,
         scale,
     );
+    let origin_x = origin_x + paginator.column_offset();
     paginator.started = true;
     for item in framed_table_items(ctx, table, origin_x, origin_y, frame_width, depth) {
         paginator.push_item(item)?;
@@ -760,6 +764,13 @@ struct Paginator<'a> {
     started: bool,
     /// Section index for content currently being placed (AUD-74).
     section_index: usize,
+    /// Active body column on this page.
+    column_index: usize,
+    /// First y position of columns in the active continuous section.
+    column_start: f64,
+    /// Furthest cursor reached in each column, used when a continuous section
+    /// switches back to a wider body frame.
+    column_bottoms: Vec<f64>,
     /// Keep the next flushed empty page (explicit break / section break, AUD-75).
     keep_empty_page: bool,
     /// `PageSelection::Range` already produced `end` pages; further content is dropped.
@@ -825,6 +836,7 @@ impl<'a> Paginator<'a> {
                 note_cache.insert(id, (items, y));
             }
         }
+        let initial_column_count = geometry.column_count.max(1);
         let mut paginator = Self {
             ctx,
             geometry,
@@ -839,6 +851,9 @@ impl<'a> Paginator<'a> {
             cursor: 0.0,
             started: false,
             section_index: 0,
+            column_index: 0,
+            column_start: 0.0,
+            column_bottoms: vec![0.0; initial_column_count],
             keep_empty_page: false,
             truncated: false,
             pending_geometry: None,
@@ -906,9 +921,10 @@ impl<'a> Paginator<'a> {
             SectionType::Continuous => {
                 // Same page; new geometry applies from the next page onward.
                 self.pending_geometry = Some((geometry, section_index));
+                self.activate_columns(geometry);
                 Ok(())
             }
-            SectionType::NextPage | SectionType::NextColumn => {
+            SectionType::NextPage => {
                 self.keep_empty_page = true;
                 self.page_break()?;
                 if self.selection_exhausted() {
@@ -920,8 +936,38 @@ impl<'a> Paginator<'a> {
                 self.base_geometry = geometry;
                 self.geometry = geometry;
                 self.section_index = section_index;
+                self.reset_columns_for_page();
                 self.apply_page_regions();
                 Ok(())
+            }
+            SectionType::NextColumn => {
+                let next_column = self.column_index.saturating_add(1);
+                if next_column < geometry.column_count.max(1) {
+                    self.record_column_bottom();
+                    self.base_geometry = geometry;
+                    self.geometry = geometry;
+                    self.section_index = section_index;
+                    self.column_index = next_column;
+                    self.column_start = 0.0;
+                    self.cursor = 0.0;
+                    self.column_bottoms = vec![0.0; geometry.column_count.max(1)];
+                    self.wrap_exclusions.clear();
+                    self.apply_page_regions();
+                    Ok(())
+                } else {
+                    self.keep_empty_page = true;
+                    self.page_break()?;
+                    if self.selection_exhausted() {
+                        return Ok(());
+                    }
+                    self.keep_empty_page = true;
+                    self.base_geometry = geometry;
+                    self.geometry = geometry;
+                    self.section_index = section_index;
+                    self.reset_columns_for_page();
+                    self.apply_page_regions();
+                    Ok(())
+                }
             }
             SectionType::OddPage => {
                 self.keep_empty_page = true;
@@ -937,6 +983,7 @@ impl<'a> Paginator<'a> {
                 self.base_geometry = geometry;
                 self.geometry = geometry;
                 self.section_index = section_index;
+                self.reset_columns_for_page();
                 self.apply_page_regions();
                 Ok(())
             }
@@ -954,6 +1001,7 @@ impl<'a> Paginator<'a> {
                 self.base_geometry = geometry;
                 self.geometry = geometry;
                 self.section_index = section_index;
+                self.reset_columns_for_page();
                 self.apply_page_regions();
                 Ok(())
             }
@@ -983,6 +1031,57 @@ impl<'a> Paginator<'a> {
         (self.geometry.content_height() - self.reserved_height()).max(1.0)
     }
 
+    fn column_offset(&self) -> f64 {
+        self.geometry.column_left(self.column_index) - self.geometry.left
+    }
+
+    fn overflow_break(&mut self) -> Result<()> {
+        if self.column_index + 1 < self.geometry.column_count.max(1) {
+            self.record_column_bottom();
+            self.column_index += 1;
+            self.cursor = self.column_start;
+            self.wrap_exclusions.clear();
+            Ok(())
+        } else {
+            self.page_break()
+        }
+    }
+
+    fn record_column_bottom(&mut self) {
+        if let Some(bottom) = self.column_bottoms.get_mut(self.column_index) {
+            *bottom = bottom.max(self.cursor);
+        }
+    }
+
+    fn activate_columns(&mut self, geometry: Geometry) {
+        let previous_count = self.geometry.column_count.max(1);
+        let previous_gap = self.geometry.column_gap;
+        let next_count = geometry.column_count.max(1);
+        if previous_count == next_count && (previous_gap - geometry.column_gap).abs() < 1e-6 {
+            self.geometry.column_count = next_count;
+            self.geometry.column_gap = geometry.column_gap;
+            return;
+        }
+        let section_start = self
+            .column_bottoms
+            .iter()
+            .copied()
+            .fold(self.cursor, f64::max);
+        self.geometry.column_count = next_count;
+        self.geometry.column_gap = geometry.column_gap;
+        self.column_index = 0;
+        self.column_start = section_start;
+        self.cursor = section_start;
+        self.column_bottoms = vec![section_start; next_count];
+        self.wrap_exclusions.clear();
+    }
+
+    fn reset_columns_for_page(&mut self) {
+        self.column_index = 0;
+        self.column_start = 0.0;
+        self.column_bottoms = vec![0.0; self.geometry.column_count.max(1)];
+    }
+
     /// Height of one cached footnote.
     fn note_height(&self, id: u32) -> f64 {
         self.note_cache.get(&id).map_or(0.0, |(_, height)| *height)
@@ -990,6 +1089,10 @@ impl<'a> Paginator<'a> {
 
     fn at_page_top(&self) -> bool {
         !self.started || (self.current.is_empty() && self.cursor <= 0.0)
+    }
+
+    fn at_column_top(&self) -> bool {
+        !self.started || self.cursor <= self.column_start + 1e-9
     }
 
     /// Whether [`PageSelection::Range`] already has its last requested page.
@@ -1013,6 +1116,7 @@ impl<'a> Paginator<'a> {
             return;
         }
         self.cursor = (self.cursor + space).min(self.body_height());
+        self.record_column_bottom();
     }
 
     fn check_page_capacity(&self) -> Result<()> {
@@ -1068,6 +1172,7 @@ impl<'a> Paginator<'a> {
         }
         self.ctx.reset_frame_cursors();
         self.take_pending_geometry();
+        self.reset_columns_for_page();
         self.cursor = 0.0;
         self.started = true;
         self.current = Vec::new();
@@ -1177,34 +1282,39 @@ impl<'a> Paginator<'a> {
                 self.keep_empty_page = true;
                 self.page_break()
             }
+            Flow::ColumnBreak => self.overflow_break(),
             Flow::Line(line) => self.place_line(line),
             Flow::Image(image) => {
                 self.started = true;
                 if !self.current.is_empty() && self.cursor + image.h > self.body_height() {
-                    self.page_break()?;
+                    self.overflow_break()?;
                     if self.selection_exhausted() {
                         return Ok(());
                     }
                 }
                 let mut image = image;
+                image.x += self.column_offset();
                 image.y += self.geometry.top + self.cursor;
                 self.cursor += image.h;
+                self.record_column_bottom();
                 self.push_item(Item::Image(image))?;
                 Ok(())
             }
             Flow::Block { items, height } => {
                 self.started = true;
                 if !self.current.is_empty() && self.cursor + height > self.body_height() {
-                    self.page_break()?;
+                    self.overflow_break()?;
                     if self.selection_exhausted() {
                         return Ok(());
                     }
                 }
                 let dy = self.geometry.top + self.cursor;
+                let dx = self.column_offset();
                 for item in &items {
-                    self.push_item(offset_item(item, 0.0, dy))?;
+                    self.push_item(offset_item(item, dx, dy))?;
                 }
                 self.cursor += height;
+                self.record_column_bottom();
                 Ok(())
             }
             Flow::TableRow(row) => self.place_table_row(&row),
@@ -1239,7 +1349,7 @@ impl<'a> Paginator<'a> {
         }
         self.started = true;
         if !self.current.is_empty() && self.cursor + row.height > self.body_height() {
-            self.page_break()?;
+            self.overflow_break()?;
             if self.selection_exhausted() {
                 return Ok(());
             }
@@ -1251,13 +1361,15 @@ impl<'a> Paginator<'a> {
     /// Places a row's items at the current cursor.
     fn place_row_items(&mut self, row: &TableRowFlow) -> Result<()> {
         let dy = self.geometry.top + self.cursor;
+        let dx = self.column_offset();
         for item in &row.items {
-            self.push_item(offset_item(item, 0.0, dy))?;
+            self.push_item(offset_item(item, dx, dy))?;
         }
         for item in &row.page_frames {
             self.push_item(item.clone())?;
         }
         self.cursor += row.height;
+        self.record_column_bottom();
         Ok(())
     }
 
@@ -1284,7 +1396,7 @@ impl<'a> Paginator<'a> {
         } else {
             let extra = self.prospective_footnote_extra(&line);
             if self.cursor + line.height + extra > self.body_height() {
-                self.page_break()?;
+                self.overflow_break()?;
                 if self.selection_exhausted() {
                     return Ok(());
                 }
@@ -1292,7 +1404,7 @@ impl<'a> Paginator<'a> {
             self.reserve_line_footnotes(&line);
         }
         self.resolve_fields(&mut line);
-        line.offset(0.0, self.geometry.top + self.cursor);
+        line.offset(self.column_offset(), self.geometry.top + self.cursor);
         let graphics = std::mem::take(&mut line.graphics);
         let (backs, rest): (Vec<_>, Vec<_>) = graphics
             .into_iter()
@@ -1307,6 +1419,7 @@ impl<'a> Paginator<'a> {
             self.push_item(item)?;
         }
         self.cursor += line.height;
+        self.record_column_bottom();
         Ok(())
     }
 

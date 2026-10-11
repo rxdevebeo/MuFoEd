@@ -1,0 +1,26 @@
+[package]
+name = "emfsdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+documentation.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme.workspace = true
+
+[dependencies]
+bitflags = { workspace = true }
+emfsdk-derive = { workspace = true }
+encoding_rs = { workspace = true }
+fontdb = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+thiserror = { workspace = true }
+ttf-parser = { workspace = true, optional = true }
+
+[features]
+default = []
+render = ["dep:fontdb", "dep:image", "dep:ttf-parser"]

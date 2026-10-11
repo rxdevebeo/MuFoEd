@@ -108,6 +108,7 @@ pub fn render_with_source(
             _ => None,
         },
     ));
+    let image_sizes = image_raster_sizes(pages);
 
     // Pass one: content streams and the images each page needs.
     let mut streams = Vec::with_capacity(pages.len());
@@ -155,12 +156,21 @@ pub fn render_with_source(
             let Some(bytes) = read_media(media, part)? else {
                 continue;
             };
+            let rasterized = image_sizes.get(part).and_then(|&(width, height)| {
+                strict_ooxml_render_svg::metafile::rasterize_metafile_preview(
+                    &bytes,
+                    f64::from(width),
+                    f64::from(height),
+                    options.limits.max_single_uncompressed,
+                )
+            });
+            let bytes = rasterized.as_deref().unwrap_or(&bytes);
             // The uncompressed budget is the package's own part ceiling: a PNG
             // cannot expand past what a part of the same document would be
             // allowed to hold (AUD-14).
             let encoded = match encode_with_limit(
                 part.as_str(),
-                &bytes,
+                bytes,
                 options.limits.max_single_uncompressed,
             ) {
                 Ok(encoded) => encoded,
@@ -270,6 +280,29 @@ pub fn render_with_source(
         embedded_faces: fonts.iter().map(|(font, _)| font.key.clone()).collect(),
         report,
     })
+}
+
+fn image_raster_sizes(pages: &[PlacedPage]) -> BTreeMap<PartId, (u32, u32)> {
+    let mut sizes = BTreeMap::new();
+    for page in pages {
+        for item in &page.items {
+            let Item::Image(image) = item else {
+                continue;
+            };
+            let Some(part) = image.part.as_ref() else {
+                continue;
+            };
+            let size = (image.w.ceil() as u32, image.h.ceil() as u32);
+            sizes
+                .entry(part.clone())
+                .and_modify(|current: &mut (u32, u32)| {
+                    current.0 = current.0.max(size.0);
+                    current.1 = current.1.max(size.1);
+                })
+                .or_insert(size);
+        }
+    }
+    sizes
 }
 
 /// The ids one page needs.

@@ -113,7 +113,7 @@ pub(crate) fn picture_items(
         .blip
         .as_ref()
         .and_then(|blip| blip.resolved.as_ref());
-    let href = part.and_then(|part| crate::paint::image::media_href(ctx, part));
+    let href = part.and_then(|part| crate::paint::image::media_href(ctx, part, w, h));
     let alt = alt.unwrap_or_else(|| {
         picture
             .descr
@@ -145,7 +145,7 @@ fn shape_items(
     let mut items = Vec::new();
     if let Some(ShapeFill::Blip { blip, .. }) = &shape.fill {
         let part = blip.resolved.as_ref();
-        let href = part.and_then(|part| crate::paint::image::media_href(ctx, part));
+        let href = part.and_then(|part| crate::paint::image::media_href(ctx, part, w, h));
         let alt = shape
             .descr
             .clone()
