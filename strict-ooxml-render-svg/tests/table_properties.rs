@@ -209,3 +209,13 @@ fn cell_widths_stand_in_for_a_missing_grid() {
     let distance = text(&page, "Wide").x - text(&page, "Narrow").x;
     assert!((distance - 1000.0 / 15.0).abs() < 0.01, "{distance}");
 }
+
+#[test]
+fn omitted_grid_columns_keep_their_authored_widths_without_a_grid() {
+    let body = "<w:tbl><w:tblPr><w:tblW w:w=\"4000\" w:type=\"dxa\"/></w:tblPr>\
+        <w:tr><w:trPr><w:gridBefore w:val=\"1\"/><w:gridAfter w:val=\"1\"/><w:wBefore w:w=\"1000\" w:type=\"dxa\"/><w:wAfter w:w=\"500\" w:type=\"dxa\"/></w:trPr>\
+        <w:tc><w:tcPr><w:tcW w:w=\"2500\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Inset</w:t></w:r></w:p></w:tc></w:tr></w:tbl>";
+    let result = page(&document(body));
+    let label = text(&result, "Inset");
+    assert!((label.x - 96.0 - 1000.0 / 15.0 - 108.0 / 15.0).abs() < 0.01, "{}", label.x);
+}

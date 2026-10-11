@@ -23,6 +23,23 @@ fn document(body: &str) -> Document {
     parse_document(&package, &ParseOptions::default()).expect("parse")
 }
 
+#[test]
+fn run_border_survives_parsing_and_is_drawn_on_all_four_sides() {
+    let doc = document("<w:p><w:r><w:rPr><w:bdr w:val=\"double\" w:sz=\"8\" w:color=\"FF0000\" w:space=\"2\"/></w:rPr><w:t>Border</w:t></w:r></w:p>");
+    let item = text(&doc, "Border");
+    assert!(item.run.border.is_some());
+    let ink = lines(&svg(&doc));
+    assert_eq!(ink.iter().filter(|(color, _)| color == "#ff0000").count(), 8);
+}
+
+#[test]
+fn an_explicit_complex_script_run_uses_its_cs_formatting() {
+    let doc = document("<w:p><w:r><w:rPr><w:cs/><w:bCs/><w:iCs/><w:szCs w:val=\"36\"/></w:rPr><w:t>Complex</w:t></w:r></w:p>");
+    let item = text(&doc, "Complex");
+    assert!(item.run.bold && item.run.italic);
+    assert_eq!(item.run.size_pt, 18.0);
+}
+
 fn texts(doc: &Document) -> Vec<TextItem> {
     place_pages(doc, &RenderOptions::default(), None)
         .expect("place")

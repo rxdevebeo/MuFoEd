@@ -254,6 +254,7 @@ fn picture_fixture() -> (
             dist_left: None,
             dist_right: None,
             doc_pr: Some(DocPr {
+                hidden: None,
                 id: Some(1),
                 name: Some("red pixel".into()),
                 descr: None,

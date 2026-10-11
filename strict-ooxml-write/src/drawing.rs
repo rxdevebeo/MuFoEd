@@ -509,6 +509,9 @@ fn document_properties(
     );
     xml.attr_opt("descr", doc_pr.as_ref().and_then(|pr| pr.descr.as_deref()));
     xml.attr_opt("title", doc_pr.as_ref().and_then(|pr| pr.title.as_deref()));
+    if let Some(hidden) = doc_pr.as_ref().and_then(|pr| pr.hidden) {
+        xml.attr("hidden", if hidden { "1" } else { "0" });
+    }
     xml.end();
 }
 
@@ -1689,18 +1692,21 @@ mod tests {
         let mut xml = XmlWriter::new();
 
         let first = Some(DocPr {
+            hidden: None,
             id: Some(7),
             name: Some("a".into()),
             descr: None,
             title: None,
         });
         let second = Some(DocPr {
+            hidden: None,
             id: Some(7),
             name: Some("b".into()),
             descr: None,
             title: None,
         });
         let third = Some(DocPr {
+            hidden: None,
             id: Some(9),
             name: Some("c".into()),
             descr: None,

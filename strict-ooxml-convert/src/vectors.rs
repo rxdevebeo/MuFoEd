@@ -201,6 +201,7 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
         extent: Some(extent),
         effect_extent: None,
         doc_pr: Some(DocPr {
+            hidden: None,
             id: None,
             name: Some(name),
             descr: None,

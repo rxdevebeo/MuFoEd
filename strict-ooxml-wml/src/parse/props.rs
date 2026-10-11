@@ -424,12 +424,11 @@ impl PartParser<'_> {
                             }
                             "shd" => props.shading = Some(parser.parse_shading(&attrs)),
                             "bdr" => {
-                                parser.record(
-                                    "w:bdr",
-                                    SupportStatus::Partial,
-                                    Some("run borders are not retained".to_owned()),
-                                    Some(parser.location()),
-                                );
+                                let border = parser.parse_border_edge(&attrs);
+                                props.borders.top = Some(border.clone());
+                                props.borders.bottom = Some(border.clone());
+                                props.borders.start = Some(border.clone());
+                                props.borders.end = Some(border);
                             }
                             "ins" | "del" => {
                                 let kind = if name.local() == "ins" {

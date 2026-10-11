@@ -70,20 +70,7 @@ pub(crate) fn resolve(
         if w <= 0.0 || h <= 0.0 {
             continue;
         }
-        let x = resolve_h(
-            pending.anchor.position_h.as_ref(),
-            &geometry,
-            pending.host_x,
-            w,
-            scale,
-        );
-        let y = resolve_v(
-            pending.anchor.position_v.as_ref(),
-            &geometry,
-            pending.host_y,
-            h,
-            scale,
-        );
+        let (x, y) = anchor_position(&pending.anchor, &geometry, pending.host_x, pending.host_y, w, h, scale);
         let items = crate::paint::graphics::anchor_items(ctx, &pending.anchor, x, y, w, h);
         if items.is_empty() {
             continue;
@@ -127,8 +114,9 @@ fn resolve_h(pos: Option<&Position>, geometry: &Geometry, host_x: f64, w: f64, s
         };
     }
     let offset = pos
-        .and_then(|pos| pos.offset)
-        .map_or(0.0, |offset: Emu| emu_to_px(offset.value(), scale));
+        .and_then(|pos| pos.percent_offset)
+        .map_or_else(|| pos.and_then(|pos| pos.offset).map_or(0.0, |offset: Emu| emu_to_px(offset.value(), scale)),
+            |percent| span * f64::from(percent) / 100_000.0);
     origin + offset
 }
 
@@ -144,9 +132,21 @@ fn resolve_v(pos: Option<&Position>, geometry: &Geometry, host_y: f64, h: f64, s
         };
     }
     let offset = pos
-        .and_then(|pos| pos.offset)
-        .map_or(0.0, |offset: Emu| emu_to_px(offset.value(), scale));
+        .and_then(|pos| pos.percent_offset)
+        .map_or_else(|| pos.and_then(|pos| pos.offset).map_or(0.0, |offset: Emu| emu_to_px(offset.value(), scale)),
+            |percent| span * f64::from(percent) / 100_000.0);
     origin + offset
+}
+
+/// Shared origin for both painting and text exclusions.
+#[allow(clippy::too_many_arguments)]
+fn anchor_position(anchor: &AnchorDrawing, geometry: &Geometry, host_x: f64, host_y: f64, w: f64, h: f64, scale: f64) -> (f64, f64) {
+    if anchor.simple_pos {
+        let (x, y) = anchor.simple_pos_point.unwrap_or((0, 0));
+        return (emu_to_px(x, scale), emu_to_px(y, scale));
+    }
+    (resolve_h(anchor.position_h.as_ref(), geometry, host_x, w, scale),
+     resolve_v(anchor.position_v.as_ref(), geometry, host_y, h, scale))
 }
 
 /// Length of one axis. A positive `wp14` percent replaces the fallback extent.
@@ -316,8 +316,7 @@ pub(crate) fn page_exclusion(
     };
     let (width, height) = resolved_extent(ctx, anchor, geometry)?;
     let scale = ctx.options.scale;
-    let x = resolve_h(anchor.position_h.as_ref(), geometry, host_x, width, scale);
-    let y = resolve_v(anchor.position_v.as_ref(), geometry, host_y, height, scale);
+    let (x, y) = anchor_position(anchor, geometry, host_x, host_y, width, height, scale);
     let dist = |anchor_dist: Option<u32>, wrap_dist: Option<u32>| {
         emu_to_px(i64::from(anchor_dist.or(wrap_dist).unwrap_or(0)), scale)
     };
@@ -403,4 +402,25 @@ pub(crate) fn wrap_exclusion(
 ) -> Option<WrapExclusion> {
     page_exclusion(ctx, anchor, geometry, host_x, host_y)
         .map(|exclusion| exclusion.into_paragraph_local(host_y, column_dx))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percentage_offsets_use_the_reference_span_including_negative_offsets() {
+        let geometry = geometry_for(None, 1.0, None);
+        let position = Position {
+            relative_from: Some("margin".into()),
+            percent_offset: Some(25_000),
+            offset: Some(Emu(914_400)),
+            ..Position::default()
+        };
+        let x = resolve_h(Some(&position), &geometry, 0.0, 10.0, 1.0);
+        assert!((x - geometry.left - geometry.content_width() / 4.0).abs() < 1e-9);
+        let position = Position { percent_offset: Some(-50_000), ..position };
+        let y = resolve_v(Some(&position), &geometry, 0.0, 10.0, 1.0);
+        assert!((y - geometry.top + geometry.content_height() / 2.0).abs() < 1e-9);
+    }
 }

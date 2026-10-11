@@ -2253,6 +2253,7 @@ impl PartParser<'_> {
     /// Parses `wp:docPr` attributes.
     fn parse_doc_pr(&mut self, attrs: &[Attr]) -> DocPr {
         DocPr {
+            hidden: optional_bool_attr(attrs, "hidden"),
             id: plain_attr(attrs, "id").and_then(|value| value.trim().parse().ok()),
             name: plain_attr(attrs, "name").map(|value| self.intern(value)),
             descr: plain_attr(attrs, "descr").map(|value| self.intern(value)),

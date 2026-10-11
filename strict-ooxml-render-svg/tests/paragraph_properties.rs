@@ -41,6 +41,16 @@ fn pages(doc: &Document) -> Vec<PlacedPage> {
     place_pages(doc, &RenderOptions::default(), None).expect("place")
 }
 
+#[test]
+fn rtl_start_alignment_and_first_line_indent_use_the_right_edge() {
+    let plain = document("<w:p><w:pPr><w:bidi/><w:jc w:val=\"start\"/><w:ind w:start=\"300\" w:end=\"900\"/></w:pPr><w:r><w:t>Label</w:t></w:r></w:p>");
+    let indented = document("<w:p><w:pPr><w:bidi/><w:jc w:val=\"start\"/><w:ind w:start=\"300\" w:end=\"900\" w:firstLine=\"600\"/></w:pPr><w:r><w:t>Label</w:t></w:r></w:p>");
+    let (_, normal) = text_on(&pages(&plain), "Label");
+    let (_, inset) = text_on(&pages(&indented), "Label");
+    assert!((normal.x - inset.x - 40.0).abs() < 0.01);
+    assert!(normal.x > 400.0, "RTL start is the right edge");
+}
+
 fn text_on(pages: &[PlacedPage], needle: &str) -> (usize, TextItem) {
     for (index, page) in pages.iter().enumerate() {
         for item in &page.items {

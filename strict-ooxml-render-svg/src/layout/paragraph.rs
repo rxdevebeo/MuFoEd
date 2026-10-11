@@ -185,9 +185,10 @@ pub(crate) fn layout_paragraph(
     if computed.borders.any() {
         let scale = ctx.options.scale;
         let indent_start = pt_to_px(computed.indent_start_pt, scale);
-        let first = indent_start + pt_to_px(computed.first_line_pt, scale);
-        let box_left = content_left + indent_start.min(first);
-        let box_right = content_left + content_width - pt_to_px(computed.indent_end_pt, scale);
+        let first = pt_to_px(computed.first_line_pt, scale).min(0.0);
+        let box_left = content_left + indent_start + if computed.bidi { 0.0 } else { first };
+        let box_right = content_left + content_width - pt_to_px(computed.indent_end_pt, scale)
+            - if computed.bidi { first } else { 0.0 };
         let reach_above = if neighbors.joins_prev {
             pt_to_px(neighbors.prev_after_pt + computed.space_before_pt, scale)
         } else {
@@ -900,8 +901,16 @@ fn push_small_caps(text: &str, run: &ComputedRun, out: &mut Vec<Seg>) {
 }
 
 fn flatten_drawing(ctx: &LayoutContext<'_>, drawing: &Drawing, out: &mut Vec<Seg>) {
+    let doc_pr = match &drawing.kind {
+        DrawingKind::Anchor(anchor) => anchor.doc_pr.as_ref(),
+        DrawingKind::Inline(inline) => inline.doc_pr.as_ref(),
+        DrawingKind::Opaque(_) => None,
+    };
+    if doc_pr.is_some_and(|properties| properties.hidden == Some(true)) {
+        return;
+    }
     match &drawing.kind {
-        // `wp:docPr/@hidden`: the object is in the document, not on the page.
+        // An independently hidden anchor also contributes no paint or wrapping.
         DrawingKind::Anchor(anchor) if anchor.hidden == Some(true) => {}
         DrawingKind::Anchor(anchor) => out.push(Seg::Anchor(Box::new(anchor.clone()))),
         DrawingKind::Inline(_) => {
@@ -967,7 +976,7 @@ fn build_lines(
     let indent_end = pt_to_px(computed.indent_end_pt, scale);
     let normal_x = content_left + indent_start;
     let first_offset = pt_to_px(computed.first_line_pt, scale);
-    let first_x = content_left + indent_start + first_offset;
+    let first_x = content_left + indent_start + if computed.bidi { 0.0 } else { first_offset };
     // Every line ends on this edge. The first line may start further in
     // (or further out, for a hanging indent); that changes its length, not
     // this edge (A20).
@@ -1007,7 +1016,8 @@ fn build_lines(
     let mut sink = LineSink {
         ctx,
         computed,
-        right_edge,
+        right_edge: right_edge - if computed.bidi { first_offset } else { 0.0 },
+        normal_right_edge: right_edge,
         shade: computed.shading.clone().map(|fill| {
             let width = (right_edge - normal_x).max(0.0);
             (normal_x, width, fill)
@@ -1420,6 +1430,8 @@ struct LineSink<'a, 'b> {
     computed: &'b ComputedParagraph,
     /// Absolute right edge. The first line starts further in and still ends here.
     right_edge: f64,
+    /// Edge of subsequent lines after the direction-dependent first-line indent.
+    normal_right_edge: f64,
     /// Paragraph shading: x, width, `#rrggbb`. Drawn behind each line.
     shade: Option<(f64, f64, String)>,
     grid_line_pitch: Option<f64>,
@@ -1460,6 +1472,7 @@ impl LineSink<'_, '_> {
         }
         let height = finished.height;
         self.flows.push(Flow::Line(finished));
+        self.right_edge = self.normal_right_edge;
         self.line_y += height;
         self.math_block = false;
     }

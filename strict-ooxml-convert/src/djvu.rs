@@ -621,6 +621,7 @@ fn picture(
             extent: Some(extent),
             effect_extent: None,
             doc_pr: Some(DocPr {
+                hidden: None,
                 id: None,
                 name: Some(Arc::from(name)),
                 descr: descr.map(Arc::from),

@@ -67,6 +67,23 @@ pub fn text_decorations(item: &TextItem) -> TextDecorations {
     }
 
     let text_color = run.color.clone().unwrap_or_else(|| "#000000".to_owned());
+    if let Some(border) = &run.border {
+        use super::border::{edge_items, Side};
+        let px_per_pt = size / run.size_pt.max(0.1);
+        let space = border.space_pt * px_per_pt;
+        let left = item.x - space;
+        let right = item.x + item.width + space;
+        let top = item.baseline - size * BAND_TOP_EM - space;
+        let bottom = item.baseline + size * (BAND_HEIGHT_EM - BAND_TOP_EM) + space;
+        for (side, at, from, to) in [
+            (Side::Top, top, left, right),
+            (Side::Bottom, bottom, left, right),
+            (Side::Left, left, top, bottom),
+            (Side::Right, right, top, bottom),
+        ] {
+            decorations.over.extend(edge_items(border, side, at, from, to, px_per_pt));
+        }
+    }
     let thickness = (size * LINE_WIDTH_EM).max(MIN_LINE_WIDTH_PX);
     if let Some(style) = run.underline {
         let width = if style == Underline::Words {

@@ -215,7 +215,7 @@ fn authored_cell_height(
             if merge != Some(VerticalMerge::Restart) {
                 break;
             }
-            let mut column = next.props.grid_before.unwrap_or(0).max(0) as usize;
+            let mut column = omitted_columns(next.props.grid_before);
             let continuation = next.cells.iter().any(|cell| {
                 let width = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
                 let matches = column == col
@@ -373,7 +373,7 @@ fn layout_row(
             table.grid.len()
         ));
     }
-    let mut column = row.props.grid_before.unwrap_or(0).max(0) as usize;
+    let mut column = omitted_columns(row.props.grid_before);
     let mut cells = Vec::with_capacity(row.cells.len());
     let mut max_content: f64 = 0.0;
     for cell in &row.cells {
@@ -674,14 +674,21 @@ fn column_count(table: &Table) -> usize {
         .rows
         .iter()
         .map(|row| {
-            row.cells
+            let cells = row.cells
                 .iter()
                 .map(|cell| usize::from(cell.props.grid_span.unwrap_or(1)))
-                .sum::<usize>()
+                .sum::<usize>();
+            cells.saturating_add(omitted_columns(row.props.grid_before))
+                .saturating_add(omitted_columns(row.props.grid_after))
         })
         .max()
         .unwrap_or(0);
     table.grid.len().max(widest_row)
+}
+
+/// Omitted columns use the same bounded grid range as `w:gridSpan`.
+fn omitted_columns(value: Option<i32>) -> usize {
+    value.unwrap_or(0).clamp(0, i32::from(u16::MAX)) as usize
 }
 
 /// Computes column widths in px.
@@ -728,9 +735,10 @@ fn column_widths(
 fn cell_width_grid(table: &Table, column_count: usize) -> Option<Vec<i32>> {
     table.rows.iter().find_map(|row| {
         let mut widths = Vec::with_capacity(column_count);
-        let before = usize::try_from(row.props.grid_before.unwrap_or(0).max(0)).unwrap_or(0);
+        let before = omitted_columns(row.props.grid_before);
         if before > 0 {
-            return None;
+            let width = row.props.width_before.filter(|width| width.kind == WidthKind::Dxa)?.value?;
+            widths.extend(std::iter::repeat_n(width / i32::try_from(before).ok()?, before));
         }
         for cell in &row.cells {
             let span = usize::from(cell.props.grid_span.unwrap_or(1)).max(1);
@@ -742,6 +750,11 @@ fn cell_width_grid(table: &Table, column_count: usize) -> Option<Vec<i32>> {
                 .filter(|value| *value > 0)?;
             let share = width / i32::try_from(span).unwrap_or(i32::MAX).max(1);
             widths.extend(std::iter::repeat_n(share, span));
+        }
+        let after = omitted_columns(row.props.grid_after);
+        if after > 0 {
+            let width = row.props.width_after.filter(|width| width.kind == WidthKind::Dxa)?.value?;
+            widths.extend(std::iter::repeat_n(width / i32::try_from(after).ok()?, after));
         }
         (widths.len() == column_count).then_some(widths)
     })

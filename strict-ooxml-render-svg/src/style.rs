@@ -61,6 +61,8 @@ pub struct ComputedRun {
     pub position_pt: f64,
     /// Run shading fill (`w:rPr/w:shd`), `#rrggbb`.
     pub shading: Option<String>,
+    /// Border around a text fragment (`w:rPr/w:bdr`).
+    pub border: Option<ResolvedBorder>,
     /// Hidden text (`w:vanish`).
     pub vanish: bool,
     /// Complex-script face (`w:rFonts/@w:cs`). Latin and Cyrillic keep [`Self::family`].
@@ -96,6 +98,7 @@ impl Default for ComputedRun {
             small_caps: false,
             position_pt: 0.0,
             shading: None,
+            border: None,
             vanish: false,
             complex_family: None,
             east_asia_family: None,
@@ -117,6 +120,8 @@ pub struct NumberingRef {
 /// Effective paragraph formatting plus the paragraph's default run format.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedParagraph {
+    /// Right-to-left paragraph layout (`w:bidi`).
+    pub bidi: bool,
     /// Frame attributes after the style cascade and direct overrides.
     pub frame: Option<FrameProperties>,
     /// Alignment.
@@ -175,6 +180,7 @@ impl Default for ComputedParagraph {
     fn default() -> Self {
         Self {
             frame: None,
+            bidi: false,
             alignment: Justification::Start,
             space_before_pt: 0.0,
             space_after_pt: 0.0,
@@ -286,6 +292,14 @@ pub fn compute_paragraph(
     }
     computed.border_before_pt = border_pad_pt(computed.borders.top.as_ref());
     computed.border_after_pt = border_pad_pt(computed.borders.bottom.as_ref());
+    if computed.bidi {
+        std::mem::swap(&mut computed.indent_start_pt, &mut computed.indent_end_pt);
+        computed.alignment = match computed.alignment {
+            Justification::Start => Justification::End,
+            Justification::End => Justification::Start,
+            other => other,
+        };
+    }
     computed
 }
 
@@ -421,6 +435,7 @@ fn apply_paragraph_props_mode(
     theme: Option<&Theme>,
     mark: ToggleMode,
 ) {
+    apply_flag(&mut computed.bidi, props.bidi);
     if let Some(frame) = &props.frame {
         let inherited = computed.frame.get_or_insert_with(FrameProperties::default);
         macro_rules! overlay {
@@ -638,6 +653,9 @@ fn apply_run_props_mode(
     if let Some(shading) = &props.shading {
         computed.shading = shading_fill_color(shading, theme);
     }
+    if let Some(border) = props.borders.top.as_ref() {
+        computed.border = crate::layout::border::resolve_border(border, theme);
+    }
     if let Some(scale) = props.scale {
         // `w:w` is a percentage of the normal advance (`100` and `100%`).
         computed.char_scale = f64::from(scale) / 100.0;
@@ -647,7 +665,7 @@ fn apply_run_props_mode(
     // `i=0` + `iCs` still italics). Cascade styles: never XOR Latin On with CS
     // On from the same `rPr` — Clio style 50 has `<w:b/><w:bCs/>` plus `w:cs`
     // and that cancel (On XOR On → Off) dropped Figure-caption bold.
-    let complex = props.rtl.is_on()
+    let complex = props.complex_script.is_on() || props.rtl.is_on()
         || props
             .fonts
             .as_ref()
@@ -657,7 +675,7 @@ fn apply_run_props_mode(
             ToggleMode::Direct => {
                 apply_toggle(&mut computed.bold, props.bold_cs, ToggleMode::Direct);
                 apply_toggle(&mut computed.italic, props.italic_cs, ToggleMode::Direct);
-                if props.size.is_none() {
+                if props.complex_script.is_on() || props.rtl.is_on() || props.size.is_none() {
                     if let Some(size) = props.size_cs {
                         computed.size_pt = f64::from(size.value()) / 2.0;
                     }
@@ -670,7 +688,7 @@ fn apply_run_props_mode(
                 if props.italic == TriState::Absent {
                     apply_toggle(&mut computed.italic, props.italic_cs, mode);
                 }
-                if props.size.is_none() {
+                if props.complex_script.is_on() || props.rtl.is_on() || props.size.is_none() {
                     if let Some(size) = props.size_cs {
                         computed.size_pt = f64::from(size.value()) / 2.0;
                     }

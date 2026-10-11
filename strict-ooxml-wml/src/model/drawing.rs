@@ -37,6 +37,8 @@ pub struct EffectExtent {
 /// Non-visual drawing properties (`wp:docPr`).
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct DocPr {
+    /// Whether the drawing is hidden (`wp:docPr/@hidden`).
+    pub hidden: Option<bool>,
     /// Drawing object id.
     pub id: Option<u32>,
     /// Name.
