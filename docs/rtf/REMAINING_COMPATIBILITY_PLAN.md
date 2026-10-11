@@ -965,3 +965,23 @@ continuous-break по-прежнему откладывает геометрию
 страницу. Открыто: same-page continuous geometry и per-column re-wrap для
 неравных колонок.
 
+### RC08: block-result fields — 2026-10-11
+
+`{\field ...}` с block-результатом (TOC и подобные) раньше складывался в тело с
+`field:multi-paragraph-instruction-dropped` Loss: shared model держал только
+inline-поля, поэтому терялись и scope поля, и границы кэшированных параграфов.
+Теперь такой `\field` (как и `\flddirty`) пишется уже поддержанной
+complex marker-формой: `w:fldChar begin` + `w:instrText` + `w:fldChar separate`
++ кэшированные result-параграфы (со своими props) + `w:fldChar end`, разложенной
+по границам параграфов. Single-paragraph актуальный результат остаётся
+`w:fldSimple`. `\flddirty` ставит `w:dirty` на begin-маркер; `\fldedit` и legacy
+`{\*\datafield}` → явный Info. Renderer уже трекал `fldChar`/`instrText` и
+пропускает instruction, поэтому картинка не изменилась.
+
+Проверки: `structure.rs::{multi_paragraph_field_becomes_the_complex_marker_form,
+dirty_field_marker_and_compat_controls_are_not_losses}`; suite
+`strict-ooxml-rtf` (68 + 36 + doc) Pass; clippy `-D warnings` и fmt Pass.
+Corpus `target/rtf-import/rc08-field-verify2`: 014 losses 830 → 796, весь корпус
+83671 → 83010; `check` 014 `ok: strict`; все 100 page counts равны столбцовой
+baseline (регрессий нет). Открыто по RC08: custom marks и `\ftncn`/`\aftncn`.
+

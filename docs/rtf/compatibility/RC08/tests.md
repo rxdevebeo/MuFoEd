@@ -221,14 +221,37 @@ enables it (`structure.rs::contextual_space_maps_to_wml_contextual_spacing`,
 `p5_p6.rs::t_rc08_contextual_spacing_suppresses_same_style_gap`). No corpus or
 WPS reference uses it, so pagination/pixels are unchanged.
 
+## Multi-paragraph field blocks (2026-10-11)
+
+A `{\field ...}` whose `\fldrslt` is a **block** result (a TOC, for example) used
+to be flattened into the body with a `field:multi-paragraph-instruction-dropped`
+Loss: the shared model held inline fields only, so the field scope and the cached
+paragraph boundaries were dropped. It is now emitted as the complex-field marker
+form the model, writer and reader already supported: `w:fldChar begin` +
+`w:instrText` + `w:fldChar separate` + the cached result paragraphs (with the
+original paragraph props) + `w:fldChar end`, split across the result paragraph
+boundaries. A single-paragraph, up-to-date result keeps the simpler
+`w:fldSimple` form. `\flddirty` sets `w:dirty` on the begin marker; `\fldedit`
+and the legacy `{\*\datafield}` cache are explicit Info rather than Loss.
+
+The renderer's `FieldState` already tracked `fldChar`/`instrText` across runs and
+skips the instruction text, so the marker form renders identically to the cached
+result (no instruction glyphs, no page/pixel change).
+
+`structure.rs::multi_paragraph_field_becomes_the_complex_marker_form` pins the
+marker form and the `["AB", "C", "", "D"]` paragraph boundaries;
+`::dirty_field_marker_and_compat_controls_are_not_losses` pins the dirty begin
+marker and the Info classification. Corpus receipt
+`target/rtf-import/rc08-field-verify2/`: 014's `field:*`/`control:fld*`/
+`destination:datafield` Losses are gone (830 -> 796 on 014), the whole corpus
+drops 83671 -> 83010 import losses, and every one of the 100 page counts equals
+the column-layout baseline (no regression).
+
 ## Other open items
 
 - A continuous section break still defers its geometry (and columns) to the next
   page (see "Section column layout"); same-page continuous geometry is the
   remaining shared-layout build.
-- Multi-paragraph field block results: the inline `Field` cannot hold a block
-  result, and the complex-field marker form needs a document-level field state
-  threaded across paragraphs. One corpus occurrence (014).
 - Custom marks (footnote/endnote `customMarkFollows`): no corpus occurrence and
   no shared model support yet.
 - `\ftncn`/`\aftncn` continuation-notice definitions.

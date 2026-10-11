@@ -20,7 +20,7 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 | RC05 lists | InProgress | override levels `\lfolevel` — **done (2026-10-11)**; remaining is renderer counter continuity | parser done; renderer |
 | RC06 tables | Done | all table controls mapped (grid/merge/borders/shading/margins/widths/diagonals); nested tables = explicit Reject | parser + shared model |
 | RC07 metafiles | Planned | bounded WMF/EMF decoder in typed primitives | shared render |
-| RC08 regions/fields | InProgress | column layout **done (2026-10-11)**; remaining: multi-paragraph field block, custom marks, `\ftncn`, continuous-section same-page geometry | shared layout/model |
+| RC08 regions/fields | InProgress | column layout + multi-paragraph field block **done (2026-10-11)**; remaining: custom marks, `\ftncn`, continuous-section same-page geometry | shared layout/model |
 | RC09 other losses | Planned | comments/revisions/textboxes/OLE/metadata | shared model |
 | RC10 hardening | непрерывно | fuzz/budgets/hostile на каждом новом декодере | все crates |
 | RC11 acceptance | Blocked | полный корпусный/профильный прогон, 100 verdicts | harness/assets |
@@ -223,29 +223,37 @@ bombs отклоняются до allocation и не обходят бюджет
    начинаются со стр. 2. Остаётся same-page continuous geometry. У unequal-колонок
    нет per-column re-wrap: параграф из широкой колонки в узкую сохраняет wrap
    стартовой колонки (074/092 это не задействуют).
-2. **Multi-paragraph field block results**: inline `Field` не держит block
-   result; marker-форма сложного поля требует document-level field state между
-   параграфами. Witness 014 (поле TOC).
+2. **Multi-paragraph field block** — **сделано (2026-10-11)**. `{\field ...}` с
+   block-результатом (или `\flddirty`) теперь пишется complex marker-формой
+   `w:fldChar begin` + `w:instrText` + `w:fldChar separate` + кэшированные
+   result-параграфы + `w:fldChar end` (single-paragraph/актуальный результат
+   остаётся `w:fldSimple`). `\flddirty` → `w:dirty` на begin-маркере;
+   `\fldedit` и legacy `{\*\datafield}` → Info. `field:multi-paragraph-
+   instruction-dropped` Loss убран. Renderer уже трекал `fldChar`/`instrText`
+   и пропускает инструкцию, поэтому картинка не меняется. Witness 014: losses
+   830 → 796; весь корпус 83671 → 83010, все 100 page counts без изменений.
+   Тесты `structure.rs::{multi_paragraph_field_becomes_the_complex_marker_form,
+   dirty_field_marker_and_compat_controls_are_not_losses}`.
 3. **Custom marks** (`w:customMarkFollows`): 0 вхождений в корпусе, нет
    поддержки в model.
 4. `\ftncn`/`\aftncn` (continuation notice) остаются Loss.
 
 **Контракт/подход.**
-- Columns: колонко-менеджер в paginator (лево/ширина на колонку, заполнение
-  сверху вниз, `w:br type="column"`, новая страница когда все колонки полны);
-  equal-width и explicit `w:col`. Изолировать single-column fast-path.
-- Field block: либо `Field { blocks }`, либо marker-форма (`fldChar` begin/
-  separate/end + `instrText`) с прогонкой state через параграфы в layout;
-  reader/writer/layout/edit/report должны поддержать контракт до включения
-  mapping.
+- Columns — **сделано (2026-10-11)**: колонко-менеджер в paginator; single-column
+  fast-path изолирован.
+- Field block — **сделано (2026-10-11)**: выбран marker-форма (`fldChar` begin/
+  separate/end + `instrText`) как уже поддержанная model/reader/writer/layout;
+  `Field { blocks }` не понадобился. Осталось только same-page continuous
+  geometry для columns.
 - Custom marks: `FootnoteRef`/`EndnoteRef` + `customMarkFollows` + glyph-run.
 
 **DoD.** exact region text/refs, instructions/targets/geometry, Strict/OPC и
 reopen; отсутствие flatten с ложным Clean; columns воспроизводимы на
-074/092 в page/pixel.
+074/092 в page/pixel — по page 092 закрыт, 074 упирается в same-page continuous
+geometry.
 
-**Риск.** высокий (paginator и field model). Начинать с columns (2 реальных
-свидетеля), потом field block.
+**Риск.** высокий (paginator и field model) — реализовано отдельными срезами
+(columns, затем field block).
 
 ---
 
@@ -338,8 +346,8 @@ unsupported statuses и подробный report. Merge/release — отдел�
    2026-10-11.
 2. **RC06** (cell/paragraph/row borders, shading, cell props, диагонали) —
    **сделано (2026-10-11)**, этап закрыт; nested tables — явный Reject. С RC10.
-3. **RC08 columns** — **сделано (2026-10-11)**; далее **RC08 field block**
-   (witness 014) и custom marks.
+3. **RC08 columns** — **сделано (2026-10-11)**; **RC08 field block** (witness 014)
+   — **сделано (2026-10-11)** (marker-форма). Далее custom marks и `\ftncn`.
 4. **RC04 resolved-cascade** (resolver) и corpus geometry — параллельно с RC02/RC03.
 5. **RC03 line-level bidi** — после bidi-oracle с per-char levels.
 6. **RC07 metafiles** (отдельная очередь) + RC10.
@@ -354,7 +362,8 @@ unsupported statuses и подробный report. Merge/release — отдел�
 - `Borders` (+`between`/`bar`/`tl2br`/`tr2bl`) — RC06 — **сделано (2026-10-11)**,
   включая writer/reader/render-svg merge; regression-тесты wml/write/convert/
   render-svg прогнаны.
-- Field block-result контракт (model + reader/writer/layout/edit/report) — RC08.
+- Field block-result контракт — RC08 — **сделано (2026-10-11)** marker-формой
+  (`fldChar`/`instrText`), уже поддержанной model/reader/writer/layout.
 - Column-менеджер в paginator — RC08 — **сделано (2026-10-11)**.
 - `customMarkFollows` для `FootnoteRef`/`EndnoteRef` — RC08.
 - Bounded WMF/EMF decoder (typed primitives) — RC07.
