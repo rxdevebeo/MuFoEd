@@ -13,7 +13,8 @@
 //!   so the samples have to be laid out by hand — which is lossless, so
 //!   SC-8's `SSIM = 1.0` holds for it.
 //!
-//! Anything else (GIF, BMP, TIFF, EMF, WMF, SVG) is a recorded loss with a
+//! WMF/EMF media is rasterized by the shared layout crate before reaching this
+//! encoder. Anything else (GIF, BMP, TIFF, SVG) is a recorded loss with a
 //! placeholder drawn in its place. A wrong-but-plausible image is worse than a
 //! marked gap.
 

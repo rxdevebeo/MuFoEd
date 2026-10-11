@@ -14,13 +14,13 @@ const DEFAULT_IMAGE_PX: f64 = 96.0;
 
 /// Builds an [`ImageItem`] for an inline drawing.
 ///
-/// A supported inline raster picture resolves to its media part. Any other
-/// *picture-shaped* inline drawing with a declared extent — a chart without
-/// readable cached data, a diagram,
-/// EMF/WMF, a missing blip — is reserved as a placeholder of that size: Stage 4
-/// cannot rasterize it, but reserving the extent keeps pagination aligned with
-/// the producer (S4F.6). An inline *shape or group* is not an image at all: it
-/// is left to `crate::paint::graphics::inline_items`, which draws its geometry
+/// A supported inline raster picture resolves to its media part. WMF/EMF media
+/// is rasterized as a PNG preview. Any other *picture-shaped* inline drawing
+/// with a declared extent — a chart without readable cached data, a diagram, or
+/// a missing blip — is reserved as a placeholder of that size: reserving the
+/// extent keeps pagination aligned with the producer (S4F.6). An inline *shape
+/// or group* is not an image at all: it is left to
+/// `crate::paint::graphics::inline_items`, which draws its geometry
 /// (STAGE-5C-REWORK-1 D3). `wp:anchor` (floating) drawings are out of scope and
 /// yield `None`.
 pub(crate) fn layout_inline_image(
@@ -83,7 +83,7 @@ pub(crate) fn layout_inline_image(
         y,
         w,
         h,
-        href: part.and_then(|part| media_href(ctx, part)),
+        href: part.and_then(|part| media_href(ctx, part, w, h)),
         part: part.cloned(),
         alt,
         transform: None,
@@ -91,13 +91,24 @@ pub(crate) fn layout_inline_image(
 }
 
 /// Resolves the `href`/data URI for a media part according to the media mode.
-pub(crate) fn media_href(ctx: &LayoutContext<'_>, part: &PartId) -> Option<String> {
+pub(crate) fn media_href(
+    ctx: &LayoutContext<'_>,
+    part: &PartId,
+    width_px: f64,
+    height_px: f64,
+) -> Option<String> {
     match ctx.media_mode {
         MediaMode::None => None,
         MediaMode::ExternalFiles => Some(unique_media_file_name(&ctx.document.media, part)),
         MediaMode::EmbedDataUri => {
             let media = ctx.media?;
             let bytes = media.read_media(part).ok()?;
+            let raster = crate::metafile::rasterize_metafile_preview(
+                &bytes,
+                width_px,
+                height_px,
+                ctx.options.limits.max_single_uncompressed,
+            );
             let content_type = ctx
                 .document
                 .media
@@ -106,9 +117,13 @@ pub(crate) fn media_href(ctx: &LayoutContext<'_>, part: &PartId) -> Option<Strin
                 .map_or(String::from("application/octet-stream"), |ct| {
                     ct.to_string()
                 });
+            let (bytes, content_type) = raster.as_deref().map_or_else(
+                || (bytes.as_slice(), content_type.as_str()),
+                |png| (png, "image/png"),
+            );
             Some(format!(
                 "data:{content_type};base64,{}",
-                base64_encode(&bytes)
+                base64_encode(bytes)
             ))
         }
     }

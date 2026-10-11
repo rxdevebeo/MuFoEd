@@ -56,6 +56,7 @@
 pub mod error;
 pub mod font;
 pub mod layout;
+pub mod metafile;
 pub mod style;
 pub mod units;
 
