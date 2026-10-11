@@ -59,30 +59,20 @@ use std::collections::BTreeMap;
 use strict_ooxml_pdf::PdfDocument;
 use strict_ooxml_pdf::{PdfPage, TextLayer};
 use strict_ooxml_wml::model::block::Paragraph;
-#[cfg(feature = "raster")]
-use strict_ooxml_wml::model::ids::StyleId;
-#[cfg(feature = "raster")]
-use strict_ooxml_wml::model::inline::{Inline, Run, RunContent, TextNode};
-#[cfg(feature = "raster")]
-use strict_ooxml_wml::model::props::{ParagraphProperties, RunProperties};
-#[cfg(feature = "raster")]
-use strict_ooxml_wml::model::values::{Rsids, Space};
-#[cfg(feature = "raster")]
-use strict_ooxml_wml::model::Document;
 
 use crate::report::{ConversionReport, Severity};
 #[cfg(feature = "raster")]
 use crate::PdfOptions;
-#[cfg(feature = "raster")]
-use crate::RECOVERY_STYLE_NAME;
 
 /// The style id of a recovered paragraph.
 ///
 /// The *name* ([`crate::RECOVERY_STYLE_NAME`]) is what a reader of the file
 /// sees; the id is what the paragraph refers to, and it has no spaces because a
 /// style id is a reference and not a label.
+#[cfg(any(feature = "raster", feature = "djvu-image"))]
+pub(crate) mod policy;
 #[cfg(feature = "raster")]
-pub(crate) const RECOVERED_STYLE_ID: &str = "Recovered";
+pub(crate) use policy::{declare_style, paragraphs_of};
 
 /// How a region was chosen, which is a fact about the document a caller may want
 /// to filter on.
@@ -568,103 +558,10 @@ fn rasterize(
     )
 }
 
-/// A model's answer as paragraphs, one per line it gave.
-///
-/// A vision model returns one line per visual line, so splitting on newlines is
-/// the only rule available — and it is the reason the report says the breaks are
-/// the model's. Empty lines are dropped: a model pads its answer, and an empty
-/// paragraph in a document is a thing a reader stumbles over.
-///
-/// The indent is the **region's** left edge, which is a number the PDF stated.
-/// A recovered paragraph therefore sits where the picture it came from sat, which
-/// is the one piece of geometry a model cannot give us and the reader already
-/// knows.
-#[cfg(feature = "raster")]
-fn paragraphs_of(text: &str, left: f64) -> Vec<Paragraph> {
-    let style = StyleId::new(RECOVERED_STYLE_ID);
-    let indent = strict_ooxml_wml::model::values::Indentation {
-        start: Some(strict_ooxml_wml::model::values::Twips(crate::to_twips(
-            left,
-        ))),
-        ..strict_ooxml_wml::model::values::Indentation::default()
-    };
-    text.lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(|line| Paragraph {
-            props: ParagraphProperties {
-                style: Some(style.clone()),
-                indentation: Some(indent),
-                ..ParagraphProperties::default()
-            },
-            inlines: vec![Inline::Run(Run {
-                props: RunProperties::default(),
-                content: vec![RunContent::Text(TextNode {
-                    text: line.to_owned(),
-                    space: Space::default(),
-                })],
-                revision: None,
-                location: strict_ooxml_core::error::SourceLocation::unknown(),
-            })],
-            rsids: Rsids::default(),
-            para_id: None,
-            text_id: None,
-            revision: None,
-            location: strict_ooxml_core::error::SourceLocation::unknown(),
-        })
-        .collect()
-}
-
-/// Declares the recovered-paragraph style in a converted document.
-///
-/// A style with no formatting of its own, so marking a paragraph costs nothing
-/// visually — the point is that the name is there for a reader who asks where the
-/// text came from.
-#[cfg(feature = "raster")]
-pub(crate) fn declare_style(document: &mut Document) {
-    use std::sync::Arc;
-    use strict_ooxml_core::error::SourceLocation;
-    #[cfg(feature = "raster")]
-    use strict_ooxml_wml::model::ids::StyleId;
-    use strict_ooxml_wml::model::props::{
-        CellProperties, ParagraphProperties, RowProperties, RunProperties, TableProperties,
-    };
-    use strict_ooxml_wml::model::styles::Style;
-    use strict_ooxml_wml::model::values::{StyleType, TableLook};
-    document.styles.insert(Style {
-        id: StyleId::new(RECOVERED_STYLE_ID),
-        style_type: StyleType::Paragraph,
-        name: Some(Arc::from(RECOVERY_STYLE_NAME)),
-        aliases: None,
-        based_on: None,
-        next: None,
-        link: None,
-        is_default: false,
-        custom_style: false,
-        auto_redefine: false,
-        semi_hidden: false,
-        hidden: false,
-        q_format: false,
-        locked: false,
-        unhide_when_used: false,
-        ui_priority: None,
-        table: TableProperties {
-            look: Some(TableLook::default()),
-            ..TableProperties::default()
-        },
-        row: RowProperties::default(),
-        cell: CellProperties::default(),
-        paragraph: ParagraphProperties::default(),
-        run: RunProperties::default(),
-        conditions: Vec::new(),
-        based_on_chain: Vec::new(),
-        location: SourceLocation::unknown(),
-    });
-}
-
 #[cfg(all(test, feature = "raster"))]
 mod tests {
-    use super::{paragraphs_of, RECOVERED_STYLE_ID};
+    use super::paragraphs_of;
+    use super::policy::RECOVERED_STYLE_ID;
 
     #[test]
     fn a_models_breaks_become_paragraphs_and_they_are_marked() {

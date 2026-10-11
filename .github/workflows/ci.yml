@@ -351,6 +351,9 @@ jobs:
       - name: Short fuzz session (convert)
         working-directory: fuzz
         run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_convert -- -max_total_time=60 -rss_limit_mb=2048 -timeout=10
+      - name: DjVu reader and image fuzz smoke
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_djvu -- -max_total_time=60 -rss_limit_mb=2048 -timeout=10
 
   # One job per target: eight one-hour sessions in a row (8 h) never fit the 6 h
   # job limit, so the later targets and the coverage floors after them never ran.
@@ -362,7 +365,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [fuzz_zip, fuzz_xml, fuzz_relpath, fuzz_wml, fuzz_normalize, fuzz_docx_full, fuzz_pdf, fuzz_convert]
+        target: [fuzz_zip, fuzz_xml, fuzz_relpath, fuzz_wml, fuzz_normalize, fuzz_docx_full, fuzz_pdf, fuzz_convert, fuzz_djvu]
     env:
       ASAN_OPTIONS: symbolize=1
       ASAN_SYMBOLIZER_PATH: /usr/bin/llvm-symbolizer
@@ -451,6 +454,70 @@ jobs:
           sys.exit(0 if lines+1e-9>=85.0 and branches+1e-9>=70.0 else 1)
           PY
 
+  # STAGE-9-TASK.md §9.1 floors: the DjVu reader (container/text) ≥80% lines,
+  # the codec-bearing build ≥70%, and the converter's DjVu module ≥80%.
+  # Re-measured 2026-10-10 at 84.32 / 84.91 / 88.26; the floors sit below, not
+  # at, the measurement so a refactor is not a red build.
+  coverage-djvu-nightly:
+    name: coverage (djvu)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CARGO_PROFILE_DEV_CODEGEN_UNITS: 1
+      LLVM_COV_IGNORE: (/\\.cargo/registry|/\\.cargo/git|/rustc-|/rustlib/|/build/|/deps/)
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.9.1
+      - name: Coverage (djvu container/text ≥80%)
+        run: |
+          mkdir -p target/cov-ci-djvu
+          # A separate target dir per feature set: sharing one lets the core run
+          # pick up the image files instrumented by the other and read 0%.
+          CARGO_TARGET_DIR=target/cov-ci-djvu-core cargo +nightly llvm-cov -p strict-ooxml-djvu --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --json --summary-only --output-path target/cov-ci-djvu/djvu-core.json
+          python - <<'PY'
+          import json,sys
+          t=json.load(open("target/cov-ci-djvu/djvu-core.json"))["data"][0]["totals"]["lines"]
+          p=100.0*t["covered"]/t["count"] if t["count"] else 0.0
+          print(f"djvu core lines {t['covered']}/{t['count']} = {p:.4f}% (floor 80)")
+          sys.exit(0 if p+1e-9>=80.0 else 1)
+          PY
+      - name: Coverage (djvu with image codecs ≥70%)
+        run: |
+          CARGO_TARGET_DIR=target/cov-ci-djvu-image cargo +nightly llvm-cov -p strict-ooxml-djvu --all-features --locked \
+            --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --json --summary-only --output-path target/cov-ci-djvu/djvu-image.json
+          python - <<'PY'
+          import json,sys
+          t=json.load(open("target/cov-ci-djvu/djvu-image.json"))["data"][0]["totals"]["lines"]
+          p=100.0*t["covered"]/t["count"] if t["count"] else 0.0
+          print(f"djvu image lines {t['covered']}/{t['count']} = {p:.4f}% (floor 70)")
+          sys.exit(0 if p+1e-9>=70.0 else 1)
+          PY
+      - name: Coverage (convert djvu module ≥80%)
+        run: |
+          CARGO_TARGET_DIR=target/cov-ci-djvu-convert cargo +nightly llvm-cov -p strict-ooxml-convert --features djvu-image --locked \
+            --test djvu --ignore-filename-regex "$LLVM_COV_IGNORE" --ignore-run-fail \
+            --json --output-path target/cov-ci-djvu/convert-djvu.json
+          python - <<'PY'
+          import json,sys
+          files=json.load(open("target/cov-ci-djvu/convert-djvu.json"))["data"][0]["files"]
+          hit=[f for f in files if f["filename"].replace("\\","/").endswith("/src/djvu.rs")]
+          if not hit:
+              print("convert src/djvu.rs missing from the coverage report"); sys.exit(1)
+          t=hit[0]["summary"]["lines"]
+          p=t.get("percent", 100.0*t["covered"]/t["count"] if t["count"] else 0.0)
+          print(f"convert djvu.rs lines {t['covered']}/{t['count']} = {p:.4f}% (floor 80)")
+          sys.exit(0 if p+1e-9>=80.0 else 1)
+          PY
+
   corpus-full:
     name: CC0 corpus (nightly, full)
     if: github.event_name == 'schedule'
@@ -502,3 +569,135 @@ jobs:
           for set in CC0 CC0_DOCX CC0_DOCX_1; do
             cargo run -p strict-ooxml --release --features write,svg --example corpus_scan -- "testdata/$set"
           done
+
+  # STAGE-9-TASK.md §11/§14.2: the DjVu reader is judged against the DjVuLibre
+  # CLI, run as a separate GPL process (never linked; its source is never read).
+  # The corpus is fetched by the manifest lock, never committed. Pinned to a
+  # schedule so an absent external corpus cannot redden a normal PR; the driver
+  # self-test still runs there independently.
+  djvu-oracle:
+    name: DjVu oracle (djvulibre)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      DJVULIBRE_BIN_VERSION: 3.5.28-2ubuntu0.24.04.2
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install the DjVuLibre oracle (pinned)
+        run: |
+          sudo apt-get update
+          if ! sudo apt-get install -y --no-install-recommends "djvulibre-bin=$DJVULIBRE_BIN_VERSION"; then
+            echo "::warning::djvulibre-bin $DJVULIBRE_BIN_VERSION is unavailable; installing the candidate"
+            sudo apt-get install -y --no-install-recommends djvulibre-bin
+          fi
+          dpkg-query -W -f='djvulibre-bin ${Version}\n' djvulibre-bin
+      - uses: actions/cache@v4
+        with:
+          path: testdata
+          key: cc0-djvu-${{ hashFiles('testdata-lock/djvu.toml') }}
+      - name: Fetch the DjVu corpus (by manifest hashes)
+        # Up to three documents may stay unfetched (archive.org nodes come and
+        # go); the cache fills in next night.
+        run: cargo run -p xtool --release --locked -- corpus fetch --lock testdata-lock/djvu.toml --tier djvu --allow-failures 3
+      - name: Build the producers
+        run: |
+          cargo build --release --locked -p strict-ooxml-cli
+          cargo build --release --locked -p strict-ooxml-djvu --example corpus --example zones
+          cargo build --release --locked -p strict-ooxml-djvu --example outline
+          cargo build --release --locked -p strict-ooxml-djvu --features djvu-image --example codec_probe
+          cargo build --release --locked -p strict-ooxml-convert --features djvu --example djvu_links
+      - name: Driver self-test (no oracle needed)
+        run: python3 xtool/djvu-oracle-selftest.py
+      - name: Run the oracle drivers
+        run: |
+          set -o pipefail
+          CLI=target/release/strict-ooxml
+          CORPUS_EXAMPLE=target/release/examples/corpus
+          ZONES=target/release/examples/zones
+          PROBE=target/release/examples/codec_probe
+          CORPUS=testdata/CC0_DJVU
+          OUT=artifacts/djvu-oracle
+          mkdir -p "$OUT/native-text" "$OUT/raw"
+          # SC-D4: native text against djvutxt.
+          "$CORPUS_EXAMPLE" "$CORPUS" "$OUT/native-text" > "$OUT/native-corpus.tsv"
+          python3 xtool/djvu-oracle.py --corpus "$CORPUS" --text "$OUT/native-text" \
+            --oracle /usr/bin/djvutxt --report "$OUT/text-oracle.json"
+          # SC-D3/SC-D13: chunk index == djvudump, including a synthesized indirect copy.
+          python3 xtool/djvu-dump-oracle.py --corpus "$CORPUS" --ours "$CLI" \
+            --oracle /usr/bin/djvudump --report "$OUT/dump-oracle.json" --raw-dir "$OUT/raw" \
+            --indirect-dir "$OUT/indirect" --djvmcvt /usr/bin/djvmcvt
+          # SC-D5: word-zone rectangles == djvutxt --detail=word.
+          python3 xtool/djvu-zone-oracle.py --corpus "$CORPUS" --ours "$ZONES" \
+            --oracle /usr/bin/djvutxt --report "$OUT/zone-oracle.json" --raw-dir "$OUT/raw"
+          # SC-D7: exact on the bitonal pages the criterion claims today, and a
+          # measured IW44 regression floor (page 1 of every file).
+          python3 xtool/djvu-render-oracle.py --corpus "$CORPUS" --ours "$PROBE" \
+            --oracle /usr/bin/ddjvu --report "$OUT/render-oracle.json" \
+            --manifest docs/djvu-validation/render-bitonal.json --raw-dir "$OUT/raw"
+          python3 xtool/djvu-render-oracle.py --corpus "$CORPUS" --ours "$PROBE" \
+            --oracle /usr/bin/ddjvu --report "$OUT/render-iw44.json" \
+            --manifest docs/djvu-validation/render-sample.json \
+            --tolerance docs/djvu-validation/iw44-tolerance.json
+          # SC-D14: zones (unrotated) and the image (rotated) on synthetic
+          # 90/180/270 copies must still equal the oracle.
+          python3 xtool/djvu-rotate-fixture.py \
+            --input "$CORPUS/PlaysHistoriesAndNovelsOfTheIngeniousMrs.AphraBehnV.1.djvu" \
+            --out-dir "$OUT/rotated-render" > /dev/null
+          python3 xtool/djvu-rotate-fixture.py \
+            --input "$CORPUS/Gnomonica.StudiSiStoriaDellaGnomonica.ParteTerza.djvu" \
+            --out-dir "$OUT/rotated-zones" > /dev/null
+          python3 xtool/djvu-zone-oracle.py --corpus "$OUT/rotated-zones" --ours "$ZONES" \
+            --oracle /usr/bin/djvutxt --report "$OUT/zone-rotated.json"
+          python3 xtool/djvu-render-oracle.py --corpus "$OUT/rotated-render" --ours "$PROBE" \
+            --oracle /usr/bin/ddjvu --report "$OUT/render-rotated.json" --pages 1
+          # SC-D9: every maparea becomes a hyperlink (external URL and internal
+          # page link). The corpus has no annotations, so fixtures are synthesized.
+          mkdir -p "$OUT/annotated"
+          SRC="$CORPUS/Gnomonica.StudiSiStoriaDellaGnomonica.ParteTerza.djvu"
+          python3 xtool/djvu-annotate-fixture.py --input "$SRC" \
+            --out "$OUT/annotated/external.djvu" --djvused /usr/bin/djvused \
+            --url https://example.invalid/djvu-link
+          python3 xtool/djvu-annotate-fixture.py --input "$SRC" \
+            --out "$OUT/annotated/internal.djvu" --djvused /usr/bin/djvused \
+            --url '#page=2'
+          python3 xtool/djvu-ant-oracle.py --corpus "$OUT/annotated" \
+            --oracle /usr/bin/djvused --ours target/release/examples/djvu_links \
+            --report "$OUT/ant-oracle.json"
+          # SC-D9/L3: the NAVM outline becomes flat page bookmarks. The corpus has
+          # no NAVM, so the fixture is synthesized with djvused set-outline.
+          OUTLINE=target/release/examples/outline
+          mkdir -p "$OUT/outline"
+          python3 xtool/djvu-outline-fixture.py --input "$SRC" \
+            --out "$OUT/outline/outline.djvu" --djvused /usr/bin/djvused
+          python3 xtool/djvu-outline-oracle.py --corpus "$OUT/outline" --ours "$OUTLINE" \
+            --oracle /usr/bin/djvused --report "$OUT/outline-oracle.json"
+          # A conversion legitimately exits non-zero when it reports a reader-level
+          # observation; the written package is the artefact under test.
+          "$CLI" from-djvu "$OUT/outline/outline.djvu" --out "$OUT/outline/outline.docx" || true
+          python3 - <<'PY'
+          import zipfile
+          doc = zipfile.ZipFile("artifacts/djvu-oracle/outline/outline.docx").read("word/document.xml").decode()
+          assert "djvu-outline-" in doc, doc
+          print("outline: bookmarks ok")
+          PY
+          # SC-D9/L4: document metadata becomes docProps/core.xml.
+          python3 xtool/djvu-annotate-fixture.py --input "$SRC" \
+            --out "$OUT/metadata.djvu" --djvused /usr/bin/djvused \
+            --ant '(metadata (Title "DjVu validation") (Author "Strict OOXML"))'
+          "$CLI" from-djvu "$OUT/metadata.djvu" --out "$OUT/metadata.docx" || true
+          python3 - <<'PY'
+          import zipfile
+          core = zipfile.ZipFile("artifacts/djvu-oracle/metadata.docx").read("docProps/core.xml").decode()
+          assert "<dc:title>DjVu validation</dc:title>" in core, core
+          assert "<dc:creator>Strict OOXML</dc:creator>" in core, core
+          print("metadata: docProps/core.xml ok")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: djvu-oracle
+          path: artifacts/djvu-oracle/
+          if-no-files-found: ignore

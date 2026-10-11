@@ -1,0 +1,13 @@
+{
+  "input": "keraleeya-kalakal.djvu",
+  "page": 1,
+  "cli_exit": 1,
+  "requests": [
+    "/api/show",
+    "/api/chat"
+  ],
+  "png_bytes": 1184905,
+  "recovered_text_in_docx": true,
+  "scan_in_docx": true,
+  "provider": "local HTTP mock; no real OCR model quality assertion"
+}

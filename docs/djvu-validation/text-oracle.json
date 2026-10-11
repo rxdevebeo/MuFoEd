@@ -1,0 +1,914 @@
+{
+  "files": 100,
+  "equal": 99,
+  "accounted": 100,
+  "normalization": "Remove whitespace, native structural separators and NUL (djvutxt converts the terminating NUL to a newline)",
+  "results": [
+    {
+      "file": "AdevarulAsupraTrecutuluiSiPrezentuluiBasarabiei.djvu",
+      "sha256": "288e96697d58d3ac0ca3918f856422d002b4a7c5f76f4952f6812e201aa50769",
+      "native_characters": 70172,
+      "oracle_characters": 70172,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "fca7f3ca41502193f89c3c163dad24fbff90221e6fe3b9128c6d3876c353d80e"
+    },
+    {
+      "file": "AdrianMoraru-Marfa.djvu",
+      "sha256": "5af7a9b6c396c61f433937c017f27b774bc8e260bf67522e670c7a101cd6dfcc",
+      "native_characters": 230069,
+      "oracle_characters": 230069,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "6e901c12f7527182bbee3960490e9aa4320ab7c410865563e862f51d921ca5b7"
+    },
+    {
+      "file": "AfbeeldingenVvdReferendumEuropeseGrondwwet.djvu",
+      "sha256": "2c6cf125c7c90ff2810a1dcd6f491a7222e29cb29729bf4ef5dbf485855fc564",
+      "native_characters": 0,
+      "oracle_characters": 0,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "7060584c3e59f0b2f12f34aa0b40faadf4aa5790a0459f3319852bcd63262cbb"
+    },
+    {
+      "file": "AportacinDeAguasABarcelonaAPeticinDeM.LindeboomEnNov.De1909.djvu",
+      "sha256": "fa29468d9532d35d4a0c07d0aac862ab88046c861e0526a17bc6f956081fd7f0",
+      "native_characters": 43758,
+      "oracle_characters": 43758,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "4d9e04d44df0f2d38acaf924e6f6df5a85ae5204925526b2a8d87d6ed8a6df7f"
+    },
+    {
+      "file": "Boletin_Oficial_Republica_Argentina_3ra_seccion_2000-09-27.djvu",
+      "sha256": "ea6689b333833c2795b76f56f3218ba3cee24289deb222b4c01aca6447abf9ce",
+      "native_characters": 46980,
+      "oracle_characters": 46980,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "34f8df2c8b8bdd13c06972bb6aa9f8d2a4d909cd95106714a5438d99adcf2f71"
+    },
+    {
+      "file": "Boletin_Oficial_Republica_Argentina_3ra_seccion_2006-08-01.djvu",
+      "sha256": "b537473475c93971cbb985a1c38f82cdd6adacac090b1c8f9f99972c7fb3e53b",
+      "native_characters": 79602,
+      "oracle_characters": 79602,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "e635c1129371cc34839817b79aca1802f912d18ff8f79ee010a7dfbc01ef7acd"
+    },
+    {
+      "file": "BronormungHeft1holzmbel.djvu",
+      "sha256": "bce5bc2c02194c5f883819daeaa6a2d7efe529182909993723acab6f3ca6b0f9",
+      "native_characters": 42052,
+      "oracle_characters": 42052,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "f63d537bbd8d89c4ce3d0b82e102aa3741106d268792fd9ba968ccc61449d9a8"
+    },
+    {
+      "file": "DeNederlandscheSpectatorElfdeEnTwaalfdeDeel.djvu",
+      "sha256": "948d3d1aa2409f24875dd15f2303eb4af78fe2c13d777b2f3f2d719340bbcb60",
+      "native_characters": 842928,
+      "oracle_characters": 842928,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "03ed0d3870f9249561e7ef084d08658285d64bd0dd58c82db3799725d405ef82"
+    },
+    {
+      "file": "DenunciaDoCaajaAoMinisterioPublicoARespeitoDossantinhoseleitorais.djvu",
+      "sha256": "1a6b77abf254bcf9585478fbed507ddde2c16a8df2f425463facbef3c8929009",
+      "native_characters": 5958,
+      "oracle_characters": 5958,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "08fe390d2e93307d08f4f6038b81526dd887327473eb6d1446580c7aa4e6e2a8"
+    },
+    {
+      "file": "DerChronikDesBischofsOttoVonFreisingSechstesUndSiebentesBuch.djvu",
+      "sha256": "82ca16c7eb33ca3d1a6a814983cb0e9d548bd1d2cd3f69df4395076e545531cf",
+      "native_characters": 281729,
+      "oracle_characters": 281729,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "46be896eafeab6decf8e6035cf64f6d0226bd53e8d1d956d805862ad63d1c957"
+    },
+    {
+      "file": "DerechoALaViviendaDesarrolloTerritorialYProduccinSocialDel.djvu",
+      "sha256": "e912d27c03aca1e1dbd5d8990ff70b861079e275cc1563112465ec84a7d8e15e",
+      "native_characters": 8924,
+      "oracle_characters": 8924,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "b84690aff94ae4aa5489474731d078f16075bebbf005e0f09953e7d9f3125fca"
+    },
+    {
+      "file": "DevelopmentStrategyOfAudiovisualIndustryInBulgaria.djvu",
+      "sha256": "b7e48d2ed8792d2e3686b723534973d2040c2cf491fba6acacc9bc64a7a0c58a",
+      "native_characters": 91309,
+      "oracle_characters": 91309,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "f82ea9117ac3e139ce0284bb689850f93a3634849d933ca26655350a57ee128d"
+    },
+    {
+      "file": "EditionsScientifiquesEtCollectionsDuCabinetEntomologiqueE.LeMoult.djvu",
+      "sha256": "0a1e9c9fc1327f50bb01e166656f230502d2589e0bd93123903bd7136778d99a",
+      "native_characters": 42036,
+      "oracle_characters": 42036,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "8a0485fc56b6b77e03f1da1f72e53d7bc7ca67f61ff319a3ce872acd7bf28ebb"
+    },
+    {
+      "file": "EnvironmentAndCulturalHeritageInKarst-OkolnaSregaIKulturnoNasledstvo.djvu",
+      "sha256": "ee8e0dc2919932da24eacc2caa319a18acfb48b5205d1dc93f718f1e62afe0d7",
+      "native_characters": 526613,
+      "oracle_characters": 526613,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "cc9ebc30ac9dbb164598c076a6b8478d117073eb950ac060f751e5ce244d4a0c"
+    },
+    {
+      "file": "Erkki-Pirinen-Varjosta-Aurinkoon-1951.djvu",
+      "sha256": "4399cd5e68b4893ed391486b00f5086c3dcfcaecf3f7f7f42c6090905742d6da",
+      "native_characters": 188488,
+      "oracle_characters": 188488,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "e784cb12b7ebb460789eb833155622e8c324ecdab59d75fdaf49fc059b8558a2"
+    },
+    {
+      "file": "EtienneRabaudLeHasardEtLaVieDesEspces1953.djvu",
+      "sha256": "a1d645f67f6234b1fb8c16b2c69965cc84ffdd5d85fc33e3320105e6bfe6a26a",
+      "native_characters": 480805,
+      "oracle_characters": 480805,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "d9b942a71531708b9eaa8641026641c747b0795c5b3d9970fc281a37d2d4c49d"
+    },
+    {
+      "file": "EuropaVoorDeBurger_678.djvu",
+      "sha256": "0040e265939bed1a14ccec81f66b64ddd83f0ceda061906652a926f9fe81a5a6",
+      "native_characters": 234193,
+      "oracle_characters": 234193,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "81c57210d0eceea9c2290779c07773a3b11fca766be4f00c28494c38b9220802"
+    },
+    {
+      "file": "FabioS.ErberEJosEduardoCassiolatopoliticaIndustrialTeoriaE.djvu",
+      "sha256": "01f47d8660b5767ce5f2854b888a4175c593b6bcd8273fcdac598258638689e1",
+      "native_characters": 75378,
+      "oracle_characters": 75378,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "9f7e67edd543ea25f8d1b629aea6c232ea142b99c480865a69b12c727dcf00a8"
+    },
+    {
+      "file": "FadhliSultanateLaw1947To1957.djvu",
+      "sha256": "10212c8486e5b2e988ee0513d52269b0268f9ede595f754ff11cc98114e61c4f",
+      "native_characters": 14518,
+      "oracle_characters": 14518,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "ca21ec30d823df4470b0ce4a28f38dd74494f5e4c281727b8fb70021db8e47e2"
+    },
+    {
+      "file": "Generalkatalog1736-1850.djvu",
+      "sha256": "e2edf35c3ee9c3c76a2891cb4867d467a1324f8afef420a47de34ec4276dfd36",
+      "native_characters": 106639,
+      "oracle_characters": 106639,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "2340ff4066dfd6d928e9d887baee79538d2af27e86fee839e5c216c5ca8f4b08"
+    },
+    {
+      "file": "GeopoliticvsChildSiveRepublicanismvsGeopoliticvsAmicisEtHostibvsMitto_.djvu",
+      "sha256": "159509257e416b473d13ad6c0d2eded06a82e18facc26314d242984a3a99932e",
+      "native_characters": 1374,
+      "oracle_characters": 1374,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "6a9f992e711b8e42d8a9bf705f4c7bf7557d1ac86e4f5f111c32f1105fe83773"
+    },
+    {
+      "file": "Gnomonica.StudiSiStoriaDellaGnomonica.ParteTerza.djvu",
+      "sha256": "b9d5fccaff8a76b926d7da40cb381ae17d87d7138683d44c7c2e9ade43e4b634",
+      "native_characters": 2913,
+      "oracle_characters": 2913,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "ada890e19b851f44f1b726f4b11b04b3901bc5f1cd90d1950131c762d52abf39"
+    },
+    {
+      "file": "GoogleBoekRecensieMetRechtDiscriminatieBestrijden.djvu",
+      "sha256": "ab250bb67b24e3cb9f25a85ba13f81ad040e6488d7ef37ed235642f7a155b316",
+      "native_characters": 3874,
+      "oracle_characters": 3874,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "d5132cdbd5968910de58917c257f3ee30ea2bad0275f2c7987a3edcb2ff05582"
+    },
+    {
+      "file": "GrundzgeDerkonomischenTheorie.djvu",
+      "sha256": "bb676bf1c8e3a625d18dba63fbbf0ca6daca2f07b6b4def5320adba736c74193",
+      "native_characters": 353738,
+      "oracle_characters": 353738,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "d6fca3e06aeb52e7b8b9521f9c7c6a0d04c6d31bfdd6151d776d5450df16dfe4"
+    },
+    {
+      "file": "HaiggeretElRomim.djvu",
+      "sha256": "ff38ceb8f9988e6acc68a87b9710934e0065bca948c457b3da592e9a6ffbaa2b",
+      "native_characters": 251300,
+      "oracle_characters": 251300,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "16f5ea56db59f8c2fc934e58b618e2c9d2645dedccd7f6e74d0a783b2aec79d7"
+    },
+    {
+      "file": "HenryRenna-ComentariosSobreElLibroCiudadesParaTodoshic2007.djvu",
+      "sha256": "6a8923ed2dcc1cefdf77bd143ee733cc3486ff84d21678e8c582448dd2b19aff",
+      "native_characters": 6869,
+      "oracle_characters": 6869,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "67dc588759c989c5c80c814f9ef06e2042d7a296ce7ff5c921d3da6384e35fa2"
+    },
+    {
+      "file": "HetKlassiekeBouwen.KunstschriftOpenbaarKunstbezit.djvu",
+      "sha256": "40f1dbfd3d1f912beec8278f5617849c8b6be144b89ea5d2d35ef017f8838b3f",
+      "native_characters": 99179,
+      "oracle_characters": 99179,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "983479aaa070799a3ffa9820c77387e5cd40d37832584cd8926d2124d16f1cc8"
+    },
+    {
+      "file": "InayatKhanHindustaniSongsScores1914.djvu",
+      "sha256": "70c750156383a2f54437958c1fd56942848b8b6050ffdd12fc7df54da90c056e",
+      "native_characters": 20183,
+      "oracle_characters": 20183,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "a17e561371349df58d44f4c343d3f29cc239de8aaa00a420d07907f979b03dad"
+    },
+    {
+      "file": "Initiez-vousALaRadiesthesie.djvu",
+      "sha256": "aa8363b3670cd5e569c915c16983be36097d80ba9146260763da89eef42bcebd",
+      "native_characters": 41963,
+      "oracle_characters": 41963,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "c784aba2cb976a50541bfcc14d1e7a85e69887d288f2b665e02e82a569ee81e7"
+    },
+    {
+      "file": "IpotesigioachimiteSugliAffreschiDiGiottoNellaBasilicaDiS.Chiara.djvu",
+      "sha256": "895e00ffd951a7620fa4929b058b68806bbb4ceeedf726d5d7a0f0999e85f4e4",
+      "native_characters": 66521,
+      "oracle_characters": 66521,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "2070c6e22fbdb1187c61811a4807c9b38ca787b3dbc14e68e50ab1e4c3dd0ac9"
+    },
+    {
+      "file": "IslamFelsefesineIsikVerenSeyyidler.djvu",
+      "sha256": "eb0445b9e25a21a49f47127b818b9e53b0503aae6d4ca4af3b63d7d74ab051a3",
+      "native_characters": 179133,
+      "oracle_characters": 177793,
+      "oracle_exit": 0,
+      "equal": false,
+      "retained_pages": [
+        51
+      ],
+      "verified_retention_difference": true,
+      "detail": "Native UTF-8 text retained on unusable zone page; oracle omits it; all remaining characters match",
+      "native_sha256": "51fe2c057b79c2162465db84c49ac5cce84c45cee19031e847846594c27b83cb"
+    },
+    {
+      "file": "JoaoCoelhoGomes.ElementosHist.NacionalDeEconomiaPolitica.djvu",
+      "sha256": "9c52af9f16df7fa742e08f5d51c07c54c2fac3e0fc7d49167b6144b2469a8132",
+      "native_characters": 74246,
+      "oracle_characters": 74246,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "2d24f160ca9e95062b2015437b7b879692285e43e6167ac6ac7fa85ca813568c"
+    },
+    {
+      "file": "JoiasEOutrosBensDaRainhaD.Catarina.djvu",
+      "sha256": "bf48385174829f278aad11683c501e853c7ad85cde924238ff91b9beccc8f1ad",
+      "native_characters": 53460,
+      "oracle_characters": 53460,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "545b49c3173b641f64ad94703f3b0725853839b34e1803c88606ef39385a2f9c"
+    },
+    {
+      "file": "KlachtenrechtZorgsector.djvu",
+      "sha256": "bdc4b12b90c79ecdf59213438606bcb064e5f7f6a3ba5dc212b910e43649e050",
+      "native_characters": 8055,
+      "oracle_characters": 8055,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "2e3535233755a57e8feafd3741e5e2fd838f86527b5ae11df17ca1fe0db000b9"
+    },
+    {
+      "file": "LaPoutrelleMetalliqueDansSesPrinciplesApplications_546.djvu",
+      "sha256": "c7f5175348724416ef316d1798ac7178839113f73f57d1fcc3fcdbafdede9168",
+      "native_characters": 227207,
+      "oracle_characters": 227207,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "d6a88f573ff97123f418bc6df7b6f3a5f89aad12ec122be3b935df360a73760b"
+    },
+    {
+      "file": "LandgerichtMunchen_az-7o-1533-12.djvu",
+      "sha256": "45b2238d24d46bc2de6f0871931af2ef9496e0fd8899828cbf0b72060955ac06",
+      "native_characters": 1723,
+      "oracle_characters": 1723,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "d8fe8c49f03c9f70a150a3362f8565d8f154caf8dc18f0e60153d9b196efff06"
+    },
+    {
+      "file": "LettreDuMnstreDeLaDefenseAuMaireDeJoyeuse.djvu",
+      "sha256": "8b3b69924fbb0a34efb5f794ce5586560b7c64f4a199a0f31d32022bdc7b5c39",
+      "native_characters": 608,
+      "oracle_characters": 608,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "bc67e444aa32749baa0d27cb5aa48596408ce1ccfb2bbf1ea5743c9b05fec826"
+    },
+    {
+      "file": "LexikonSlovenskychVojvodinskychVysokoskolskychUcitelovAVedcov2009.djvu",
+      "sha256": "852b97cff57d987259ce116d82e992e33a85676efbfb23793d6a0d099b2caea7",
+      "native_characters": 744955,
+      "oracle_characters": 744955,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "4c132b1446285343038687dd0517e3a11f7d6a45fb66cda6013c8b5e996f4146"
+    },
+    {
+      "file": "MetodologaParaEnsearALeerEnDosSemanas.djvu",
+      "sha256": "c9230425e2c239096614219b5a7c165e80c2a048302b4a03d25adb37bdaa02fa",
+      "native_characters": 24972,
+      "oracle_characters": 24972,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "816d4453d1d4f14f98a0192c4cfe6b0b9d94fa6a49e6d7b420706771a069b400"
+    },
+    {
+      "file": "MustellariaPlautoOpal.djvu",
+      "sha256": "68a3a1b17a903835dd121b4e7aa79d5a677d288bb024e55844a8c66bce8caac6",
+      "native_characters": 108816,
+      "oracle_characters": 108816,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "1e38f580da53bf632d5d07a1daebe9af11e8f5d44358131ecb00ef595290419a"
+    },
+    {
+      "file": "NederlandsTijdschriftVoorGeneeskunde.djvu",
+      "sha256": "307ca5115daf8f89b26827cf35bcb17288ca228d347c43b61ee928564d7dd6c1",
+      "native_characters": 23844,
+      "oracle_characters": 23844,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "04349486c0e24bd14ab2c1a165d30cc99ca85bc477b4e6c532907009f10a234d"
+    },
+    {
+      "file": "NewEraGrammarOfModernIrish.djvu",
+      "sha256": "f2451b5f297b8930d65bd9533e487ddd05d594748aba9beb1605d347db54e8e5",
+      "native_characters": 14853,
+      "oracle_characters": 14853,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "278c98c88b68bc311443fd0b153d5d743def2de0b27c373124f3063918fc849c"
+    },
+    {
+      "file": "NgraAfRimbo-scheboJernvgsFrdelarFrLandtmnnenINorraRoslagen.djvu",
+      "sha256": "ea8111c9953a57c9ded474628e2aace3bcb472dd7dadd4716650504f0a1875e5",
+      "native_characters": 60895,
+      "oracle_characters": 60895,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "f9672276c18f2ae426a28fa9bc5d01ebc95db5d37968f455c20f2f38a28d303c"
+    },
+    {
+      "file": "NotesMorceauxChoisisN3.djvu",
+      "sha256": "07de3418568720f13c48d6e498c7e448ead6a15ae8fc2344f491f3e9697b9164",
+      "native_characters": 73330,
+      "oracle_characters": 73330,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "2a1a54500580a6d04c9c7d9ccd63a4e6390a5338f1bbda9bfdd0e761fbb54478"
+    },
+    {
+      "file": "NotesSurLaReparationEtLagrandissementDeLegliseDeJoyeuse1669-1670.djvu",
+      "sha256": "5768387552a8662ea134e67a41f271659e803ee06d017a3bc92cfadf78e98da3",
+      "native_characters": 210,
+      "oracle_characters": 210,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "57659770c2875e440a2bf718a7303efaec4ef2b0259dbcac0e7ff7a5703ada10"
+    },
+    {
+      "file": "OSaberEmTodoSer-1oCongressoAbertoDaUniversidadePopularDeArteE.djvu",
+      "sha256": "081be16b62deb544d0a1b832e82fc596e4abc308f6ff169771e50509c1521416",
+      "native_characters": 69279,
+      "oracle_characters": 69279,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "cca105e10ec332fbb9c683af2e3b35227f2fef9ec1902399e1298b8cebee4ae9"
+    },
+    {
+      "file": "OtnoshenieNoveysheyFiziki.djvu",
+      "sha256": "13dc142ab11813df1e6ab17c2decad98d8caffe351811a7bc3e251ba145b8754",
+      "native_characters": 0,
+      "oracle_characters": 0,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "f6c91eef239dc8f9c4041e08c312b181969669c83b051198e142d89fc188ba21"
+    },
+    {
+      "file": "OverzichtVanDeFamiliePaarlberg_442.djvu",
+      "sha256": "d12cefa3160245047f4f1118392fb4a2e96c2c2f0aa793c480f0fd145142eebb",
+      "native_characters": 104130,
+      "oracle_characters": 104130,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "90e58adea6d32060a34e1302a736811b383eec9489e202d6b04698167f133009"
+    },
+    {
+      "file": "PantallasDeBarrioTvComunitariaYTvDigitalEnChile.djvu",
+      "sha256": "e81e711405be0727e3f7e345a52dc6101cddae124b4462624ab2c41dd9a9b256",
+      "native_characters": 176507,
+      "oracle_characters": 176507,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "06c833b9fa94f9b052ce51449a3d45035d688e08b36b6dc2e5e55149d6fdcb2c"
+    },
+    {
+      "file": "PanthongyptienCollectionDesPersonnagesMythologiquesDeLancienne.djvu",
+      "sha256": "24231050ac6cf42b3e0c1aed8e170e2ed518a44fb069a4a8ada9324493d48ac5",
+      "native_characters": 341281,
+      "oracle_characters": 341281,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "74faa481e5c2674c3dd155ce4947141888df87d8570741d125299dd24aea5b5d"
+    },
+    {
+      "file": "Pichismo----.....1992-2014.djvu",
+      "sha256": "aef1dedd41dd3aa23417ea2cce81f423e5f1720be47d997249a85a84e7afb8a1",
+      "native_characters": 465,
+      "oracle_characters": 465,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "3bdd5b22f203ccffdc205f3e29867923ea694c3b2acbc7e2b2bbc6d00cd31243"
+    },
+    {
+      "file": "PlaysHistoriesAndNovelsOfTheIngeniousMrs.AphraBehnV.1.djvu",
+      "sha256": "7a24edfc313d76e198cb647912df55b3a02937ef04c3d9d9c8b6f148dd81a663",
+      "native_characters": 500136,
+      "oracle_characters": 500136,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "77c24abcff0872b57821e089f1da26a26b474beb232df2736359391df48ea6d8"
+    },
+    {
+      "file": "PrevisoesVerdadeirasTransicaoPlanetaria2012BillyMeierVerdadeiro.djvu",
+      "sha256": "c35ddf3f8123ffea87c4e5bedbc73f3556a0a5a4a94a208fb14129ac803dfcd2",
+      "native_characters": 240307,
+      "oracle_characters": 240307,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "8646642da62bdfce9db3c24d09577e58cf83c8589ba568e53aaccb42bd0f3340"
+    },
+    {
+      "file": "PrintpnbbE-book12PersonalBrandingCaraNgetopBuatPenulisPemula1.djvu",
+      "sha256": "70e8e82da409024729be1c290cbd771d74f4112f92e6efaf8cdb16499085ed4d",
+      "native_characters": 77636,
+      "oracle_characters": 77636,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "c66d918a59dfdd66079ce1d9c95b794a490510eca35a70fd509a5d8c5c0f9268"
+    },
+    {
+      "file": "RadiationPhysicsConstraintsOnGlobalWarmingCo2IncreaseHasLittleEffect.djvu",
+      "sha256": "f464c0d98af8dc322cd970dd310371bbe159978d6b252e46ae05653394bd633d",
+      "native_characters": 45561,
+      "oracle_characters": 45561,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "4d17cb2474ec9d9ce31083556455ed6ca75c75ba1f0714b5c04385101609d4ba"
+    },
+    {
+      "file": "RepubblicaMassimoMorigiMarxHannahArendtCarlSchmittHannahArendt.djvu",
+      "sha256": "6279f8edc3348305b8677b3348f321f0c420334acdc69ae954a868fcaa991d9f",
+      "native_characters": 47916,
+      "oracle_characters": 47916,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "b9605707af79ea90f0563a02061c0dd75d6a6dc0b31706b4f9afdc4cc7676bc2"
+    },
+    {
+      "file": "RivendicazioneDellaPrimitivaLineaDiStradaFerrataDaMilanoAVenezia.djvu",
+      "sha256": "5e33294d69b6cf86469977d455c6bd9234c6b18dc9d83a5daf654014c780dc34",
+      "native_characters": 29395,
+      "oracle_characters": 29395,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "c72ec6173f4fd8d430db572f662ce975756d6032cc6aafa7927bba29074cf1e5"
+    },
+    {
+      "file": "RuotgersLebenDesErzbischofsBrunoVonKln.djvu",
+      "sha256": "74f4282703973959be62535ff801e110af461eb12a71131a802fa1065ff632db",
+      "native_characters": 116336,
+      "oracle_characters": 116336,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "4054efd1fda81db694939fea45f48e7e050c40bdfa7b924dc8ea145ea8ef65be"
+    },
+    {
+      "file": "SPTrans_201306_permissao.djvu",
+      "sha256": "89d6bcb385995a19872ae9cc39d087214061a5b9966c7c1e74e61d6188353775",
+      "native_characters": 2965,
+      "oracle_characters": 2965,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "af5ae04525504c48d71a75c7b844d405bcc8bb0951b032a73ef8b93cd2f71952"
+    },
+    {
+      "file": "SaltuKavosGerimuIrDesertuReceptai.djvu",
+      "sha256": "1d088fe2934a15d93a4c9b2234c2c8bb748d11574f068163657d10ef5e9678bb",
+      "native_characters": 14669,
+      "oracle_characters": 14669,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "235705db95b15b03ae21b2b0389f3fa5507706c0d43059754679a943148df950"
+    },
+    {
+      "file": "ShkI-ShkJaSenKyttminenValaistukseenJaTyvoiman.djvu",
+      "sha256": "294374d9eee480f2bda87e34c7b73d36b5bad6f5008cd07628efda966be1a76d",
+      "native_characters": 158307,
+      "oracle_characters": 158307,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "329b1a9361a0eeabd937123255d20dac31d106c03501f1ab923e5c2a49599a43"
+    },
+    {
+      "file": "SimpozijumOSrednjovjekovnomKatunuOdrzan24.I25.Novembra1961.G.djvu",
+      "sha256": "495f471a2654e1073af044a2b7935f288979a1be364fadfbcc171f5aa545a7bf",
+      "native_characters": 448085,
+      "oracle_characters": 448085,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "5b9f8f100940245e9795a9decbdeab933d0c6610e39416862489861a340d19c3"
+    },
+    {
+      "file": "SpatnyPohladNaLexikonSlovenskychVojvodinskychVysokoskolskychUcitelovA.djvu",
+      "sha256": "b912567a5405dcbc7b84ddfec36993b99eab4afdee9bf9e609243a0a9efec997",
+      "native_characters": 78267,
+      "oracle_characters": 78267,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "e8656b91f7b0446a856e4776884f2ca19b3684f9121fb6cb95f6f247efdb5731"
+    },
+    {
+      "file": "SriKuncitaghristavam.djvu",
+      "sha256": "620ab37cff57f9b2af8ea85cb25756d28f3373f36cd48dcfebf11dfbb17b91ef",
+      "native_characters": 287382,
+      "oracle_characters": 287382,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "7da4c6552b402610dfbac55ffef793c098c917ebabca119c8e65faa41721a760"
+    },
+    {
+      "file": "UeberDenEinflussDesElektrostatischenFeldesAufDasOptischeVerhalten.djvu",
+      "sha256": "83a70bf63f5713a780df97c65c02346269057db3c075320df13ae46963c3b2f1",
+      "native_characters": 358870,
+      "oracle_characters": 358870,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "40863da4a0f22ac842785e46b242d9b3073bf205c541ba569d70d90f6ab599a5"
+    },
+    {
+      "file": "UiteliaKraskovci.djvu",
+      "sha256": "fcc6a4f41b8916ade39f384674ef8bb199ed249506df73bad310c27428566a85",
+      "native_characters": 356603,
+      "oracle_characters": 356603,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "4d882ac3f204e22aa2babd40008bdb8d97c1d34dc651ef83e926286b21c6d0b7"
+    },
+    {
+      "file": "UmumNaksibendiyyeVeMuceddidiyyeTarikindeSeyr-uSulukDersleriVeMakamlari.djvu",
+      "sha256": "62f0e5ccaa6676f2fad4146a4d8f028afe22b62320464221bb7e943f9b345dc1",
+      "native_characters": 141603,
+      "oracle_characters": 141603,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "8979526334766bd51521d8595be4eafdf92b0a620808d1a2b4e0c07aaeba750a"
+    },
+    {
+      "file": "UtstllningAfArkeologiskaOchEtnografiskaSamlingarFrnCentral-amerikaI.djvu",
+      "sha256": "2fbccd957814d7cad734101a5f2066a7a5876e716c6fc27312268c4d6dfd9c40",
+      "native_characters": 3601,
+      "oracle_characters": 3601,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "5a41fce167485b915595261b91b9fb931e70e73c4599be6902602f7c90e26ea0"
+    },
+    {
+      "file": "VasileMaiereanDanDulciuOIstorieACriptologieiRomanestiEdituraRao.djvu",
+      "sha256": "bc1320c7f948bcead3d322e073cd5e2ccd17b44623479e13396df61223887126",
+      "native_characters": 7474,
+      "oracle_characters": 7474,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "c91c0ec1f9160f53b89eb9e3231d62ab30b7dbdcf51b7527c8f4dfca56bc93a2"
+    },
+    {
+      "file": "VasileMaiereanPreliminariiLaDisparitiaUneiNatiuni.djvu",
+      "sha256": "00076debdf4638598215d77fd7b2f1da72fcf3a2be46fdf296feeee6be3e518e",
+      "native_characters": 16587,
+      "oracle_characters": 16587,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "d3c27587937b58b1763c4dde57b05d447e90ce9932bd0b21a439d3d9def92f78"
+    },
+    {
+      "file": "Yazilar42.cilt_ihramcizade.djvu",
+      "sha256": "b42870023befcd70e4700d84acc5ee67e9122d3b45d0ccd0a595402ca0d1cc00",
+      "native_characters": 795677,
+      "oracle_characters": 795677,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "043c6946e1265096d6cbc09df53a9b6db040b397e25328184b581cfc38eb3295"
+    },
+    {
+      "file": "ZapiskiSeonista.djvu",
+      "sha256": "9d02be11912573d462d8772fad68c682484a7172764441f92f819a8ad195dfb0",
+      "native_characters": 76001,
+      "oracle_characters": 76001,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "10e280e468f8afc4c95f3069c89ffbc513fa120a46e015fdcb8a846bf5a31645"
+    },
+    {
+      "file": "alle12_UmschlagVorschau.djvu",
+      "sha256": "0a6fc197fe558e03ce02d7d7d2931ef3c6118388b71cb69fe05207481753c9f1",
+      "native_characters": 3987,
+      "oracle_characters": 3987,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "5e2ac15010cd4ffe4526d80b2dca3e437fdb0eff09bf9646d7df8f54b35f8ae0"
+    },
+    {
+      "file": "bs.pas.71.2005.djvu",
+      "sha256": "3809045ffa099669a24276f799ea64da097d792ea8cda23988fc24af36160c34",
+      "native_characters": 55221,
+      "oracle_characters": 55221,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "8a5f1b2ac419b3a6cf5efb76378f5931d4b70e783b944fd59b547c7290b94b1a"
+    },
+    {
+      "file": "comesa.033.f.ds.2004.djvu",
+      "sha256": "ceb543fe0ab16d81df4945b0a11a9570cc3de389fc346b3f0c4d726fa15b0819",
+      "native_characters": 9110,
+      "oracle_characters": 9110,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "2e3f3f663ffb54facfce799b2bcf0b10a4c41893a2de4b153054e29c098b8e39"
+    },
+    {
+      "file": "comesa.039.f.ds.2004.djvu",
+      "sha256": "099e318ccc0b2b5f3ae391d23fe623c1331d27804cda8019d6f8cf29c84bd94a",
+      "native_characters": 23232,
+      "oracle_characters": 23232,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "c340266813f2dfb5bdfda9c8d1acc59ce43b7a5645aa7c84df924e0272c63fe0"
+    },
+    {
+      "file": "comesa.220.ef.fd.2006.djvu",
+      "sha256": "a8835cc5a99f8dc1a64221c51488c1ac854e878336e08cd774f781a18abd69a2",
+      "native_characters": 62436,
+      "oracle_characters": 62436,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "0122a1b302c35fec86a77e2a563f68de829d8de0d5df9454d15a456cb30956a5"
+    },
+    {
+      "file": "comesa.221.ef.fd.2006.djvu",
+      "sha256": "2c0962c98b8eb7a4a924bfd8d917b74e8bd03cfca7570f57be6a493c1b385989",
+      "native_characters": 53858,
+      "oracle_characters": 53858,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "18b2f6614f1d5d8ba387e29e31a5385b3045bfc1d4ad28e5b4f8bc71773b5a06"
+    },
+    {
+      "file": "ec.cpe.001.1987.djvu",
+      "sha256": "499eaf26e7bc2d87c601e2f5ecb0e152ccf898aa3da4c4c7bec3a5a75db79f2d",
+      "native_characters": 34399,
+      "oracle_characters": 34399,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "f1acfa9e6db373b2695a752744d78b0f8712b5b9d1809613dce90c7db8f2af0c"
+    },
+    {
+      "file": "ec.cpe.006.1983.djvu",
+      "sha256": "2d12df757f0ea2bf8f17ebed81c7ee48a56dd78a575d6ac4ec68426a4cb66382",
+      "native_characters": 16726,
+      "oracle_characters": 16726,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "d0c06c84e17524333abcdc74c2ce533e398d2b54aff42085d3620e7aea5780fe"
+    },
+    {
+      "file": "ec.cpe.19.5.2001.djvu",
+      "sha256": "a37d55b26c6231ccc5c0bd0422994d050a3fcde6095d45ed905099246ee665ee",
+      "native_characters": 527926,
+      "oracle_characters": 527926,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "f664ac2ddb5dea89cd918ea97805f7213c7196309a6469333636544e685e5816"
+    },
+    {
+      "file": "ec.gpe.13.1987.djvu",
+      "sha256": "c67e12b55ff046949fed643119a405871ad53e5bcb1c50d96bcce8e96884ce0d",
+      "native_characters": 12343,
+      "oracle_characters": 12343,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "444ffe7a5ead75fef6e206e9e95add96d654a8ff43c027306579a79bcb72e50d"
+    },
+    {
+      "file": "ec.gpe.44.1996.djvu",
+      "sha256": "6c4d8c50de054f9cb292a6cdba1bfb3e7b460810872dcc11b2cbb27be27a1d9e",
+      "native_characters": 26545,
+      "oracle_characters": 26545,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "d6266a9088508bf60e38b4e04ba73b5d9e7af725eda4c530d7cc8340cd017a45"
+    },
+    {
+      "file": "ec.oiml.6.2011.djvu",
+      "sha256": "29be61814ba113fc8be50880755fb62e95f44e81d22804f8ed6dbad70c4ba251",
+      "native_characters": 50649,
+      "oracle_characters": 50649,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "8d4e2fbb64a75d8437aad79632850672ca2778927bb75412d3880e2e592defbd"
+    },
+    {
+      "file": "ec.oiml.85.2009.djvu",
+      "sha256": "43469f62e80f9ed9cbf6b43bba65aa79efb75476bc58e8a62da3c74baff57ec3",
+      "native_characters": 62647,
+      "oracle_characters": 62647,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "01a7b4ebbc50ca3d3fd815d24a47bfa6ae01934f41cfde42436795e50e876bc2"
+    },
+    {
+      "file": "eo_XV_1892.djvu",
+      "sha256": "4e8f9d8ad83510d66f6afa877a312bbcf6394f9d779842f668c81ebe56e6f33a",
+      "native_characters": 7040,
+      "oracle_characters": 7040,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "da1411b68bfdb6ac2d455291e6578159f5ed0f0488bee6f55c05e3ce15f92ea0"
+    },
+    {
+      "file": "gb.17510.c.2008.djvu",
+      "sha256": "e9eecf592a7cc8d1c4ea4d68fd9cbcd881b0ed3150b5b54f59254f2cb1edb48e",
+      "native_characters": 6160,
+      "oracle_characters": 6160,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "baf60cc37415f197ba67f49f6599acbb3e5ea49681c7b8aaf64d59a56954370e"
+    },
+    {
+      "file": "gb.19606.101.c.2009.djvu",
+      "sha256": "5361198fecd58970a2b7577abb520a42c6985b2945d54c803385f3e7ec98153f",
+      "native_characters": 2601,
+      "oracle_characters": 2601,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "7ba8297e7ea9db0749c80351ca9ff5cd501c0221195af3fd04fc011902d3fd7d"
+    },
+    {
+      "file": "gb.6142.c.2008.djvu",
+      "sha256": "fbdcdd91fbf26cd987ccaa3930b19d21d57ba042143381e218ec911f6f1750de",
+      "native_characters": 8017,
+      "oracle_characters": 8017,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "cec872ca179a57c295e43f80f88f717fe844342af031cd19ac74ca1018c226f2"
+    },
+    {
+      "file": "gb.7674.c.2008.djvu",
+      "sha256": "1968c8a9f2bcdc27166424e12afffb233c2056083d107f106d4b1380f8150674",
+      "native_characters": 40999,
+      "oracle_characters": 40999,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "ad8550b08a98eb4f8cde264a8f4c90a14eee574874c3c4903e5513c509c95f86"
+    },
+    {
+      "file": "jis.b.6508.2.j.1999.djvu",
+      "sha256": "83e807c237aa089f863a6a89b517026de22f0ff89cd870d80cb8033ae7dcce14",
+      "native_characters": 5914,
+      "oracle_characters": 5914,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "a98d18e8269754940edfeeb9dde481fea78dc7ec51c82c464513f5200fea9168"
+    },
+    {
+      "file": "jis.b.6511.j.1999.djvu",
+      "sha256": "df962c66a05442e2d11b6f2d17ad89511fbd6bb0960c782f863527d6bbf85f13",
+      "native_characters": 4768,
+      "oracle_characters": 4768,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "a814057e645eb8fcab8701485ce1619f8b34f1421a7473f42dfcbb0e5ac7a9a8"
+    },
+    {
+      "file": "jis.b.9709.1.j.2001.djvu",
+      "sha256": "bfd9796d01a5ea09c33fce1112b3f94ff41fa49ae3b5bff44952921109aea78e",
+      "native_characters": 14684,
+      "oracle_characters": 14684,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "800f0738916cc47d8b3cd460ffede20a437949df7d08672eb1d66a8fd44de04b"
+    },
+    {
+      "file": "jis.b.9709.2.j.2001.djvu",
+      "sha256": "ea6101f3dc1a76e16e471928fc181e44966f50a2f16f587ce7079fb5bc6af36a",
+      "native_characters": 10738,
+      "oracle_characters": 10738,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "1120fc08addd786666c875586545ac101f314756c48d7e660ecc00f6d4c41f55"
+    },
+    {
+      "file": "keraleeya-kalakal.djvu",
+      "sha256": "5ed77539d920f0bcb95d82ec7e419a13a118236e5ab2316d433306bc8958d680",
+      "native_characters": 0,
+      "oracle_characters": 0,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "0dccd81295619085aa708c27b537049ab6d8afc226185c4709ca00049f3447cd"
+    },
+    {
+      "file": "mathesis_eddington.djvu",
+      "sha256": "9a71c9d4c05c7c6053b0e09521a7722e9ffc97917c8c4f1604c09a823a95254b",
+      "native_characters": 51137,
+      "oracle_characters": 51137,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "3271ee8826e3a94603a189438f46a24beb50a31850eb19ce3e77997998cb064d"
+    },
+    {
+      "file": "pinto1862memoria.djvu",
+      "sha256": "7cb1eb1a0603b80ebb3910f12315cdd32f1ec3e97ef5c499cc84aa44d10de78d",
+      "native_characters": 55622,
+      "oracle_characters": 55622,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "535d7840dd79e2cfa867ee35acea88adee91abfb075184a6bcfc7c3a501dc137"
+    },
+    {
+      "file": "uit_ons_dorp.djvu",
+      "sha256": "35eaaec58ae434474be0eb4e2f607bad233e2d6dd6dc2dcff8855a7bfbf490e8",
+      "native_characters": 156498,
+      "oracle_characters": 156498,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "6aef76ff875466eb4e87d09eda5e2f609accc1a42a1fa66bf73535ac23795892"
+    },
+    {
+      "file": "urrrk.djvu",
+      "sha256": "af294192d406812c800377a6c7d985bd7169dc067ceaa6d7535f8ad86a16a600",
+      "native_characters": 47538,
+      "oracle_characters": 47538,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "f1ff73a3bc5f81b11c123665b6223c290c0d860ef5ffd6bf3a8eec1b95a02e3d"
+    },
+    {
+      "file": "viscera_libro_2013_12_31.djvu",
+      "sha256": "fc4e4a87642406854dbc712122c7aa6b0e8c6935f817a07f8afe73bd1c753989",
+      "native_characters": 513892,
+      "oracle_characters": 513892,
+      "oracle_exit": 0,
+      "equal": true,
+      "native_sha256": "c9f2c17a9fbd40a3e87d0a2b8c9c3ebe938da2a924d8066dd74319b5f2b6abae"
+    }
+  ],
+  "oracle": "DjVuLibre 3.5.28-2ubuntu0.24.04.2, djvutxt binary only"
+}

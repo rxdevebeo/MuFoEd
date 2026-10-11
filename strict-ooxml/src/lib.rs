@@ -90,6 +90,15 @@
 #![deny(rust_2018_idioms)]
 #![allow(clippy::doc_markdown)]
 
+#[cfg(feature = "djvu")]
+pub use strict_ooxml_convert::{convert_djvu, DjvuOptions};
+#[cfg(feature = "djvu")]
+pub use strict_ooxml_djvu::{
+    DjvuDocument, DjvuError, DjvuLimits, DjvuMetadata, DjvuPage, TextLayer as DjvuTextLayer,
+};
+#[cfg(feature = "ocr-ollama")]
+pub use strict_ooxml_ocr::ollama::{OllamaConfig, OllamaVision};
+
 use std::io::Read;
 use std::path::Path;
 
@@ -148,7 +157,8 @@ pub use strict_ooxml_wml::{parse_document, ParseOptions};
 pub use strict_ooxml_write::package::{MediaBag, NoSource, RelationshipInfo, Source};
 #[cfg(feature = "write")]
 pub use strict_ooxml_write::{
-    dropped_count, verify_no_silent_loss, write_package, WriteOptions, WriteOutput, WriteReport,
+    dropped_count, verify_no_silent_loss, write_package, CoreProperties, WriteOptions, WriteOutput,
+    WriteReport,
 };
 
 /// An opened Strict document: the OPC package plus its parsed model.

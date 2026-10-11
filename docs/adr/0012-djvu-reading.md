@@ -207,3 +207,17 @@ same way `strict-ooxml-pdf` already is (`DJVU-TM`).
   a bug-finding instrument, not a fixture; a test that skipped a missing
   directory could not fail.
 - The provenance table in this record is maintained alongside the code.
+
+## Implementation clarification (2026-10-05)
+
+The implemented reader uses a local bounded IFF walker instead of `djvu-iff`.
+It checks chunk lengths, nesting and aggregate work as headers are consumed,
+and shares component buffers rather than copying chunk payloads. This is a
+container adapter change, not a replacement of the codec split above.
+Direct codec dependencies are `djvu-bzz` 0.40.2 and optional `djvu-jb2` /
+`djvu-iw44` 0.40.2, with PNG encoding under `djvu-image`; ZP remains transitive.
+BZZ and JB2 carry small MIT-vendored patches for caller allocation budgets.
+The earlier “one direct dependency” description is superseded by this list.
+See [provenance](../../strict-ooxml-djvu/PROVENANCE.md) and
+[validation](../djvu-validation/README.md). The oracle zone/rotation tests
+listed above remain acceptance requirements, not claims that they exist.

@@ -1110,6 +1110,10 @@ impl PartParser<'_> {
         let inlines = self.parse_inline_children()?;
         Ok(Hyperlink {
             rel_id,
+            // The URL is not an attribute of `w:hyperlink`; it lives in the
+            // source package's relationships, which the writer resolves from
+            // `rel_id`. A generated document sets this instead.
+            target: None,
             anchor,
             tooltip,
             history,

@@ -1,0 +1,45 @@
+[package]
+name = "strict-ooxml-djvu"
+description = "Bounded DjVu reader with text zones and optional native page images"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+djvu-image = ["dep:djvu-jb2", "dep:djvu-iw44", "dep:png", "dep:zune-jpeg", "dep:zune-core", "dep:hayro-ccitt", "dep:djvu-bitmap", "dep:djvu-pixmap"]
+
+[dependencies]
+djvu-bzz = "=0.40.2"
+djvu-jb2 = { version = "=0.40.2", optional = true }
+djvu-iw44 = { version = "=0.40.2", optional = true }
+png = { workspace = true, optional = true }
+thiserror.workspace = true
+zune-jpeg = { version = "=0.5.15", optional = true }
+zune-core = { version = "0.5", optional = true }
+hayro-ccitt = { version = "0.4.0", default-features = false, optional = true }
+djvu-bitmap = { version = "=0.40.2", optional = true }
+djvu-pixmap = { version = "=0.40.2", optional = true }
+
+[dev-dependencies]
+djvu-bitmap = "=0.40.2"
+djvu-pixmap = "=0.40.2"
+proptest.workspace = true
+
+[lints]
+workspace = true
+
+[[example]]
+name = "images"
+required-features = ["djvu-image"]
+
+[[example]]
+name = "codec_probe"
+required-features = ["djvu-image"]
+
+[[example]]
+name = "regions"
+required-features = ["djvu-image"]
