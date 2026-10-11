@@ -3925,6 +3925,35 @@ impl Parser<'_> {
             "pgbrdrhead" | "pgbrdrfoot" | "pgbrdropt" => {
                 return self.issue(span, Severity::Info, format!("page-border-compat:{name}"));
             }
+            // Revision save identifiers (`\insrsid`/`\charrsid`/`\pararsid`):
+            // non-visual merge metadata. The model carries optional `w:rsid*`
+            // slots the renderer never reads, and the RTF stream's decimal ids
+            // and their per-run/per-paragraph placement are not reconstructed
+            // here, so they are named Info rather than dropped as a Loss.
+            "insrsid" | "charrsid" | "pararsid" => {
+                return self.issue(span, Severity::Info, format!("rsid-compat:{name}"));
+            }
+            // Word 6/7 auto-spacing and font-alignment hints whose bare form is
+            // the Strict default, so a mapping would write nothing back:
+            // `\faauto` is `w:textAlignment="auto"`, `\adjustright` is
+            // `w:adjustRightInd` on, and `\aspalpha`/`\aspnum` are
+            // `w:autoSpaceDE`/`w:autoSpaceDN` on. A non-default value (`...0`)
+            // has no slot in the paragraph model and stays a Loss.
+            "faauto" | "adjustright" | "aspalpha" | "aspnum" if n.is_none() => {
+                return self.issue(span, Severity::Info, format!("word6-compat:{name}"));
+            }
+            // Word 5/6/7 and Asian text-layout compatibility hints with no
+            // Strict paragraph slot: `\hyphpar` enables paragraph auto-hyphenation
+            // (the WML default) and `\wrapdefault`/`\sectdefaultcl`/`\linex`/
+            // `\lnbrkrule`/`\partightenfactor` only assert default layout
+            // behaviour. `\hyphpar0` (suppress hyphenation) is non-default and
+            // stays a Loss.
+            "hyphpar" if n.is_none() => {
+                return self.issue(span, Severity::Info, "paragraph-compat:hyphpar");
+            }
+            "wrapdefault" | "sectdefaultcl" | "linex" | "lnbrkrule" | "partightenfactor" => {
+                return self.issue(span, Severity::Info, format!("paragraph-compat:{name}"));
+            }
             _ => {
                 self.issue(span, Severity::Loss, format!("control:{name}"))?;
                 if self.options.compatibility_profile == CompatibilityProfile::WpsText

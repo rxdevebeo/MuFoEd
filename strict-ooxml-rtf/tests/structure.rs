@@ -469,6 +469,64 @@ fn dirty_field_marker_and_compat_controls_are_not_losses() {
     );
 }
 
+/// Revision save ids and the Word 6/7 / Asian layout controls whose value is
+/// the Strict default are named Info, not dropped as a Loss.
+#[test]
+fn legacy_layout_and_revision_controls_are_info_not_losses() {
+    let source = br"{\rtf1\insrsid10976062\faauto\adjustright\aspalpha\aspnum\hyphpar\wrapdefault\sectdefaultcl\linex0\lnbrkrule\partightenfactor0 A}";
+    let imported = import(source, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "every legacy/default control is Info: {:?}",
+        imported.report.issues
+    );
+    for feature in [
+        "rsid-compat:insrsid",
+        "word6-compat:faauto",
+        "word6-compat:adjustright",
+        "word6-compat:aspalpha",
+        "word6-compat:aspnum",
+        "paragraph-compat:hyphpar",
+        "paragraph-compat:wrapdefault",
+        "paragraph-compat:sectdefaultcl",
+        "paragraph-compat:linex",
+        "paragraph-compat:lnbrkrule",
+        "paragraph-compat:partightenfactor",
+    ] {
+        assert!(
+            imported.report.issues.iter().any(|i| i.feature == feature),
+            "missing {feature}: {:?}",
+            imported.report.issues
+        );
+    }
+}
+
+/// The non-default form of a legacy toggle (no Strict paragraph slot) stays an
+/// explicit Loss rather than being renamed away.
+#[test]
+fn non_default_legacy_layout_controls_stay_losses() {
+    let imported = import(
+        br"{\rtf1 A\hyphpar0 B\adjustright0 C}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        imported.report.loss_count, 2,
+        "{:?}",
+        imported.report.issues
+    );
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|i| i.feature == "control:hyphpar"));
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|i| i.feature == "control:adjustright"));
+}
+
 #[test]
 fn negative_list_ids_and_symbol_style_names_never_become_body_text() {
     let source=br"{\rtf1{\fonttbl{\f0\fcharset2 Symbol;}}{\stylesheet{\s0\f0 Normal;}}{\*\listtable{\list{\listlevel\levelnfc0{\leveltext\'02\'00.;}}\listid-42}}{\*\listoverridetable{\listoverride\listid-42\listoverridecount0\ls7}}\pard\ls7 X}";
