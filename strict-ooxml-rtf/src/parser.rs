@@ -2845,6 +2845,28 @@ impl Parser<'_> {
                     // carries no additional visual semantics.
                     | "picprop"
                     | "ts"
+                    // Legacy paragraph numbering (`{\*\pn ...}`) is superseded
+                    // by the list table; when the producer omits the table WPS
+                    // writes no `w:numPr` either (067/024), so it is Info.
+                    | "pn"
+                    // Non-visual companion/metadata destinations that WPS never
+                    // writes back: the Word 6 default run/paragraph properties
+                    // (`\defchp`/`\defpap`, superseded by `w:docDefaults`), the
+                    // source `\template` path, the opaque `\datastore`,
+                    // `\blipuid`, the East Asian `\updnprop` hint, the `\mmathPr`
+                    // math settings (already classified elsewhere), and the
+                    // `\themedata`/`\colorschememapping` theme parts, which the
+                    // body never references because RTF resolves theme colours
+                    // to the explicit colour table.
+                    | "defchp"
+                    | "defpap"
+                    | "template"
+                    | "datastore"
+                    | "blipuid"
+                    | "updnprop"
+                    | "mmathPr"
+                    | "themedata"
+                    | "colorschememapping"
             ) {
                 Severity::Info
             } else {
