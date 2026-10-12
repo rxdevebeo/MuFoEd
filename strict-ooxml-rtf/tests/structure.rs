@@ -218,8 +218,8 @@ fn picture_src_rect(
     picture.src_rect
 }
 
-/// Reopen through the writer, tolerating the writer's reserved `pic:cNvPr@id`
-/// notice (a picture built in code has no stored non-visual id).
+/// Reopen through the writer, tolerating the writer's reserved non-visual id
+/// notices (a picture/shape built in code has no stored `@id`).
 fn reopened_media(input: &[u8]) -> strict_ooxml_wml::model::Document {
     let imported = import(input, &RtfOptions::default()).unwrap();
     let mut media = strict_ooxml_write::package::MediaBag::new();
@@ -234,7 +234,7 @@ fn reopened_media(input: &[u8]) -> strict_ooxml_wml::model::Document {
             .report
             .losses()
             .iter()
-            .all(|loss| loss.feature_id == "pic:cNvPr@id"),
+            .all(|loss| matches!(loss.feature_id.as_str(), "pic:cNvPr@id" | "wps:cNvPr@id")),
         "{:?}",
         written.report.losses()
     );
@@ -300,6 +300,72 @@ fn absent_picture_crop_writes_no_source_rectangle() {
     );
     assert_eq!(picture_src_rect(&imported.document), None);
     assert_eq!(picture_src_rect(&reopened_media(&source)), None);
+}
+
+/// Finds the first `w:drawing` inline across the body and returns its anchor.
+fn first_anchor(
+    document: &strict_ooxml_wml::model::Document,
+) -> Option<&strict_ooxml_wml::model::AnchorDrawing> {
+    document.body.blocks.iter().find_map(|block| {
+        let Block::Paragraph(paragraph) = block else {
+            return None;
+        };
+        paragraph.inlines.iter().find_map(|inline| {
+            let Inline::Run(run) = inline else {
+                return None;
+            };
+            run.content.iter().find_map(|content| {
+                let RunContent::Drawing(drawing) = content else {
+                    return None;
+                };
+                match &drawing.kind {
+                    strict_ooxml_wml::model::DrawingKind::Anchor(anchor) => Some(anchor),
+                    _ => None,
+                }
+            })
+        })
+    })
+}
+
+#[test]
+fn floating_text_box_shape_maps_to_an_anchored_wps_shape() {
+    let input = br"{\rtf1{\shp{\*\shpinst\shpleft1000\shptop2000\shpright3000\shpbottom4000\shpbxpage\shpbypage\shpwr3\shpz5{\sp{\sn shapeType}{\sv 202}}{\sp{\sn fFilled}{\sv 0}}{\sp{\sn fLine}{\sv 0}}\shptxt\pard Hello\par}}\par}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "shape controls are mapped or Info: {:?}",
+        imported.report.issues
+    );
+    for document in [imported.document, reopened_media(input)] {
+        let anchor = first_anchor(&document).expect("anchored shape");
+        let extent = anchor.extent.expect("extent");
+        assert_eq!(extent.cx, strict_ooxml_wml::model::Emu(2000 * 635));
+        assert_eq!(extent.cy, strict_ooxml_wml::model::Emu(2000 * 635));
+        let strict_ooxml_wml::model::Graphic::Shape(shape) = anchor.graphic.as_ref() else {
+            panic!("wps:wsp shape")
+        };
+        assert_eq!(shape.tx_box, Some(true), "shapeType 202 is a text box");
+        let text = shape.text.as_ref().expect("wps:txbx");
+        assert!(
+            !text.blocks.is_empty(),
+            "the \\shptxt body must reach w:txbxContent"
+        );
+    }
+}
+
+#[test]
+fn floating_picture_shape_maps_to_an_anchored_picture() {
+    let png = [0x89u8, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    let mut source = b"{\\rtf1{\\shp{\\*\\shpinst\\shpleft0\\shptop0\\shpright1440\\shpbottom720\\shpbxpage\\shpbypage\\shpwr3{\\sp{\\sn shapeType}{\\sv 75}}{\\sp{\\sn pib}{\\sv {\\pict\\pngblip\\picwgoal1440\\pichgoal720\\bin8 ".to_vec();
+    source.extend_from_slice(&png);
+    source.extend_from_slice(b"}}}}}\\par}");
+    let imported = import(&source, &RtfOptions::default()).unwrap();
+    assert_eq!(imported.media.len(), 1, "the shape picture keeps its media");
+    let anchor = first_anchor(&imported.document).expect("anchored shape");
+    let strict_ooxml_wml::model::Graphic::Picture(picture) = anchor.graphic.as_ref() else {
+        panic!("pic:pic inside the anchor")
+    };
+    assert!(picture.blip.as_ref().is_some_and(|b| b.resolved.is_some()));
 }
 
 #[test]

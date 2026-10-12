@@ -15,16 +15,18 @@ use strict_ooxml_core::opc::rels::RelId;
 use strict_ooxml_wml::model::document::{Body, DocumentSource};
 use strict_ooxml_wml::model::drawing::{MediaIndex, MediaKind};
 use strict_ooxml_wml::model::{
-    AbstractNum, AbstractNumId, Block, Bookmark, BookmarkId, Border, BorderStyle, BreakKind,
-    CellMargins, CellProperties, Color, ColumnSpec, EighthsPoint, Field, FieldChar, FieldCharType,
-    Fonts, GridCol, HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, HeightRule,
-    Highlight, Ilvl, Inline, Justification, Language, Level, LevelOverride, LineSpacingRule, Note,
-    NoteKind, NoteProperties, NoteTable, Num, NumId, NumPr, NumberingTable, PageBorder,
-    PageBorders, PageMargins, PageOrientation, PageSize, Paragraph, ParagraphProperties, RowHeight,
+    AbstractNum, AbstractNumId, AnchorDrawing, Block, Bookmark, BookmarkId, Border, BorderStyle,
+    BreakKind, CellMargins, CellProperties, Color, ColumnSpec, DocPr, Drawing, DrawingKind,
+    EighthsPoint, Emu, Extent, Field, FieldChar, FieldCharType, Fonts, Graphic, GridCol,
+    HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, HeightRule, Highlight, Ilvl,
+    Inline, Justification, Language, Level, LevelOverride, LineSpacingRule, Note, NoteKind,
+    NoteProperties, NoteTable, Num, NumId, NumPr, NumberingTable, PageBorder, PageBorders,
+    PageMargins, PageOrientation, PageSize, Paragraph, ParagraphProperties, Position, RowHeight,
     RowProperties, Rsids, Run, RunContent, RunProperties, Section, SectionProperties, SectionType,
-    Shading, Space, Style, StyleId, StyleTable, StyleType, Symbol, TabAlignment, TabLeader,
-    TabStop, Table, TableCell, TableLayout, TableLook, TableProperties, TableRow, TextDirection,
-    TextNode, TriState, Twips, Underline, VertAlign, VerticalJc, VerticalMerge, Width, WidthKind,
+    Shading, Shape, ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, Space, Style, StyleId,
+    StyleTable, StyleType, Symbol, TabAlignment, TabLeader, TabStop, Table, TableCell, TableLayout,
+    TableLook, TableProperties, TableRow, TextBox, TextBoxBody, TextDirection, TextNode, TriState,
+    Twips, Underline, VertAlign, VerticalJc, VerticalMerge, Width, WidthKind, Wrap, WrapKind,
 };
 use unicode_bidi::BidiInfo;
 
@@ -40,6 +42,12 @@ enum Destination {
     Overrides,
     LevelText,
     Panose,
+    /// Body content of a shape text box (`\shptxt`).
+    ShapeText,
+    /// The `\sn <name>` half of a `{\sp{\sn ..}{\sv ..}}` shape property.
+    ShapePropName,
+    /// The `\sv <value>` half of a shape property.
+    ShapePropValue,
 }
 /// Which border collection a running RTF border edge writes into.
 #[derive(Clone, Copy)]
@@ -90,6 +98,38 @@ struct StyleDraft {
     hidden: bool,
     semi_hidden: bool,
     quick: bool,
+}
+/// One `{\sp{\sn <name>}{\sv <value>}}` shape property while it is read.
+struct ShapePropDraft {
+    depth: usize,
+    name: String,
+    value: String,
+}
+/// A floating Word 97 shape (`\shp`), collected from `\shpinst` and `\sp`.
+#[derive(Default)]
+struct ShapeBuilder {
+    depth: usize,
+    left: Option<i32>,
+    top: Option<i32>,
+    right: Option<i32>,
+    bottom: Option<i32>,
+    /// `\shpbxpage`/`\shpbxmargin`/`\shpbxcolumn`/`\shpbxpara`/`\shpbxignore`.
+    horizontal_from: Option<&'static str>,
+    vertical_from: Option<&'static str>,
+    /// `\shpwrN` text-wrap mode.
+    wrap: Option<i32>,
+    /// `\shpzN` relative z-order.
+    relative_height: Option<u32>,
+    /// `\shpfblwtxt`/`fBehindDocument`: draw behind the text.
+    behind: bool,
+    shape_type: Option<i32>,
+    /// `{\sp}` scalar properties (`shapeType`, `fillColor`, `lineWidth`, ...).
+    properties: BTreeMap<String, String>,
+    /// `\shptxt` body content.
+    blocks: Vec<Block>,
+    /// A `{\pict}` found inside the shape (`pib`/`fillBlip`/`\shppict`).
+    picture: Option<Drawing>,
+    has_text: bool,
 }
 enum RegionKind {
     Header {
@@ -464,6 +504,162 @@ fn field_char_marker(kind: FieldCharType, dirty: bool) -> Inline {
     })
 }
 
+/// One twip in English Metric Units, the unit of `wp:extent`/`wp:posOffset`.
+const EMU_PER_TWIP: i64 = 635;
+
+/// Maps a `\shpbx*`/`\shpby*` control to a `wp:positionH`/`V` `relativeFrom`.
+fn shape_base(name: &str) -> &'static str {
+    match name {
+        "shpbxmargin" | "shpbymargin" => "margin",
+        "shpbxcolumn" => "column",
+        "shpbxpara" | "shpbypara" => "paragraph",
+        "shpbyline" => "line",
+        _ => "page",
+    }
+}
+
+/// Maps `\shpwrN` to a `wp:wrap*` kind.
+fn shape_wrap_kind(value: Option<i32>) -> WrapKind {
+    match value {
+        Some(3) => WrapKind::None,
+        Some(4) => WrapKind::Tight,
+        Some(5) => WrapKind::Through,
+        Some(6) => WrapKind::TopAndBottom,
+        _ => WrapKind::Square,
+    }
+}
+
+/// Unwraps the graphic of a picture built in code.
+fn inline_graphic(drawing: Drawing) -> Graphic {
+    match drawing.kind {
+        DrawingKind::Inline(inline) => *inline.graphic,
+        _ => Graphic::None,
+    }
+}
+
+/// The shape's non-visual name (`wzName`).
+fn shape_name(properties: &BTreeMap<String, String>) -> Option<&str> {
+    properties
+        .get("wzName")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+}
+
+/// Maps a Word `shapeType` to a `DrawingML` preset geometry.
+fn shape_geometry_name(shape_type: Option<i32>) -> &'static str {
+    match shape_type {
+        Some(2) => "roundRect",
+        Some(3) => "ellipse",
+        Some(5 | 20) => "line",
+        Some(86) => "wedgeRectCallout",
+        _ => "rect",
+    }
+}
+
+/// Reads a `shapeType`-specific fill from the `{\sp}` properties.
+fn shape_fill(properties: &BTreeMap<String, String>) -> Option<ShapeFill> {
+    if properties.get("fFilled").is_some_and(|value| value == "0") {
+        return Some(ShapeFill::None);
+    }
+    match properties
+        .get("fillType")
+        .and_then(|value| value.parse::<i32>().ok())
+    {
+        Some(1) => properties.get("fillColor").and_then(|value| {
+            shape_color(value).map(|value| ShapeFill::Solid {
+                color: ShapeColor {
+                    value: Some(value),
+                    theme: None,
+                    markup: None,
+                },
+            })
+        }),
+        _ => None,
+    }
+}
+
+/// Reads a `shapeType`-specific outline from the `{\sp}` properties.
+fn shape_stroke(properties: &BTreeMap<String, String>) -> Option<ShapeStroke> {
+    if properties.get("fLine").is_some_and(|value| value == "0") {
+        return Some(ShapeStroke {
+            none: true,
+            ..ShapeStroke::default()
+        });
+    }
+    let width = properties
+        .get("lineWidth")
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|value| *value > 0)
+        .map(Emu);
+    let color = properties
+        .get("lineColor")
+        .and_then(|value| shape_color(value))
+        .map(|value| ShapeColor {
+            value: Some(value),
+            theme: None,
+            markup: None,
+        });
+    if width.is_none() && color.is_none() {
+        return None;
+    }
+    Some(ShapeStroke {
+        none: false,
+        color,
+        width,
+        dash: None,
+        head_end: None,
+        tail_end: None,
+        join: None,
+        attributes: Vec::new(),
+    })
+}
+
+/// Converts an RTF `COLORREF` shape colour (`0x00BBGGRR`) to a hex colour.
+fn shape_color(value: &str) -> Option<Color> {
+    let raw: u32 = value.trim().parse().ok()?;
+    let red = raw & 0xff;
+    let green = (raw >> 8) & 0xff;
+    let blue = (raw >> 16) & 0xff;
+    Some(Color::new(format!("{red:02X}{green:02X}{blue:02X}")))
+}
+
+/// Builds the `wps:wsp` shape (geometry, fill, outline, text) for a `\shp`.
+fn shape_to_wsp(shape: &ShapeBuilder, extent: Extent) -> Shape {
+    let text = if shape.has_text || !shape.blocks.is_empty() {
+        Some(TextBox {
+            body: Some(TextBoxBody::default()),
+            blocks: shape.blocks.clone(),
+            location: SourceLocation::unknown(),
+        })
+    } else {
+        None
+    };
+    Shape {
+        name: shape_name(&shape.properties).map(Arc::from),
+        descr: shape
+            .properties
+            .get("wzDescription")
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(Arc::from),
+        nv_id: None,
+        bw_mode: None,
+        tx_box: (shape.shape_type == Some(202) || shape.has_text).then_some(true),
+        geometry: ShapeGeometry::Preset(Arc::from(shape_geometry_name(shape.shape_type))),
+        xfrm: None,
+        offset: None,
+        extent: Some(extent),
+        fill: shape_fill(&shape.properties),
+        stroke: shape_stroke(&shape.properties),
+        text,
+        style: None,
+        sp_locks: None,
+        connector: shape.shape_type == Some(20),
+        effects: None,
+        location: SourceLocation::unknown(),
+    }
+}
+
 fn assign_font(fonts: &mut Fonts, slot: FontSlot, face: Arc<str>) {
     match slot {
         FontSlot::Ascii => fonts.ascii = Some(face),
@@ -542,6 +738,10 @@ struct Parser<'a> {
     default_tab_stop: Option<Twips>,
     row_template: Option<RowBuilder>,
     picture: Option<PictureBuilder>,
+    /// The floating shape being collected (`\shp`).
+    shape: Option<ShapeBuilder>,
+    /// The shape property (`\sn`/`\sv`) being collected.
+    shape_prop: Option<ShapePropDraft>,
     media: Vec<(PartId, Vec<u8>)>,
     media_index: MediaIndex,
     media_bytes: usize,
@@ -1528,7 +1728,122 @@ impl Parser<'_> {
         self.media_bytes += bytes.len();
         self.media.push((item.part.clone(), bytes));
         self.media_index.insert(item);
+        // A picture inside a shape (`pib`/`fillBlip`/`\shppict`) becomes the
+        // shape's graphic; its own inline drawing is unwrapped into the anchor.
+        if let Some(shape) = self.shape.as_mut() {
+            shape.picture = Some(drawing);
+            return Ok(());
+        }
         self.content(RunContent::Drawing(drawing), span.start)
+    }
+    /// Applies a shape geometry control to the shape being collected.
+    fn shape_anchor<F: FnOnce(&mut ShapeBuilder)>(
+        &mut self,
+        apply: F,
+        span: RtfSpan,
+    ) -> Result<(), RtfError> {
+        if let Some(shape) = self.shape.as_mut() {
+            apply(shape);
+            return Ok(());
+        }
+        self.issue(span, Severity::Loss, "shape-control-outside-shape")
+    }
+    /// Builds the anchored `DrawingML` shape collected under `\shp` and emits it.
+    fn finish_shape(&mut self, span: RtfSpan) -> Result<(), RtfError> {
+        let shape = self.shape.take().expect("shape depth checked");
+        if self.state.skip {
+            return Ok(());
+        }
+        let left = shape.left.unwrap_or(0);
+        let top = shape.top.unwrap_or(0);
+        let right = shape.right.unwrap_or(left);
+        let bottom = shape.bottom.unwrap_or(top);
+        let extent = Extent {
+            cx: Emu(i64::from(right.saturating_sub(left)) * EMU_PER_TWIP),
+            cy: Emu(i64::from(bottom.saturating_sub(top)) * EMU_PER_TWIP),
+        };
+        let graphic = if let Some(drawing) = shape.picture {
+            let mut graphic = inline_graphic(drawing);
+            if let Graphic::Picture(picture) = &mut graphic {
+                picture.extent = Some(extent);
+            }
+            graphic
+        } else {
+            Graphic::Shape(shape_to_wsp(&shape, extent))
+        };
+        let behind = shape.behind
+            || shape
+                .properties
+                .get("fBehindDocument")
+                .is_some_and(|value| value == "1");
+        let anchor = AnchorDrawing {
+            extent: Some(extent),
+            effect_extent: None,
+            doc_pr: Some(DocPr {
+                hidden: None,
+                id: None,
+                name: shape_name(&shape.properties).map(Arc::from),
+                descr: shape
+                    .properties
+                    .get("wzDescription")
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+                    .map(Arc::from),
+                title: None,
+            }),
+            simple_pos: false,
+            simple_pos_point: None,
+            hidden: None,
+            position_h: Some(Position {
+                relative_from: shape.horizontal_from.map(Arc::from),
+                align: None,
+                offset: Some(Emu(i64::from(left) * EMU_PER_TWIP)),
+                percent_offset: None,
+            }),
+            position_v: Some(Position {
+                relative_from: shape.vertical_from.map(Arc::from),
+                align: None,
+                offset: Some(Emu(i64::from(top) * EMU_PER_TWIP)),
+                percent_offset: None,
+            }),
+            wrap: Some(Wrap {
+                kind: shape_wrap_kind(shape.wrap),
+                wrap_text: Some(Arc::from("bothSides")),
+                dist_left: None,
+                dist_right: None,
+                dist_top: None,
+                dist_bottom: None,
+                polygon: Vec::new(),
+                polygon_edited: None,
+            }),
+            behind_doc: behind,
+            relative_height: shape.relative_height,
+            dist_top: None,
+            dist_bottom: None,
+            dist_left: None,
+            dist_right: None,
+            allow_overlap: shape
+                .properties
+                .get("fAllowOverlap")
+                .is_none_or(|value| value != "0"),
+            layout_in_cell: shape
+                .properties
+                .get("fLayoutInCell")
+                .is_none_or(|value| value != "0"),
+            locked: false,
+            graphic_uri: None,
+            graphic: Box::new(graphic),
+            size_rel_h: None,
+            size_rel_v: None,
+            location: SourceLocation::unknown(),
+        };
+        self.content(
+            RunContent::Drawing(Drawing {
+                kind: DrawingKind::Anchor(anchor),
+                location: SourceLocation::unknown(),
+            }),
+            span.start,
+        )
     }
     fn finish_table(&mut self) {
         if let Some(table) = self.table.take() {
@@ -2024,6 +2339,26 @@ impl Parser<'_> {
         }
         if matches!(
             self.state.destination,
+            Destination::ShapePropName | Destination::ShapePropValue
+        ) {
+            if let Some(draft) = self.shape_prop.as_mut() {
+                let target = if self.state.destination == Destination::ShapePropName {
+                    &mut draft.name
+                } else {
+                    &mut draft.value
+                };
+                bounded(
+                    target.len() + text.len(),
+                    self.options.limits.input_bytes,
+                    offset,
+                    "shape_property_bytes",
+                )?;
+                target.push_str(&text);
+            }
+            return Ok(());
+        }
+        if matches!(
+            self.state.destination,
             Destination::Lists | Destination::Overrides
         ) {
             if !text.trim().is_empty() {
@@ -2274,7 +2609,11 @@ impl Parser<'_> {
             text_id: None,
             location: SourceLocation::unknown(),
         });
-        if let Some(row) = self.row.as_mut() {
+        if self.state.destination == Destination::ShapeText {
+            if let Some(shape) = self.shape.as_mut() {
+                shape.blocks.push(block);
+            }
+        } else if let Some(row) = self.row.as_mut() {
             row.blocks.push(block);
         } else {
             self.finish_table();
@@ -2770,7 +3109,12 @@ impl Parser<'_> {
                 }
             }
         }
-        if first && self.state.destination == Destination::Body {
+        if first
+            && matches!(
+                self.state.destination,
+                Destination::Body | Destination::ShapeText
+            )
+        {
             if matches!(
                 name,
                 "header"
@@ -2846,6 +3190,45 @@ impl Parser<'_> {
                 NoteKind::Separator
             };
             return self.begin_region(RegionKind::NoteSeparator { endnote, kind }, span.start);
+        }
+        // A floating shape (`\shp`) collects `\shpinst` geometry and `{\sp}`
+        // properties into a DrawingML anchor instead of being dropped. Its
+        // `{\*\shpinst}`/`{\*\shppict}` children are kept (not skipped).
+        if first && name == "shp" {
+            if self.shape.is_some() {
+                self.state.skip = true;
+                return self.issue(span, Severity::Loss, "shape:nested-group");
+            }
+            self.shape = Some(ShapeBuilder {
+                depth: self.stack.len(),
+                ..ShapeBuilder::default()
+            });
+            return Ok(());
+        }
+        if first && name == "shpgrp" {
+            // Grouped shapes (`\shpgrp`) are a separate bounded task.
+            self.state.skip = true;
+            return self.issue(span, Severity::Loss, "destination:shpgrp");
+        }
+        if self.shape.is_some() && first && matches!(name, "shpinst" | "shppict" | "nonshppict") {
+            self.state.ignorable = false;
+            return Ok(());
+        }
+        if first && name == "sp" && self.shape.is_some() {
+            self.shape_prop = Some(ShapePropDraft {
+                depth: self.stack.len(),
+                name: String::new(),
+                value: String::new(),
+            });
+            return Ok(());
+        }
+        if first && self.shape_prop.is_some() && matches!(name, "sn" | "sv") {
+            self.state.destination = if name == "sn" {
+                Destination::ShapePropName
+            } else {
+                Destination::ShapePropValue
+            };
+            return Ok(());
         }
         if first && self.state.ignorable {
             // A nested `{\*\panose ...}` inside a font definition carries the
@@ -2978,6 +3361,10 @@ impl Parser<'_> {
                 "pichgoal" => picture.height_goal = n,
                 "picscalex" => picture.scale_x = n,
                 "picscaley" => picture.scale_y = n,
+                // Non-visual blip identity (`\bliptag`/`\blipupi`): no Strict slot.
+                "bliptag" | "blipupi" => {
+                    return self.issue(span, Severity::Info, format!("picture-blip-id:{name}"));
+                }
                 // `\piccrop{t,b,l,r}` crops the source by twips; the quartet is
                 // carried into `a:srcRect` at build time.
                 "piccropt" => picture.crop_top = n,
@@ -3207,6 +3594,43 @@ impl Parser<'_> {
             return Ok(());
         }
         match name {
+            // `\shp*` geometry and anchors for the shape being collected.
+            "shpleft" => self.shape_anchor(|shape| shape.left = n, span)?,
+            "shptop" => self.shape_anchor(|shape| shape.top = n, span)?,
+            "shpright" => self.shape_anchor(|shape| shape.right = n, span)?,
+            "shpbottom" => self.shape_anchor(|shape| shape.bottom = n, span)?,
+            "shpwr" => self.shape_anchor(|shape| shape.wrap = n, span)?,
+            "shpz" => {
+                self.shape_anchor(
+                    |shape| shape.relative_height = n.and_then(|n| u32::try_from(n).ok()),
+                    span,
+                )?;
+            }
+            "shpfblwtxt" => self.shape_anchor(|shape| shape.behind = n != Some(0), span)?,
+            "shplid" | "shpfhdr" | "shpwrk" => {
+                // Shape identity and wrap side; no separate DrawingML slot.
+                self.issue(span, Severity::Info, format!("shape-anchor:{name}"))?;
+            }
+            "shpbxpage" | "shpbxmargin" | "shpbxcolumn" | "shpbxpara" | "shpbxignore" => {
+                self.shape_anchor(|shape| shape.horizontal_from = Some(shape_base(name)), span)?;
+            }
+            "shpbypage" | "shpbymargin" | "shpbypara" | "shpbyline" | "shpbyignore" => {
+                self.shape_anchor(|shape| shape.vertical_from = Some(shape_base(name)), span)?;
+            }
+            "shptxt" => {
+                if let Some(shape) = self.shape.as_mut() {
+                    shape.has_text = true;
+                }
+                self.state.destination = Destination::ShapeText;
+            }
+            // Remaining Word 97 shape layout hints: the anchor geometry comes
+            // from `\shpleft`/`\shptop` and the wrap from `\shpwr`; these add no
+            // separate DrawingML slot, so they are named Info.
+            "posx" | "posy" | "posxo" | "posyo" | "posxc" | "posyc" | "posrelh" | "posrelv"
+            | "wraparound" | "pvpara" | "dfrmtxtx" | "dfrmtxty" | "dxfrtext" | "absnoovrlp"
+            | "anchorText" | "shprslt" => {
+                return self.issue(span, Severity::Info, format!("shape-layout:{name}"));
+            }
             "upr" => self.state.upr_children = Some(0),
             "rtf" if n == Some(1) && self.stack.len() == 1 => (),
             // RichEdit writes this when the document uses one CHP font rather
@@ -4720,6 +5144,8 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         table_cells: 0,
         row_template: None,
         picture: None,
+        shape: None,
+        shape_prop: None,
         media: vec![],
         media_index: MediaIndex::new(),
         media_bytes: 0,
@@ -4850,6 +5276,29 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
                 }
                 if p.stack.len() == 1 {
                     p.finish_high()?;
+                }
+                if p.shape_prop
+                    .as_ref()
+                    .is_some_and(|draft| draft.depth == p.stack.len())
+                {
+                    if let Some(draft) = p.shape_prop.take() {
+                        let name = draft.name.trim().to_owned();
+                        if !name.is_empty() {
+                            let value = draft.value.trim().to_owned();
+                            if let Some(shape) = p.shape.as_mut() {
+                                if name == "shapeType" {
+                                    shape.shape_type = value.parse().ok();
+                                }
+                                shape.properties.insert(name, value);
+                            }
+                        }
+                    }
+                }
+                if p.shape
+                    .as_ref()
+                    .is_some_and(|shape| shape.depth == p.stack.len())
+                {
+                    p.finish_shape(span)?;
                 }
                 p.state = p.stack.pop().ok_or(RtfError::Malformed {
                     offset: span.start,
