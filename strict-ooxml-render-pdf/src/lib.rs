@@ -73,6 +73,7 @@
 pub mod document;
 mod fills;
 pub mod font;
+pub(crate) mod glyphs;
 pub mod image;
 pub mod matrix;
 pub mod path;
