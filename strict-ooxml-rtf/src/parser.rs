@@ -742,6 +742,9 @@ struct Parser<'a> {
     shape: Option<ShapeBuilder>,
     /// The shape property (`\sn`/`\sv`) being collected.
     shape_prop: Option<ShapePropDraft>,
+    /// Stack depth of the OLE object being collected (`\object`), so its
+    /// metadata and `\result` preview are recognised.
+    ole: Option<usize>,
     media: Vec<(PartId, Vec<u8>)>,
     media_index: MediaIndex,
     media_bytes: usize,
@@ -3229,6 +3232,42 @@ impl Parser<'_> {
             self.state.skip = true;
             return self.issue(span, Severity::Info, "destination:nonshppict");
         }
+        // `{\object ...}` is an embedded OLE object. The object metadata has no
+        // Strict slot (VML `w:object` is transitional), but the cached `\result`
+        // preview is a picture and is imported so the object still renders.
+        if first && name == "object" {
+            if self.ole.is_some() {
+                self.state.skip = true;
+                return self.issue(span, Severity::Loss, "ole:nested-object");
+            }
+            self.ole = Some(self.stack.len());
+            self.state.ignorable = false;
+            return Ok(());
+        }
+        if self.ole.is_some() && name == "result" {
+            self.state.ignorable = false;
+            return Ok(());
+        }
+        if self.ole.is_some()
+            && matches!(
+                name,
+                "objemb"
+                    | "objlink"
+                    | "objautlink"
+                    | "objw"
+                    | "objh"
+                    | "objsetsize"
+                    | "objalign"
+                    | "objtransy"
+                    | "objshadow"
+                    | "objscale"
+                    | "objocx"
+                    | "objupdate"
+                    | "objprotected"
+            )
+        {
+            return self.issue(span, Severity::Info, format!("ole-control:{name}"));
+        }
         if first && name == "sp" && self.shape.is_some() {
             self.shape_prop = Some(ShapePropDraft {
                 depth: self.stack.len(),
@@ -3320,6 +3359,12 @@ impl Parser<'_> {
                     | "mmathPr"
                     | "themedata"
                     | "colorschememapping"
+                    // OLE identity metadata: the class name and CLSID are not
+                    // visual and WPS writes no OLE object back into Strict.
+                    | "objclass"
+                    | "oleclsid"
+                    | "objname"
+                    | "objtime"
             ) {
                 Severity::Info
             } else {
@@ -3516,7 +3561,6 @@ impl Parser<'_> {
                     | "listtable"
                     | "listoverridetable"
                     | "pict"
-                    | "object"
                     | "shp"
                     | "shppict"
                     | "nonshppict"
@@ -5161,6 +5205,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         picture: None,
         shape: None,
         shape_prop: None,
+        ole: None,
         media: vec![],
         media_index: MediaIndex::new(),
         media_bytes: 0,
@@ -5314,6 +5359,9 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
                     .is_some_and(|shape| shape.depth == p.stack.len())
                 {
                     p.finish_shape(span)?;
+                }
+                if p.ole == Some(p.stack.len()) {
+                    p.ole = None;
                 }
                 p.state = p.stack.pop().ok_or(RtfError::Malformed {
                     offset: span.start,

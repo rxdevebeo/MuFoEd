@@ -402,6 +402,45 @@ fn shppict_pair_imports_the_primary_picture_and_names_the_fallback() {
 }
 
 #[test]
+fn embedded_ole_object_imports_its_result_picture_and_names_the_payload() {
+    let png = [0x89u8, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    let mut source = b"{\\rtf1{\\object\\objemb\\objw240\\objh240\
+        {\\*\\objclass Equation.DSMT4}\
+        {\\*\\oleclsid \\'7b0002CE03-0000-0000-C000-000000000046\\'7d}\
+        {\\*\\objdata 0105000002000000}\
+        \\result{\\pict\\pngblip\\picwgoal240\\pichgoal240\\bin8 "
+        .to_vec();
+    source.extend_from_slice(&png);
+    source.extend_from_slice(b"}}}");
+    let imported = import(&source, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.media.len(),
+        1,
+        "the cached \\result preview is imported"
+    );
+    assert!(
+        imported
+            .report
+            .issues
+            .iter()
+            .any(|i| i.feature == "ole-control:objemb"
+                && i.severity == strict_ooxml_rtf::Severity::Info),
+        "OLE placement metadata is named Info: {:?}",
+        imported.report.issues
+    );
+    assert!(
+        imported
+            .report
+            .issues
+            .iter()
+            .any(|i| i.feature == "destination:objdata"
+                && i.severity == strict_ooxml_rtf::Severity::Loss),
+        "the opaque OLE payload stays an explicit Loss: {:?}",
+        imported.report.issues
+    );
+}
+
+#[test]
 fn malformed_metafile_signatures_and_budget_overflow_are_rejected() {
     assert!(matches!(
         import(
