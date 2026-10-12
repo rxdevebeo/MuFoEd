@@ -369,6 +369,39 @@ fn floating_picture_shape_maps_to_an_anchored_picture() {
 }
 
 #[test]
+fn shppict_pair_imports_the_primary_picture_and_names_the_fallback() {
+    let png = [0x89u8, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    let mut source =
+        b"{\\rtf1 {\\*\\shppict{\\pict\\pngblip\\picwgoal1440\\pichgoal720\\bin8 ".to_vec();
+    source.extend_from_slice(&png);
+    source.extend_from_slice(
+        b"}}{\\nonshppict{\\pict\\wmetafile8\\picwgoal1440\\pichgoal720\\bin8 \
+          0100090000030c0000000000030000000000030000000000}}}",
+    );
+    let imported = import(&source, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.media.len(),
+        1,
+        "the primary picture is kept and the fallback is not duplicated"
+    );
+    assert!(
+        imported
+            .report
+            .issues
+            .iter()
+            .any(|i| i.feature == "destination:nonshppict"
+                && i.severity == strict_ooxml_rtf::Severity::Info),
+        "the metafile fallback is named Info: {:?}",
+        imported.report.issues
+    );
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "issues: {:?}",
+        imported.report.issues
+    );
+}
+
+#[test]
 fn malformed_metafile_signatures_and_budget_overflow_are_rejected() {
     assert!(matches!(
         import(

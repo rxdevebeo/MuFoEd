@@ -3214,6 +3214,21 @@ impl Parser<'_> {
             self.state.ignorable = false;
             return Ok(());
         }
+        if first && name == "shppict" {
+            // `{\*\shppict{\pict ...}}` is the primary image of the
+            // `\shppict`/`\nonshppict` pair Word writes for a picture. Keep the
+            // inner `{\pict}` so it becomes a normal picture instead of being
+            // skipped as an unknown destination.
+            self.state.ignorable = false;
+            return Ok(());
+        }
+        if first && name == "nonshppict" {
+            // `{\nonshppict{\pict ...}}` is the metafile fallback for readers
+            // that do not understand `\shppict`. The primary picture already
+            // carries the image, so the duplicate is named Info.
+            self.state.skip = true;
+            return self.issue(span, Severity::Info, "destination:nonshppict");
+        }
         if first && name == "sp" && self.shape.is_some() {
             self.shape_prop = Some(ShapePropDraft {
                 depth: self.stack.len(),
