@@ -2838,7 +2838,13 @@ impl Parser<'_> {
                     // WPS reference writes no picture properties back, and the
                     // Strict picture has no non-visual slot for them, so the
                     // group is Info rather than a Loss.
+                    // `{\*\tsN ...}` is an RTF table-style definition. Every
+                    // independent WPS reference writes a single built-in
+                    // "Normal Table" style, and the producer repeats the
+                    // effective table properties on the rows, so the definition
+                    // carries no additional visual semantics.
                     | "picprop"
+                    | "ts"
             ) {
                 Severity::Info
             } else {
@@ -3892,6 +3898,15 @@ impl Parser<'_> {
             "trftsWidth" | "trftsWidthA" | "trftsWidthB" | "trwWidth" | "trwWidthA"
             | "trwWidthB" => {
                 return self.issue(span, Severity::Info, format!("table-row-compat:{name}"));
+            }
+            // `\tsN` selects table style N and `\tsdN` the document default
+            // table style. The independent WPS reference resolves every such
+            // reference to the built-in "Normal Table" (cell margins and no
+            // custom formatting); the effective properties the producer means
+            // are already written directly on the table and rows, so the
+            // reference adds no visual change and is a named Info.
+            "ts" | "tsd" => {
+                return self.issue(span, Severity::Info, format!("table-style-compat:{name}"));
             }
             // Table-indent controls with no independent WML form: the indent is
             // carried by the row position (`\trleft`), and WPS writes no

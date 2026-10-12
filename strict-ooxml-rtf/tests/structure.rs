@@ -1961,6 +1961,32 @@ fn table_padding_row_height_alignment_and_layout_map() {
 }
 
 #[test]
+fn table_style_definition_and_reference_are_info() {
+    // The `{\*\tsN ...}` definition and the `\tsN` row reference resolve to the
+    // built-in Normal Table in every independent WPS reference, and the
+    // producer repeats the effective properties on the rows, so both are named
+    // Info rather than losses.
+    let input = br"{\rtf1{\stylesheet{\s0 Normal;}{\*\ts11\tsrowd\trpaddl108\trpaddr108\tsvertalt\tsbrdrt\tsbrdrl\tsbrdrb\tsbrdrr\tsbrdrdgl\tsbrdrdgr\tsbrdrh\tsbrdrv Normal Table;}}\trowd\ts11\trgaph108\cellx2000\intbl A\cell\row}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "table-style definition and reference are Info: {:?}",
+        imported.report.issues
+    );
+    for feature in ["destination:ts", "table-style-compat:ts"] {
+        assert!(
+            imported.report.issues.iter().any(|i| i.feature == feature),
+            "missing {feature}: {:?}",
+            imported.report.issues
+        );
+    }
+    let Block::Table(table) = &imported.document.body.blocks[0] else {
+        panic!("table")
+    };
+    assert_eq!(table.props.style, None, "no synthesized table style");
+}
+
+#[test]
 fn default_tab_stop_and_compat_controls_map_and_classify() {
     let input = br"{\rtf1\pardeftab720\hyphpar0\nooverflow\nocwrap\cltxlrtb\animtext2\qk text\par}";
     let imported = import(input, &RtfOptions::default()).unwrap();
