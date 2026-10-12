@@ -603,10 +603,14 @@ pub(crate) struct ParagraphNeighbors {
     pub joins_next: bool,
     /// The previous paragraph's space after, in pt, when joined.
     pub prev_after_pt: f64,
-    /// First block of a cell, header, footer or text box.
+    /// First block of the body, a cell, header, footer or text box.
     pub first_in_container: bool,
     /// Last block of a cell, header, footer or text box.
     pub last_in_container: bool,
+    /// This paragraph and the previous one are both list items.
+    pub prev_list_item: bool,
+    /// This paragraph and the next one are both list items.
+    pub next_list_item: bool,
 }
 
 /// Works out the neighbours of the paragraph at `blocks[index]`.
@@ -657,8 +661,14 @@ pub(crate) fn paragraph_neighbors(
         joins_prev,
         joins_next: joins(&next),
         prev_after_pt,
-        first_in_container: in_container && index == 0,
+        // The document body counts too: HTML spacing does not push the
+        // first line of the document down either (WPS, CC0/078).
+        first_in_container: index == 0,
         last_in_container: in_container && index + 1 == blocks.len(),
+        prev_list_item: current.numbering.is_some()
+            && prev.as_ref().is_some_and(|prev| prev.numbering.is_some()),
+        next_list_item: current.numbering.is_some()
+            && next.as_ref().is_some_and(|next| next.numbering.is_some()),
     }
 }
 
@@ -683,10 +693,12 @@ fn apply_neighbors(computed: &mut ComputedParagraph, neighbors: &ParagraphNeighb
     }
     // HTML spacing does not push the first line of a cell down, nor the
     // last one up.
-    if computed.before_autospacing && neighbors.first_in_container {
+    // Nor does it separate the items of a list, as `<li>` has no margins
+    // (WPS, CC0/098).
+    if computed.before_autospacing && (neighbors.first_in_container || neighbors.prev_list_item) {
         computed.space_before_pt = 0.0;
     }
-    if computed.after_autospacing && neighbors.last_in_container {
+    if computed.after_autospacing && (neighbors.last_in_container || neighbors.next_list_item) {
         computed.space_after_pt = 0.0;
     }
     let above = if neighbors.joins_prev {
