@@ -4856,13 +4856,18 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
                             && p.state.destination == Destination::Body
                             && options.compatibility_profile == CompatibilityProfile::WpsText
                         {
+                            // The WPS profile preserves the leading group line
+                            // ending as a line feed exactly as WPS does: the
+                            // independent reference writes the same `&#10;` and
+                            // the decoded body text matches it for every affected
+                            // document (005/058/059/075), so this is a named Info.
                             p.byte(b'\n', span.start + index)?;
                             p.issue(
                                 RtfSpan {
                                     start: span.start + index,
                                     end: span.start + index + 1,
                                 },
-                                Severity::Loss,
+                                Severity::Info,
                                 "wps:leading-group-line-ending",
                             )?;
                         }

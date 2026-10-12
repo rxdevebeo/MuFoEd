@@ -114,6 +114,37 @@ fn wps_group_prefixes_match_independent_minimal_probes() {
 }
 
 #[test]
+fn wps_leading_group_line_endings_are_info_not_losses() {
+    let options = RtfOptions {
+        compatibility_profile: CompatibilityProfile::WpsText,
+        ..Default::default()
+    };
+    let imported = import(b"{\\rtf1 A{\r\nB}}", &options).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "the preserved line feed matches WPS: {:?}",
+        imported.report.issues
+    );
+    assert_eq!(
+        imported.report.info_count, 2,
+        "one Info per raw line-end byte"
+    );
+    assert!(
+        imported
+            .report
+            .issues
+            .iter()
+            .all(|i| i.feature == "wps:leading-group-line-ending" && i.severity == Severity::Info),
+        "{:?}",
+        imported.report.issues
+    );
+    assert_eq!(
+        paragraphs_with_options(b"{\\rtf1 A{\r\nB}}", &options),
+        ["A\n\nB"]
+    );
+}
+
+#[test]
 fn wps_inline_words_and_soft_hyphens_are_explicit_losses() {
     let options = RtfOptions {
         compatibility_profile: CompatibilityProfile::WpsText,
