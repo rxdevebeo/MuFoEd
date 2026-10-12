@@ -441,6 +441,44 @@ fn embedded_ole_object_imports_its_result_picture_and_names_the_payload() {
 }
 
 #[test]
+fn grouped_shapes_map_to_an_anchored_wpg_group() {
+    let input = br"{\rtf1{\shpgrp{\*\shpinst\shpleft1000\shptop2000\shpright5000\shpbottom6000\shpbxpage\shpbypage\shpwr3{\sp{\sn groupLeft}{\sv 1000}}{\sp{\sn groupTop}{\sv 2000}}}{\shp{\*\shpinst{\sp{\sn relLeft}{\sv 1100}}{\sp{\sn relTop}{\sv 2100}}{\sp{\sn relRight}{\sv 3100}}{\sp{\sn relBottom}{\sv 4100}}{\sp{\sn shapeType}{\sv 0}}}}{\shp{\*\shpinst{\sp{\sn relLeft}{\sv 3200}}{\sp{\sn relTop}{\sv 2100}}{\sp{\sn relRight}{\sv 5000}}{\sp{\sn relBottom}{\sv 4100}}{\sp{\sn shapeType}{\sv 3}}}}}\par}";
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "group controls are mapped or Info: {:?}",
+        imported.report.issues
+    );
+    let anchor = first_anchor(&imported.document).expect("anchored group");
+    let extent = anchor.extent.expect("extent");
+    assert_eq!(extent.cx, strict_ooxml_wml::model::Emu(4000 * 635));
+    assert_eq!(extent.cy, strict_ooxml_wml::model::Emu(4000 * 635));
+    let strict_ooxml_wml::model::Graphic::Group(group) = anchor.graphic.as_ref() else {
+        panic!("wpg:wgp group")
+    };
+    let xfrm = group.xfrm.expect("group transform");
+    assert_eq!(
+        xfrm.extent.map(|e| e.cx),
+        Some(strict_ooxml_wml::model::Emu(4000 * 635))
+    );
+    assert_eq!(group.children.len(), 2, "both nested shapes are kept");
+    let strict_ooxml_wml::model::Graphic::Shape(rect) = &group.children[0] else {
+        panic!("wps:wsp child")
+    };
+    assert_eq!(
+        rect.offset,
+        Some((
+            strict_ooxml_wml::model::Emu(100 * 635),
+            strict_ooxml_wml::model::Emu(100 * 635)
+        ))
+    );
+    assert_eq!(
+        rect.extent.map(|e| e.cx),
+        Some(strict_ooxml_wml::model::Emu(2000 * 635))
+    );
+}
+
+#[test]
 fn malformed_metafile_signatures_and_budget_overflow_are_rejected() {
     assert!(matches!(
         import(

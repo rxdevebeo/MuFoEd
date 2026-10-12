@@ -18,15 +18,16 @@ use strict_ooxml_wml::model::{
     AbstractNum, AbstractNumId, AnchorDrawing, Block, Bookmark, BookmarkId, Border, BorderStyle,
     BreakKind, CellMargins, CellProperties, Color, ColumnSpec, DocPr, Drawing, DrawingKind,
     EighthsPoint, Emu, Extent, Field, FieldChar, FieldCharType, Fonts, Graphic, GridCol,
-    HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef, HeightRule, Highlight, Ilvl,
-    Inline, Justification, Language, Level, LevelOverride, LineSpacingRule, Note, NoteKind,
-    NoteProperties, NoteTable, Num, NumId, NumPr, NumberingTable, PageBorder, PageBorders,
-    PageMargins, PageOrientation, PageSize, Paragraph, ParagraphProperties, Position, RowHeight,
-    RowProperties, Rsids, Run, RunContent, RunProperties, Section, SectionProperties, SectionType,
-    Shading, Shape, ShapeColor, ShapeFill, ShapeGeometry, ShapeStroke, Space, Style, StyleId,
-    StyleTable, StyleType, Symbol, TabAlignment, TabLeader, TabStop, Table, TableCell, TableLayout,
-    TableLook, TableProperties, TableRow, TextBox, TextBoxBody, TextDirection, TextNode, TriState,
-    Twips, Underline, VertAlign, VerticalJc, VerticalMerge, Width, WidthKind, Wrap, WrapKind,
+    GroupShape, GroupTransform, HalfPoints, HeaderFooter, HeaderFooterKind, HeaderFooterRef,
+    HeightRule, Highlight, Ilvl, Inline, Justification, Language, Level, LevelOverride,
+    LineSpacingRule, Note, NoteKind, NoteProperties, NoteTable, Num, NumId, NumPr, NumberingTable,
+    PageBorder, PageBorders, PageMargins, PageOrientation, PageSize, Paragraph,
+    ParagraphProperties, Position, RowHeight, RowProperties, Rsids, Run, RunContent, RunProperties,
+    Section, SectionProperties, SectionType, Shading, Shape, ShapeColor, ShapeFill, ShapeGeometry,
+    ShapeStroke, Space, Style, StyleId, StyleTable, StyleType, Symbol, TabAlignment, TabLeader,
+    TabStop, Table, TableCell, TableLayout, TableLook, TableProperties, TableRow, TextBox,
+    TextBoxBody, TextDirection, TextNode, TriState, Twips, Underline, VertAlign, VerticalJc,
+    VerticalMerge, Width, WidthKind, Wrap, WrapKind,
 };
 use unicode_bidi::BidiInfo;
 
@@ -130,6 +131,15 @@ struct ShapeBuilder {
     /// A `{\pict}` found inside the shape (`pib`/`fillBlip`/`\shppict`).
     picture: Option<Drawing>,
     has_text: bool,
+}
+/// A `\shpgrp` group of Word 97 shapes.
+#[derive(Default)]
+struct GroupBuilder {
+    depth: usize,
+    /// Shared geometry/property collection, reusing the shape controls.
+    shape: ShapeBuilder,
+    /// The built `wps:wsp`/`pic:pic` children, in document order.
+    children: Vec<Graphic>,
 }
 enum RegionKind {
     Header {
@@ -660,6 +670,78 @@ fn shape_to_wsp(shape: &ShapeBuilder, extent: Extent) -> Shape {
     }
 }
 
+/// Builds the `wp:anchor` for a floating shape or shape group.
+fn anchor_drawing(shape: &ShapeBuilder, extent: Extent, graphic: Graphic) -> AnchorDrawing {
+    let left = shape.left.unwrap_or(0);
+    let top = shape.top.unwrap_or(0);
+    let behind = shape.behind
+        || shape
+            .properties
+            .get("fBehindDocument")
+            .is_some_and(|value| value == "1");
+    AnchorDrawing {
+        extent: Some(extent),
+        effect_extent: None,
+        doc_pr: Some(DocPr {
+            hidden: None,
+            id: None,
+            name: shape_name(&shape.properties).map(Arc::from),
+            descr: shape
+                .properties
+                .get("wzDescription")
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .map(Arc::from),
+            title: None,
+        }),
+        simple_pos: false,
+        simple_pos_point: None,
+        hidden: None,
+        position_h: Some(Position {
+            relative_from: shape.horizontal_from.map(Arc::from),
+            align: None,
+            offset: Some(Emu(i64::from(left) * EMU_PER_TWIP)),
+            percent_offset: None,
+        }),
+        position_v: Some(Position {
+            relative_from: shape.vertical_from.map(Arc::from),
+            align: None,
+            offset: Some(Emu(i64::from(top) * EMU_PER_TWIP)),
+            percent_offset: None,
+        }),
+        wrap: Some(Wrap {
+            kind: shape_wrap_kind(shape.wrap),
+            wrap_text: Some(Arc::from("bothSides")),
+            dist_left: None,
+            dist_right: None,
+            dist_top: None,
+            dist_bottom: None,
+            polygon: Vec::new(),
+            polygon_edited: None,
+        }),
+        behind_doc: behind,
+        relative_height: shape.relative_height,
+        dist_top: None,
+        dist_bottom: None,
+        dist_left: None,
+        dist_right: None,
+        allow_overlap: shape
+            .properties
+            .get("fAllowOverlap")
+            .is_none_or(|value| value != "0"),
+        layout_in_cell: shape
+            .properties
+            .get("fLayoutInCell")
+            .is_none_or(|value| value != "0"),
+        locked: false,
+        graphic_uri: None,
+        graphic: Box::new(graphic),
+        size_rel_h: None,
+        size_rel_v: None,
+        location: SourceLocation::unknown(),
+    }
+}
+
 fn assign_font(fonts: &mut Fonts, slot: FontSlot, face: Arc<str>) {
     match slot {
         FontSlot::Ascii => fonts.ascii = Some(face),
@@ -740,6 +822,8 @@ struct Parser<'a> {
     picture: Option<PictureBuilder>,
     /// The floating shape being collected (`\shp`).
     shape: Option<ShapeBuilder>,
+    /// The grouped shapes being collected (`\shpgrp`).
+    group: Option<GroupBuilder>,
     /// The shape property (`\sn`/`\sv`) being collected.
     shape_prop: Option<ShapePropDraft>,
     /// Stack depth of the OLE object being collected (`\object`), so its
@@ -1739,7 +1823,7 @@ impl Parser<'_> {
         }
         self.content(RunContent::Drawing(drawing), span.start)
     }
-    /// Applies a shape geometry control to the shape being collected.
+    /// Applies a shape geometry control to the shape or group being collected.
     fn shape_anchor<F: FnOnce(&mut ShapeBuilder)>(
         &mut self,
         apply: F,
@@ -1749,12 +1833,75 @@ impl Parser<'_> {
             apply(shape);
             return Ok(());
         }
+        if let Some(group) = self.group.as_mut() {
+            apply(&mut group.shape);
+            return Ok(());
+        }
         self.issue(span, Severity::Loss, "shape-control-outside-shape")
     }
-    /// Builds the anchored `DrawingML` shape collected under `\shp` and emits it.
+    /// Reads an integer `{\sp}` property of a shape.
+    fn shape_prop_i32(shape: &ShapeBuilder, name: &str) -> Option<i32> {
+        shape
+            .properties
+            .get(name)
+            .and_then(|value| value.trim().parse::<i32>().ok())
+    }
+    /// Builds the anchored `DrawingML` shape collected under `\shp` and emits it,
+    /// or adds it as a child when it is inside a `\shpgrp`.
     fn finish_shape(&mut self, span: RtfSpan) -> Result<(), RtfError> {
-        let shape = self.shape.take().expect("shape depth checked");
+        let mut shape = self.shape.take().expect("shape depth checked");
         if self.state.skip {
+            return Ok(());
+        }
+        // Inside a group the child keeps its VML placement: `\shp` geometry when
+        // present, otherwise the `{\sp}` relative coordinates, sized by the
+        // geometry bounding box. The values are translated into the group's
+        // local coordinate space.
+        if let Some(group) = self.group.as_mut() {
+            let origin_x = group.shape.left.unwrap_or(0);
+            let origin_y = group.shape.top.unwrap_or(0);
+            let left = shape
+                .left
+                .or_else(|| Self::shape_prop_i32(&shape, "relLeft"))
+                .unwrap_or(0);
+            let top = shape
+                .top
+                .or_else(|| Self::shape_prop_i32(&shape, "relTop"))
+                .unwrap_or(0);
+            let right = shape
+                .right
+                .or_else(|| Self::shape_prop_i32(&shape, "relRight"))
+                .or_else(|| {
+                    Self::shape_prop_i32(&shape, "geoRight").map(|w| left.saturating_add(w))
+                })
+                .unwrap_or(left);
+            let bottom = shape
+                .bottom
+                .or_else(|| Self::shape_prop_i32(&shape, "relBottom"))
+                .or_else(|| {
+                    Self::shape_prop_i32(&shape, "geoBottom").map(|h| top.saturating_add(h))
+                })
+                .unwrap_or(top);
+            let extent = Extent {
+                cx: Emu(i64::from(right.saturating_sub(left)) * EMU_PER_TWIP),
+                cy: Emu(i64::from(bottom.saturating_sub(top)) * EMU_PER_TWIP),
+            };
+            let offset = (
+                Emu(i64::from(left.saturating_sub(origin_x)) * EMU_PER_TWIP),
+                Emu(i64::from(top.saturating_sub(origin_y)) * EMU_PER_TWIP),
+            );
+            let child = if let Some(drawing) = shape.picture.take() {
+                let mut graphic = inline_graphic(drawing);
+                if let Graphic::Picture(picture) = &mut graphic {
+                    picture.extent = Some(extent);
+                }
+                graphic
+            } else {
+                let mut wsp = shape_to_wsp(&shape, extent);
+                wsp.offset = Some(offset);
+                Graphic::Shape(wsp)
+            };
+            group.children.push(child);
             return Ok(());
         }
         let left = shape.left.unwrap_or(0);
@@ -1765,7 +1912,7 @@ impl Parser<'_> {
             cx: Emu(i64::from(right.saturating_sub(left)) * EMU_PER_TWIP),
             cy: Emu(i64::from(bottom.saturating_sub(top)) * EMU_PER_TWIP),
         };
-        let graphic = if let Some(drawing) = shape.picture {
+        let graphic = if let Some(drawing) = shape.picture.take() {
             let mut graphic = inline_graphic(drawing);
             if let Graphic::Picture(picture) = &mut graphic {
                 picture.extent = Some(extent);
@@ -1774,72 +1921,54 @@ impl Parser<'_> {
         } else {
             Graphic::Shape(shape_to_wsp(&shape, extent))
         };
-        let behind = shape.behind
-            || shape
+        let anchor = anchor_drawing(&shape, extent, graphic);
+        self.content(
+            RunContent::Drawing(Drawing {
+                kind: DrawingKind::Anchor(anchor),
+                location: SourceLocation::unknown(),
+            }),
+            span.start,
+        )
+    }
+    /// Builds the anchored `wpg:wgp` group collected under `\shpgrp` and emits it.
+    fn finish_group(&mut self, span: RtfSpan) -> Result<(), RtfError> {
+        let group = self.group.take().expect("group depth checked");
+        if self.state.skip {
+            return Ok(());
+        }
+        let left = group.shape.left.unwrap_or(0);
+        let top = group.shape.top.unwrap_or(0);
+        let right = group.shape.right.unwrap_or(left);
+        let bottom = group.shape.bottom.unwrap_or(top);
+        let extent = Extent {
+            cx: Emu(i64::from(right.saturating_sub(left)) * EMU_PER_TWIP),
+            cy: Emu(i64::from(bottom.saturating_sub(top)) * EMU_PER_TWIP),
+        };
+        let group_shape = GroupShape {
+            nv_id: None,
+            name: shape_name(&group.shape.properties).map(Arc::from),
+            descr: group
+                .shape
                 .properties
-                .get("fBehindDocument")
-                .is_some_and(|value| value == "1");
-        let anchor = AnchorDrawing {
-            extent: Some(extent),
-            effect_extent: None,
-            doc_pr: Some(DocPr {
-                hidden: None,
-                id: None,
-                name: shape_name(&shape.properties).map(Arc::from),
-                descr: shape
-                    .properties
-                    .get("wzDescription")
-                    .map(|value| value.trim())
-                    .filter(|value| !value.is_empty())
-                    .map(Arc::from),
-                title: None,
+                .get("wzDescription")
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .map(Arc::from),
+            xfrm: Some(GroupTransform {
+                offset: Some((Emu(0), Emu(0))),
+                extent: Some(extent),
+                child_offset: Some((Emu(0), Emu(0))),
+                child_extent: Some(extent),
+                rot: None,
+                flip_h: false,
+                flip_v: false,
             }),
-            simple_pos: false,
-            simple_pos_point: None,
-            hidden: None,
-            position_h: Some(Position {
-                relative_from: shape.horizontal_from.map(Arc::from),
-                align: None,
-                offset: Some(Emu(i64::from(left) * EMU_PER_TWIP)),
-                percent_offset: None,
-            }),
-            position_v: Some(Position {
-                relative_from: shape.vertical_from.map(Arc::from),
-                align: None,
-                offset: Some(Emu(i64::from(top) * EMU_PER_TWIP)),
-                percent_offset: None,
-            }),
-            wrap: Some(Wrap {
-                kind: shape_wrap_kind(shape.wrap),
-                wrap_text: Some(Arc::from("bothSides")),
-                dist_left: None,
-                dist_right: None,
-                dist_top: None,
-                dist_bottom: None,
-                polygon: Vec::new(),
-                polygon_edited: None,
-            }),
-            behind_doc: behind,
-            relative_height: shape.relative_height,
-            dist_top: None,
-            dist_bottom: None,
-            dist_left: None,
-            dist_right: None,
-            allow_overlap: shape
-                .properties
-                .get("fAllowOverlap")
-                .is_none_or(|value| value != "0"),
-            layout_in_cell: shape
-                .properties
-                .get("fLayoutInCell")
-                .is_none_or(|value| value != "0"),
-            locked: false,
-            graphic_uri: None,
-            graphic: Box::new(graphic),
-            size_rel_h: None,
-            size_rel_v: None,
+            locks: None,
+            bw_mode: None,
+            children: group.children,
             location: SourceLocation::unknown(),
         };
+        let anchor = anchor_drawing(&group.shape, extent, Graphic::Group(group_shape));
         self.content(
             RunContent::Drawing(Drawing {
                 kind: DrawingKind::Anchor(anchor),
@@ -3209,11 +3338,22 @@ impl Parser<'_> {
             return Ok(());
         }
         if first && name == "shpgrp" {
-            // Grouped shapes (`\shpgrp`) are a separate bounded task.
-            self.state.skip = true;
-            return self.issue(span, Severity::Loss, "destination:shpgrp");
+            // Grouped shapes (`\shpgrp`) become a `wpg:wgp` group of the nested
+            // `\shp` children; nested groups are a bounded, unsupported case.
+            if self.shape.is_some() || self.group.is_some() {
+                self.state.skip = true;
+                return self.issue(span, Severity::Loss, "shape:nested-group");
+            }
+            self.group = Some(GroupBuilder {
+                depth: self.stack.len(),
+                ..GroupBuilder::default()
+            });
+            return Ok(());
         }
-        if self.shape.is_some() && first && matches!(name, "shpinst" | "shppict" | "nonshppict") {
+        if (self.shape.is_some() || self.group.is_some())
+            && first
+            && matches!(name, "shpinst" | "shppict" | "nonshppict")
+        {
             self.state.ignorable = false;
             return Ok(());
         }
@@ -3268,7 +3408,7 @@ impl Parser<'_> {
         {
             return self.issue(span, Severity::Info, format!("ole-control:{name}"));
         }
-        if first && name == "sp" && self.shape.is_some() {
+        if first && name == "sp" && (self.shape.is_some() || self.group.is_some()) {
             self.shape_prop = Some(ShapePropDraft {
                 depth: self.stack.len(),
                 name: String::new(),
@@ -5206,6 +5346,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         shape: None,
         shape_prop: None,
         ole: None,
+        group: None,
         media: vec![],
         media_index: MediaIndex::new(),
         media_bytes: 0,
@@ -5350,6 +5491,11 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
                                     shape.shape_type = value.parse().ok();
                                 }
                                 shape.properties.insert(name, value);
+                            } else if let Some(group) = p.group.as_mut() {
+                                if name == "shapeType" {
+                                    group.shape.shape_type = value.parse().ok();
+                                }
+                                group.shape.properties.insert(name, value);
                             }
                         }
                     }
@@ -5359,6 +5505,12 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
                     .is_some_and(|shape| shape.depth == p.stack.len())
                 {
                     p.finish_shape(span)?;
+                }
+                if p.group
+                    .as_ref()
+                    .is_some_and(|group| group.depth == p.stack.len())
+                {
+                    p.finish_group(span)?;
                 }
                 if p.ole == Some(p.stack.len()) {
                     p.ole = None;
