@@ -368,6 +368,9 @@ struct State {
     line_multiple: bool,
     /// Edge that trailing `<style> \brdrw? \brsp? \brdrcf?` tokens configure.
     current_border: Option<BorderTarget>,
+    /// Character outline width from `\strokewidth` (twips). A `\strokec` colour
+    /// only has a visible effect when a positive stroke width is active.
+    strokewidth: i32,
 }
 impl Default for State {
     fn default() -> Self {
@@ -390,6 +393,7 @@ impl Default for State {
             line_spacing: 0,
             line_multiple: false,
             current_border: None,
+            strokewidth: 0,
         }
     }
 }
@@ -3921,6 +3925,7 @@ impl Parser<'_> {
                 self.state.run = RunProperties::default();
                 self.state.associated_font = None;
                 self.state.font_slot = None;
+                self.state.strokewidth = 0;
                 self.state.codepage = self.document_codepage;
                 if let Some(id) = self.default_font {
                     self.select_font(id, span)?;
@@ -4152,6 +4157,34 @@ impl Parser<'_> {
             "scaps" => self.state.run.small_caps = toggle,
             "v" => self.state.run.vanish = toggle,
             "outl" => self.state.run.outline = toggle,
+            // Character outline stroke: Strict's `w:outline` is a bare toggle
+            // with neither width nor colour, and the independent WPS reference
+            // writes no character stroke. In the corpus the width is always 0
+            // (no stroke), so the width and its colour are named Info; a real
+            // positive width stays a Loss.
+            "strokewidth" => {
+                self.state.strokewidth = n.unwrap_or(0);
+                return self.issue(
+                    span,
+                    if self.state.strokewidth == 0 {
+                        Severity::Info
+                    } else {
+                        Severity::Loss
+                    },
+                    "character-stroke:strokewidth",
+                );
+            }
+            "strokec" => {
+                return self.issue(
+                    span,
+                    if self.state.strokewidth == 0 {
+                        Severity::Info
+                    } else {
+                        Severity::Loss
+                    },
+                    "character-stroke:strokec",
+                );
+            }
             "shad" => self.state.run.shadow = toggle,
             "embo" => self.state.run.emboss = toggle,
             "impr" => self.state.run.imprint = toggle,

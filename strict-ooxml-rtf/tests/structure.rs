@@ -479,6 +479,42 @@ fn grouped_shapes_map_to_an_anchored_wpg_group() {
 }
 
 #[test]
+fn zero_width_character_stroke_is_info_and_a_real_stroke_is_a_loss() {
+    let info = import(
+        br"{\rtf1{\outl0\strokewidth0\strokec2 text}}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        info.report.loss_count, 0,
+        "issues: {:?}",
+        info.report.issues
+    );
+    assert!(info
+        .report
+        .issues
+        .iter()
+        .any(|i| i.feature == "character-stroke:strokewidth"
+            && i.severity == strict_ooxml_rtf::Severity::Info));
+    assert!(info
+        .report
+        .issues
+        .iter()
+        .any(|i| i.feature == "character-stroke:strokec"
+            && i.severity == strict_ooxml_rtf::Severity::Info));
+    let loss = import(
+        br"{\rtf1{\strokewidth20\strokec2 text}}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    assert!(
+        loss.report.loss_count >= 2,
+        "a real stroke width stays a Loss: {:?}",
+        loss.report.issues
+    );
+}
+
+#[test]
 fn malformed_metafile_signatures_and_budget_overflow_are_rejected() {
     assert!(matches!(
         import(
