@@ -115,10 +115,38 @@ Corpus receipt `target/rtf-import/rc09-slice12/`: import losses **4441 -> 1580**
 count change) and every other slice is severity-only with SHA-256-identical
 DOCX.
 
+## Floating shapes as DrawingML (2026-10-12)
+
+`{\shp ...}` is no longer dropped. A floating Word 97 shape becomes a
+`wp:anchor`:
+
+- `\shpinst` geometry (`\shpleft/top/right/bottom`, `\shpbx*`/`\shpby*` base,
+  `\shpwr` wrap, `\shpz` z-order, `\shpfblwtxt`) maps to
+  `wp:positionH/V`, `wp:wrap*`, `relativeHeight` and `behindDoc`.
+- `{\sp{\sn X}{\sv Y}}` properties select the preset geometry
+  (`shapeType` 1/2/3/5/20/86/202 → rect/roundRect/ellipse/line/callout), the
+  solid fill (`fillType`/`fillColor`), the outline (`fLine`/`lineWidth`/
+  `lineColor`) and the non-visual `wzName`/`wzDescription`.
+- `\shptxt` is parsed into a `wps:txbx/w:txbxContent` (fields and all).
+- A nested `{\pict}` (from `pib`/`fillBlip`/`\shppict`) becomes the anchored
+  `pic:pic` and keeps its media part.
+
+Witnesses 075 (56 shapes, pictures + text boxes + lines), 092 (text boxes with
+PAGE fields, freeform), 003 (background rect with a picture fill), 017/078
+(text boxes). Shape layout hints with no drawing slot (`\posx`/`\posy`,
+`\pvpara`, `\wraparound`, `\dfrmtxt*`, `\dxfrtext`, `\absnoovrlp`, `\anchorText`,
+`\shprslt`) and the blip ids (`\bliptag`/`\blipupi`) are named Info. `\shpgrp`
+grouped shapes remain an explicit `destination:shpgrp` Loss.
+
+Tests `structure.rs::{floating_text_box_shape_maps_to_an_anchored_wps_shape,
+floating_picture_shape_maps_to_an_anchored_picture}`. Corpus receipt
+`target/rtf-import/rc09-shapes/`: import losses **1580 -> 1489** (-91); every
+shape document still passes `check` → `ok: strict`.
+
 ## Remaining
 
-The classes still Loss (see [STATUS.json](STATUS.json) `remaining`) are the
-content classes that need a shared model (`\shp` shapes and their stroke,
-`\object` OLE, `comments`, `revisions`, `textboxes`), the pinned unknown-LCID
-languages, the deliberately un-materialized implicit `\s0`, and a deliberately
-unclassified tail of lower-confidence application and layout flags.
+The classes still Loss (see [STATUS.json](STATUS.json) `remaining`) are OLE
+(`\object`/`\objdata`), comments, revisions, textboxes outside shapes and
+grouped shapes (`\shpgrp`), the pinned unknown-LCID languages, the deliberately
+un-materialized implicit `\s0`, and a deliberately unclassified tail of
+lower-confidence application and layout flags.

@@ -61,8 +61,10 @@ model/render/write менять согласованно и с regression-тес
 | `69a6e73` | **RC09 table styles**: `{\*\tsN}`/`\tsN`/`\tsdN` → Info (WPS всегда пишет built-in Normal Table) |
 | `7f28d2b` | **RC09 metadata/numbering**: `{\*\pn}`, `\defchp`/`\defpap`, `\template`, `\datastore`, `\blipuid`, `\updnprop`, `\mmathPr`, `\themedata`/`\colorschememapping` → Info |
 | `6f270e0` | **RC09** `wps:leading-group-line-ending` → Info (WPS пишет тот же `&#10;`, body-text совпадает с оракулом) |
+| `5274d07` | **merge** `fix/wps-qa-2026-10-12`: upstream wins для shared (render/pdf/font/write/view); RTF-работа адаптирована под модель upstream (`NoteSeparator(bool)`, `CellProperties.diagonal_*`, `Style.aliases`, …); font-asset registry и старый колоночный менеджер отброшены |
+| `0e67950` | **RC09 floating `\shp` shapes → DrawingML** (`wp:anchor`): геометрия/позиция/wrap, fill/outline/geometry, `\shptxt` → `wps:txbx`, вложенный `{\pict}` → `pic:pic`; хинты без слота → Info; `\shpgrp` — Loss |
 
-**Цифры корпуса сейчас:** import losses **1 580** (было 11 394 на входе сессии,
+**Цифры корпуса сейчас:** import losses **1 489** (было 1 580, 11 394 на входе сессии,
 4 441 после RC09-срезов 2026-10-11, 83 671 после RC06, 127 228 изначально);
 resource 100/100; text 99/100 (014 —
 WPS field-recompute quirk); `check` 100/100 `ok: strict`; pagination **66/100**;
@@ -85,7 +87,7 @@ DOCX), кроме picture crop — меняется только 075, без с�
 | RC04 | resolver-probe **исправлен** (rFonts overlay + default-normalization); остаток диффов 019/039 — genuine (`\sl276` WPS-quirk, `\f2` vs docDefaults, слот `w:cs`). Pixel — **blocked** на faces (RC02/RC03) |
 | RC03 | **Blocked** на bidi-oracle с per-char levels |
 | RC07 | не начат: bounded WMF/EMF decoder (крупный, high-risk, +RC10) |
-| RC09 | **InProgress**: ledger 83 671 → **1 580**. Закрыто 2026-10-12: picture crop (`a:srcRect`), `\picprop`/`\ts`/`\pn`/`\defchp`/`\defpap`/`\template`/`\datastore`/`\blipuid`/`\updnprop`/`\mmathPr`/`themedata`/`colorschememapping` → Info, `wps:leading-group-line-ending` → Info. Остаток — content-классы (shapes `\shp`/OLE `\object`/comments/revisions/textboxes; WPS пишет их как transitional VML), unknown LCID (закреплены тестами), implicit `\s0` (сознательно не материализуется), хвост низкоуверенных флагов |
+| RC09 | **InProgress**: ledger 83 671 → **1 489**. Закрыто 2026-10-12: picture crop (`a:srcRect`), `\picprop`/`\ts`/`\pn`/`\defchp`/`\defpap`/`\template`/`\datastore`/`\blipuid`/`\updnprop`/`\mmathPr`/`themedata`/`colorschememapping` → Info, `wps:leading-group-line-ending` → Info, floating `\shp` shapes → `wp:anchor` (геометрия/позиция/wrap, `wps:txbx`, `pic:pic`, media). Остаток — `\shpgrp`-группы, OLE `\object`, comments/revisions/textboxes, unknown LCID (закреплены тестами), implicit `\s0`, хвост низкоуверенных флагов |
 | RC10 / RC11 / RC12 | не начаты / Blocked / Planned |
 
 ## 5. Как проверять (рецепты)
@@ -154,13 +156,13 @@ python xtool/rtf/effective_style_resolver.py \
 
 ## 8. Рекомендуемый следующий шаг
 
-1. **Продолжить RC09** (оставшийся ledger, 1 580):
-   (a) content-классы: shapes (`\shp`), OLE (`\object`/`\objdata`, opaque
-       payload/relations без activation), comments (`\annotation`), revisions,
-       textboxes. WPS пишет их как transitional `w:pict`/`v:shape` VML, Strict
-       его запрещает — нужен DrawingML-маппинг (`Shape`/`TextBox` в модели уже есть);
-   (b) хвост низкоуверенных флагов (`\stshf*`, `\clmar*`, `\gaph`, `\fet`,
-       `\horzdoc`, `\sectlinegrid`, shape-stroke) — только по WPS-доказательству.
+1. **Продолжить RC09** (оставшийся ledger, 1 489):
+   (a) `\shpgrp` групповые shapes и OLE (`\object`/`\objdata`, opaque
+       payload/relations без activation); floating `\shp` уже смаплен в
+       `wp:anchor`;
+   (b) comments (`\annotation`), revisions, textboxes вне shape;
+   (c) хвост низкоуверенных флагов (`\stshf*`, `\clmar*`, `\gaph`, `\fet`,
+       `\horzdoc`, `\sectlinegrid`, character-stroke) — только по WPS-доказательству.
 2. Либо **RC07** metafiles (следующий по порядку, крупный, +RC10).
 3. Либо RC04 corpus geometry (нужен растеризатор; pixel заблокирован на faces).
 

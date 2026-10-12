@@ -19,13 +19,14 @@
     "`{\\*\\picprop ...}` Word 97 shape hints are a named Info: the WPS reference writes no picture properties back and the Strict picture has no non-visual slot.",
     "table styles (`{\\*\\tsN ...}` and `\\tsN`/`\\tsdN`) are a named Info (`destination:ts`, `table-style-compat:ts`/`:tsd`): every independent WPS reference writes a single built-in \"Normal Table\" style and reproduces the effective table properties directly from the rows the producer repeats.",
     "legacy numbering and non-visual metadata destinations are named Info: `{\\*\\pn ...}` (superseded by the list table), `\\defchp`/`\\defpap` (superseded by `w:docDefaults`), `\\template`, `\\datastore`, `\\blipuid`, `\\updnprop`, `\\mmathPr`, and `\\themedata`/`\\colorschememapping` (unreferenced because RTF resolves theme colours to the explicit colour table).",
-    "the WPS leading-group line ending (`wps:leading-group-line-ending`) is a named Info, not a Loss: the WPS profile preserves the line feed exactly as WPS does (the reference writes the same `&#10;`), and the decoded body text matches the oracle for every affected document (005/058/059/075). This corrects the earlier conservative classification."
+    "the WPS leading-group line ending (`wps:leading-group-line-ending`) is a named Info, not a Loss: the WPS profile preserves the line feed exactly as WPS does (the reference writes the same `&#10;`), and the decoded body text matches the oracle for every affected document (005/058/059/075). This corrects the earlier conservative classification.",
+    "Word 97 shapes (`{\\shp ...}`) map to a `wp:anchor` instead of being dropped: `\\shpinst` geometry becomes `wp:positionH/V`/`wp:wrap*`/`relativeHeight`/`behindDoc`; `{\\sp{\\sn X}{\\sv Y}}` properties select the preset geometry, solid fill (`fillType`/`fillColor`), outline (`fLine`/`lineWidth`/`lineColor`) and the non-visual name/description; `\\shptxt` becomes `wps:txbx/w:txbxContent` (fields included); a nested `{\\pict}` (`pib`/`fillBlip`/`\\shppict`) becomes the anchored `pic:pic` and keeps its media. Shape layout hints with no slot (`\\posx`/`\\posy`, `\\pvpara`, `\\wraparound`, `\\dfrmtxt*`, `\\dxfrtext`, `\\absnoovrlp`, `\\anchorText`, `\\shprslt`) and the blip ids (`\\bliptag`/`\\blipupi`) are named Info."
   ],
   "remaining": [
-    "comments, tracked revisions, textboxes/shapes (`\\shp`), OLE objects (`\\object`/`\\objdata`) and their stroke controls are still Loss; they need per-class mapping tasks (RC08 already took fields/bookmarks/notes). The independent WPS reference writes these as transitional `w:pict`/`v:shape` VML, which Strict forbids, so a DrawingML mapping is required.",
+    "grouped shapes (`\\shpgrp`), OLE objects (`\\object`/`\\objdata`), comments (`\\annotation`), tracked revisions and textboxes outside a shape are still Loss; they need per-class mapping tasks. The independent WPS reference writes shapes as transitional `w:pict`/`v:shape` VML, which Strict forbids, so DrawingML is required (floating `\\shp` shapes are now mapped).",
     "the implicit `\\s0` (a stylesheet whose first entry omits `\\s0`) is deliberately NOT materialized as a `w:default` Normal style: WPS does not do so, and doing it reflowed 004/017/018/021/051/087 (pagination 66 -> 63, 004 117 -> 156 pages). The `style:undefined-parent:rtf-s0` and `stylesheet:unbound-text` losses therefore stay.",
     "the language sentinels `\\lang0`/`\\lang1024` and other unknown LCIDs stay explicit `language:unknown-lcid` Loss (pinned by `unknown_language_lcid_remains_an_explicit_loss`/`unknown_alang_lcid_remains_an_explicit_loss`).",
-    "lower-confidence application/layout flags are deliberately left as Loss rather than blanket-renamed to Info: `\\newtblstyruls`, `\\notbrkcnstfrctbl`, `\\indrlsweleven`, `\\sectlinegrid`, `\\horzdoc`, `\\stshf*`, `\\clmar*`, `\\gaph`, `\\fet`, and the shape stroke controls."
+    "lower-confidence application/layout flags are deliberately left as Loss rather than blanket-renamed to Info: `\\newtblstyruls`, `\\notbrkcnstfrctbl`, `\\indrlsweleven`, `\\sectlinegrid`, `\\horzdoc`, `\\stshf*`, `\\clmar*`, `\\gaph`, `\\fet`, and the character stroke controls."
   ],
   "blocked": [],
   "checks": {
@@ -65,15 +66,26 @@
         "the WPS leading-group line feed matches the independent oracle text and is Info"
       ]
     },
+    "floating_shapes": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::floating_text_box_shape_maps_to_an_anchored_wps_shape",
+        "strict-ooxml-rtf/tests/structure.rs::floating_picture_shape_maps_to_an_anchored_picture"
+      ],
+      "assertions": [
+        "a \\shp maps to a wp:anchor with the shape extent and a wps:wsp/wps:txbx or pic:pic graphic",
+        "a shape picture keeps its media part and every processed shape document passes `check` -> ok: strict"
+      ]
+    },
     "corpus_ledger": {
       "status": "Measured",
       "date": "2026-10-12",
-      "receipt": "target/rtf-import/rc09-slice12/",
+      "receipt": "target/rtf-import/rc09-shapes/",
       "results": {
-        "import_losses": "4441 -> 1580 (-2861); 127228 -> 1580 across the session",
+        "import_losses": "1580 -> 1489 (-91); 127228 -> 1489 across the session",
         "pagination": "66/100 unchanged vs RC08-columns-layout (0 page-count changes)",
         "check": "100/100 ok: strict",
-        "output_identity": "all slices are severity-only (every imported DOCX SHA-256 identical) except picture crop, which changes only 075 and not its page count"
+        "output_identity": "the shape mapping changes only the five shape documents (003/017/075/078/092); the earlier severity-only slices are SHA-256 identical"
       }
     }
   }
