@@ -20,13 +20,17 @@
     "table styles (`{\\*\\tsN ...}` and `\\tsN`/`\\tsdN`) are a named Info (`destination:ts`, `table-style-compat:ts`/`:tsd`): every independent WPS reference writes a single built-in \"Normal Table\" style and reproduces the effective table properties directly from the rows the producer repeats.",
     "legacy numbering and non-visual metadata destinations are named Info: `{\\*\\pn ...}` (superseded by the list table), `\\defchp`/`\\defpap` (superseded by `w:docDefaults`), `\\template`, `\\datastore`, `\\blipuid`, `\\updnprop`, `\\mmathPr`, and `\\themedata`/`\\colorschememapping` (unreferenced because RTF resolves theme colours to the explicit colour table).",
     "the WPS leading-group line ending (`wps:leading-group-line-ending`) is a named Info, not a Loss: the WPS profile preserves the line feed exactly as WPS does (the reference writes the same `&#10;`), and the decoded body text matches the oracle for every affected document (005/058/059/075). This corrects the earlier conservative classification.",
-    "Word 97 shapes (`{\\shp ...}`) map to a `wp:anchor` instead of being dropped: `\\shpinst` geometry becomes `wp:positionH/V`/`wp:wrap*`/`relativeHeight`/`behindDoc`; `{\\sp{\\sn X}{\\sv Y}}` properties select the preset geometry, solid fill (`fillType`/`fillColor`), outline (`fLine`/`lineWidth`/`lineColor`) and the non-visual name/description; `\\shptxt` becomes `wps:txbx/w:txbxContent` (fields included); a nested `{\\pict}` (`pib`/`fillBlip`/`\\shppict`) becomes the anchored `pic:pic` and keeps its media. Shape layout hints with no slot (`\\posx`/`\\posy`, `\\pvpara`, `\\wraparound`, `\\dfrmtxt*`, `\\dxfrtext`, `\\absnoovrlp`, `\\anchorText`, `\\shprslt`) and the blip ids (`\\bliptag`/`\\blipupi`) are named Info."
+    "Word 97 shapes (`{\\shp ...}`) map to a `wp:anchor` instead of being dropped: `\\shpinst` geometry becomes `wp:positionH/V`/`wp:wrap*`/`relativeHeight`/`behindDoc`; `{\\sp{\\sn X}{\\sv Y}}` properties select the preset geometry, solid fill (`fillType`/`fillColor`), outline (`fLine`/`lineWidth`/`lineColor`) and the non-visual name/description; `\\shptxt` becomes `wps:txbx/w:txbxContent` (fields included); a nested `{\\pict}` (`pib`/`fillBlip`/`\\shppict`) becomes the anchored `pic:pic` and keeps its media. Shape layout hints with no slot (`\\posx`/`\\posy`, `\\pvpara`, `\\wraparound`, `\\dfrmtxt*`, `\\dxfrtext`, `\\absnoovrlp`, `\\anchorText`, `\\shprslt`) and the blip ids (`\\bliptag`/`\\blipupi`) are named Info.",
+    "a `\\shppict`/`\\nonshppict` picture pair is imported instead of dropped outside a shape: the primary `{\\*\\shppict{\\pict ...}}` keeps its `{\\pict}` so the image reaches the package, and the metafile `{\\nonshppict{\\pict ...}}` fallback is a named Info (witnesses 003, 005 - media grew by one PNG and four JPEGs).",
+    "an embedded OLE object (`{\\object ...}`) keeps its cached `\\result` preview as a picture: `\\objemb`/`\\objw`/`\\objh` and the `{\\*\\objclass}`/`{\\*\\oleclsid}`/`{\\*\\objname}`/`{\\*\\objtime}` metadata are named Info, the `{\\*\\objdata}` payload stays an explicit Loss (no Strict OLE activation), and witness 008 gains nine WMF previews.",
+    "a `\\shpgrp` group becomes a `wpg:wgp` with a `wpg:grpSpPr/a:xfrm` (offset `0,0`, extent from `\\shpleft`/`\\shptop`/`\\shpright`/`\\shpbottom`, child offset `0,0`) and the nested `{\\shp ...}` children as `wps:wsp` shapes placed by `relLeft`/`relTop` (or `geoRight`/`geoBottom`) relative to the group origin; a nested group is a named Loss (witness 092 gains three groups, eight `wps:wsp`).",
+    "a zero-width character outline (`\\strokewidth0`, the only value in the corpus) and its `\\strokec` colour are named Info: Strict's `w:outline` is a bare toggle with no width/colour and the independent WPS reference writes no character stroke; a positive `\\strokewidth` stays a Loss."
   ],
   "remaining": [
-    "grouped shapes (`\\shpgrp`), OLE objects (`\\object`/`\\objdata`), comments (`\\annotation`), tracked revisions and textboxes outside a shape are still Loss; they need per-class mapping tasks. The independent WPS reference writes shapes as transitional `w:pict`/`v:shape` VML, which Strict forbids, so DrawingML is required (floating `\\shp` shapes are now mapped).",
-    "the implicit `\\s0` (a stylesheet whose first entry omits `\\s0`) is deliberately NOT materialized as a `w:default` Normal style: WPS does not do so, and doing it reflowed 004/017/018/021/051/087 (pagination 66 -> 63, 004 117 -> 156 pages). The `style:undefined-parent:rtf-s0` and `stylesheet:unbound-text` losses therefore stay.",
+    "comments (`\\annotation`), tracked revisions and textboxes outside a shape are still Loss; none of them occur in the corpus, so they need portable fixtures before a mapping task. The independent WPS reference writes shapes as transitional `w:pict`/`v:shape` VML, which Strict forbids, so DrawingML is required (floating `\\shp`, `\\shpgrp` and OLE previews are now mapped).",
+    "the implicit `\\s0` (a stylesheet whose first entry omits `\\s0`) is deliberately NOT materialized as a `w:default` Normal style: WPS does not do so, and doing it reflowed 004/017/018/021/051/087 (pagination 66 -> 63, 004 117 -> 156 pages). The `style:undefined-parent:rtf-s0`, `stylesheet:unbound-text` and the first entry's `control:snext` losses therefore stay.",
     "the language sentinels `\\lang0`/`\\lang1024` and other unknown LCIDs stay explicit `language:unknown-lcid` Loss (pinned by `unknown_language_lcid_remains_an_explicit_loss`/`unknown_alang_lcid_remains_an_explicit_loss`).",
-    "lower-confidence application/layout flags are deliberately left as Loss rather than blanket-renamed to Info: `\\newtblstyruls`, `\\notbrkcnstfrctbl`, `\\indrlsweleven`, `\\sectlinegrid`, `\\horzdoc`, `\\stshf*`, `\\clmar*`, `\\gaph`, `\\fet`, and the character stroke controls."
+    "lower-confidence application/layout flags are deliberately left as Loss rather than blanket-renamed to Info: `\\newtblstyruls`, `\\notbrkcnstfrctbl`, `\\indrlsweleven`, `\\sectlinegrid`, `\\horzdoc`, `\\stshf*`, `\\clmar*`, `\\gaph`, `\\fet`, and the remaining table/compatibility flags."
   ],
   "blocked": [],
   "checks": {
@@ -77,15 +81,30 @@
         "a shape picture keeps its media part and every processed shape document passes `check` -> ok: strict"
       ]
     },
+    "embedded_pictures_ole_groups_and_stroke": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::shppict_pair_imports_the_primary_picture_and_names_the_fallback",
+        "strict-ooxml-rtf/tests/structure.rs::embedded_ole_object_imports_its_result_picture_and_names_the_payload",
+        "strict-ooxml-rtf/tests/structure.rs::grouped_shapes_map_to_an_anchored_wpg_group",
+        "strict-ooxml-rtf/tests/structure.rs::zero_width_character_stroke_is_info_and_a_real_stroke_is_a_loss"
+      ],
+      "assertions": [
+        "a shppict pair imports exactly the primary picture; the nonshppict fallback is Info",
+        "an OLE object imports its \\result preview, names the metadata Info and keeps \\objdata a Loss",
+        "a \\shpgrp maps to a wp:anchor whose graphic is a wpg:wgp with one wps:wsp per nested \\shp",
+        "a zero-width character stroke is Info while a positive width stays a Loss"
+      ]
+    },
     "corpus_ledger": {
       "status": "Measured",
       "date": "2026-10-12",
-      "receipt": "target/rtf-import/rc09-shapes/",
+      "receipt": "target/rtf-import/rc09-final3/",
       "results": {
-        "import_losses": "1580 -> 1489 (-91); 127228 -> 1489 across the session",
-        "pagination": "66/100 unchanged vs RC08-columns-layout (0 page-count changes)",
+        "import_losses": "1489 -> 1371 (-118) for the shppict/OLE/group/stroke slices; 127228 -> 1371 across the session",
+        "pagination": "66/100 unchanged vs RC08-columns-layout; only 005 (270 -> 272) and 008 (56 -> 37) change page count, both already mismatched against the reference",
         "check": "100/100 ok: strict",
-        "output_identity": "the shape mapping changes only the five shape documents (003/017/075/078/092); the earlier severity-only slices are SHA-256 identical"
+        "output_identity": "only 003/005/008/092 change SHA-256: the shppict/OLE slices add media to 003/005/008 and the group slice adds shapes to 092; the stroke slice is severity-only"
       }
     }
   }

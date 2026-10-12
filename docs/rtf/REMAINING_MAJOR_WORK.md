@@ -21,7 +21,7 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 | RC06 tables | Done | all table controls mapped (grid/merge/borders/shading/margins/widths/diagonals); nested tables = explicit Reject | parser + shared model |
 | RC07 metafiles | Planned | bounded WMF/EMF decoder in typed primitives | shared render |
 | RC08 regions/fields | InProgress | column layout + multi-paragraph field block **done (2026-10-11)**; remaining: custom marks, `\ftncn`, continuous-section same-page geometry | shared layout/model |
-| RC09 other losses | InProgress | revision/compat metadata + table/char controls with slots **done (2026-10-11)** (losses 83 671 → 4 441); picture crop, table styles, non-visual metadata, the WPS line ending **done (2026-10-12)** (→ 1 580); floating `\shp` shapes → DrawingML **done (2026-10-12)** (→ 1 489); remaining: `\shpgrp`/OLE/comments/revisions | shared model |
+| RC09 other losses | InProgress | revision/compat metadata + table/char controls with slots **done (2026-10-11)** (losses 83 671 → 4 441); picture crop, table styles, non-visual metadata, the WPS line ending **done (2026-10-12)** (→ 1 580); floating `\shp` shapes → DrawingML **done (2026-10-12)** (→ 1 489); shppict pictures, OLE `\result` previews, `\shpgrp` groups and the zero-width character stroke **done (2026-10-12)** (→ 1 371); remaining: comments/revisions/textboxes + the low-confidence flag tail | shared model |
 | RC10 hardening | непрерывно | fuzz/budgets/hostile на каждом новом декодере | все crates |
 | RC11 acceptance | Blocked | полный корпусный/профильный прогон, 100 verdicts | harness/assets |
 | RC12 public/CI | Planned | матрица фич, CI без WPS, публичный frontend | CI |
@@ -29,7 +29,7 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 Текущие dev-цифры (полный прогон `RC06-final3`, свежий WPS oracle 2026-10-11):
 import resource 100/100, text 99/100 (014 — WPS field-recompute quirk), `check`
 100/100 `ok: strict`, pagination 66/100, pixels 6/100 док. / 22/458 стр.
-Import losses 1 489 (после RC09-срезов 2026-10-12; было 1 580, 4 441, 11 394,
+Import losses 1 371 (после RC09-срезов 2026-10-12; было 1 489, 1 580, 4 441, 11 394,
 83 671 после RC06, 127 228 изначально).
 
 ---
@@ -181,23 +181,27 @@ borders `\chbrdr` → `w:rPr/w:bdr` (reader теперь сохраняет `w:b
 
 ## RC07 — WMF/EMF и свойства изображений
 
-**Состояние.** Не начат. Первый набор: 001, 004, 006 + portable fixtures.
-Сохранённый payload/extent — control, но не доказательство rendering.
+**Состояние (пересмотрено 2026-10-12).** После merge upstream
+`fix/wps-qa-2026-10-12` принёс `strict-ooxml-render-svg/src/metafile.rs`:
+`rasterize_metafile_preview` декодирует WMF/EMF через `emfsdk` и растеризует
+PNG-превью с бюджетом `max_single_uncompressed`; `paint/image.rs` вызывает его для
+`MediaKind::Wmf`/`Emf`, а при неудаче оставляет placeholder по extent (S4F.6).
+То есть decoder — **upstream**, и он уже подключён к SVG-рендеру. Наш RTF-слой
+уже сохраняет payload/extent и пишет `picture:wmf-retained-rendering-separate`/
+`:emf-…` как Info. Первый набор 001/004/006 + portable fixtures.
 
-**Контракт/подход.** Единый bounded record-decoder в typed vector primitives,
-используемый SVG и PDF; растеризация — отдельная явно помеченная policy с
-фиксированным DPI. Покрыть placeable/standard WMF, EMF transforms, object
-handles, SaveDC/RestoreDC, clipping, strokes/fills/text, scaling/crop, bitmap
-records. Неизвестный state-changing record → Degraded/Reject (не продолжать с
-недостоверным DC state). Стартовые ceilings: 100 000 records, 4096 live
-handles, 64 saved DC, decoded bitmap ≤ `max_single_uncompressed`.
+**Осталось (пересмотренный scope).** Не строить второй decoder. Проверить, что
+RTF-импортированные WMF/EMF (в т.ч. OLE `\result`-превью, witness 008, и
+`\shppict` метафайлы) действительно растеризуются через upstream-путь в SVG и
+PDF, и что bounds/бюджеты соблюдаются на hostile payload. Reference geometry и
+pixels обоих backend сверять на WMF/EMF-фикстурах.
 
 **DoD.** оригинальные media bytes сохраняются; reference geometry и pixels
 совпадают в обоих backend; malformed lengths/overflow/handles/records/decode
 bombs отклоняются до allocation и не обходят бюджеты.
 
-**Зависимости.** RC00/RC01. **Риск.** высокий (новый decoder; обязателен RC10
-сразу).
+**Зависимости.** RC00/RC01; upstream `render-svg::metafile`. **Риск.** средний
+(decoder уже есть; остаётся интеграционная проверка).
 
 ---
 
@@ -306,11 +310,28 @@ Asian layout-контролы, чья bare-форма равна Strict-дефо
   без слота (`\posx/y`, `\pvpara`, `\wraparound`, …) и blip-id → Info; `\shpgrp`
   — explicit Loss. Свидетели 003/017/075/078/092.
 
-Итог: import losses **127 228 → 83 671 → 11 394 → 4 441 → 1 580 → 1 489**;
-pagination
-66/100 (0 изменений номеров страниц против `RC08-columns-layout`), `check`
-100/100 `ok: strict`. Все срезы кроме crop severity-only → DOCX SHA-256
-идентичен; crop меняет только 075 (без смены числа страниц). Тесты —
+**Продолжение (2026-10-12b).**
+- **`\shppict`/`\nonshppict`** вне shape: первичный `{\*\shppict{\pict …}}`
+  импортируется (картинка попадает в пакет), metafile-fallback `{\nonshppict…}`
+  → Info. Свидетели 003 (+1 PNG) и 005 (+4 JPEG, раньше media было 0).
+- **OLE `{\object …}`**: кэшированный `\result`-превью импортируется как
+  картинка; `\objemb`/`\objw`/`\objh` и `{\*\objclass}`/`{\*\oleclsid}`/
+  `{\*\objname}`/`{\*\objtime}` → Info; `{\*\objdata}` payload остаётся явным
+  Loss (активация OLE в Strict непредставима). Свидетель 008 (+9 WMF-превью).
+- **`\shpgrp`** → `wpg:wgp`: `wpg:grpSpPr/a:xfrm` (off 0,0; ext из
+  `\shpleft/top/right/bottom`; chOff 0,0), дочерние `{\shp …}` → `wps:wsp` с
+  `relLeft/relTop` (или `geoRight/geoBottom`) относительно начала группы;
+  вложенная группа — named Loss. Свидетель 092 (+3 группы, 8 `wps:wsp`).
+- **character stroke**: `\strokewidth0` (единственное значение в корпусе) и его
+  `\strokec` → Info (у Strict `w:outline` нет ширины/цвета, WPS не пишет
+  stroke); положительный `\strokewidth` остаётся Loss.
+
+Итог: import losses **127 228 → 83 671 → 11 394 → 4 441 → 1 580 → 1 489 →
+1 371**; pagination
+66/100 (меняются страницы только 005 270→272 и 008 56→37, оба и раньше не
+совпадали с ref; `RC08-columns-layout`), `check`
+100/100 `ok: strict`. DOCX SHA-256 меняется ровно у 003/005/008/092 (новые media
+и группы), stroke-срез severity-only. Тесты —
 `structure.rs::{legacy_layout_and_revision_controls_are_info_not_losses,
 non_default_legacy_layout_controls_stay_losses,
 document_settings_and_compat_controls_are_info,
@@ -323,18 +344,22 @@ absent_picture_crop_writes_no_source_rectangle,
 table_style_definition_and_reference_are_info,
 legacy_numbering_and_non_visual_metadata_destinations_are_info,
 floating_text_box_shape_maps_to_an_anchored_wps_shape,
-floating_picture_shape_maps_to_an_anchored_picture}` и
+floating_picture_shape_maps_to_an_anchored_picture,
+shppict_pair_imports_the_primary_picture_and_names_the_fallback,
+embedded_ole_object_imports_its_result_picture_and_names_the_payload,
+grouped_shapes_map_to_an_anchored_wpg_group,
+zero_width_character_stroke_is_info_and_a_real_stroke_is_a_loss}` и
 `import.rs::wps_leading_group_line_endings_are_info_not_losses`. Карточка
 [compatibility/RC09](compatibility/RC09/STATUS.json).
 
-**Осталось.** (a) content-классы — grouped shapes (`\shpgrp`), OLE
-(`\object`/`\objdata`), comments (`\annotation`), revisions, textboxes вне
-shape; WPS пишет их как transitional `w:pict`/`v:shape`, Strict его запрещает;
-floating `\shp` уже смаплен в `wp:anchor`; (b) language-сентинелы
+**Осталось.** (a) content-классы — comments (`\annotation`), revisions,
+textboxes вне shape; в корпусе не наблюдаются, нужны portable fixtures; WPS
+пишет shapes как transitional `w:pict`/`v:shape`, Strict его запрещает;
+floating `\shp`, `\shpgrp` и OLE-превью уже смаплены; (b) language-сентинелы
 `\lang0`/`\lang1024` и прочие unknown LCID закреплены как Loss тестами;
 (c) implicit `\s0` сознательно не материализуется; (d) хвост низкоуверенных
 application/layout-флагов (`\newtblstyruls`, `\sectlinegrid`, `\horzdoc`,
-`\stshf*`, `\clmar*`, `\gaph`, `\fet`, character-stroke) сознательно не
+`\stshf*`, `\clmar*`, `\gaph`, `\fet`) сознательно не
 переклассифицирован.
 
 **DoD.** у каждого наблюдаемого класса — implemented semantics + independent
@@ -417,13 +442,17 @@ unsupported statuses и подробный report. Merge/release — отдел�
    **explicit non-support** (в корпусе не наблюдаются). Далее RC04.
 4. **RC04 resolved-cascade** (resolver) и corpus geometry — параллельно с RC02/RC03.
 5. **RC03 line-level bidi** — после bidi-oracle с per-char levels.
-6. **RC07 metafiles** (отдельная очередь) + RC10.
+6. **RC07 metafiles** — scope пересмотрен (2026-10-12): decoder — upstream
+   `render-svg::metafile` (`emfsdk`); остаётся интеграционная проверка RTF
+   WMF/EMF (incl. OLE-превью) + RC10.
 7. **RC09 по семантическому impact** — сделано (2026-10-11): revision/compat
    metadata, table/char-контролы с реальными слотами и метаданные-дестинации
    (losses 83 671 → 4 441); продолжено (2026-10-12): picture crop,
    `\picprop`/`\ts`/`\pn`/не-визуальные метаданные Info, WPS line-ending и
-   floating `\shp` shapes → `wp:anchor` (→ 1 489); далее — `\shpgrp`, OLE
-   (`\object`), comments/revisions/textboxes.
+   floating `\shp` shapes → `wp:anchor` (→ 1 489); продолжено (2026-10-12b):
+   `\shppict`/`\nonshppict`, OLE `\result`-превью, `\shpgrp` → `wpg:wgp` и
+   character-stroke (→ 1 371); далее — comments/revisions/textboxes (нужны
+   fixtures) и хвост низкоуверенных флагов.
 8. **RC11** после RC02–RC10; **RC12** после RC11.
 
 Правила параллелизма из плана сохраняются: shared `parser.rs`, model и layout не
