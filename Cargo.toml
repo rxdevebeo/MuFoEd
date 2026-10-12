@@ -21,6 +21,7 @@ members = [
     "strict-ooxml-convert",
     "strict-ooxml-rtf",
     "strict-ooxml-ocr",
+    "strict-ooxml-djvu",
     "strict-ooxml-write",
     "strict-ooxml",
     "strict-ooxml-cli",
@@ -109,3 +110,10 @@ must_use_candidate = "allow"
 hayro = { path = "vendor/hayro" }
 hayro-interpret = { path = "vendor/hayro-interpret" }
 hayro-syntax = { path = "vendor/hayro-syntax" }
+
+djvu-bzz = { path = "vendor/djvu-bzz" }
+djvu-jb2 = { path = "vendor/djvu-jb2" }
+
+# WMF/EMF previews: logical sizes mapped to the canvas, text alignment, dx and
+# the Symbol font. See `vendor/README.md`.
+emfsdk = { path = "vendor/emfsdk" }

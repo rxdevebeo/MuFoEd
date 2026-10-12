@@ -334,7 +334,8 @@ pub const REMOVALS: &[Removal] = &[
     wml(
         "shapeDefaults",
         Severity::Ignorable,
-        "Transitional-only default shape properties; Strict does not declare it",
+        "Transitional-only VML default shape properties (o:shapedefaults with v:fill, \
+         v:stroke, o:colormru; o:shapelayout with o:idmap, o:rules, o:r); Strict carries no VML",
     ),
     wml(
         "hdrShapeDefaults",
@@ -467,14 +468,20 @@ pub fn twips_to_universal(value: &str) -> Option<String> {
     // represent every twip value without loss. The trailing zero is then trimmed,
     // because `5.40pt` and `5.4pt` are the same number and a document that reads
     // `5.4pt` is the one a producer would have written.
-    let hundredths = twips * 5;
+    // The sign is kept apart: `-5` twips is `-0.25pt`, and `-25 / 100` is `0`,
+    // which wrote a negative table indent as a positive one.
+    let sign = if twips < 0 { "-" } else { "" };
+    let hundredths = twips.unsigned_abs() * 5;
     let whole = hundredths / 100;
-    let rest = (hundredths % 100).abs();
+    let rest = hundredths % 100;
     if rest == 0 {
-        return Some(format!("{whole}pt"));
+        return Some(format!("{sign}{whole}pt"));
     }
     let fraction = format!("{rest:02}");
-    Some(format!("{whole}.{}pt", fraction.trim_end_matches('0')))
+    Some(format!(
+        "{sign}{whole}.{}pt",
+        fraction.trim_end_matches('0')
+    ))
 }
 
 /// `ST_TextScale`: a bare number where Strict's pattern wants a `%`.
@@ -522,7 +529,10 @@ pub fn drawingml_thousandths_percent(value: &str) -> Option<String> {
     if fraction == 0 {
         Some(format!("{sign}{whole}%"))
     } else {
-        Some(format!("{sign}{whole}.{fraction:03}%"))
+        // `ST_FixedPercentage` and `ST_PositiveFixedPercentage` admit two
+        // decimals, so `300` is `0.3%`, not `0.300%`: the trailing zeros go.
+        let digits = format!("{fraction:03}");
+        Some(format!("{sign}{whole}.{}%", digits.trim_end_matches('0')))
     }
 }
 
@@ -558,8 +568,69 @@ pub fn is_drawingml_percentage_attr(element: &str, attribute: &str) -> bool {
     {
         return true;
     }
+    // `CT_TextSpacingPercent/@val` (`a:spcPct` in line and paragraph spacing),
+    // `CT_TextBulletSizePercent/@val` (`a:buSzPct`) and
+    // `CT_LineJoinMiterProperties/@lim` (`a:miter`): thousandths in
+    // Transitional as well - 1161 of the census's schema violations were
+    // `a:spcPct` alone.
+    if matches!(
+        (element, attribute),
+        ("spcPct" | "buSzPct", "val") | ("miter", "lim")
+    ) {
+        return true;
+    }
+    // The blip and shape effects the writer now keeps as markup: luminance,
+    // alpha, bi-level, HSL and tint amounts, and the shadow and reflection
+    // scales and stops. Their angles (`hue`, `kx`, `dir`, `fadeDir`) are not
+    // percentages.
+    if matches!(
+        (element, attribute),
+        ("lum", "bright" | "contrast")
+            | ("alphaModFix" | "tint", "amt")
+            | ("alphaBiLevel" | "biLevel", "thresh")
+            | ("alphaRepl", "a")
+            | ("hsl", "sat" | "lum")
+            | ("outerShdw", "sx" | "sy")
+            | (
+                "reflection",
+                "stA" | "stPos" | "endA" | "endPos" | "sx" | "sy"
+            )
+    ) {
+        return true;
+    }
     // `CT_TextCharacterProperties/@baseline` is `ST_Percentage`.
     matches!(element, "defRPr" | "rPr" | "endParaRPr") && attribute == "baseline"
+}
+
+/// Whether a chart attribute holds a whole percent - `150`, not thousandths -
+/// that Strict spells as a percent string (`150%`): the gap, overlap, label
+/// offset, hole, pie, bubble and 3-D depth/height amounts of `c:` charts.
+#[must_use]
+pub fn is_chart_whole_percent_attr(element: &str, attribute: &str) -> bool {
+    attribute == "val"
+        && matches!(
+            element,
+            "gapWidth"
+                | "gapDepth"
+                | "overlap"
+                | "lblOffset"
+                | "holeSize"
+                | "secondPieSize"
+                | "bubbleScale"
+                | "depthPercent"
+                | "hPercent"
+        )
+}
+
+/// `150` as `150%`; `None` for a value that already has the sign or is no
+/// integer.
+#[must_use]
+pub fn whole_percent(value: &str) -> Option<String> {
+    if value.ends_with('%') {
+        return None;
+    }
+    let number: i64 = value.trim().parse().ok()?;
+    Some(format!("{number}%"))
 }
 
 /// Whether an element/parent pair carries a bare `ST_MeasurementOrPercent`.
@@ -589,8 +660,9 @@ pub fn is_ignorable_extension(uri: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        drawingml_thousandths_percent, is_drawingml_percentage_attr, map_value, removal_for,
-        rename_attribute, rename_element, REMOVALS, RENAMES,
+        drawingml_thousandths_percent, is_chart_whole_percent_attr, is_drawingml_percentage_attr,
+        map_value, removal_for, rename_attribute, rename_element, twips_to_universal,
+        whole_percent, REMOVALS, RENAMES,
     };
     use crate::normalize::report::Severity;
 
@@ -758,6 +830,43 @@ mod tests {
     }
 
     #[test]
+    fn the_census_carriers_are_drawingml_percentages() {
+        assert!(is_drawingml_percentage_attr("spcPct", "val"));
+        assert!(is_drawingml_percentage_attr("buSzPct", "val"));
+        assert!(is_drawingml_percentage_attr("miter", "lim"));
+        assert!(!is_drawingml_percentage_attr("spcPts", "val"));
+        assert!(is_drawingml_percentage_attr("lum", "contrast"));
+        assert!(is_drawingml_percentage_attr("reflection", "endPos"));
+        assert!(is_drawingml_percentage_attr("outerShdw", "sx"));
+        assert!(!is_drawingml_percentage_attr("outerShdw", "kx"));
+        assert!(!is_drawingml_percentage_attr("hsl", "hue"));
+        assert_eq!(
+            drawingml_thousandths_percent("20000").as_deref(),
+            Some("20%")
+        );
+        assert_eq!(
+            drawingml_thousandths_percent("95000").as_deref(),
+            Some("95%")
+        );
+        assert_eq!(
+            drawingml_thousandths_percent("800000").as_deref(),
+            Some("800%")
+        );
+    }
+
+    #[test]
+    fn chart_amounts_are_whole_percents() {
+        assert!(is_chart_whole_percent_attr("gapWidth", "val"));
+        assert!(is_chart_whole_percent_attr("overlap", "val"));
+        assert!(is_chart_whole_percent_attr("lblOffset", "val"));
+        assert!(!is_chart_whole_percent_attr("gapWidth", "lim"));
+        assert_eq!(whole_percent("150").as_deref(), Some("150%"));
+        assert_eq!(whole_percent("-100").as_deref(), Some("-100%"));
+        assert_eq!(whole_percent("100%"), None);
+        assert_eq!(whole_percent("wide"), None);
+    }
+
+    #[test]
     fn drawingml_thousandths_percent_converts_bare_thousandths() {
         assert_eq!(drawingml_thousandths_percent("0").as_deref(), Some("0%"));
         assert_eq!(
@@ -769,6 +878,16 @@ mod tests {
             Some("1.253%")
         );
         assert_eq!(drawingml_thousandths_percent("65%"), None);
+        assert_eq!(twips_to_universal("-5").as_deref(), Some("-0.25pt"));
+        assert_eq!(twips_to_universal("-120").as_deref(), Some("-6pt"));
+        assert_eq!(
+            drawingml_thousandths_percent("300").as_deref(),
+            Some("0.3%")
+        );
+        assert_eq!(
+            drawingml_thousandths_percent("12500").as_deref(),
+            Some("12.5%")
+        );
         assert_eq!(
             drawingml_thousandths_percent("-65000").as_deref(),
             Some("-65%")

@@ -80,6 +80,14 @@ pub struct ParagraphProperties {
     pub word_wrap: TriState,
     /// Snap to grid (`w:snapToGrid`).
     pub snap_to_grid: TriState,
+    /// Space between East Asian and Latin text (`w:autoSpaceDE`).
+    pub auto_space_de: TriState,
+    /// Space between East Asian text and numbers (`w:autoSpaceDN`).
+    pub auto_space_dn: TriState,
+    /// Right indent follows the document grid (`w:adjustRightInd`).
+    pub adjust_right_ind: TriState,
+    /// A framed paragraph may not overlap another frame (`w:suppressOverlap`).
+    pub suppress_overlap: TriState,
     /// Text frame (`w:framePr`), AUD-46. Render stays in-flow with a `partial` record.
     pub frame: Option<FrameProperties>,
     /// Source location of `w:pPr`.
@@ -133,6 +141,10 @@ pub struct RunProperties {
     pub small_caps: TriState,
     /// Right-to-left run (`w:rtl`).
     pub rtl: TriState,
+    /// Complex-script run (`w:cs`): the run uses its complex-script font and toggles.
+    pub complex_script: TriState,
+    /// The paragraph mark is hidden even for the style separator (`w:specVanish`).
+    pub spec_vanish: TriState,
     /// Hidden text (`w:vanish`).
     pub vanish: TriState,
     /// Emboss (`w:emboss`).
@@ -184,10 +196,18 @@ pub struct TableProperties {
     pub look: Option<TableLook>,
     /// Table indent (`w:tblInd`).
     pub indent: Option<Twips>,
+    /// `w:tblInd/@w:type` as read. `None` is the writer's default (`dxa`);
+    /// `nil` and the other `ST_TblWidth` values are kept so a write puts back
+    /// the type the source carried rather than rewriting it to `dxa`.
+    pub indent_kind: Option<super::values::WidthKind>,
     /// Visual right-to-left table (`w:bidiVisual`).
     pub bidi_visual: bool,
+    /// Presence of bidiVisual, including explicit false in style overrides.
+    pub bidi_visual_state: crate::model::values::TriState,
     /// Floating-table positioning (`w:tblpPr`), AUD-46. Render stays in-flow.
     pub positioning: Option<TablePositioning>,
+    /// Whether other floating tables may overlap this table (absent means yes).
+    pub allow_overlap: Option<bool>,
     /// Spacing between cells (`w:tblCellSpacing`), AUD-46.
     pub cell_spacing: Option<Width>,
     /// Rows in one style band (`w:tblStyleRowBandSize`).
@@ -203,10 +223,13 @@ pub struct TableProperties {
 pub struct RowProperties {
     /// Row height (`w:trHeight`).
     pub height: Option<super::values::RowHeight>,
-    /// Repeat as a header row on each page (`w:tblHeader`).
-    pub header: bool,
+    /// Repeat as a header row on each page (`w:tblHeader`). `Off` is an
+    /// explicit `w:val="0"`, which overrides a table style that turns it on.
+    pub header: TriState,
     /// Do not split the row across pages (`w:cantSplit`).
     pub cant_split: bool,
+    /// Explicit presence/value of `w:cantSplit` for style inheritance.
+    pub cant_split_state: TriState,
     /// Row cell margins (`w:tblCellMar`).
     pub cell_margins: CellMargins,
     /// Grid columns before the row (`w:gridBefore`).
@@ -223,6 +246,10 @@ pub struct RowProperties {
     pub cell_spacing: Option<Width>,
     /// Borders from `w:tblPrEx/w:tblBorders`. Row exceptions are not `w:trPr`.
     pub exception_borders: Borders,
+    /// The row's `w:tblPrEx` as read: width, indent, cell margins, look and the
+    /// rest of `CT_TblPrEx`, written back when present. A row built in code
+    /// leaves it `None` and has only [`Self::exception_borders`] written.
+    pub exception: Option<Box<TableProperties>>,
     /// Revision id (`w:rsid`).
     pub rsid: Option<Arc<str>>,
     /// Source location of `w:trPr`.
@@ -244,16 +271,26 @@ pub struct CellProperties {
     pub text_direction: Option<TextDirection>,
     /// Borders (`w:tcBorders`).
     pub borders: Borders,
+    /// Top-left to bottom-right diagonal (`w:tcBorders/w:tl2br`).
+    pub diagonal_down: Option<super::values::Border>,
+    /// Top-right to bottom-left diagonal (`w:tcBorders/w:tr2bl`).
+    pub diagonal_up: Option<super::values::Border>,
     /// Shading (`w:shd`).
     pub shading: Option<Shading>,
     /// Cell margins (`w:tcMar`).
     pub margins: CellMargins,
     /// Hide the cell mark (`w:hideMark`).
     pub hide_mark: bool,
+    /// Presence-aware value, including an explicit false override.
+    pub hide_mark_state: TriState,
     /// Fit text (`w:tcFitText`).
     pub fit_text: bool,
+    /// Presence-aware value, including an explicit false override.
+    pub fit_text_state: TriState,
     /// Do not wrap text (`w:noWrap`).
     pub no_wrap: bool,
+    /// Presence-aware value, including an explicit false override.
+    pub no_wrap_state: TriState,
     /// Source location of `w:tcPr`.
     pub location: Option<SourceLocation>,
 }
@@ -306,7 +343,8 @@ pub struct Columns {
     pub count: Option<u16>,
     /// Default space between columns in twips.
     pub space: Option<Twips>,
-    /// Equal column widths.
+    /// Equal column widths (`w:equalWidth`). When the attribute is absent it
+    /// is `true` unless `w:col` children define the columns (§17.6.4).
     pub equal_width: bool,
     /// Draw a separator between columns.
     pub separator: bool,
@@ -407,8 +445,9 @@ pub struct FrameProperties {
     pub y_align: Option<Arc<str>>,
     /// Height rule (`w:hRule`).
     pub height_rule: Option<Arc<str>>,
-    /// Lock against dragging (`w:anchorLock`).
-    pub anchor_lock: bool,
+    /// Lock against dragging (`w:anchorLock`): `Some(false)` is an explicit
+    /// off as read, kept so it is written back rather than dropped.
+    pub anchor_lock: Option<bool>,
 }
 
 /// Which header/footer a reference points at.
@@ -552,6 +591,8 @@ pub struct PageBorder {
     pub theme_color: Option<Box<ThemeColorRef>>,
     /// Shadow (`w:shadow`).
     pub shadow: bool,
+    /// Reverse compound border appearance.
+    pub frame: bool,
 }
 
 /// Page borders (`w:pgBorders`), Stage 5B.

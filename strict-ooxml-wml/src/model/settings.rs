@@ -111,6 +111,9 @@ pub struct Settings {
     /// survives with its key/values and none of its switches is a document whose
     /// line breaking has silently changed.
     pub compat_flags: CompatFlags,
+    /// The part had a `w:compat`, even an empty one. Word writes `<w:compat/>`
+    /// in most of the corpus; it means no switches, and is written back as read.
+    pub compat_present: bool,
     /// Theme font languages (`w:themeFontLang`: `val`, `eastAsia`, `bidi`).
     pub theme_font_lang: Option<ThemeFontLang>,
     /// Footnote properties (`w:footnotePr`).
@@ -121,6 +124,30 @@ pub struct Settings {
     pub click_and_type: bool,
     /// Recognise the document as having a "mirror margins" preference.
     pub mirror_margins: bool,
+    /// Explicit `w:mirrorMargins w:val="false"`. Absence is neither flag.
+    ///
+    /// Word writes the off value explicitly (`w:val="0"`), and the reader used to
+    /// fold it into "absent", so the element left `settings.xml` with nothing in
+    /// the report saying so. Same shape as
+    /// [`even_and_odd_headers_off`](Self::even_and_odd_headers_off).
+    pub mirror_margins_off: bool,
+    /// Explicit `w:autoHyphenation w:val="false"`. Absence is neither flag.
+    pub auto_hyphenation_off: bool,
+    /// `w:activeWritingStyle` entries (`CT_WritingStyle`, unbounded), each as
+    /// its `w:` attributes (`lang`, `vendorID`, `dllVersion`, `nlCheck`,
+    /// `checkStyle`, `appName`) in the order read.
+    ///
+    /// Grammar-checker state, but a `CT_Settings` child Strict declares, so it is
+    /// carried rather than dropped.
+    pub active_writing_styles: Vec<Vec<(Arc<str>, Arc<str>)>>,
+    /// `w:stylePaneSortMethod/@w:val` as read.
+    ///
+    /// Transitional also allows the hexadecimal spellings `0000`..`0005`; Strict
+    /// `ST_StylePaneSortMethods` has only the names, so the writer maps them.
+    pub style_pane_sort_method: Option<Arc<str>>,
+    /// `w:smartTagType` entries (`CT_SmartTagType`, unbounded), each as its `w:`
+    /// attributes (`namespaceuri`, `name`, `url`) in the order read.
+    pub smart_tag_types: Vec<Vec<(Arc<str>, Arc<str>)>>,
     /// Put the gutter at the top of the page rather than the side (`w:gutterAtTop`).
     ///
     /// **A document setting, not a section one.** Strict's `EG_SectPrContents`
@@ -277,7 +304,7 @@ pub struct CompatFlags {
     pub space_for_underline: bool,
     /// `w:balanceSingleByteDoubleByteWidth` — balance single and double byte widths.
     pub balance_single_byte_double_byte_width: bool,
-    /// `w:doNotLeaveBackslashAlone` — do not leave a backslash alone at line end.
+    /// `w:doNotLeaveBackslashAlone` — display backslashes as yen signs.
     pub do_not_leave_backslash_alone: bool,
     /// `w:ulTrailSpace` — underline trailing spaces.
     pub underline_trailing_space: bool,
@@ -285,7 +312,7 @@ pub struct CompatFlags {
     pub do_not_expand_shift_return: bool,
     /// `w:adjustLineHeightInTable` — add document grid line pitch to line height.
     pub adjust_line_height_in_table: bool,
-    /// `w:applyBreakingRules` — apply East Asian breaking rules.
+    /// `w:applyBreakingRules` — legacy Ethiopic and Amharic line breaking.
     pub apply_breaking_rules: bool,
 }
 
@@ -425,11 +452,11 @@ pub struct MathProperties {
     pub math_font: Option<Arc<str>>,
     /// `m:brkBin` — where a binary operator may break.
     pub break_binary_operator: Option<Arc<str>>,
-    /// `m:brkBinSub` — how a binary operator breaks in a subscript.
+    /// `m:brkBinSub` — signs used when repeating a subtraction at a line break.
     pub break_binary_sub: Option<Arc<str>>,
     /// `m:smallFrac` — render fractions smaller than a line at line height.
     pub small_fraction: Option<Arc<str>>,
-    /// `m:dispDef` — display the equation by default.
+    /// `m:dispDef` — override paragraph settings with display math defaults.
     pub display_default: Option<Arc<str>>,
     /// `m:lMargin` — left margin of an equation, twips.
     pub left_margin: Option<Arc<str>>,

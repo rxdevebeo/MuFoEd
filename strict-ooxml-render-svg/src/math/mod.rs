@@ -13,5 +13,32 @@ pub(crate) mod layout;
 pub(crate) mod mathml;
 pub(crate) mod shapes;
 
-pub(crate) use layout::{layout_display, layout_inline};
+pub(crate) use layout::{layout_display, layout_inline_wrapped};
 pub use mathml::{math_expression_to_mathml, math_paragraph_to_mathml, MathMlError};
+/// Keep cached field results visible and hide their instructions without
+/// changing the source model that the DOCX writer serializes.
+pub(crate) fn visible_nodes(
+    nodes: &[strict_ooxml_wml::model::math::MathNode],
+) -> impl Iterator<Item = &strict_ooxml_wml::model::math::MathNode> {
+    use strict_ooxml_wml::model::{math::MathNode, values::FieldCharType};
+    let mut results = Vec::new();
+    nodes.iter().filter(move |node| {
+        if let MathNode::Run(run) = node {
+            if let Some(kind) = run.field_char {
+                match kind {
+                    FieldCharType::Begin => results.push(false),
+                    FieldCharType::Separate => {
+                        if let Some(result) = results.last_mut() {
+                            *result = true;
+                        }
+                    }
+                    FieldCharType::End => {
+                        results.pop();
+                    }
+                }
+                return false;
+            }
+        }
+        results.iter().all(|result| *result)
+    })
+}

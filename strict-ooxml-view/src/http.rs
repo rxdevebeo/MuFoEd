@@ -10,6 +10,14 @@
 //! must not hang the process (AUD-16): one request per connection, a bounded
 //! request line and headers, a body ceiling, and read/write timeouts.
 //! `Content-Length` on every response; always `Connection: close`.
+//!
+//! And one check a loopback server needs that a public one would not: the
+//! `Host` header must name loopback. Binding to 127.0.0.1 keeps other machines
+//! out, but not a web page in the user's own browser — a hostile site whose DNS
+//! name is re-pointed at 127.0.0.1 (DNS rebinding) is then *same-origin* with
+//! this server and can read the corpus. Its requests carry its own name in
+//! `Host`, so a request for any other host is answered `421` and never reaches
+//! a route.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -87,12 +95,23 @@ impl Response {
         }
     }
 
+    /// A `421` when `Host` does not name this loopback server (DNS rebinding).
+    #[must_use]
+    pub(crate) fn misdirected() -> Self {
+        Self {
+            status: 421,
+            content_type: "text/plain; charset=utf-8",
+            body: b"misdirected request: Host must be 127.0.0.1, localhost or [::1]".to_vec(),
+        }
+    }
+
     /// The reason phrase for the status.
     const fn reason(&self) -> &'static str {
         match self.status {
             400 => "Bad Request",
             404 => "Not Found",
             413 => "Payload Too Large",
+            421 => "Misdirected Request",
             431 => "Request Header Fields Too Large",
             _ => "OK",
         }
@@ -125,9 +144,28 @@ pub(crate) fn percent_decode(input: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
+/// Whether a `Host` header value names this server on loopback.
+///
+/// The names a browser sends for a page it loaded from this server:
+/// `127.0.0.1`, `localhost` or `[::1]`, with this server's `port` or with no
+/// port at all (which a browser only omits for port 80). Anything else —
+/// another name, another port, a missing header — is a request that was not
+/// meant for this server, or was meant for it by somebody else's page.
+#[must_use]
+pub(crate) fn host_allowed(host: Option<&str>, port: u16) -> bool {
+    let Some(host) = host.map(str::trim) else {
+        return false;
+    };
+    ["127.0.0.1", "localhost", "[::1]"].iter().any(|name| {
+        host.eq_ignore_ascii_case(name) || host.eq_ignore_ascii_case(&format!("{name}:{port}"))
+    })
+}
+
 /// Serves `handler` on `listener` until `stop` is set.
 ///
 /// `handler` receives the decoded path and query and returns a [`Response`].
+/// A request whose `Host` does not name this server on loopback is answered
+/// `421` without reaching `handler` ([`host_allowed`]).
 /// The loop is single-threaded and deliberately so: a viewer is opened by one
 /// person at a time, and one slow render must not interleave with a page
 /// request. Each connection answers at most one request and then closes
@@ -136,13 +174,14 @@ pub(crate) fn serve<F>(listener: &TcpListener, stop: &AtomicBool, handler: F) ->
 where
     F: Fn(&str, &str) -> Response,
 {
+    let port = listener.local_addr()?.port();
     listener.set_nonblocking(true)?;
     while !stop.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, _)) => {
                 // A single failed connection must not stop the server: a
                 // browser that cancels a request mid-body is routine.
-                let _ = handle_connection(stream, &handler);
+                let _ = handle_connection(stream, port, &handler);
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(std::time::Duration::from_millis(20));
@@ -154,7 +193,7 @@ where
 }
 
 /// Handles one connection: timeouts on, one request, then close.
-fn handle_connection<F>(stream: TcpStream, handler: &F) -> std::io::Result<()>
+fn handle_connection<F>(stream: TcpStream, port: u16, handler: &F) -> std::io::Result<()>
 where
     F: Fn(&str, &str) -> Response,
 {
@@ -170,6 +209,9 @@ where
     let response = match read_request(&mut reader)? {
         ReadOutcome::Closed => return Ok(()),
         ReadOutcome::Rejected(response) => response,
+        ReadOutcome::Ok(request) if !host_allowed(request.host.as_deref(), port) => {
+            Response::misdirected()
+        }
         ReadOutcome::Ok(request) => handler(&request.path, &request.query),
     };
     write_response(&mut writer, &response)
@@ -182,6 +224,8 @@ struct Request {
     path: String,
     /// Decoded query string.
     query: String,
+    /// The `Host` header, when the request sent one.
+    host: Option<String>,
 }
 
 /// Result of reading one HTTP request head.
@@ -216,6 +260,7 @@ fn read_request(reader: &mut impl BufRead) -> std::io::Result<ReadOutcome> {
 
     let mut header_count = 0usize;
     let mut content_length: Option<u64> = None;
+    let mut host: Option<String> = None;
     loop {
         let header_line = match read_line(reader)? {
             LineRead::Eof => break,
@@ -232,11 +277,12 @@ fn read_request(reader: &mut impl BufRead) -> std::io::Result<ReadOutcome> {
             return Ok(ReadOutcome::Rejected(Response::header_fields_too_large()));
         }
         let header = String::from_utf8_lossy(&header_line);
-        if let Some(value) = header.split_once(':').and_then(|(name, value)| {
-            name.eq_ignore_ascii_case("content-length")
-                .then_some(value.trim())
-        }) {
-            content_length = value.parse().ok();
+        if let Some((name, value)) = header.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                content_length = value.trim().parse().ok();
+            } else if name.eq_ignore_ascii_case("host") {
+                host = Some(value.trim().to_owned());
+            }
         }
     }
 
@@ -255,6 +301,7 @@ fn read_request(reader: &mut impl BufRead) -> std::io::Result<ReadOutcome> {
         return Ok(ReadOutcome::Ok(Request {
             path: "/__method".to_owned(),
             query: String::new(),
+            host,
         }));
     }
     let (path, query) = match target.split_once('?') {
@@ -264,6 +311,7 @@ fn read_request(reader: &mut impl BufRead) -> std::io::Result<ReadOutcome> {
     Ok(ReadOutcome::Ok(Request {
         path: percent_decode(&path).unwrap_or_else(|| "/".to_owned()),
         query: percent_decode(&query).unwrap_or_default(),
+        host,
     }))
 }
 
@@ -322,8 +370,8 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{
-        percent_decode, read_request, serve, ReadOutcome, Response, IO_TIMEOUT, MAX_HEADERS,
-        MAX_LINE_BYTES,
+        host_allowed, percent_decode, read_request, serve, ReadOutcome, Response, IO_TIMEOUT,
+        MAX_HEADERS, MAX_LINE_BYTES,
     };
 
     #[test]
@@ -453,6 +501,91 @@ mod tests {
         assert_eq!(Response::bad_request("x").status, 400);
         assert_eq!(Response::payload_too_large().status, 413);
         assert_eq!(Response::header_fields_too_large().status, 431);
+        assert_eq!(Response::misdirected().status, 421);
+        assert_eq!(Response::misdirected().reason(), "Misdirected Request");
+    }
+
+    #[test]
+    fn the_host_header_is_read() {
+        let raw = b"GET / HTTP/1.1\r\nhOsT:  localhost:8181 \r\n\r\n";
+        let mut reader = std::io::Cursor::new(raw.to_vec());
+        let ReadOutcome::Ok(request) = read_request(&mut reader).expect("read") else {
+            panic!("expected a request");
+        };
+        assert_eq!(request.host.as_deref(), Some("localhost:8181"));
+    }
+
+    #[test]
+    fn only_loopback_names_on_this_port_are_allowed() {
+        for host in [
+            "127.0.0.1:8181",
+            "localhost:8181",
+            "LOCALHOST:8181",
+            "[::1]:8181",
+            "127.0.0.1",
+            "localhost",
+            "[::1]",
+        ] {
+            assert!(host_allowed(Some(host), 8181), "{host} should be allowed");
+        }
+        for host in [
+            "evil.example:8181",
+            "evil.example",
+            "127.0.0.1:8182",
+            "localhost:80",
+            "127.0.0.1.evil.example:8181",
+            "localhost.evil.example",
+            "",
+        ] {
+            assert!(!host_allowed(Some(host), 8181), "{host} should be refused");
+        }
+        assert!(!host_allowed(None, 8181), "a missing Host is refused");
+    }
+
+    #[test]
+    fn a_rebound_host_is_answered_421_without_reaching_the_handler() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_server = Arc::clone(&stop);
+        let reached = Arc::new(AtomicBool::new(false));
+        let reached_server = Arc::clone(&reached);
+        let server = thread::spawn(move || {
+            serve(&listener, &stop_server, move |_path, _query| {
+                reached_server.store(true, Ordering::Relaxed);
+                Response::ok("text/plain; charset=utf-8", b"ok".to_vec())
+            })
+        });
+        let exchange = |request: String| -> String {
+            let mut stream = TcpStream::connect(addr).expect("connect");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .expect("timeout");
+            stream.write_all(request.as_bytes()).expect("write");
+            let mut body = Vec::new();
+            stream.read_to_end(&mut body).expect("read response");
+            String::from_utf8_lossy(&body).into_owned()
+        };
+
+        let rebound = exchange(format!(
+            "GET /api/corpora HTTP/1.1\r\nHost: evil.example:{}\r\n\r\n",
+            addr.port()
+        ));
+        assert!(rebound.starts_with("HTTP/1.1 421"), "{rebound}");
+        assert!(!reached.load(Ordering::Relaxed), "the handler must not run");
+
+        let missing = exchange("GET /api/corpora HTTP/1.1\r\n\r\n".to_owned());
+        assert!(missing.starts_with("HTTP/1.1 421"), "{missing}");
+
+        let local = exchange(format!(
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n\r\n",
+            addr.port()
+        ));
+        assert!(local.starts_with("HTTP/1.1 200"), "{local}");
+        assert!(reached.load(Ordering::Relaxed));
+
+        stop.store(true, Ordering::Relaxed);
+        server.join().expect("server").expect("serve");
     }
 
     #[test]
@@ -498,7 +631,7 @@ mod tests {
         let mut live = TcpStream::connect(addr).expect("connect live");
         live.set_read_timeout(Some(Duration::from_secs(2)))
             .expect("live timeout");
-        live.write_all(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+        live.write_all(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
             .expect("write");
         let mut body = Vec::new();
         live.read_to_end(&mut body).expect("read response");

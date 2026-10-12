@@ -4,7 +4,7 @@ use std::sync::Arc;
 use strict_ooxml_core::{error::SourceLocation, part::PartId};
 use strict_ooxml_wml::model::drawing::{
     BlipRef, DocPr, Drawing, DrawingKind, Extent, Graphic, InlineDrawing, MediaItem, MediaKind,
-    Picture, SrcRect,
+    Picture, PictureMarkup, SrcRect,
 };
 use strict_ooxml_wml::model::Emu;
 
@@ -177,6 +177,7 @@ impl PictureBuilder {
                 extent: Some(extent),
                 effect_extent: None,
                 doc_pr: Some(DocPr {
+                    hidden: None,
                     id: u32::try_from(index).ok(),
                     name: Some(name.clone()),
                     descr: None,
@@ -202,6 +203,7 @@ impl PictureBuilder {
                     extent: Some(extent),
                     src_rect,
                     xfrm: None,
+                    markup: PictureMarkup::default(),
                 })),
                 location: location.clone(),
             }),

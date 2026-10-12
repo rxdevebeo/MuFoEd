@@ -4,7 +4,9 @@
 //! these tests hold the wrapper to the contract it always had.
 #![allow(deprecated)]
 use strict_ooxml_core::opc::{OpenOptions, Package};
-use strict_ooxml_edit::{Command, EditError, EditLimits, EditSession, FormatPatch};
+use strict_ooxml_edit::{
+    Command, EditError, EditLimits, EditSession, FormatPatch, Invariant, Unsupported,
+};
 use strict_ooxml_testkit::DocxBuilder;
 use strict_ooxml_wml::model::{Block, Document, Inline, ParaId, RunContent, StyleId, TriState};
 use strict_ooxml_wml::{parse_document, ParseOptions};
@@ -141,7 +143,7 @@ fn rejects_controls_and_complex_content_without_mutation() {
     let mut s = EditSession::new(&mut d, EditLimits::default()).unwrap();
     assert_eq!(
         s.transact(0, &[replace(0, 0..1, "x")]),
-        Err(EditError::UnsupportedContent)
+        Err(EditError::UnsupportedContent(Unsupported::RunContent))
     );
     assert_eq!(s.document().body, before);
     drop(s);
@@ -245,7 +247,7 @@ fn model_validation_rejects_duplicate_ids_missing_style_and_wrong_sections() {
     }
     assert!(matches!(
         EditSession::new(&mut d, EditLimits::default()),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::DuplicateId))
     ));
     let mut d = simple();
     let Block::Paragraph(p) = &mut d.body.blocks[0] else {
@@ -254,7 +256,7 @@ fn model_validation_rejects_duplicate_ids_missing_style_and_wrong_sections() {
     p.props.style = Some(StyleId::new("missing"));
     assert!(matches!(
         EditSession::new(&mut d, EditLimits::default()),
-        Err(EditError::UnknownStyle)
+        Err(EditError::UnknownStyle(id)) if id.as_str() == "missing"
     ));
     let mut d = simple();
     let Block::Paragraph(p) = &mut d.body.blocks[0] else {
@@ -264,7 +266,7 @@ fn model_validation_rejects_duplicate_ids_missing_style_and_wrong_sections() {
     d.sections.clear();
     assert!(matches!(
         EditSession::new(&mut d, EditLimits::default()),
-        Err(EditError::InvalidModel)
+        Err(EditError::InvalidModel(Invariant::Sections))
     ));
 }
 
@@ -285,7 +287,7 @@ fn missing_character_style_and_missing_paragraph_are_atomic_errors() {
                 }
             }]
         ),
-        Err(EditError::UnknownStyle)
+        Err(EditError::UnknownStyle(StyleId::new("absent")))
     );
     assert_eq!(
         s.transact(0, &[replace(100, 0..0, "x")]),

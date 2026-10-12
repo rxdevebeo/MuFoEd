@@ -178,6 +178,7 @@ impl PartParser<'_> {
             let is_default = wml_attr(attrs, "default").is_some_and(is_on);
             let custom_style = wml_attr(attrs, "customStyle").is_some_and(is_on);
             let mut name = None;
+            let mut aliases = None;
             let mut based_on = None;
             let mut next = None;
             let mut link = None;
@@ -209,6 +210,10 @@ impl PartParser<'_> {
                         match element.local() {
                             "name" => {
                                 name = val_attr(&attrs).map(|value| parser.intern(value));
+                                parser.skip_element()?;
+                            }
+                            "aliases" => {
+                                aliases = val_attr(&attrs).map(|value| parser.intern(value));
                                 parser.skip_element()?;
                             }
                             "basedOn" => {
@@ -291,6 +296,7 @@ impl PartParser<'_> {
                 id,
                 style_type,
                 name,
+                aliases,
                 based_on,
                 next,
                 link,

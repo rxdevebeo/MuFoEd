@@ -385,6 +385,9 @@ mod tests {
                         nv_id: None,
                         bw_mode: None,
                         tx_box: None,
+                        sp_locks: None,
+                        connector: false,
+                        effects: None,
                         geometry: ShapeGeometry::None,
                         xfrm: None,
                         offset: None,
@@ -480,9 +483,12 @@ mod tests {
         let mut graphic = Graphic::None;
         for _ in 0..depth {
             graphic = Graphic::Group(GroupShape {
+                nv_id: None,
                 name: None,
                 descr: None,
                 xfrm: None,
+                locks: None,
+                bw_mode: None,
                 children: vec![graphic],
                 location: location(),
             });

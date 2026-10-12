@@ -73,10 +73,7 @@ pub fn math_paragraph_to_mathml(paragraph: &MathParagraph) -> Result<String, Mat
         );
     }
     out.push('>');
-    for (index, expression) in paragraph.equations.iter().enumerate() {
-        if index > 0 {
-            out.push_str("<mspace linebreak=\"newline\"/>");
-        }
+    for expression in &paragraph.equations {
         write_nodes(&mut out, &expression.nodes)?;
     }
     out.push_str("</math>");
@@ -98,7 +95,7 @@ use strict_ooxml_core::xml::escape::escape_text as escape;
 
 /// Writes a list of sibling nodes inside the current container.
 fn write_nodes(out: &mut String, nodes: &[MathNode]) -> Result<(), MathMlError> {
-    for node in nodes {
+    for node in super::visible_nodes(nodes) {
         write_node(out, node)?;
     }
     Ok(())
@@ -134,6 +131,22 @@ fn alignment_name(alignment: MathAlignment) -> &'static str {
 
 /// Writes a single run as `mi`/`mn`/`mo`/`mtext`, as MathML requires.
 fn write_run(out: &mut String, run: &MathRun) {
+    if run.text.contains('\n') {
+        for (index, text) in run.text.split('\n').enumerate() {
+            if index > 0 {
+                out.push_str("<mspace linebreak=\"newline\"/>");
+            }
+            let segment = MathRun {
+                text: text.to_owned(),
+                field_char: run.field_char,
+                properties: run.properties.clone(),
+                run_properties: run.run_properties.clone(),
+                location: run.location.clone(),
+            };
+            write_run(out, &segment);
+        }
+        return;
+    }
     let text = run.text.trim();
     if text.is_empty() {
         return;
@@ -418,6 +431,7 @@ fn write_operator(out: &mut String, text: &str) {
 /// A run holding one operator/decorative character.
 fn synthetic_run(character: char) -> MathRun {
     MathRun {
+        field_char: None,
         properties: MathRunProperties {
             literal: false,
             normal: true,
@@ -444,6 +458,7 @@ mod tests {
 
     fn run(text: &str) -> MathNode {
         MathNode::Run(MathRun {
+            field_char: None,
             properties: MathRunProperties::default(),
             run_properties: None,
             text: text.to_owned(),
@@ -577,6 +592,7 @@ mod tests {
         for (script, style, expected) in cases {
             let expression = MathExpression {
                 nodes: vec![MathNode::Run(MathRun {
+                    field_char: None,
                     properties: MathRunProperties {
                         script,
                         style,
@@ -606,6 +622,7 @@ mod tests {
         // nor/lit wins over scr/sty.
         let expression = MathExpression {
             nodes: vec![MathNode::Run(MathRun {
+                field_char: None,
                 properties: MathRunProperties {
                     normal: true,
                     script: Some(MathScript::Script),

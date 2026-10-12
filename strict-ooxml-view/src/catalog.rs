@@ -1,23 +1,69 @@
 //! Document discovery and the page cache behind the viewer.
 //!
 //! A document is rendered on first request and its SVG pages are then served
-//! from memory. Nothing is written to disk: the viewer is a local inspection
-//! tool, and a cache directory would outlive the process with stale copies of
-//! documents that have since changed.
+//! from a temporary disk store by the HTTP worker, or memory by library callers.
+//! Temporary pages are owned by their cached view and removed on eviction.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use strict_ooxml::{
-    ConformancePolicy, OpenOptions, RenderOptions, StrictDocument, TransitionalNormalizer,
+    CellNoWrap, ConformancePolicy, OpenControl, OpenOptions, PageSelection, RenderOptions,
+    StrictDocument, TransitionalNormalizer,
 };
+
+/// Render settings the viewer applies to every document.
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+pub struct RenderSettings {
+    /// Output scale, in px per inch.
+    pub scale: f64,
+    /// How `w:noWrap` cells are honoured; see [`RenderOptions::cell_no_wrap`].
+    #[serde(with = "cell_no_wrap_name")]
+    pub cell_no_wrap: CellNoWrap,
+}
+
+impl RenderSettings {
+    /// Settings at `scale` px per inch with the default `w:noWrap` handling.
+    #[must_use]
+    pub fn new(scale: f64) -> Self {
+        Self {
+            scale,
+            cell_no_wrap: CellNoWrap::default(),
+        }
+    }
+}
+
+/// `CellNoWrap` as its CLI name in the worker request.
+mod cell_no_wrap_name {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use strict_ooxml::CellNoWrap;
+
+    #[allow(clippy::trivially_copy_pass_by_ref)] // serde's `with` signature
+    pub(super) fn serialize<S: Serializer>(
+        value: &CellNoWrap,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(match value {
+            CellNoWrap::Spec => "spec",
+            CellNoWrap::Always => "always",
+        })
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<CellNoWrap, D::Error> {
+        let name = String::deserialize(deserializer)?;
+        CellNoWrap::parse(&name).ok_or_else(|| serde::de::Error::custom("unknown noWrap mode"))
+    }
+}
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::pipeline::{PipelineIssue, PipelineStage, PipelineSummary};
 
 /// One `.docx` the viewer can open.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     /// File name, used as the menu label and the URL key.
     pub name: String,
@@ -66,7 +112,7 @@ pub fn discover(dir: &Path) -> Vec<Entry> {
 }
 
 /// Rendered pages of one document.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Rendered {
     /// Page number in the document, starting at 1.
     pub number: usize,
@@ -79,7 +125,7 @@ pub struct Rendered {
 }
 
 /// The counts a reader wants next to a document.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Summary {
     /// Fully supported constructs.
     pub supported: u32,
@@ -103,7 +149,7 @@ impl Summary {
 }
 
 /// One stage of the viewer pipeline and whether this process ran it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StageStatus {
     /// Stage name: `input`, `normalize`, `convert`, `write`, or `render`.
     pub stage: String,
@@ -112,7 +158,7 @@ pub struct StageStatus {
 }
 
 /// One issue the viewer shows beside a successful or failed open.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ViewIssue {
     /// Stage that recorded the issue.
     pub stage: String,
@@ -137,7 +183,7 @@ pub struct ViewIssue {
 /// The support [`Summary`] stays a separate count of mechanisms. This report
 /// is the loss ledger. A sidecar is attached only when its output hash is the
 /// file being viewed; it never clears a live issue.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PipelineView {
     /// `clean`, `degraded`, or `failed`.
     pub outcome: String,
@@ -150,7 +196,7 @@ pub struct PipelineView {
 }
 
 /// A rendered document, ready to serve.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentView {
     /// File name shown in the header.
     pub name: String,
@@ -158,12 +204,47 @@ pub struct DocumentView {
     pub conformance: String,
     /// Support summary, when the document could be opened.
     pub summary: Option<Summary>,
-    /// Why the document could not be opened, when it could not.
+    /// Failure reason, when rendering could not finish.
     pub note: Option<String>,
     /// Pages, empty when the document could not be opened.
     pub pages: Vec<Rendered>,
     /// Normalization and render losses. Present for a failed open too.
     pub pipeline: PipelineView,
+    /// Temporary SVG storage, shared until the last cached view is released.
+    #[serde(skip)]
+    pub page_files: Option<Arc<tempfile::TempDir>>,
+}
+
+impl DocumentView {
+    /// Reads one page from its temporary store or the in-memory library result.
+    ///
+    /// # Errors
+    /// Returns a filesystem error if a stored page is no longer readable.
+    pub fn page_svg(&self, page: &Rendered) -> std::io::Result<String> {
+        self.page_files.as_ref().map_or_else(
+            || Ok(page.svg.clone()),
+            |directory| {
+                std::fs::read_to_string(directory.path().join(format!("{}.svg", page.number)))
+            },
+        )
+    }
+
+    /// Total stored SVG bytes, without loading the page contents.
+    #[must_use]
+    pub fn svg_bytes(&self) -> u64 {
+        self.pages
+            .iter()
+            .map(|page| {
+                self.page_files.as_ref().map_or_else(
+                    || u64::try_from(page.svg.len()).unwrap_or(u64::MAX),
+                    |directory| {
+                        std::fs::metadata(directory.path().join(format!("{}.svg", page.number)))
+                            .map_or(0, |metadata| metadata.len())
+                    },
+                )
+            })
+            .sum()
+    }
 }
 
 /// Renders `entry`, normalizing it when `transitional` is set.
@@ -173,16 +254,27 @@ pub struct DocumentView {
 /// Returns the underlying error when the document cannot be opened or
 /// rendered. The caller turns that into a page with a note rather than a
 /// failed request, so one bad document does not break the viewer.
-pub fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<DocumentView> {
+pub fn render(entry: &Entry, transitional: bool, settings: RenderSettings) -> Result<DocumentView> {
+    render_controlled(entry, transitional, settings, &OpenControl::new())
+}
+
+/// Renders with a shared cancellation/deadline handle for both opening and painting.
+pub fn render_controlled(
+    entry: &Entry,
+    transitional: bool,
+    settings: RenderSettings,
+    control: &OpenControl,
+) -> Result<DocumentView> {
     let options = if transitional {
         OpenOptions::default()
             .conformance(ConformancePolicy::Normalize)
             .shared_normalization(Arc::new(TransitionalNormalizer::new()))
     } else {
         OpenOptions::default()
-    };
+    }
+    .control(control.clone());
     let document = StrictDocument::open_path(&entry.path, &options)?;
-    let pipeline = pipeline_for(&document, &entry.path);
+    let mut pipeline = pipeline_for(&document, &entry.path);
     let conformance = format!("{:?}", document.package().conformance()).to_lowercase();
     let report = document.support_report();
     let summary = Summary {
@@ -193,10 +285,45 @@ pub fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<DocumentV
         error: report.summary.error,
     };
     let render_options = RenderOptions::default()
-        .scale(scale)
+        .control(control.clone())
+        .scale(settings.scale)
+        .cell_no_wrap(settings.cell_no_wrap)
         .floating(true)
-        .math(true);
+        .math(true)
+        .pages(PageSelection::All);
     let pages = document.render_svg(&render_options)?;
+    let mut layout_warnings = BTreeSet::new();
+    for page in &pages {
+        for warning in &page.warnings {
+            // Layout diagnostics are attached to every SVG page by the render
+            // API. Record them once without inventing a per-page location.
+            let page_specific = warning.starts_with("render.invalid-xml-char:");
+            if !page_specific && !layout_warnings.insert(warning.as_str()) {
+                continue;
+            }
+            pipeline.issues.push(ViewIssue {
+                stage: "render".to_owned(),
+                id: warning
+                    .split(':')
+                    .next()
+                    .unwrap_or("render.warning")
+                    .to_owned(),
+                severity: "warning".to_owned(),
+                part: None,
+                page: if page_specific {
+                    u32::try_from(page.index + 1).ok()
+                } else {
+                    None
+                },
+                location: None,
+                count: 1,
+                detail: warning.clone(),
+            });
+            if pipeline.outcome != "failed" {
+                "degraded".clone_into(&mut pipeline.outcome);
+            }
+        }
+    }
     let rendered = pages
         .into_iter()
         .map(|page| Rendered {
@@ -213,6 +340,7 @@ pub fn render(entry: &Entry, transitional: bool, scale: f64) -> Result<DocumentV
         note: None,
         pages: rendered,
         pipeline,
+        page_files: None,
     })
 }
 
@@ -290,6 +418,7 @@ pub fn render_rtf(
         })
         .collect();
     Ok(DocumentView {
+        page_files: None,
         name: entry.name.clone(),
         conformance: "rtf import → strict".to_owned(),
         summary: Some(Summary {
@@ -337,6 +466,7 @@ pub fn render_rtf(
 #[must_use]
 pub fn failed(entry: &Entry, reason: &str) -> DocumentView {
     DocumentView {
+        page_files: None,
         name: entry.name.clone(),
         conformance: "—".to_owned(),
         summary: None,
@@ -540,11 +670,42 @@ fn stage_named(name: &str) -> Option<PipelineStage> {
 /// The in-memory page cache.
 ///
 /// Keyed by file name. Rendering is expensive enough that re-rendering on
-/// every page navigation would make the viewer unusable, and cheap enough
-/// that a cache which never evicts is fine for a local tool.
-#[derive(Debug, Default)]
+/// every page navigation would make the viewer unusable. Each corpus retains
+/// at most eight documents and 64 MiB of SVG and diagnostic string payloads.
+#[derive(Debug)]
 pub struct Cache {
-    views: BTreeMap<String, DocumentView>,
+    views: BTreeMap<String, Arc<DocumentView>>,
+    order: VecDeque<String>,
+    bytes: usize,
+    max_bytes: usize,
+    max_documents: usize,
+}
+
+impl Default for Cache {
+    fn default() -> Self {
+        Self {
+            views: BTreeMap::new(),
+            order: VecDeque::new(),
+            bytes: 0,
+            max_bytes: 64 * 1024 * 1024,
+            max_documents: 8,
+        }
+    }
+}
+
+fn view_bytes(view: &DocumentView) -> usize {
+    view.pages
+        .iter()
+        .map(|page| page.svg.len() + std::mem::size_of::<Rendered>())
+        .sum::<usize>()
+        + view
+            .pipeline
+            .issues
+            .iter()
+            .map(|issue| issue.detail.len() + issue.id.len())
+            .sum::<usize>()
+        + view.note.as_ref().map_or(0, String::len)
+        + view.name.len()
 }
 
 impl Cache {
@@ -557,11 +718,43 @@ impl Cache {
     /// Returns a cached view.
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&DocumentView> {
-        self.views.get(name)
+        self.views.get(name).map(Arc::as_ref)
     }
 
-    /// Stores a view.
+    /// Shares a cached result without copying its SVG payload.
+    #[must_use]
+    pub fn get_shared(&self, name: &str) -> Option<Arc<DocumentView>> {
+        self.views.get(name).cloned()
+    }
+
+    /// Stores a view, evicting oldest entries past eight documents or 64 MiB.
+    /// A larger single view is served without caching it.
     pub fn insert(&mut self, view: DocumentView) {
+        self.insert_shared(Arc::new(view));
+    }
+
+    /// Retains the same allocation used by the response handler.
+    pub fn insert_shared(&mut self, view: Arc<DocumentView>) {
+        if let Some(previous) = self.views.remove(&view.name) {
+            self.bytes = self.bytes.saturating_sub(view_bytes(&previous));
+            self.order.retain(|name| name != &view.name);
+        }
+        let size = view_bytes(&view);
+        if size > self.max_bytes || self.max_documents == 0 {
+            return;
+        }
+        while self.bytes.saturating_add(size) > self.max_bytes
+            || self.views.len() >= self.max_documents
+        {
+            let Some(name) = self.order.pop_front() else {
+                break;
+            };
+            if let Some(previous) = self.views.remove(&name) {
+                self.bytes = self.bytes.saturating_sub(view_bytes(&previous));
+            }
+        }
+        self.bytes += size;
+        self.order.push_back(view.name.clone());
         self.views.insert(view.name.clone(), view);
     }
 
@@ -662,6 +855,7 @@ mod tests {
         let mut cache = Cache::new();
         assert!(cache.is_empty());
         let view = DocumentView {
+            page_files: None,
             name: "a.docx".to_owned(),
             conformance: "strict".to_owned(),
             summary: None,
@@ -677,7 +871,45 @@ mod tests {
         cache.insert(view);
         assert_eq!(cache.len(), 1);
         assert!(cache.get("a.docx").is_some());
+        assert!(std::sync::Arc::ptr_eq(
+            &cache.get_shared("a.docx").expect("cached"),
+            &cache.get_shared("a.docx").expect("cached")
+        ));
         assert!(cache.get("missing.docx").is_none());
+    }
+
+    #[test]
+    fn disk_pages_survive_shared_views_and_are_removed_on_eviction() {
+        let directory = tempfile::tempdir().expect("temporary pages");
+        let path = directory.path().to_path_buf();
+        std::fs::write(path.join("201.svg"), "<svg>last page</svg>").expect("write page");
+        let entry = super::Entry {
+            name: "long.docx".into(),
+            path: "unused".into(),
+            size: 0,
+        };
+        let mut view = super::failed(&entry, "fixture");
+        view.pages.push(super::Rendered {
+            number: 201,
+            width: 816.0,
+            height: 1056.0,
+            svg: String::new(),
+        });
+        view.page_files = Some(std::sync::Arc::new(directory));
+        let shared = std::sync::Arc::new(view);
+        let mut cache = Cache::new();
+        cache.insert_shared(std::sync::Arc::clone(&shared));
+        assert_eq!(
+            shared
+                .page_svg(shared.pages.first().expect("page"))
+                .expect("read"),
+            "<svg>last page</svg>"
+        );
+        assert_eq!(shared.svg_bytes(), 20);
+        drop(cache);
+        assert!(path.exists(), "active response keeps its stored pages");
+        drop(shared);
+        assert!(!path.exists(), "last owner removes stored pages");
     }
 
     #[test]
@@ -706,5 +938,141 @@ mod tests {
         let with_error = Summary { error: 1, ..clean };
         assert!(!clean.has_blockers());
         assert!(with_error.has_blockers());
+    }
+
+    #[test]
+    fn cache_evicts_by_bytes_and_does_not_retain_oversized_views() {
+        let mut cache = Cache {
+            max_bytes: 20,
+            max_documents: 2,
+            ..Cache::new()
+        };
+        let entry = super::Entry {
+            name: "a".to_owned(),
+            path: "missing".into(),
+            size: 0,
+        };
+        let mut view = super::failed(&entry, "");
+        view.pipeline.issues.clear();
+        view.note = Some("123456789".to_owned());
+        cache.insert(view.clone());
+        view.name = "b".to_owned();
+        cache.insert(view.clone());
+        view.name = "c".to_owned();
+        cache.insert(view.clone());
+        assert!(cache.get("a").is_none());
+        assert!(cache.get("b").is_some());
+        assert!(cache.get("c").is_some());
+        view.name = "huge".to_owned();
+        view.note = Some("x".repeat(21));
+        cache.insert(view);
+        assert!(cache.get("huge").is_none());
+        assert_eq!(cache.bytes, 20);
+    }
+
+    #[test]
+    fn cancelled_control_is_used_by_the_viewer_open() {
+        let dir = std::env::temp_dir().join(format!("view-control-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let path = dir.join("plain.docx");
+        std::fs::write(
+            &path,
+            strict_ooxml_testkit::DocxBuilder::strict()
+                .body("<w:p><w:r><w:t>plain</w:t></w:r></w:p>")
+                .build(),
+        )
+        .expect("write");
+        let control = strict_ooxml::OpenControl::new();
+        control.cancel();
+        let entry = super::Entry {
+            name: "plain.docx".to_owned(),
+            path,
+            size: 0,
+        };
+        let result =
+            super::render_controlled(&entry, false, super::RenderSettings::new(96.0), &control);
+        assert!(matches!(
+            result,
+            Err(strict_ooxml::StrictError::Cancelled { .. })
+        ));
+        std::fs::remove_dir_all(dir).expect("clean");
+    }
+
+    #[test]
+    fn render_warning_degrades_the_pipeline_without_hiding_pages() {
+        let dir = std::env::temp_dir().join(format!("view-warning-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let path = dir.join("pattern.docx");
+        std::fs::write(
+            &path,
+            strict_ooxml_testkit::graphics::fill_docx(
+                "rect",
+                &strict_ooxml_testkit::graphics::pattern("unknownPattern"),
+            ),
+        )
+        .expect("write");
+        let entry = super::Entry {
+            name: "pattern.docx".to_owned(),
+            path,
+            size: 0,
+        };
+        let view = super::render(&entry, false, super::RenderSettings::new(96.0)).expect("render");
+        assert_eq!(view.pages.len(), 1);
+        assert_eq!(view.pipeline.outcome, "degraded");
+        assert!(view
+            .pipeline
+            .issues
+            .iter()
+            .any(|issue| issue.stage == "render"
+                && issue.id == "render.pattern"
+                && issue.detail.contains("unknownPattern")
+                && issue.page.is_none()));
+        std::fs::remove_dir_all(dir).expect("clean");
+    }
+
+    #[test]
+    fn all_pages_are_retained_without_preview_truncation() {
+        let dir = std::env::temp_dir().join(format!("view-cap-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let path = dir.join("pages.docx");
+        // Cross the former 200-page cutoff with a small, deterministic document.
+        for page_count in [2, 201] {
+            let mut body = String::from("<w:p><w:r><w:t>first</w:t></w:r></w:p>");
+            body.push_str(
+                &"<w:p><w:r><w:br w:type=\"page\"/><w:t>page</w:t></w:r></w:p>"
+                    .repeat(page_count - 1),
+            );
+            std::fs::write(
+                &path,
+                strict_ooxml_testkit::DocxBuilder::strict()
+                    .body(&body)
+                    .build(),
+            )
+            .expect("write");
+            let entry = super::Entry {
+                name: "pages.docx".to_owned(),
+                path: path.clone(),
+                size: 0,
+            };
+            let view = super::render_controlled(
+                &entry,
+                false,
+                super::RenderSettings::new(96.0),
+                &strict_ooxml::OpenControl::new(),
+            )
+            .expect("render");
+            assert_eq!(view.pages.len(), page_count);
+            assert!(view.note.is_none());
+            assert_eq!(
+                view.pipeline
+                    .issues
+                    .iter()
+                    .filter(|issue| issue.id == "render.pgSz")
+                    .count(),
+                1,
+                "a document-wide layout warning must not be multiplied by page count"
+            );
+        }
+        std::fs::remove_dir_all(dir).expect("clean");
     }
 }

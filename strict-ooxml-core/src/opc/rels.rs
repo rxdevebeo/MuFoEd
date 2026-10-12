@@ -447,18 +447,29 @@ impl RelationshipGraph {
 /// package root (that attribution let a hostile `/aaa.rels` replace the real
 /// `_rels/.rels` officeDocument target).
 ///
+/// Both `_rels` and `.rels` match ASCII case-insensitively, as part names do
+/// everywhere else ([`PartId`] equality): `/word/_RELS/document.xml.RELS` is
+/// the same part as `/word/_rels/document.xml.rels`, and treating it as an
+/// ordinary part would silently drop its relationships (audit 2.2).
+///
 /// `/word/_rels/document.xml.rels` → `/word/document.xml`;
-/// `/_rels/.rels` → `/` (the package root).
+/// `/_rels/.rels` → `/` (the package root). `/word/_rels/.rels` names no
+/// part — `/word/` is a folder — so it is [`None`] too (audit 3.12).
 #[must_use]
 pub fn source_part_for_rels(rels_part: &PartId) -> Option<PartId> {
+    const RELS_DIR: &str = "/_rels/";
     let path = rels_part.as_str();
-    let (dir, file) = path.rsplit_once("/_rels/")?;
+    // ASCII lowercasing changes no byte's length, so an offset found in the
+    // lowered copy is the same offset in `path`.
+    let marker = path.to_ascii_lowercase().rfind(RELS_DIR)?;
+    let dir = path.get(..marker)?;
+    let file = path.get(marker.checked_add(RELS_DIR.len())?..)?;
     // The leaf must be exactly `<name>.rels` — no further `/`, and the
     // `.rels` suffix is mandatory (not optional via `unwrap_or`).
     if file.contains('/') {
         return None;
     }
-    let source_name = file.strip_suffix(".rels")?;
+    let source_name = strip_suffix_ignore_ascii_case(file, ".rels")?;
     if dir.is_empty() {
         // `/_rels/.rels` → source_name == "" → package root `/`.
         // `/_rels/foo.rels` → `/foo`.
@@ -468,7 +479,21 @@ pub fn source_part_for_rels(rels_part: &PartId) -> Option<PartId> {
             PartId::new(format!("/{source_name}").as_str())
         });
     }
+    if source_name.is_empty() {
+        return None;
+    }
     Some(PartId::new(format!("{dir}/{source_name}").as_str()))
+}
+
+/// `value` without `suffix`, the suffix compared ASCII case-insensitively.
+fn strip_suffix_ignore_ascii_case<'a>(value: &'a str, suffix: &str) -> Option<&'a str> {
+    let split = value.len().checked_sub(suffix.len())?;
+    let tail = value.get(split..)?;
+    if tail.eq_ignore_ascii_case(suffix) {
+        value.get(..split)
+    } else {
+        None
+    }
 }
 
 /// Parses one `.rels` document into relationships resolved against `source`.
@@ -736,6 +761,49 @@ mod tests {
         assert!(source_part_for_rels(&PartId::new("/aaa.rels")).is_none());
         assert!(source_part_for_rels(&PartId::new("/word/document.xml.rels")).is_none());
         assert!(source_part_for_rels(&PartId::new("/word/_rels/nested/x.rels")).is_none());
+    }
+
+    /// Audit 2.2: `_rels` and `.rels` are part-name segments, and part names
+    /// compare ASCII case-insensitively, so a different casing is still a
+    /// relationship part. The source keeps the spelling it was written with.
+    #[test]
+    fn derives_source_part_case_insensitively() {
+        assert_eq!(
+            source_part_for_rels(&PartId::new("/word/_RELS/document.xml.rels"))
+                .unwrap()
+                .as_str(),
+            "/word/document.xml"
+        );
+        assert_eq!(
+            source_part_for_rels(&PartId::new("/Word/_Rels/Document.xml.RELS"))
+                .unwrap()
+                .as_str(),
+            "/Word/Document.xml"
+        );
+        assert_eq!(
+            source_part_for_rels(&PartId::new("/_RELS/.RELS"))
+                .unwrap()
+                .as_str(),
+            "/"
+        );
+        assert!(source_part_for_rels(&PartId::new("/AAA.RELS")).is_none());
+        // A non-ASCII leaf whose last five bytes split a character is not a
+        // match, and not a panic.
+        assert!(source_part_for_rels(&PartId::new("/_rels/\u{e9}\u{e9}\u{e9}")).is_none());
+    }
+
+    /// Audit 3.12: `/word/_rels/.rels` would own the folder `/word/`, which is
+    /// not a part. Only the package root's `_rels/.rels` has an empty name.
+    #[test]
+    fn a_nameless_rels_part_below_the_root_has_no_source() {
+        assert!(source_part_for_rels(&PartId::new("/word/_rels/.rels")).is_none());
+        assert!(source_part_for_rels(&PartId::new("/word/_RELS/.RELS")).is_none());
+        assert_eq!(
+            source_part_for_rels(&PartId::new("/_rels/.rels"))
+                .unwrap()
+                .as_str(),
+            "/"
+        );
     }
 
     #[test]

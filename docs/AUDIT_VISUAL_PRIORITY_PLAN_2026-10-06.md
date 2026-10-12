@@ -7,6 +7,30 @@
 **Итог измерения D05:** 221/221 документов, `unmatched_schema=0`, `ours=0`, **10 486** строк inventory без disposition (537 labels, 205 документов).  
 **Итог измерения D06:** WPS OPEN, допуск **0,25 px**, ledger неполный; Word = NOT_RUN.
 
+## Статус на 2026-10-08 (сверка с кодом master)
+
+Все коммиты пакетов (`35f346a`, `0e11a21`, `ac51b68`, `f96f99c`, `67eafbf`, `68813f5`,
+`7ea3fd9`, `462882a`) в master; у каждого пакета `audit-remediation-2026-10-06/PNN-*/STATUS.json`.
+
+| Пакет | Статус | Что осталось |
+|---|---|---|
+| P0, P2–P7, P9–P11, P13 | сделано (ACCEPT/PASS) | P2: визуальный допуск среза 0,75 px; P3/P11: `descr` у `wp:docPr`/`pic:cNvPr` перешёл в хвост P15; P5: линии VML-групп выбрасываются (`T7.vml-group`), waiver нет; P5/P6: тесты на RM0090 пропускаются без локального корпуса — нужны синтетические двойники |
+| P1 | сделано, перепроверено 2026-10-08 | перепроверка (hostq `wps`) нашла регрессию от `9d9b372` на с. 56 (подписи в таблице с `framePr`, до 0,67 px), исправлено `93b054a`: PASS 26/26 ≤ 0,25 px с `--wps-times`; запас `p104.modern.5` по-прежнему 0,002 px; без калибровки — до 3,4 px (по замыслу); Rust-теста на Clio нет (корпус локальный) |
+| P8 | сделано | цветовых строк в census нет: `a14:hiddenFill` уходит по ADR-0014 с цитатой `a:ext`, `a:sysClr`/`prstClr`/модификаторы пишутся исходным элементом (P15); тесты T-P8-1..3 в `p7_p8.rs` |
+| P12 | закрыт (кроме VML) | footnote/endnote −1 закрыт; `headerReference@id`/`footerReference@id` 139 → 10 частей: semantic digest (Strict-написания, MCE, текст надписей, `w:sym@char`), писатель сохраняет `w:cs`, `autoSpaceDE/DN`, `adjustRightInd`; остаток — VML-линии/фигуры (T7), уходит в VML-группы |
+| P14 | сделано, перезамер | после `5446135` (SDT-свойства сохраняются) `w:dataBinding`/`w:text` должны уйти; TZ-32 в `census.toml` устарел |
+| P15 | частично | census на хосте `b3bed99`: unclassified 633 → 108, unmatched_schema 0, ours 0; остаток — VML (`w:txbxContent`, `o:rules`, hdr/ftr), внешние картинки `a:blip@link`, `c:chart@id`, тема (`a:reflection`, `a:hueOff`), `w:br@clear`, `customMarkFollows`, поля форм, одиночные |
+
+Отдельно: ~~`unmatched_schema = 1198`~~ → **0** (census на `3332800`, 2026-10-08): все 1198 были
+процентами DrawingML/диаграмм, которых не было в T4 нормализатора (`a:spcPct` 1161, `a:miter@lim` 30,
+`a:buSzPct` 7 — тысячные; `c:lblOffset`/`c:gapWidth`/`c:overlap` — целые проценты, новое правило
+`T4.chart-percent`); census сравнивает целые проценты диаграмм как одно значение. Unclassified — 763. Вехи: M1 PASS,
+M2 PASS (срез), M3 ACCEPT, M4 OPEN, M5 не начат (Word NOT_RUN). Waiver на остатки P8/P12/P15
+нет; `CENSUS-LOCAL` устарел — ночной census уже в CI (`ci.yml`), `census-baseline.json` не закоммичен.
+
+Порядок дальше: ~~перепроверка P1~~ → ~~синтетические двойники P5/P6~~ → база census и `CENSUS-LOCAL` →
+~~`unmatched_schema`~~ → ~~P12~~ → P15 по метке (72) → ~~P8~~ → ~~VML-группы~~ → M5 (Word).
+
 Этот план не заменяет критерии приёмки D05/D06. Он задаёт **порядок работ по визуальному ущербу** и фиксирует, **на каких документах** каждый пункт измерять.
 
 ---
@@ -45,14 +69,14 @@
 | P5 | Метрики run/абзаца | **V1** | 1 324 | 101 | D05 | sz/spacing/ind/tabs |
 | P6 | Табличные ширины/границы | **V1** | 503 | 55 | D05 | tcW/tblW/gridCol |
 | P7 | themeColor / themeTint / shade | **V2** | 1 027 | 57 | D05 | Цвет после resolve темы |
-| P8 | Явные цвета `w:color@val` / schemeClr | **V2** | 351 | 68 | D05 | Hex/scheme без silent change |
+| P8 | сделано | цветовых строк в census нет: `a14:hiddenFill` уходит по ADR-0014 с цитатой `a:ext`, `a:sysClr`/`prstClr`/модификаторы пишутся исходным элементом (P15); тесты T-P8-1..3 в `p7_p8.rs` |
 | P9 | Шрифты / hints | **V3** | 510 | 125 | D05/D09 | rFonts/hint/charset/panose |
 | P10 | Бинарные media | **V3** | 84 | 34 | D05 | SHA картинок/шрифтов |
 | P11 | graphicData URI / pic identity | **V3–V4** | 333 | 99 | D05 | URI и cNvPr |
 | P12 | Header/footer rel + footnote −1 | **V4** | 422 | 112 | D05 | Semantic rel / sep ids |
 | P13 | Ignorable hdr/ftr/notes | **V4** | 387 | 100 | D05 | Узкое расширение TZ-46 |
 | P14 | SDT/docPart (unnamed) | **V4** | 405 | 54 | D05 | Cite named_loss или сохранить |
-| P15 | settings / styles / numbering / хвост | **V4** | ~4 400* | много | D05 | Добить inventory до 0 |
+| P15 | частично | census на хосте `b3bed99`: unclassified 633 → 108, unmatched_schema 0, ours 0; остаток — VML (`w:txbxContent`, `o:rules`, hdr/ftr), внешние картинки `a:blip@link`, `c:chart@id`, тема (`a:reflection`, `a:hueOff`), `w:br@clear`, `customMarkFollows`, поля форм, одиночные |
 
 \* Часть строк styles/settings пересекается с theme/metrics; после P5–P8 объём уменьшится. Не закрывать N_styles blanket’ом.
 
@@ -259,6 +283,12 @@ SHA-256: `4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462`
 
 **Замер.** Как P7, labels без theme*.
 
+**STATUS 2026-10-09.** Закрыт вместе с P15: census `b3bed99` не содержит ни `w:color`, ни `a:srgbClr`,
+`a:sysClr`, `a:schemeClr@val`, `w:shd`. Попутно: T4.measure терял знак значения меньше пункта
+(`tblInd w="-5"` → `0.25pt`, отступ таблицы уезжал вправо); линии фигур держат `cap`/`cmpd`/`algn` и
+соединение (`a:round`/`a:miter`), группы — `a:grpSpLocks` и `bwMode`, соединители остаются
+`wps:cNvCnPr` с `a:cxnSpLocks`; census читает голый `w:vMerge` как `continue`.
+
 ---
 
 ### P9 — Шрифты / hints (V3)
@@ -305,6 +335,14 @@ SHA-256: `4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462`
 
 **Визуал.** Низкий, если содержимое hdr/ftr сохранено — проверить один header text roundtrip.
 
+**STATUS 2026-10-09.** census на `a4a136e`: unmatched_schema 0, unclassified 646 → 633. Digest
+(`_semantic_part_digest`) сравнивает смысл части: Strict-написания (`start/end`, твипы, on/off, `tblLook`,
+pct), выбранную ветку `mc:AlternateContent`, рисунок — по тексту надписей, `w:sym@char` с ремапом F0xx.
+Писатель терял `w:cs` (024, 038, 066, 097) и выключенные `autoSpaceDE/DN`/`adjustRightInd` (070) —
+исправлено, тест `strict-ooxml-write/tests/p12_headers.rs`. Осталось 10 частей (001, 065, 090, 100):
+VML-линии и фигуры без надписи, которые T7 теряет, — это пункт «VML-группы». Дампы частей пишутся в
+`census-reports/semantic-parts/` при `--write-reports`.
+
 ---
 
 ### P13 — Ignorable на hdr/ftr/notes (V4)
@@ -334,6 +372,38 @@ SHA-256: `4c5b9b178bdc8c3abae865f00ab5aaa9e102f81634e53691afc3cd3073162462`
 **Порядок внутри P15:** (1) residual theme/color в styles после P7–P8; (2) `w:style@customStyle`, `w:lvl@tentative`; (3) settings compat; (4) Z_other по убыванию labels.
 
 **Замер.** Полный 221; цель `unclassified_element_changes=0`.
+
+**STATUS 2026-10-09.** 633 → 108 (`b3bed99`), unmatched_schema 0, ours 0. Сделано:
+писатель держит alt text с переводами строк (атрибут переписывается со ссылками
+`&#10;`), пустой `w:compat`, все `CT_OnOff` из settings, `w:subsetted="0"`, колонки
+закладок, `tblHeader w:val="0"`, `suppressOverlap`, `specVanish`, `w:cs`,
+`autoSpaceDE/DN`, `adjustRightInd`, `w:aliases`, имя `abstractNum`, весь `w:tblPrEx`,
+`docGrid@charSpace` (беззнаковая запись Word = знаковый шаг), `pBdr` `between`/`bar`;
+в рисунках — `simplePos`, `anchor@hidden`, атрибуты `cNvPicPr`/`picLocks`/`blipFill`,
+`a:spLocks`, дети `a:blip` (эффекты), остаток `pic:spPr` (геометрия, линия, заливка),
+эффекты фигур, исходный элемент цвета (`lumMod`/`lumOff`, `alpha`, `sysClr`,
+`prstClr`), `a:rect` пользовательской геометрии, `a:lin@scaled`,
+`gradFill@rotWithShape`; в теме — сам `a:fmtScheme` вместо заглушки, `a:font` по письменностям и
+`a:sysClr`. Сохранённая разметка пишется в той же форме, что и писатель (fixed point). Расширения Office (`a14` в `a:extLst`) по ADR-0014 не
+пишутся и называются в отчёте (`a:ext`). Census: `val="1"` → голый `CT_OnOff`,
+повторный `proofState`, `documentProtection` (TZ-52/53), раскрытый `smartTag`
+(TZ-54), пары пространств `lc`/`cdr`/`dgm`, точное совпадение имён для TZ-13;
+при `--write-reports` — `unclassified.txt` и записанные пакеты в `written/`.
+
+**VML-группы, 2026-10-09** (ветка `task/vml-groups-2026-10-09`): 92 → 72, колонтитулов в остатке нет. Конвертированные VML-фигуры
+получают заливку и обводку по атрибутам VML (`fillcolor`/`filled`, `strokecolor`/`strokeweight`/`stroked`,
+`v:fill`, `v:stroke`, прозрачность, пунктир) с умолчаниями VML — до этого 721 `v:rect` и все надписи
+выходили невидимыми рамками. `v:line` (55) и прямые соединители (14) — `prstGeom line` в своём габарите с
+отражением; `v:roundrect`, `v:oval`. Члены `v:group` — не только надписи, но и линии и простые фигуры, и все
+ставятся со смещением самой группы. WordArt-водяной знак (`v:textpath`) — повёрнутая надпись со строкой,
+шрифтом, размером и цветом заливки; `rotation` сохраняется. `mso-position-*-relative:text` — колонка и абзац,
+не страница. Census: `w:txbxContent` не зависит от обёртки (`v:textbox`/`wps:txbx`), члены группы в одном
+прогоне — один рисунок, рисунок колонтитула — его текст. Pixels на `ae506cd` зелёные.
+Остаток VML: `o:rules`/`o:shapedefaults` в settings, VML-маркеры списков (`w:numPicBullet`).
+
+Остаток 108 (до VML-групп): VML (`w:txbxContent` 14, `o:rules`, `shapedefaults`, hdr/ftr 3+3); внешние картинки `a:blip@link` 5; `c:chart@id` 6; тема
+`w:br@clear` 4; `customMarkFollows` 2; поля форм
+(`w:checkBox`, `w:textInput`, …) 7; прочие одиночные.
 
 ---
 

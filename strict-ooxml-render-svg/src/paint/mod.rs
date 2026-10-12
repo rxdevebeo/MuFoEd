@@ -5,6 +5,8 @@
 //! single `<svg>` document per page, terminated by `\n`.
 
 pub(crate) mod chart;
+mod effects;
+mod fills;
 pub(crate) mod graphics;
 pub(crate) mod image;
 pub(crate) mod shapes;
@@ -33,16 +35,67 @@ pub(crate) fn render_page(page: &PlacedPage, background: bool) -> String {
         );
     }
     for item in &page.items {
-        match item {
-            Item::Rect(rect) => shapes::rect_svg(&mut out, rect),
-            Item::Line(line) => shapes::line_svg(&mut out, line),
-            Item::Text(item) => text::text_svg(&mut out, item),
-            Item::Image(item) => image::image_svg(&mut out, item),
-            Item::Path(item) => shapes::path_svg(&mut out, item),
-        }
+        item_svg(&mut out, item);
     }
     out.push_str("</svg>\n");
     out
+}
+
+/// Writes one paint item.
+pub(crate) fn item_svg(out: &mut String, item: &Item) {
+    match item {
+        Item::Group(group) => {
+            let _ = writeln!(
+                out,
+                "<g transform=\"matrix({} {} {} {} {} {})\" opacity=\"{}\">",
+                coord(group.matrix[0]),
+                coord(group.matrix[1]),
+                coord(group.matrix[2]),
+                coord(group.matrix[3]),
+                coord(group.matrix[4]),
+                coord(group.matrix[5]),
+                coord(group.opacity.clamp(0.0, 1.0))
+            );
+            if let Some([x, y, w, h]) = group.clip {
+                let _ = writeln!(out, "<svg x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" viewBox=\"{} {} {} {}\" overflow=\"hidden\">",
+                    coord(x), coord(y), coord(w), coord(h), coord(x), coord(y), coord(w), coord(h));
+            }
+            if let Some(path) = &group.clip_path {
+                let id = format!("Contour{}", out.len());
+                let mut data = String::new();
+                if group.clip_inverse {
+                    let radius = (path.w.abs() + path.h.abs()).max(1.0) * 1024.0;
+                    let _ = write!(
+                        data,
+                        "M-{} -{} H{} V{} H-{} Z ",
+                        coord(radius),
+                        coord(radius),
+                        coord(radius),
+                        coord(radius),
+                        coord(radius)
+                    );
+                }
+                data.push_str(&path.d);
+                let _ = writeln!(out, "<defs><clipPath id=\"{id}\" clipPathUnits=\"userSpaceOnUse\"><path d=\"{}\" transform=\"{}\" clip-rule=\"{}\"/></clipPath></defs><g clip-path=\"url(#{id})\">",
+                    escape_attr(&data), escape_attr(&shapes::path_transform(path)), if group.clip_inverse { "evenodd" } else { "nonzero" });
+            }
+            for child in &group.items {
+                item_svg(out, child);
+            }
+            if group.clip_path.is_some() {
+                out.push_str("</g>\n");
+            }
+            if group.clip.is_some() {
+                out.push_str("</svg>\n");
+            }
+            out.push_str("</g>\n");
+        }
+        Item::Rect(rect) => shapes::rect_svg(out, rect),
+        Item::Line(line) => shapes::line_svg(out, line),
+        Item::Text(item) => text::text_svg(out, item),
+        Item::Image(item) => image::image_svg(out, item),
+        Item::Path(item) => shapes::path_svg(out, item),
+    }
 }
 
 pub(crate) use strict_ooxml_core::xml::escape::{escape_attr, escape_text};
@@ -55,10 +108,11 @@ pub(crate) fn invalid_char_warning(page: &PlacedPage) -> Option<String> {
     let removed: usize = page
         .items
         .iter()
+        .flat_map(Item::leaves)
         .map(|item| match item {
             Item::Text(text) => count_invalid(&text.text),
             Item::Image(image) => count_invalid(&image.alt),
-            Item::Rect(_) | Item::Line(_) | Item::Path(_) => 0,
+            Item::Rect(_) | Item::Line(_) | Item::Path(_) | Item::Group(_) => 0,
         })
         .sum();
     (removed > 0).then(|| {
@@ -72,52 +126,37 @@ pub(crate) fn invalid_char_warning(page: &PlacedPage) -> Option<String> {
 /// Embeds each face the page paints, so a standalone SVG does not ask the
 /// machine for a font.
 fn font_faces(page: &PlacedPage) -> String {
-    let mut keys: Vec<(String, bool, bool, Option<crate::font::ResolvedFaceHandle>)> = Vec::new();
-    for item in &page.items {
+    let mut keys = Vec::new();
+    for item in page.items.iter().flat_map(Item::leaves) {
         let Item::Text(text) = item else {
             continue;
         };
-        if crate::style::registered_face(&text.run, &text.text)
-            .is_some_and(|face| !crate::font::svg_resource_supported(&face))
-        {
-            continue;
-        }
         let family = crate::style::chosen_family(&text.run, &text.text);
-        let key = (
-            family,
-            text.run.bold,
-            text.run.italic,
-            crate::style::registered_face(&text.run, &text.text),
-        );
+        let key = (family, text.run.bold, text.run.italic);
         if !keys
             .iter()
-            .any(|existing| existing.0 == key.0 && existing.1 == key.1 && existing.2 == key.2)
+            .any(|(family, bold, italic, _)| (family, bold, italic) == (&key.0, &key.1, &key.2))
         {
-            keys.push(key);
+            keys.push((key.0, key.1, key.2, text.run.clone()));
         }
     }
     if keys.is_empty() {
         return String::new();
     }
     let mut css = String::from("  <style type=\"text/css\"><![CDATA[\n");
-    for (family, bold, italic, owned) in keys {
-        let source = crate::font::face_source(&family, bold, italic);
-        let data = if let Some(face) = &owned {
-            face.resource.bytes()
-        } else if let Some(source) = &source {
-            source.data
-        } else {
+    for (family, bold, italic, run) in keys {
+        let Some(source) = crate::font::embedded::run_face_source(&run, &family) else {
             continue;
         };
-        let (mime, format) = if data.starts_with(b"OTTO") {
+        let (mime, format) = if source.data.starts_with(b"OTTO") {
             ("font/otf", "opentype")
         } else {
             ("font/ttf", "truetype")
         };
         let weight = if bold { "bold" } else { "normal" };
         let style = if italic { "italic" } else { "normal" };
-        let encoded = image::base64_encode(data);
-        let hash = crate::font::hash_face_bytes_hex(data);
+        let encoded = image::base64_encode(source.data);
+        let hash = source.resource_hash_hex();
         let _ = writeln!(
             css,
             "/* resource_hash={hash} family={family} bold={bold} italic={italic} */"

@@ -263,6 +263,7 @@ fn same_node(a: &TextPosition, b: &TextPosition) -> bool {
 }
 impl Editor<'_> {
     /// Places the current model using shared renderer metrics and pagination.
+    #[allow(clippy::too_many_lines)]
     pub fn visual_map(
         &self,
         revision: u64,
@@ -281,12 +282,14 @@ impl Editor<'_> {
         let mut unused: HashSet<String> = original
             .iter()
             .flat_map(|p| &p.items)
+            .flat_map(Item::leaves)
             .flat_map(|i| match i {
                 Item::Text(t) => vec![t.run.color.clone(), t.run.highlight.clone()],
                 Item::Path(p) => vec![p.fill.clone(), p.stroke.clone()],
                 Item::Rect(p) => vec![p.fill.clone(), p.stroke.clone()],
                 Item::Line(p) => vec![Some(p.color.clone())],
                 Item::Image(p) => vec![Some(p.alt.clone())],
+                Item::Group(_) => Vec::new(),
             })
             .flatten()
             .collect();
@@ -312,6 +315,27 @@ impl Editor<'_> {
         for (page, p) in placement.iter().enumerate() {
             for item in &p.items {
                 let object = match item {
+                    Item::Group(group) => {
+                        group.items.iter().flat_map(Item::leaves).find_map(|child| {
+                            let key = match child {
+                                Item::Image(image) => Some(image.alt.as_str()),
+                                Item::Path(path) => path.fill.as_deref(),
+                                Item::Text(text) => text.run.color.as_deref(),
+                                _ => None,
+                            }?;
+                            let at = nodes.get(key)?.drawing.clone()?;
+                            Some((
+                                at,
+                                VisualRect {
+                                    page,
+                                    x: group.bounds[0],
+                                    y: group.bounds[1],
+                                    width: group.bounds[2],
+                                    height: group.bounds[3],
+                                },
+                            ))
+                        })
+                    }
                     Item::Image(i) => nodes.get(&i.alt).and_then(|n| n.drawing.clone()).map(|at| {
                         (
                             at,
@@ -499,31 +523,38 @@ fn measure(text: &str, item: &TextItem, font: &dyn strict_ooxml_render_svg::Font
 fn same_placement(a: &[PlacedPage], b: &[PlacedPage]) -> bool {
     a.len() == b.len()
         && a.iter().zip(b).all(|(a, b)| {
-            a.width_px == b.width_px
-                && a.height_px == b.height_px
-                && a.items.len() == b.items.len()
-                && a.items.iter().zip(&b.items).all(|(a, b)| match (a, b) {
-                    (Item::Text(a), Item::Text(b)) => {
-                        a.text == b.text
-                            && a.x == b.x
-                            && a.baseline == b.baseline
-                            && a.width == b.width
-                            && a.size_px == b.size_px
-                    }
-                    (Item::Rect(a), Item::Rect(b)) => {
-                        a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h
-                    }
-                    (Item::Line(a), Item::Line(b)) => {
-                        a.x1 == b.x1 && a.x2 == b.x2 && a.y1 == b.y1 && a.y2 == b.y2
-                    }
-                    (Item::Image(a), Item::Image(b)) => {
-                        a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h
-                    }
-                    (Item::Path(a), Item::Path(b)) => {
-                        a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h && a.d == b.d
-                    }
-                    _ => false,
-                })
+            a.width_px == b.width_px && a.height_px == b.height_px && same_items(&a.items, &b.items)
+        })
+}
+
+#[allow(clippy::float_cmp)]
+fn same_items(a: &[Item], b: &[Item]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(a, b)| match (a, b) {
+            (Item::Group(a), Item::Group(b)) => {
+                a.matrix == b.matrix
+                    && a.bounds == b.bounds
+                    && a.clip == b.clip
+                    && same_items(&a.items, &b.items)
+            }
+            (Item::Text(a), Item::Text(b)) => {
+                a.text == b.text
+                    && a.x == b.x
+                    && a.baseline == b.baseline
+                    && a.width == b.width
+                    && a.size_px == b.size_px
+            }
+            (Item::Rect(a), Item::Rect(b)) => a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h,
+            (Item::Line(a), Item::Line(b)) => {
+                a.x1 == b.x1 && a.x2 == b.x2 && a.y1 == b.y1 && a.y2 == b.y2
+            }
+            (Item::Image(a), Item::Image(b)) => {
+                a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h
+            }
+            (Item::Path(a), Item::Path(b)) => {
+                a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h && a.d == b.d
+            }
+            _ => false,
         })
 }
 fn stamp_document(
@@ -747,6 +778,7 @@ fn stamp_drawing(
                     color: strict_ooxml_wml::model::ShapeColor {
                         value: Some(Color::new(hex_digits(key).to_owned())),
                         theme: None,
+                        markup: None,
                     },
                 });
             }

@@ -43,6 +43,13 @@ pub(crate) fn placed_blocks_for(
         let Item::Vector(vector) = item else {
             continue;
         };
+        if vector.gradient.is_some() {
+            report.record(
+                "vector.gradient", Severity::Unsupported,
+                format!("page {} vector {index}: axial shading is retained by the reader but not converted to DrawingML", page.number),
+            );
+            continue;
+        }
         match rectangle(vector, page.geometry.height) {
             // The PDF renderer paints the page itself as a white rectangle.
             // That canvas is the page, not a drawing, so it is not a second
@@ -161,6 +168,7 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
         ShapeColor {
             value: Some(Color::new(format!("{r:02X}{g:02X}{b:02X}"))),
             theme: None,
+            markup: None,
         }
     };
     let fill = rect.fill.map(|rgb| ShapeFill::Solid { color: color(rgb) });
@@ -176,6 +184,9 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
         nv_id: None,
         bw_mode: None,
         tx_box: None,
+        sp_locks: None,
+        connector: false,
+        effects: None,
         geometry: ShapeGeometry::Preset(Arc::from("rect")),
         xfrm: None,
         offset: Some((Emu(0), Emu(0))),
@@ -190,12 +201,15 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
         extent: Some(extent),
         effect_extent: None,
         doc_pr: Some(DocPr {
+            hidden: None,
             id: None,
             name: Some(name),
             descr: None,
             title: None,
         }),
         simple_pos: false,
+        simple_pos_point: None,
+        hidden: None,
         position_h: Some(Position {
             relative_from: Some(Arc::from("page")),
             align: None,

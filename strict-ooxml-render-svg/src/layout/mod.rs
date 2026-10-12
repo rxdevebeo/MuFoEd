@@ -4,12 +4,15 @@
 //! pagination → a list of [`PlacedPage`]s holding paint [`Item`]s. Painting
 //! (`crate::paint`) is the only place that knows SVG.
 
+pub mod border;
+pub mod decoration;
 pub(crate) mod exclusions;
 pub(crate) mod floating;
 pub(crate) mod headerfooter;
 pub(crate) mod pageborders;
 pub(crate) mod paginate;
 pub(crate) mod paragraph;
+pub(crate) mod sectionpage;
 pub(crate) mod table;
 
 use std::collections::HashMap;
@@ -23,6 +26,8 @@ use crate::font::FontProvider;
 use crate::style::ComputedRun;
 use crate::units::twips_to_px;
 use crate::{MediaMode, MediaSource, RenderOptions};
+pub use decoration::{text_decorations, TextDecorations};
+pub(crate) use paragraph::formula_ink;
 
 /// Which advance geometry produced [`TextItem::width`] and must be used to paint.
 ///
@@ -109,6 +114,33 @@ pub struct LineItem {
     pub dashed: bool,
 }
 
+/// A resolved non-solid fill shared by SVG and PDF.
+#[derive(Clone, Debug)]
+pub enum PathPaint {
+    /// A linear gradient, with stop positions between zero and one.
+    LinearGradient {
+        /// Resolved RGB stop colours.
+        stops: Vec<(f64, String)>,
+        /// Endpoints in the shape's local coordinates.
+        start: (f64, f64),
+        /// End of the gradient axis.
+        end: (f64, f64),
+    },
+    /// A repeating hatch or dot tile.
+    Pattern {
+        /// Resolved foreground RGB colour.
+        foreground: String,
+        /// Resolved background RGB colour.
+        background: String,
+        /// Tile edge in local pixels.
+        size: f64,
+        /// Foreground line segments, in normalized tile coordinates.
+        lines: Vec<(f64, f64, f64, f64)>,
+        /// Foreground rectangles, in normalized tile coordinates.
+        rectangles: Vec<(f64, f64, f64, f64)>,
+    },
+}
+
 /// An arbitrary SVG path (a DrawingML shape), in local coordinates.
 #[derive(Clone, Debug)]
 pub struct PathItem {
@@ -124,6 +156,8 @@ pub struct PathItem {
     pub d: String,
     /// Fill colour.
     pub fill: Option<String>,
+    /// A gradient or pattern, replacing the solid fill when present.
+    pub paint: Option<PathPaint>,
     /// Stroke colour.
     pub stroke: Option<String>,
     /// Stroke width in px.
@@ -162,6 +196,63 @@ pub struct ImageItem {
     pub alt: String,
     /// Optional SVG transform (rotation/flip) applied about the image centre.
     pub transform: Option<String>,
+    /// Share of the picture cut away on the left, top, right and bottom
+    /// (`a:srcRect`), as fractions of the picture. The rest is stretched over
+    /// the item's box. A negative share pads instead of cutting.
+    pub crop: Option<[f64; 4]>,
+}
+
+impl ImageItem {
+    /// The box the *whole* picture is drawn into so that its cropped part
+    /// fills `x, y, w, h`: `(x, y, w, h)` of the uncropped picture.
+    #[must_use]
+    pub fn uncropped_box(&self) -> (f64, f64, f64, f64) {
+        let Some([left, top, right, bottom]) = self.crop else {
+            return (self.x, self.y, self.w, self.h);
+        };
+        let visible_w = 1.0 - left - right;
+        let visible_h = 1.0 - top - bottom;
+        if visible_w <= 0.01 || visible_h <= 0.01 {
+            return (self.x, self.y, self.w, self.h);
+        }
+        let full_w = self.w / visible_w;
+        let full_h = self.h / visible_h;
+        (
+            self.x - left * full_w,
+            self.y - top * full_h,
+            full_w,
+            full_h,
+        )
+    }
+}
+
+/// One paint primitive.
+#[derive(Clone, Debug)]
+pub struct GroupItem {
+    /// SVG affine matrix `[a, b, c, d, e, f]` in page pixels.
+    pub matrix: [f64; 6],
+    /// Child primitives in the matrix's source coordinate system.
+    pub items: Vec<Item>,
+    /// Page bounding box `[x, y, width, height]` after transformation.
+    pub bounds: [f64; 4],
+    /// Optional rectangular clip in child coordinates.
+    pub clip: Option<[f64; 4]>,
+    /// A contour clip in child coordinates, optionally inverted within clip.
+    pub clip_path: Option<PathItem>,
+    /// Keep the complement of clip_path within the rectangular clip.
+    pub clip_inverse: bool,
+    /// Group opacity, composed with ancestor groups.
+    pub opacity: f64,
+}
+
+impl GroupItem {
+    /// Translates the whole group without changing its child coordinates.
+    pub fn offset(&mut self, dx: f64, dy: f64) {
+        self.matrix[4] += dx;
+        self.matrix[5] += dy;
+        self.bounds[0] += dx;
+        self.bounds[1] += dy;
+    }
 }
 
 /// One paint primitive.
@@ -181,6 +272,25 @@ pub enum Item {
     Image(ImageItem),
     /// Arbitrary shape path.
     Path(PathItem),
+    /// A transformed collection of primitives shared by SVG and PDF.
+    Group(GroupItem),
+}
+
+impl Item {
+    /// Iterates over leaf primitives, including transformed descendants.
+    pub fn leaves(&self) -> impl Iterator<Item = &Item> {
+        let mut stack = vec![self];
+        std::iter::from_fn(move || {
+            while let Some(item) = stack.pop() {
+                if let Item::Group(group) = item {
+                    stack.extend(group.items.iter().rev());
+                } else {
+                    return Some(item);
+                }
+            }
+            None
+        })
+    }
 }
 
 /// A fully placed page ready to be painted.
@@ -211,6 +321,9 @@ pub(crate) struct TextLine {
     pub ascent: f64,
     /// Footnote ids referenced on this line, in order.
     pub footnote_refs: Vec<u32>,
+    /// The paragraph keeps this line out of `w:lnNumType` numbering
+    /// (`w:suppressLineNumbers`).
+    pub suppress_line_number: bool,
 }
 
 impl TextLine {
@@ -222,6 +335,10 @@ impl TextLine {
         }
         for item in &mut self.graphics {
             *item = match item.clone() {
+                Item::Group(mut group) => {
+                    group.offset(dx, dy);
+                    Item::Group(group)
+                }
                 Item::Text(mut text) => {
                     text.x += dx;
                     text.baseline += dy;
@@ -259,8 +376,6 @@ impl TextLine {
 pub(crate) enum Flow {
     /// A text line.
     Line(TextLine),
-    /// An atomic image.
-    Image(ImageItem),
     /// An atomic pre-placed block (for example a table row).
     Block {
         /// Items already positioned relative to the block top-left.
@@ -272,8 +387,16 @@ pub(crate) enum Flow {
     TableRow(TableRowFlow),
     /// An explicit page break.
     PageBreak,
-    /// An explicit column break (`w:br w:type="column"`).
+    /// An explicit column break.
     ColumnBreak,
+}
+
+/// A page anchored drawing hosted by text in a table row.
+#[derive(Clone, Debug)]
+pub(crate) struct RowAnchor {
+    pub anchor: strict_ooxml_wml::model::drawing::AnchorDrawing,
+    pub x: f64,
+    pub y: f64,
 }
 
 /// A laid-out table row.
@@ -287,6 +410,10 @@ pub(crate) struct TableRowFlow {
     pub header: bool,
     /// Page-absolute frame children. The row offset is not applied to these.
     pub page_frames: Vec<Item>,
+    /// Page anchored drawings whose paragraph origin is relative to this row.
+    pub anchors: Vec<RowAnchor>,
+    /// Safe row-relative boundaries between content bands; empty for cantSplit.
+    pub split_points: Vec<f64>,
 }
 
 /// Page geometry derived from a section's `sectPr`.
@@ -306,6 +433,11 @@ pub(crate) struct Geometry {
     pub bottom: f64,
     /// Document-grid line pitch in px (`w:docGrid/@w:linePitch`), if any.
     pub grid_line_pitch: Option<f64>,
+    /// Body text columns (`w:cols`).
+    pub columns: ColumnLayout,
+    /// The column the content being laid out sits in (reading order). Only the
+    /// paginator moves it; it picks the `column` box of a floating object.
+    pub active_column: usize,
 }
 
 impl Geometry {
@@ -319,6 +451,184 @@ impl Geometry {
     #[must_use]
     pub(crate) fn content_height(&self) -> f64 {
         (self.height - self.top - self.bottom).max(1.0)
+    }
+
+    /// Number of body columns.
+    #[must_use]
+    pub(crate) fn column_count(&self) -> usize {
+        self.columns.count()
+    }
+
+    /// Width of body column `index` (reading order).
+    #[must_use]
+    pub(crate) fn column_width(&self, index: usize) -> f64 {
+        self.columns.width(index)
+    }
+
+    /// Page x of the left edge of body column `index` (reading order).
+    #[must_use]
+    pub(crate) fn column_left(&self, index: usize) -> f64 {
+        self.left + self.columns.offset(index)
+    }
+
+    /// Page x and width of the active column, the `column` reference box.
+    #[must_use]
+    pub(crate) fn active_column_box(&self) -> (f64, f64) {
+        (
+            self.column_left(self.active_column),
+            self.column_width(self.active_column),
+        )
+    }
+}
+
+/// Most text columns a section can define (`CT_Columns/w:col maxOccurs="45"`).
+pub(crate) const MAX_COLUMNS: usize = 45;
+
+/// Default `w:cols/@w:space`: Word's half inch.
+const DEFAULT_COLUMN_SPACE_TWIPS: i32 = 720;
+
+/// Text columns of a section (ISO/IEC 29500-1 §17.6.3, §17.6.4): each column's
+/// offset from the content left edge and its width, in reading order.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ColumnLayout {
+    count: usize,
+    /// `(offset, width)` per column, px. A right-to-left section (`w:bidi`)
+    /// already has its columns mirrored: column 0 is the rightmost.
+    boxes: [(f64, f64); MAX_COLUMNS],
+    /// Draw a line in the middle of each gap (`w:sep`).
+    pub separator: bool,
+}
+
+impl ColumnLayout {
+    /// One column filling the content width.
+    #[must_use]
+    pub(crate) fn single(content_width: f64) -> Self {
+        let mut boxes = [(0.0, 0.0); MAX_COLUMNS];
+        if let Some(first) = boxes.first_mut() {
+            *first = (0.0, content_width.max(1.0));
+        }
+        Self {
+            count: 1,
+            boxes,
+            separator: false,
+        }
+    }
+
+    /// The columns `w:cols` defines within `content_width` px.
+    ///
+    /// With `equalWidth` the content width is divided by `num`, leaving `space`
+    /// after each column but the last. Otherwise every `w:col` is one column of
+    /// width `w`, followed by its `space` (0 when absent, as Word reads it); the
+    /// last column's space is ignored, and a column without `w` shares what the
+    /// others leave. More than [`MAX_COLUMNS`] columns are cut to that many.
+    #[must_use]
+    pub(crate) fn from_columns(
+        columns: Option<&strict_ooxml_wml::model::props::Columns>,
+        right_to_left: bool,
+        content_width: f64,
+        scale: f64,
+    ) -> Self {
+        let Some(columns) = columns else {
+            return Self::single(content_width);
+        };
+        let content_width = content_width.max(1.0);
+        let px = |twips: Option<Twips>, default: i32| {
+            twips_to_px(twips.map_or(default, Twips::value).max(0), scale)
+        };
+        let mut boxes = [(0.0, 0.0); MAX_COLUMNS];
+        let count = if columns.equal_width || columns.columns.is_empty() {
+            let count = columns.count.map_or(1, usize::from).clamp(1, MAX_COLUMNS);
+            let gap = px(columns.space, DEFAULT_COLUMN_SPACE_TWIPS);
+            let width = ((content_width - gap * (count - 1) as f64) / count as f64).max(1.0);
+            for (index, slot) in boxes.iter_mut().take(count).enumerate() {
+                *slot = (index as f64 * (width + gap), width);
+            }
+            count
+        } else {
+            let specs: Vec<_> = columns.columns.iter().take(MAX_COLUMNS).collect();
+            let count = specs.len();
+            let spaces: Vec<f64> = specs
+                .iter()
+                .enumerate()
+                .map(|(index, spec)| {
+                    if index + 1 == count {
+                        0.0
+                    } else {
+                        px(spec.space, 0)
+                    }
+                })
+                .collect();
+            let declared: f64 = specs
+                .iter()
+                .filter_map(|spec| spec.width)
+                .map(|width| px(Some(width), 0))
+                .sum();
+            let missing = specs.iter().filter(|spec| spec.width.is_none()).count();
+            let share = if missing == 0 {
+                0.0
+            } else {
+                ((content_width - declared - spaces.iter().sum::<f64>()) / missing as f64).max(1.0)
+            };
+            let mut offset = 0.0;
+            for ((slot, spec), space) in boxes.iter_mut().zip(&specs).zip(&spaces) {
+                let width = spec
+                    .width
+                    .map_or(share, |width| px(Some(width), 0))
+                    .max(1.0);
+                *slot = (offset, width);
+                offset += width + space;
+            }
+            count
+        };
+        if right_to_left {
+            for slot in boxes.iter_mut().take(count) {
+                slot.0 = content_width - slot.0 - slot.1;
+            }
+        }
+        Self {
+            count,
+            boxes,
+            separator: columns.separator,
+        }
+    }
+
+    /// Number of columns (at least one).
+    #[must_use]
+    pub(crate) fn count(&self) -> usize {
+        self.count.max(1)
+    }
+
+    /// Offset of column `index` from the content left edge, px.
+    #[must_use]
+    pub(crate) fn offset(&self, index: usize) -> f64 {
+        self.column(index).0
+    }
+
+    /// Width of column `index`, px.
+    #[must_use]
+    pub(crate) fn width(&self, index: usize) -> f64 {
+        self.column(index).1.max(1.0)
+    }
+
+    /// `(offset, width)` of column `index`; past the last, the last.
+    fn column(&self, index: usize) -> (f64, f64) {
+        self.boxes
+            .get(index.min(self.count() - 1))
+            .copied()
+            .unwrap_or((0.0, 1.0))
+    }
+
+    /// Offsets (from the content left edge) of the separator lines: the middle
+    /// of every gap between neighbouring columns, left to right.
+    #[must_use]
+    pub(crate) fn gap_centres(&self) -> Vec<f64> {
+        let mut boxes: Vec<(f64, f64)> = self.boxes.iter().take(self.count()).copied().collect();
+        boxes.sort_by(|a, b| a.0.total_cmp(&b.0));
+        boxes
+            .iter()
+            .zip(boxes.iter().skip(1))
+            .map(|(left, right)| f64::midpoint(left.0 + left.1, right.0))
+            .collect()
     }
 }
 
@@ -338,6 +648,7 @@ pub(crate) fn geometry_for(
     section: Option<&SectionProperties>,
     scale: f64,
     ctx: Option<&LayoutContext<'_>>,
+    gutter_at_top: bool,
 ) -> Geometry {
     let page = section.and_then(|section| section.page_size);
     let raw_w = page.and_then(|page| page.width).map(Twips::value);
@@ -398,77 +709,89 @@ pub(crate) fn geometry_for(
         .and_then(|grid| grid.line_pitch)
         .filter(|pitch| *pitch > 0)
         .map(|pitch| twips_to_px(pitch, scale));
+    // `w:pgMar/@w:gutter` widens the binding-side margin: the left one, or the
+    // right one under `w:rtlGutter`.
+    let gutter = margins
+        .gutter
+        .map_or(0.0, |gutter| twips_to_px(gutter.value().max(0), scale));
+    let rtl_gutter = section.is_some_and(|section| section.rtl_gutter);
+    let (left_gutter, right_gutter) = if gutter_at_top {
+        (0.0, 0.0)
+    } else if rtl_gutter {
+        (0.0, gutter)
+    } else {
+        (gutter, 0.0)
+    };
+    let left = value(margins.left, DEFAULT_MARGIN) + left_gutter;
+    let right = value(margins.right, DEFAULT_MARGIN) + right_gutter;
+    let columns = ColumnLayout::from_columns(
+        section.and_then(|section| section.columns.as_ref()),
+        section.is_some_and(|section| section.bidi),
+        width - left - right,
+        scale,
+    );
     Geometry {
         width,
         height,
-        left: value(margins.left, DEFAULT_MARGIN),
-        top: value(margins.top, DEFAULT_MARGIN),
-        right: value(margins.right, DEFAULT_MARGIN),
+        left,
+        top: value(margins.top, DEFAULT_MARGIN) + if gutter_at_top { gutter } else { 0.0 },
+        right,
         bottom: value(margins.bottom, DEFAULT_MARGIN),
         grid_line_pitch,
+        columns,
+        active_column: 0,
     }
 }
 
-/// Computes each column's absolute left and width in px from a section's `w:cols`.
-///
-/// Returns an empty vector for a single-column section (or no `w:cols`), which
-/// the paginator treats as the fast path: the content box is the whole page and
-/// nothing about the old layout changes.
-///
-/// Explicit `w:col` widths (RTF `\colw`) are used as written, and an undeclared
-/// width in an explicit set is the equal share of what is left over. The gap
-/// after a column is its `w:col/@space`, falling back to `w:cols/@space`, and a
-/// genuine `0` when neither is present — the units are never guessed.
-pub(crate) fn column_layout(
+/// Geometry in the text-flow coordinate system of a vertical section.
+pub(crate) fn body_geometry_for(
     section: Option<&SectionProperties>,
-    content_left: f64,
-    content_width: f64,
     scale: f64,
-) -> Vec<(f64, f64)> {
-    let Some(columns) = section.and_then(|section| section.columns.as_ref()) else {
-        return Vec::new();
-    };
-    let count = columns
-        .count
-        .map_or(columns.columns.len(), usize::from)
-        .max(1);
-    if count <= 1 {
-        return Vec::new();
-    }
-    let default_space = columns
-        .space
-        .map_or(0.0, |space| twips_to_px(space.value(), scale));
-    let explicit = !columns.equal_width && !columns.columns.is_empty();
-    let mut out = Vec::with_capacity(count);
-    let mut x = content_left;
-    if explicit {
-        for index in 0..count {
-            let spec = columns.columns.get(index);
-            let width = spec
-                .and_then(|spec| spec.width)
-                .map(|width| twips_to_px(width.value(), scale))
-                .filter(|width| *width > 0.0)
-                .unwrap_or_else(|| {
-                    // A `w:col` with no `w:w`: the equal share of what the
-                    // declared columns leave over (never negative).
-                    let remaining = (content_width - (x - content_left)).max(1.0);
-                    remaining / (count - index) as f64
-                });
-            out.push((x, width));
-            let space = spec
-                .and_then(|spec| spec.space)
-                .map_or(default_space, |space| twips_to_px(space.value(), scale));
-            x += width + space;
+    ctx: Option<&LayoutContext<'_>>,
+    gutter_at_top: bool,
+) -> Geometry {
+    use strict_ooxml_wml::model::values::TextDirection;
+    let mut geometry = geometry_for(section, scale, ctx, gutter_at_top);
+    let direction = section.and_then(|s| s.text_direction);
+    let old = geometry;
+    match direction {
+        Some(TextDirection::TbRl | TextDirection::TbRlV) => {
+            geometry.width = old.height;
+            geometry.height = old.width;
+            geometry.left = old.top;
+            geometry.top = old.right;
+            geometry.right = old.bottom;
+            geometry.bottom = old.left;
         }
-    } else {
-        let width = ((content_width - default_space * (count - 1) as f64) / count as f64).max(1.0);
-        for _ in 0..count {
-            out.push((x, width));
-            x += width + default_space;
+        Some(TextDirection::BtLr) => {
+            geometry.width = old.height;
+            geometry.height = old.width;
+            geometry.left = old.bottom;
+            geometry.top = old.left;
+            geometry.right = old.top;
+            geometry.bottom = old.right;
         }
+        Some(TextDirection::TbLrV) => {
+            geometry.width = old.height;
+            geometry.height = old.width;
+            geometry.left = old.top;
+            geometry.top = old.left;
+            geometry.right = old.bottom;
+            geometry.bottom = old.right;
+        }
+        _ => return geometry,
     }
-    out
+    geometry.columns = ColumnLayout::from_columns(
+        section.and_then(|s| s.columns.as_ref()),
+        section.is_some_and(|s| s.bidi),
+        geometry.content_width(),
+        scale,
+    );
+    geometry
 }
+
+/// Heading numbers per outline level (`Heading 1`..`Heading 9`) for one page.
+pub(crate) type ChapterNumbers = [Option<(u32, crate::notes::NumberFormat)>; 9];
 
 /// Shared state for layout and media resolution.
 pub(crate) struct LayoutContext<'a> {
@@ -480,6 +803,7 @@ pub(crate) struct LayoutContext<'a> {
     pub font: &'a dyn FontProvider,
     /// Optional media source.
     pub media: Option<&'a dyn MediaSource>,
+    pub(crate) font_programs: std::sync::Arc<crate::font::embedded::FontPrograms>,
     /// Media emission mode.
     pub media_mode: MediaMode,
     /// Footnote/endnote numbering.
@@ -510,6 +834,10 @@ pub(crate) struct LayoutContext<'a> {
     /// is being laid out; `None` during body pagination (body fields resolve in
     /// `Paginator::resolve_fields`).
     pub(crate) field_env: std::cell::Cell<Option<crate::fields::FieldEnv>>,
+    /// Section whose body is currently being measured, including nested cells.
+    pub(crate) current_section: std::cell::Cell<usize>,
+    /// Numbered headings active on each page, carried between layout passes.
+    pub(crate) chapter_numbers: std::cell::RefCell<Vec<ChapterNumbers>>,
     /// Document-wide paint-item counter for [`ResourceLimits::max_render_items`]
     /// (AUD-72). Reset at the start of each layout pass.
     pub(crate) render_items: std::cell::Cell<u64>,
@@ -517,7 +845,7 @@ pub(crate) struct LayoutContext<'a> {
     ///
     /// Body pagination writes the current section here before a table. A page
     /// anchor uses the page box; a margin or text anchor uses the content box.
-    pub(crate) frame_anchor: std::cell::Cell<(f64, f64, f64, f64, f64)>,
+    pub(crate) frame_anchor: std::cell::Cell<FrameAnchor>,
     /// Height of a static header/footer part at a given content box.
     ///
     /// Key is `(part, left.to_bits, content_width.to_bits)`. Parts that contain
@@ -580,6 +908,7 @@ impl LayoutContext<'_> {
 
     /// Charges `count` paint items against the document-wide budget (AUD-72).
     pub(crate) fn charge_items(&self, count: usize) -> strict_ooxml_core::error::Result<()> {
+        strict_ooxml_core::control::checkpoint()?;
         let limit = self.options.limits.max_render_items;
         let added = u64::try_from(count).unwrap_or(u64::MAX);
         let next = self.render_items.get().saturating_add(added);
@@ -666,20 +995,19 @@ impl LayoutContext<'_> {
     ) -> f64 {
         let shown = crate::font::present_text(&run.family, text);
         let size_px = self.size_px(run.size_pt);
-        let family = crate::style::requested_family(run, text);
-        let owned = self.options.font_assets.as_ref().and_then(|assets| {
-            assets.resolve(
-                crate::style::requested_family(run, text),
-                run.bold,
-                run.italic,
-            )
-        });
-        let advance = |ch| {
-            owned.as_ref().map_or_else(
-                || self.font.advance_em(family, ch, run.bold, run.italic),
-                |face| face.resource.advance_em(ch).unwrap_or(0.0),
-            )
-        };
+        let family = crate::style::chosen_family(run, text);
+        let requested =
+            if run.complex_family.is_some() && crate::style::script_is_complex_only(text) {
+                run.complex_family.as_deref().unwrap_or(&run.family)
+            } else {
+                &run.family
+            };
+        if run.font_programs.for_resource(&family).is_none()
+            && crate::font::family::known_family(requested).is_none()
+            && !text.trim().is_empty()
+        {
+            self.warn(format!("font.substitution: unavailable family {requested:?}; using {family:?}, metrics may differ"));
+        }
         let complex = crate::font::needs_complex_script(&shown);
         let non_space = shown.chars().filter(|ch| !ch.is_whitespace()).count() as f64;
         let extra = crate::style::spacing_px(run, size_px) * non_space;
@@ -687,26 +1015,23 @@ impl LayoutContext<'_> {
             self.document.settings.character_spacing_control.as_deref(),
         );
         let chars: Vec<char> = shown.chars().collect();
-        if complex || !self.metric_advances.get() {
-            let (total_advance_em, status) = if let Some(face) = &owned {
-                crate::font::shape_resource(&shown, face).map_or_else(
-                    || {
-                        (
-                            shown.chars().map(advance).sum(),
-                            crate::font::ShapeStatus::DegradedMissingGlyph,
-                        )
-                    },
-                    |shaped| (shaped.total_advance_em, shaped.status),
-                )
-            } else {
-                let shaped =
-                    crate::font::shape_text(&shown, family, run.bold, run.italic, self.font);
-                (shaped.total_advance_em, shaped.status)
-            };
-            if status == crate::font::ShapeStatus::DegradedComplexScript {
+        if run.font_programs.for_resource(&family).is_some()
+            || complex
+            || run.rtl.is_some()
+            || run.kerning_pt.is_some()
+            || run.language != strict_ooxml_wml::model::props::Language::default()
+            || !self.metric_advances.get()
+        {
+            let shaped = crate::font::shape_run(&shown, &family, run, self.font);
+            if shaped.status == crate::font::ShapeStatus::DegradedComplexScript {
                 self.warn(crate::font::COMPLEX_SCRIPT_WARNING.to_owned());
             }
-            let mut width = total_advance_em * size_px + extra;
+            let mut width = shaped.total_advance_em * size_px + extra;
+            for &ch in &chars {
+                let ordinary = crate::font::embedded::run_advance_em(run, &family, ch, self.font);
+                width += (crate::style::space_advance_em(run, &family, ch, ordinary) - ordinary)
+                    * size_px;
+            }
             if compress {
                 let mut prev = None;
                 for (i, &ch) in chars.iter().enumerate() {
@@ -719,7 +1044,13 @@ impl LayoutContext<'_> {
                         plain_space_factor,
                     );
                     if (factor - 1.0).abs() > f64::EPSILON {
-                        width -= advance(ch) * size_px * (1.0 - factor);
+                        width -= crate::style::space_advance_em(
+                            run,
+                            &family,
+                            ch,
+                            crate::font::embedded::run_advance_em(run, &family, ch, self.font),
+                        ) * size_px
+                            * (1.0 - factor);
                     }
                     if !ch.is_whitespace() || factor > 0.0 {
                         prev = Some(ch);
@@ -734,7 +1065,12 @@ impl LayoutContext<'_> {
             let next = chars.get(i + 1).copied().or(following);
             let factor =
                 crate::style::compressed_char_factor(prev, ch, next, compress, plain_space_factor);
-            total += advance(ch) * factor;
+            total += crate::style::space_advance_em(
+                run,
+                &family,
+                ch,
+                crate::font::embedded::run_advance_em(run, &family, ch, self.font),
+            ) * factor;
             if !ch.is_whitespace() || factor > 0.0 {
                 prev = Some(ch);
             }
@@ -746,7 +1082,16 @@ impl LayoutContext<'_> {
     #[must_use]
     pub(crate) fn advance_kind_for(&self, text: &str, run: &ComputedRun) -> TextAdvanceKind {
         let shown = crate::font::present_text(&run.family, text);
-        if crate::font::needs_complex_script(&shown) || !self.metric_advances.get() {
+        if run
+            .font_programs
+            .for_resource(&crate::style::chosen_family(run, &shown))
+            .is_some()
+            || crate::font::needs_complex_script(&shown)
+            || run.rtl.is_some()
+            || run.kerning_pt.is_some()
+            || run.language != strict_ooxml_wml::model::props::Language::default()
+            || !self.metric_advances.get()
+        {
             TextAdvanceKind::Shaped
         } else {
             TextAdvanceKind::Metric
@@ -762,4 +1107,78 @@ pub(crate) struct Layout {
     pub anchors: Vec<floating::PendingAnchor>,
     /// What the layout had to say about the document, for `Page::warnings`.
     pub warnings: Vec<String>,
+    /// Body text lines that `w:lnNumType` numbers.
+    pub line_marks: Vec<LineMark>,
+    /// Multi-column areas of the body, for the `w:sep` lines between columns.
+    pub column_regions: Vec<ColumnRegion>,
+}
+
+/// The part of one page a multi-column layout occupied: where the line
+/// between its columns (`w:cols/@w:sep`) runs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ColumnRegion {
+    /// Zero-based page index.
+    pub page: usize,
+    /// Page x of the content left edge the column offsets start from.
+    pub left: f64,
+    /// Page y of the top of the columns.
+    pub top: f64,
+    /// Page y of the bottom of the longest column.
+    pub bottom: f64,
+    /// The columns.
+    pub columns: ColumnLayout,
+}
+
+/// Reference boxes of a frame (`w:framePr`) or a floating table (`w:tblpPr`):
+/// `page`, `margin` and `text` - the column the frame is anchored in
+/// (ISO/IEC 29500-1 §17.3.1.11, §17.4.58).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct FrameAnchor {
+    /// Page x of the left margin.
+    pub margin_x: f64,
+    /// Page y of the top margin.
+    pub margin_y: f64,
+    /// Width between the margins.
+    pub content_width: f64,
+    /// Height between the margins.
+    pub content_height: f64,
+    /// Page x of the column the frame's text sits in.
+    pub column_x: f64,
+    /// Width of that column.
+    pub column_width: f64,
+    /// Page width.
+    pub page_width: f64,
+    /// Page height.
+    pub page_height: f64,
+}
+
+impl FrameAnchor {
+    /// The boxes of `geometry`, with its active column as the `text` box.
+    #[must_use]
+    pub(crate) fn of(geometry: &Geometry) -> Self {
+        let (column_x, column_width) = geometry.active_column_box();
+        Self {
+            margin_x: geometry.left,
+            margin_y: geometry.top,
+            content_width: geometry.content_width(),
+            content_height: geometry.content_height(),
+            column_x,
+            column_width,
+            page_width: geometry.width,
+            page_height: geometry.height,
+        }
+    }
+}
+
+/// A body line placed on a page, for line numbering.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct LineMark {
+    /// Zero-based page index.
+    pub page: usize,
+    /// Section the line belongs to.
+    pub section: usize,
+    /// Left edge of the line's column, px.
+    pub column_left: f64,
+    /// Baseline, px from the page top.
+    pub baseline: f64,
 }

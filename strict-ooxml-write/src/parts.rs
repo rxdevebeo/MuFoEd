@@ -6,10 +6,13 @@
 //! that had no `numbering.xml` does not acquire one — that is what keeps a
 //! round trip from growing parts it did not have (SC-3).
 
+use std::collections::BTreeSet;
+
 use strict_ooxml_core::error::SourceLocation;
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::block::{Block, Paragraph};
 use strict_ooxml_wml::model::document::HeaderFooter;
+use strict_ooxml_wml::model::drawing::{Drawing, DrawingKind, Graphic};
 use strict_ooxml_wml::model::ids::Ilvl;
 use strict_ooxml_wml::model::inline::{Inline, Run, RunContent};
 use strict_ooxml_wml::model::notes::{Note, NoteKind, NoteTable};
@@ -154,6 +157,11 @@ fn style_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, style: &Style) {
                     xml.empty_attr_w("w:name", "val", name.as_ref());
                 }
             }
+            "aliases" => {
+                if let Some(aliases) = &style.aliases {
+                    xml.empty_attr_w("w:aliases", "val", aliases.as_ref());
+                }
+            }
             "basedOn" => {
                 if let Some(based_on) = &style.based_on {
                     xml.empty_attr_w("w:basedOn", "val", based_on.as_str());
@@ -226,9 +234,15 @@ pub fn numbering_part(
     table: &NumberingTable,
 ) -> std::result::Result<String, WriteError> {
     let mut xml = XmlWriter::new();
-    xml.start_root("w:numbering", &WML_NAMESPACES);
+    // A picture bullet is a `w:drawing`, so the part may need `wp`/`a`/`pic`;
+    // `start_root` declares only the prefixes the part actually used.
+    let mut namespaces = content_and_vendor_namespaces();
+    namespaces.push(("m", NS_M));
+    xml.start_root("w:numbering", &namespaces);
+    // `CT_Numbering`: `numPicBullet*`, `abstractNum*`, `num*`.
+    let bullets = pic_bullets(ctx, &mut xml, table);
     for abstract_num in table.abstracts() {
-        abstract_num_element(ctx, &mut xml, abstract_num);
+        abstract_num_element(ctx, &mut xml, abstract_num, &bullets);
     }
     for num in table.nums() {
         xml.start("w:num");
@@ -241,7 +255,7 @@ pub fn numbering_part(
                 xml.empty_attr_w("w:startOverride", "val", start);
             }
             if let Some(level) = &over.level {
-                level_element(ctx, &mut xml, level);
+                level_element(ctx, &mut xml, level, &bullets);
             }
             xml.end();
         }
@@ -251,11 +265,66 @@ pub fn numbering_part(
     ctx.finish_xml(xml)
 }
 
-fn abstract_num_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, abstract_num: &AbstractNum) {
+/// Writes the `w:numPicBullet` definitions and returns the ids written.
+///
+/// `CT_NumPicBullet` requires its picture, so a bullet whose drawing the
+/// writer cannot reproduce is not written at all (and is reported) rather
+/// than written empty; a `w:lvlPicBulletId` naming it is then left out too.
+fn pic_bullets(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, table: &NumberingTable) -> BTreeSet<u32> {
+    let mut written = BTreeSet::new();
+    for bullet in table.pic_bullets() {
+        if !pic_bullet_writable(&bullet.drawing) {
+            ctx.report_unsupported(
+                "w:numPicBullet",
+                &format!(
+                    "picture bullet {} holds no picture the writer can reproduce, so it is not \
+                     written and levels that reference it keep their w:lvlText bullet",
+                    bullet.id
+                ),
+                &bullet.location,
+            );
+            continue;
+        }
+        xml.start("w:numPicBullet");
+        xml.attr_w("numPicBulletId", bullet.id);
+        crate::drawing::drawing_element(ctx, xml, &bullet.drawing);
+        xml.end();
+        written.insert(bullet.id);
+    }
+    written
+}
+
+/// Whether [`crate::drawing::drawing_element`] writes `drawing` out.
+///
+/// A chart or a diagram needs a pass-through part `numbering.xml` does not
+/// bind, and an opaque drawing is not written at all; either would leave
+/// `w:numPicBullet` without the child the schema requires.
+fn pic_bullet_writable(drawing: &Drawing) -> bool {
+    let graphic = match &drawing.kind {
+        DrawingKind::Inline(inline) => inline.graphic.as_ref(),
+        DrawingKind::Anchor(anchor) => anchor.graphic.as_ref(),
+        DrawingKind::Opaque(_) => return false,
+    };
+    matches!(
+        graphic,
+        Graphic::Picture(_) | Graphic::Shape(_) | Graphic::Group(_) | Graphic::LockedCanvas(_)
+    )
+}
+
+fn abstract_num_element(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    abstract_num: &AbstractNum,
+    bullets: &BTreeSet<u32>,
+) {
     xml.start("w:abstractNum");
     xml.attr_w("abstractNumId", abstract_num.id.0);
     if let Some(kind) = &abstract_num.multi_level_type {
         xml.empty_attr_w("w:multiLevelType", "val", kind.as_ref());
+    }
+    // `CT_AbstractNum`: `nsid`, `multiLevelType`, `tmpl`, `name`, then the links.
+    if let Some(name) = &abstract_num.name {
+        xml.empty_attr_w("w:name", "val", name.as_ref());
     }
     if let Some(link) = &abstract_num.num_style_link {
         xml.empty_attr_w("w:numStyleLink", "val", link.as_str());
@@ -264,7 +333,7 @@ fn abstract_num_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, abstract_num: &A
         xml.empty_attr_w("w:styleLink", "val", link.as_str());
     }
     for level in &abstract_num.levels {
-        level_element(ctx, xml, level);
+        level_element(ctx, xml, level, bullets);
     }
     xml.end();
 }
@@ -292,7 +361,7 @@ fn ilvl_attr(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, ilvl: &Ilvl, at: &str) {
     }
 }
 
-fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
+fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level, bullets: &BTreeSet<u32>) {
     // `CT_Lvl` order is [`crate::order::LVL`]: start, numFmt, lvlRestart,
     // pStyle, isLgl, suff, lvlText, lvlPicBulletId, lvlJc, pPr, rPr.
     xml.start("w:lvl");
@@ -332,6 +401,23 @@ fn level_element(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, level: &Level) {
     }
     if let Some(text) = &level.text {
         xml.empty_attr_w("w:lvlText", "val", text.as_ref());
+    }
+    if let Some(id) = level.pic_bullet_id {
+        if bullets.contains(&id) {
+            xml.empty_attr_w("w:lvlPicBulletId", "val", id);
+        } else {
+            // A reference to a definition the part does not carry would dangle.
+            ctx.report_unsupported(
+                "w:lvlPicBulletId",
+                &format!(
+                    "level {} refers to picture bullet {id}, which this numbering part does \
+                     not carry; the reference is not written and the level keeps its \
+                     w:lvlText bullet",
+                    level.ilvl.0
+                ),
+                &strict_ooxml_core::error::SourceLocation::unknown(),
+            );
+        }
     }
     if let Some(justification) = &level.justification {
         xml.empty_attr_w("w:lvlJc", "val", justification.as_str());
@@ -660,6 +746,112 @@ fn hash_algorithm_name(sid: u32) -> Option<&'static str> {
     }
 }
 
+/// The attributes `CT_WritingStyle` declares in Strict. All but `nlCheck` are
+/// required, so an entry missing one is refused rather than written invalid.
+const WRITING_STYLE_ATTRS: &[(&str, bool)] = &[
+    ("lang", true),
+    ("vendorID", true),
+    ("dllVersion", true),
+    ("nlCheck", false),
+    ("checkStyle", true),
+    ("appName", true),
+];
+
+/// The attributes `CT_SmartTagType` declares; all three are optional.
+const SMART_TAG_TYPE_ATTRS: &[&str] = &["namespaceuri", "name", "url"];
+
+/// Writes each `w:activeWritingStyle` (`CT_WritingStyle`, unbounded).
+///
+/// `nlCheck` and `checkStyle` are `s:ST_OnOff`, which is `xsd:boolean` in
+/// Strict: `1`/`0`/`true`/`false` pass through, Transitional's `on`/`off` are
+/// spelled as the boolean they mean. An entry without one of the required
+/// attributes is not written and the loss is named.
+fn write_active_writing_styles(
+    ctx: &mut Ctx<'_>,
+    xml: &mut XmlWriter,
+    entries: &[Vec<(std::sync::Arc<str>, std::sync::Arc<str>)>],
+) {
+    let mut location = SourceLocation::unknown();
+    location.part = PartId::new(crate::package::SETTINGS_PART);
+    for attributes in entries {
+        let value_of = |local: &str| {
+            attributes
+                .iter()
+                .find(|(name, _)| name.as_ref() == local)
+                .map(|(_, value)| value.clone())
+        };
+        let missing: Vec<&str> = WRITING_STYLE_ATTRS
+            .iter()
+            .filter(|(local, required)| *required && value_of(local).is_none())
+            .map(|(local, _)| *local)
+            .collect();
+        if !missing.is_empty() {
+            ctx.report_unsupported(
+                "w:activeWritingStyle",
+                &format!(
+                    "CT_WritingStyle requires {}; the entry is not written",
+                    missing.join(", ")
+                ),
+                &location,
+            );
+            continue;
+        }
+        xml.start("w:activeWritingStyle");
+        for &(local, _) in WRITING_STYLE_ATTRS {
+            let Some(value) = value_of(local) else {
+                continue;
+            };
+            let value: &str = match (local, value.trim()) {
+                ("nlCheck" | "checkStyle", "on") => "true",
+                ("nlCheck" | "checkStyle", "off") => "false",
+                _ => value.as_ref(),
+            };
+            xml.attr_w(local, value);
+        }
+        xml.end();
+    }
+}
+
+/// Maps Transitional `ST_StylePaneSortMethods` onto its Strict spelling.
+///
+/// Transitional pairs every name with a four-digit code (`0000` = `name`,
+/// `0001` = `priority`, ...). Strict keeps only the names.
+fn strict_style_pane_sort_method(value: &str) -> Option<&'static str> {
+    match value.trim() {
+        "0000" | "name" => Some("name"),
+        "0001" | "priority" => Some("priority"),
+        "0002" | "font" => Some("font"),
+        "0003" | "basedOn" => Some("basedOn"),
+        "0004" | "type" => Some("type"),
+        "0005" | "default" => Some("default"),
+        _ => None,
+    }
+}
+
+/// Writes `w:stylePaneSortMethod`, citing the feature when a Transitional code
+/// is rewritten to its Strict name and naming the loss of a value outside both.
+fn write_style_pane_sort_method(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, value: &str) {
+    let mut location = SourceLocation::unknown();
+    location.part = PartId::new(crate::package::SETTINGS_PART);
+    match strict_style_pane_sort_method(value) {
+        Some(strict) => {
+            if strict != value {
+                ctx.report_info(
+                    "w:stylePaneSortMethod",
+                    &format!("Transitional sort code {value:?} written as {strict:?}"),
+                    &location,
+                );
+            }
+            xml.empty_attr_w("w:stylePaneSortMethod", "val", strict);
+        }
+        None => ctx.report_unsupported(
+            "w:stylePaneSortMethod",
+            &format!("{value:?} is not an ST_StylePaneSortMethods value; not written"),
+            &location,
+        ),
+    }
+}
+
 fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, name: &str) {
     match name {
         "zoom" => {
@@ -739,6 +931,11 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
         "autoHyphenation" if settings.auto_hyphenation => {
             xml.empty_attr_w("w:autoHyphenation", "val", "true");
         }
+        // Word writes the off value explicitly; dropping it was a silent change
+        // in `settings.xml` (DOCX_Mathematical_Equations).
+        "autoHyphenation" if settings.auto_hyphenation_off => {
+            xml.empty_attr_w("w:autoHyphenation", "val", "false");
+        }
         "hyphenationZone" => {
             if let Some(zone) = settings.hyphenation_zone {
                 xml.empty_attr_w("w:hyphenationZone", "val", zone.0);
@@ -754,6 +951,28 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
             xml.empty_attr_w("w:evenAndOddHeaders", "val", "false");
         }
         "mirrorMargins" if settings.mirror_margins => xml.empty("w:mirrorMargins"),
+        "mirrorMargins" if settings.mirror_margins_off => {
+            xml.empty_attr_w("w:mirrorMargins", "val", "false");
+        }
+        "activeWritingStyle" => {
+            write_active_writing_styles(ctx, xml, &settings.active_writing_styles);
+        }
+        "stylePaneSortMethod" => {
+            if let Some(value) = &settings.style_pane_sort_method {
+                write_style_pane_sort_method(ctx, xml, value);
+            }
+        }
+        "smartTagType" => {
+            for attributes in &settings.smart_tag_types {
+                xml.start("w:smartTagType");
+                for (attribute, value) in attributes {
+                    if SMART_TAG_TYPE_ATTRS.contains(&attribute.as_ref()) {
+                        xml.attr_w(attribute, value.as_ref());
+                    }
+                }
+                xml.end();
+            }
+        }
         // The Strict home of the flag Transitional writes inside `w:sectPr`,
         // where `EG_SectPrContents` has no slot for it. See
         // `Settings::gutter_at_top`.
@@ -775,7 +994,7 @@ fn settings_child(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, settings: &Settings, n
             // alphabetically, which is not this order, so a round trip through a
             // producer that sorted them would otherwise move four of the seven.
             let flags = settings.compat_flags.set();
-            if !flags.is_empty() || !settings.compatibility.is_empty() {
+            if settings.compat_present || !flags.is_empty() || !settings.compatibility.is_empty() {
                 xml.start("w:compat");
                 for flag in flags {
                     xml.empty(flag);
@@ -1037,8 +1256,8 @@ fn write_font_entry(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, entry: &FontEntry) {
         xml.start(kind.element());
         xml.attr_r_opt("id", Some(rel));
         xml.attr_w_opt("fontKey", font.font_key.as_deref());
-        if font.subsetted {
-            xml.attr_w("subsetted", "true");
+        if let Some(subsetted) = font.subsetted {
+            xml.attr_w("subsetted", if subsetted { "true" } else { "false" });
         }
         xml.end();
     }
@@ -1069,12 +1288,14 @@ fn face_name(kind: EmbedKind) -> &'static str {
 /// through `parse/theme.rs`, so for those the loss would otherwise be silent
 /// (`STAGE-10-TASK.md` E35, SC-10). `ctx` is passed for exactly this reason.
 pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<String, WriteError> {
-    ctx.report_partial(
-        "a:fmtScheme",
-        "theme fill, line and effect styles are not carried by the model; a \
-         placeholder scheme was written",
-        &strict_ooxml_core::error::SourceLocation::unknown(),
-    );
+    if theme.format_scheme_xml.is_none() {
+        ctx.report_partial(
+            "a:fmtScheme",
+            "theme fill, line and effect styles are not carried by the model; a \
+             placeholder scheme was written",
+            &strict_ooxml_core::error::SourceLocation::unknown(),
+        );
+    }
     let mut xml = XmlWriter::new();
     xml.start_root("a:theme", &THEME_NAMESPACES);
     ctx.report_partial(
@@ -1109,7 +1330,17 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
             .unwrap_or("000000")
             .trim_start_matches('#');
         xml.start(&format!("a:{slot}"));
-        xml.empty_attr("a:srgbClr", "val", value);
+        match theme.colors.system(slot) {
+            // A slot read as `a:sysClr` goes back as one, with the colour it
+            // resolved to as `lastClr` - which is what the reader reads.
+            Some(system) => {
+                xml.start("a:sysClr");
+                xml.attr("val", system);
+                xml.attr("lastClr", value);
+                xml.end();
+            }
+            None => xml.empty_attr("a:srgbClr", "val", value),
+        }
         xml.end();
     }
     xml.end();
@@ -1133,10 +1364,19 @@ pub fn theme_part(ctx: &mut Ctx<'_>, theme: &Theme) -> std::result::Result<Strin
         font_collection(&mut xml, "a:latin", &set.latin);
         font_collection(&mut xml, "a:ea", &set.east_asia);
         font_collection(&mut xml, "a:cs", &set.cs);
+        for (script, typeface) in &set.scripts {
+            xml.start("a:font");
+            xml.attr("script", script);
+            xml.attr("typeface", typeface);
+            xml.end();
+        }
         xml.end();
     }
     xml.end();
-    format_scheme(&mut xml);
+    match &theme.format_scheme_xml {
+        Some(markup) => xml.raw_markup(markup, &["a"]),
+        None => format_scheme(&mut xml),
+    }
     xml.end();
     if let Some(markup) = &theme.object_defaults_xml {
         // The parsed element, including `a:lnDef`, list styles and `a:sym`.
@@ -1323,13 +1563,9 @@ fn leading_paragraph_has_reference(note: &Note) -> bool {
 }
 
 fn paragraph_has_reference(paragraph: &Paragraph) -> bool {
-    paragraph.inlines.iter().any(|inline| {
-        matches!(inline, Inline::Run(run)
-            if run.content.iter().any(|content| matches!(content,
-                RunContent::NoteRef
-                    | RunContent::Separator
-                    | RunContent::ContinuationSeparator)))
-    })
+    paragraph.inlines.iter().any(
+        |inline| matches!(inline, Inline::Run(run) if run.content.contains(&RunContent::NoteRef)),
+    )
 }
 
 /// Ensures the first run of `paragraph` carries [`RunContent::NoteRef`].
@@ -1526,6 +1762,7 @@ mod tests {
             id: StyleId::new("Heading1"),
             style_type: StyleType::Paragraph,
             name: Some("heading 1".into()),
+            aliases: None,
             based_on: Some(StyleId::new("Normal")),
             next: None,
             link: None,
@@ -1571,6 +1808,7 @@ mod tests {
                 id: StyleId::new(format!("S{index}")),
                 style_type: StyleType::Character,
                 name: None,
+                aliases: None,
                 based_on: None,
                 next: None,
                 link: None,
@@ -1609,6 +1847,7 @@ mod tests {
             id: StyleId::new("Normal"),
             style_type: StyleType::Paragraph,
             name: None,
+            aliases: None,
             based_on: None,
             next: None,
             link: None,
@@ -1756,6 +1995,23 @@ mod tests {
         );
     }
 
+    /// Word's `<w:compat/>` carries no switch and still comes back.
+    #[test]
+    fn an_empty_compat_is_written_back() {
+        let settings = Settings {
+            compat_present: true,
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings");
+        assert!(xml.contains("<w:compat/>"), "{xml}");
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &Settings::default()).expect("settings");
+        assert!(!xml.contains("w:compat"), "{xml}");
+    }
+
     #[test]
     fn explicit_false_headers_and_auto_hyphenation_keep_their_values() {
         let settings = Settings {
@@ -1773,6 +2029,117 @@ mod tests {
         assert!(
             xml.contains(r#"<w:autoHyphenation w:val="true"/>"#),
             "{xml}"
+        );
+    }
+
+    /// Census 2026-10-10: explicit off values, `CT_Settings` children Strict
+    /// declares, and the Transitional sort code rewritten with a citation.
+    #[test]
+    fn census_settings_children_are_written_with_strict_values() {
+        let pairs = |items: &[(&str, &str)]| -> Vec<(std::sync::Arc<str>, std::sync::Arc<str>)> {
+            items
+                .iter()
+                .map(|(name, value)| ((*name).into(), (*value).into()))
+                .collect()
+        };
+        let settings = Settings {
+            mirror_margins_off: true,
+            auto_hyphenation_off: true,
+            active_writing_styles: vec![
+                pairs(&[
+                    ("appName", "MSWord"),
+                    ("lang", "en-US"),
+                    ("vendorID", "64"),
+                    ("dllVersion", "6"),
+                    ("nlCheck", "on"),
+                    ("checkStyle", "0"),
+                ]),
+                // `appName` is required: refused, and named.
+                pairs(&[("lang", "en-US"), ("vendorID", "64"), ("dllVersion", "0")]),
+            ],
+            style_pane_sort_method: Some("0001".into()),
+            smart_tag_types: vec![pairs(&[
+                ("namespaceuri", "urn:schemas-microsoft-com:office:smarttags"),
+                ("name", "date"),
+            ])],
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings_part balances");
+        assert!(xml.contains(r#"<w:mirrorMargins w:val="false"/>"#), "{xml}");
+        assert!(
+            xml.contains(r#"<w:autoHyphenation w:val="false"/>"#),
+            "{xml}"
+        );
+        assert_eq!(xml.matches("<w:activeWritingStyle ").count(), 1, "{xml}");
+        assert!(
+            xml.contains(
+                r#"<w:activeWritingStyle w:lang="en-US" w:vendorID="64" w:dllVersion="6" w:nlCheck="true" w:checkStyle="0" w:appName="MSWord"/>"#
+            ),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"<w:stylePaneSortMethod w:val="priority"/>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(
+                r#"<w:smartTagType w:namespaceuri="urn:schemas-microsoft-com:office:smarttags" w:name="date"/>"#
+            ),
+            "{xml}"
+        );
+        let losses = report.losses();
+        assert!(
+            losses
+                .iter()
+                .any(|loss| loss.feature_id == "w:stylePaneSortMethod"
+                    && loss.severity == Severity::Info),
+            "{losses:?}"
+        );
+        assert!(
+            losses
+                .iter()
+                .any(|loss| loss.feature_id == "w:activeWritingStyle"
+                    && loss.severity == Severity::Lossy
+                    && loss.reason.contains("appName")),
+            "{losses:?}"
+        );
+    }
+
+    /// A Strict sort name is written as is and cites nothing; a value outside
+    /// both vocabularies is not written and is named.
+    #[test]
+    fn census_style_pane_sort_method_names_pass_and_unknown_values_are_named() {
+        let settings = Settings {
+            style_pane_sort_method: Some("basedOn".into()),
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings");
+        assert!(
+            xml.contains(r#"<w:stylePaneSortMethod w:val="basedOn"/>"#),
+            "{xml}"
+        );
+        assert!(report.losses().is_empty(), "{:?}", report.losses());
+
+        let settings = Settings {
+            style_pane_sort_method: Some("0009".into()),
+            ..Settings::default()
+        };
+        let mut report = NormalizationReport::new();
+        let mut ctx = Ctx::new(&mut report);
+        let xml = settings_part(&mut ctx, &settings).expect("settings");
+        assert!(!xml.contains("stylePaneSortMethod"), "{xml}");
+        assert!(
+            report
+                .losses()
+                .iter()
+                .any(|loss| loss.feature_id == "w:stylePaneSortMethod"
+                    && loss.severity == Severity::Lossy),
+            "{:?}",
+            report.losses()
         );
     }
 
@@ -1795,6 +2162,7 @@ mod tests {
             id: StyleId::new("TableGrid"),
             style_type: StyleType::Table,
             name: None,
+            aliases: None,
             based_on: None,
             next: None,
             link: None,

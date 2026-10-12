@@ -351,6 +351,7 @@ pub(crate) fn apply(
         };
         numbering.insert_abstract(AbstractNum {
             id: AbstractNumId(abstract_id),
+            name: None,
             multi_level_type: Some(Arc::from("singleLevel")),
             num_style_link: None,
             style_link: None,
@@ -442,6 +443,7 @@ pub(crate) fn apply_numbered(
             let suffix = first.suffix.clone();
             numbering.insert_abstract(AbstractNum {
                 id: AbstractNumId(abstract_id),
+                name: None,
                 multi_level_type: Some(Arc::from("singleLevel")),
                 num_style_link: None,
                 style_link: None,

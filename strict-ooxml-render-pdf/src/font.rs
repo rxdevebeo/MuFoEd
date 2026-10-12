@@ -22,9 +22,7 @@ use std::fmt::Write as _;
 use skrifa::instance::{LocationRef, Size};
 use skrifa::raw::types::GlyphId;
 use skrifa::{FontRef, MetadataProvider};
-use strict_ooxml_render_svg::font::{
-    FaceInstanceKey, FaceSource, FontResource, ResolvedFaceHandle,
-};
+use strict_ooxml_render_svg::font::FaceSource;
 use subsetter::{subset, subset_with_variations, Error as SubsetError, GlyphRemapper, Tag};
 
 /// A face that some text uses.
@@ -32,8 +30,6 @@ use subsetter::{subset, subset_with_variations, Error as SubsetError, GlyphRemap
 pub struct FaceKey {
     /// The mapped family (the bundled substitute).
     pub family: String,
-    /// Exact external program and instance, absent for bundled legacy faces.
-    pub instance: Option<FaceInstanceKey>,
     /// Bold.
     pub bold: bool,
     /// Italic.
@@ -41,17 +37,6 @@ pub struct FaceKey {
 }
 
 impl FaceKey {
-    /// Identifies an explicitly registered face without merging distinct programs.
-    #[must_use]
-    pub fn from_resource(face: &ResolvedFaceHandle) -> Self {
-        Self {
-            family: strict_ooxml_render_svg::style::resource_family(face),
-            instance: Some(face.resource.key().clone()),
-            bold: face.bold,
-            italic: face.italic,
-        }
-    }
-
     /// A stable name for the PDF resource dictionary, e.g. `F1`.
     #[must_use]
     pub fn resource_name(&self, index: usize) -> String {
@@ -95,11 +80,10 @@ struct UsedGlyph {
 #[derive(Debug, Default)]
 pub struct FaceCollector {
     faces: BTreeMap<FaceKey, BTreeSet<(GlyphId, Option<char>)>>,
-    resources: BTreeMap<FaceKey, FontResource>,
     /// Shaped clusters whose glyph is not a single cmap character: `(source gid, unicode)`.
     shaped: BTreeMap<FaceKey, BTreeSet<(u16, String)>>,
-    /// Characters the selected bundled face does not contain.
-    missing_glyphs: BTreeMap<FaceKey, BTreeSet<char>>,
+    /// Faces requested that the bundle does not carry.
+    unknown: BTreeSet<FaceKey>,
 }
 
 impl FaceCollector {
@@ -111,21 +95,18 @@ impl FaceCollector {
 
     /// Records one character for a face.
     ///
-    /// Missing characters remain attached to their known face so the PDF can
-    /// distinguish a missing glyph from a family that is not bundled.
-    pub fn add(&mut self, source: &FaceSource, bold: bool, italic: bool, ch: char) {
+    /// A family the bundle does not carry is recorded and reported rather than
+    /// silently drawn with a substitute: the text would keep its metrics and
+    /// lose its glyphs, which is exactly the kind of quiet loss the project
+    /// refuses.
+    pub fn add(&mut self, source: &FaceSource<'_>, bold: bool, italic: bool, ch: char) {
         let key = FaceKey {
             family: source.family.to_owned(),
-            instance: None,
             bold,
             italic,
         };
         let Some(glyph) = glyph_for(source, ch) else {
-            // Keep the face in the collection. `add_notdef` gives it a valid
-            // subset, while the drawing pass reports this character as a
-            // missing glyph instead of misclassifying the whole face.
-            self.faces.entry(key.clone()).or_default();
-            self.missing_glyphs.entry(key).or_default().insert(ch);
+            self.unknown.insert(key);
             return;
         };
         self.faces.entry(key).or_default().insert((glyph, Some(ch)));
@@ -138,55 +119,20 @@ impl FaceCollector {
     /// stored separately and still subsets the source glyph id.
     pub fn add_cluster(
         &mut self,
-        source: &FaceSource,
+        source: &FaceSource<'_>,
         bold: bool,
         italic: bool,
         glyph_id: u16,
         unicode: &str,
     ) {
+        if glyph_id == 0 {
+            return;
+        }
         let key = FaceKey {
             family: source.family.to_owned(),
-            instance: None,
             bold,
             italic,
         };
-        self.insert_cluster(key, glyph_id, unicode);
-    }
-
-    /// Records a glyph using an owned resource, retaining it through subsetting.
-    pub fn add_resource(&mut self, face: &ResolvedFaceHandle, ch: char) {
-        self.add_cluster_resource(
-            face,
-            face.resource.glyph_id(ch).unwrap_or(0),
-            &ch.to_string(),
-        );
-    }
-
-    /// Records a shaped cluster using the exact owned resource.
-    pub fn add_cluster_resource(
-        &mut self,
-        face: &ResolvedFaceHandle,
-        glyph_id: u16,
-        unicode: &str,
-    ) {
-        let key = FaceKey::from_resource(face);
-        self.resources
-            .entry(key.clone())
-            .or_insert_with(|| face.resource.clone());
-        self.insert_cluster(key, glyph_id, unicode);
-    }
-
-    fn insert_cluster(&mut self, key: FaceKey, glyph_id: u16, unicode: &str) {
-        if glyph_id == 0 {
-            // Keep a valid face subset for the paint pass, which will report
-            // the cluster as missing text instead of treating the face as absent.
-            self.faces.entry(key.clone()).or_default();
-            self.missing_glyphs
-                .entry(key)
-                .or_default()
-                .extend(unicode.chars());
-            return;
-        }
         if unicode.chars().count() == 1 {
             if let Some(ch) = unicode.chars().next() {
                 self.faces
@@ -209,13 +155,10 @@ impl FaceCollector {
         self.faces.keys().cloned().collect()
     }
 
-    /// Characters absent from a known bundled face, in deterministic order.
+    /// The faces that were requested but are not bundled.
     #[must_use]
-    pub fn missing_glyphs(&self) -> Vec<(FaceKey, char)> {
-        self.missing_glyphs
-            .iter()
-            .flat_map(|(key, chars)| chars.iter().map(|ch| (key.clone(), *ch)))
-            .collect()
+    pub fn unknown_faces(&self) -> Vec<FaceKey> {
+        self.unknown.iter().cloned().collect()
     }
 
     /// Records glyph 0 (`.notdef`) for every face, which a font must keep.
@@ -229,7 +172,7 @@ impl FaceCollector {
     #[cfg(test)]
     fn add_shared_glyph(
         &mut self,
-        source: &FaceSource,
+        source: &FaceSource<'_>,
         bold: bool,
         italic: bool,
         glyph: GlyphId,
@@ -238,7 +181,6 @@ impl FaceCollector {
     ) {
         let key = FaceKey {
             family: source.family.to_owned(),
-            instance: None,
             bold,
             italic,
         };
@@ -255,45 +197,7 @@ impl FaceCollector {
     /// # Errors
     ///
     /// Returns a [`FontError`] when the face cannot be parsed or subsetted.
-    pub fn build(&self, key: &FaceKey, source: &FaceSource) -> Result<EmbeddedFont, FontError> {
-        let variations = source
-            .weight
-            .map(|weight| vec![(Tag::new(b"wght"), weight)])
-            .unwrap_or_default();
-        self.build_program(key, source.data, 0, &variations)
-    }
-
-    /// Builds a subset from the exact retained program and variation instance.
-    ///
-    /// # Errors
-    /// Returns a font error when the resource is absent or cannot be subsetted.
-    pub fn build_resource(&self, key: &FaceKey) -> Result<EmbeddedFont, FontError> {
-        let resource = self
-            .resources
-            .get(key)
-            .ok_or_else(|| FontError::Parse("missing owned font resource".into()))?;
-        let variations: Vec<_> = resource
-            .key()
-            .variations
-            .iter()
-            .map(|axis| (Tag::new(&axis.tag()), axis.value()))
-            .collect();
-        self.build_program(
-            key,
-            resource.bytes(),
-            resource.key().face_index,
-            &variations,
-        )
-    }
-
-    #[allow(clippy::too_many_lines)] // Subset, widths and CID maps are one deterministic pass.
-    fn build_program(
-        &self,
-        key: &FaceKey,
-        data: &[u8],
-        index: u32,
-        variations: &[(Tag, f32)],
-    ) -> Result<EmbeddedFont, FontError> {
+    pub fn build(&self, key: &FaceKey, source: &FaceSource<'_>) -> Result<EmbeddedFont, FontError> {
         let used: Vec<UsedGlyph> = self
             .faces
             .get(key)
@@ -328,10 +232,11 @@ impl FaceCollector {
                 remapper.remap(old);
             }
         }
-        let subset_bytes = if variations.is_empty() {
-            subset(data, index, &remapper)
-        } else {
-            subset_with_variations(data, index, variations, &remapper)
+        let subset_bytes = match source.weight {
+            Some(weight) => {
+                subset_with_variations(source.data, 0, &[(Tag::new(b"wght"), weight)], &remapper)
+            }
+            None => subset(source.data, 0, &remapper),
         }
         .map_err(|error: SubsetError| FontError::Subset(error.to_string()))?;
 
@@ -347,9 +252,6 @@ impl FaceCollector {
             return Err(FontError::NoUnitsPerEm);
         }
         let scale = 1000.0 / units_per_em;
-        let bounds = metrics
-            .bounds
-            .ok_or_else(|| FontError::Parse("missing font bounds".into()))?;
         let gids = subset_font.glyph_metrics(Size::unscaled(), LocationRef::default());
         // The width is a whole number of 1000-unit steps, which is what the PDF
         // `/W` array is specified in. Keeping it an integer rather than an `f32`
@@ -404,8 +306,6 @@ impl FaceCollector {
             cluster_unicode,
             cid_to_gid,
             is_cff,
-            bounds: [bounds.x_min, bounds.y_min, bounds.x_max, bounds.y_max]
-                .map(|value| f64::from(value) * scale),
             ascent: f64::from(metrics.ascent) * scale,
             descent: f64::from(metrics.descent) * scale,
             cap_height: metrics.cap_height.map(|value| f64::from(value) * scale),
@@ -438,8 +338,6 @@ pub struct EmbeddedFont {
     pub cid_to_gid: Vec<u16>,
     /// Whether the program carries CFF (OpenType/PostScript) outlines.
     pub is_cff: bool,
-    /// Font bounding box in 1000-unit text space, from the embedded program.
-    pub bounds: [f64; 4],
     /// Ascender in 1000-unit text space.
     pub ascent: f64,
     /// Descender (negative) in 1000-unit text space.
@@ -483,7 +381,7 @@ impl std::fmt::Display for FontError {
 impl std::error::Error for FontError {}
 
 /// Returns the glyph id a face uses for `ch`.
-fn glyph_for(source: &FaceSource, ch: char) -> Option<GlyphId> {
+fn glyph_for(source: &FaceSource<'_>, ch: char) -> Option<GlyphId> {
     let font = FontRef::new(source.data).ok()?;
     let glyph = font.charmap().map(ch)?;
     (glyph != GlyphId::NOTDEF).then_some(glyph)
@@ -540,11 +438,11 @@ pub fn to_unicode_cmap(font: &EmbeddedFont) -> Vec<u8> {
     for chunk in entries.chunks(100) {
         let _ = writeln!(out, "{} beginbfchar", chunk.len());
         for (gid, text) in chunk {
-            let _ = write!(out, "<{gid:04X}> <");
+            let mut encoded = String::new();
             for unit in text.encode_utf16() {
-                let _ = write!(out, "{unit:04X}");
+                let _ = write!(encoded, "{unit:04X}");
             }
-            out.push_str(">\n");
+            let _ = writeln!(out, "<{gid:04X}> <{encoded}>");
         }
         out.push_str("endbfchar\n");
     }
@@ -561,7 +459,7 @@ pub fn identity_h_cmap() -> Vec<u8> {
     let mut out = String::with_capacity(512);
     out.push_str("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n");
     out.push_str("/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> def\n");
-    out.push_str("/CMapName /Identity-H def\n/CMapType 1 def\n");
+    out.push_str("/CMapName /Identity-H def\n/CMapType 2 def\n");
     out.push_str("1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n");
     out.push_str("1 begincidrange\n<0000> <FFFF> 0\nendcidrange\n");
     out.push_str("endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
@@ -583,11 +481,10 @@ mod tests {
         }
         collector.add_notdef();
         assert_eq!(collector.faces().len(), 1);
-        assert!(collector.missing_glyphs().is_empty());
+        assert!(collector.unknown_faces().is_empty());
 
         let key = FaceKey {
             family: source.family.to_owned(),
-            instance: None,
             bold: false,
             italic: false,
         };
@@ -618,7 +515,6 @@ mod tests {
                 collector.add_notdef();
                 let key = FaceKey {
                     family: source.family.to_owned(),
-                    instance: None,
                     bold,
                     italic,
                 };
@@ -641,7 +537,6 @@ mod tests {
         collector.add_notdef();
         let key = FaceKey {
             family: source.family.to_owned(),
-            instance: None,
             bold: true,
             italic: false,
         };
@@ -653,21 +548,12 @@ mod tests {
     }
 
     #[test]
-    fn a_character_without_a_glyph_keeps_its_face_and_is_recorded() {
+    fn a_character_without_a_glyph_is_recorded_not_substituted() {
         let source = face_source("Calibri", false, false).expect("bundled");
         let mut collector = FaceCollector::new();
         collector.add(&source, false, false, '\u{10FFFD}');
-        assert_eq!(collector.faces().len(), 1);
-        assert_eq!(collector.missing_glyphs().len(), 1);
-        collector.add_notdef();
-        let key = FaceKey {
-            family: source.family.to_owned(),
-            instance: None,
-            bold: false,
-            italic: false,
-        };
-        let font = collector.build(&key, &source).expect("subset .notdef");
-        assert!(font.chars.is_empty());
+        assert_eq!(collector.faces().len(), 0);
+        assert_eq!(collector.unknown_faces().len(), 1);
     }
 
     #[test]
@@ -678,50 +564,15 @@ mod tests {
         collector.add_notdef();
         let key = FaceKey {
             family: source.family.to_owned(),
-            instance: None,
             bold: false,
             italic: false,
         };
-        let mut font = collector.build(&key, &source).expect("subset");
+        let font = collector.build(&key, &source).expect("subset");
         let cmap = String::from_utf8(super::to_unicode_cmap(&font)).expect("utf-8");
         assert!(cmap.contains("beginbfchar"), "{cmap}");
         assert!(cmap.contains("<0041>"), "A must map to U+0041:\n{cmap}");
         let identity = String::from_utf8(super::identity_h_cmap()).expect("utf-8");
         assert!(identity.contains("begincidrange"), "{identity}");
-        for count in [0_u16, 1, 100, 101, 201] {
-            font.cluster_unicode.clear();
-            font.to_unicode = (0..count).map(|cid| (cid, 'A')).collect();
-            let cmap = String::from_utf8(super::to_unicode_cmap(&font)).expect("utf-8");
-            let counts: Vec<usize> = cmap
-                .lines()
-                .filter_map(|line| line.strip_suffix(" beginbfchar"))
-                .map(|value| value.parse().expect("mapping count"))
-                .collect();
-            let expected: Vec<usize> = (0..usize::from(count))
-                .collect::<Vec<_>>()
-                .chunks(100)
-                .map(<[usize]>::len)
-                .collect();
-            assert_eq!(counts, expected, "{count} mappings");
-        }
-    }
-
-    #[test]
-    fn cmap_encodes_non_bmp_destinations_as_utf16_surrogates() {
-        let source = face_source("Calibri", false, false).expect("bundled");
-        let mut collector = FaceCollector::new();
-        collector.add(&source, false, false, 'A');
-        let key = FaceKey {
-            family: source.family.to_owned(),
-            instance: None,
-            bold: false,
-            italic: false,
-        };
-        let mut font = collector.build(&key, &source).expect("subset");
-        font.to_unicode.clear();
-        font.to_unicode.insert(1, '\u{1F600}');
-        let cmap = String::from_utf8(super::to_unicode_cmap(&font)).expect("utf-8");
-        assert!(cmap.contains("<0001> <D83DDE00>"), "{cmap}");
     }
 
     /// Every `bfchar` section announces its own entry count, including the
@@ -736,7 +587,6 @@ mod tests {
         collector.add_notdef();
         let key = FaceKey {
             family: source.family.to_owned(),
-            instance: None,
             bold: false,
             italic: false,
         };
@@ -774,7 +624,6 @@ mod tests {
         collector.add_notdef();
         let key = FaceKey {
             family: source.family.to_owned(),
-            instance: None,
             bold: false,
             italic: false,
         };

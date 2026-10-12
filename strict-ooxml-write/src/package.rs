@@ -70,6 +70,9 @@ const CONTENT_TYPE_FOOTER: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml";
 const CONTENT_TYPE_RELS: &str = "application/vnd.openxmlformats-package.relationships+xml";
 const CONTENT_TYPE_XML: &str = "application/xml";
+const CONTENT_TYPE_CORE_PROPERTIES: &str =
+    "application/vnd.openxmlformats-package.core-properties+xml";
+const CORE_PROPERTIES_PART: &str = "/docProps/core.xml";
 
 /// Allocates part names so generated media never collides with a passthrough
 /// part (AUD-62).
@@ -234,6 +237,15 @@ pub trait Source {
         Ok(out)
     }
 
+    /// Whether the reader rewrote any part of the source to Strict on the way
+    /// in, so a part copied from it is not byte for byte the producer's.
+    ///
+    /// The default is `false`: a source that is not a normalizing package hands
+    /// out the bytes it holds.
+    fn was_normalized(&self) -> bool {
+        false
+    }
+
     /// The relationship ids `from` declares, in order.
     ///
     /// # Errors
@@ -280,6 +292,10 @@ impl Source for strict_ooxml_core::opc::Package {
 
     fn reachable_parts(&self, from: &PartId) -> Result<Vec<PartId>> {
         strict_ooxml_core::opc::Package::reachable_parts(self, from)
+    }
+
+    fn was_normalized(&self) -> bool {
+        strict_ooxml_core::opc::Package::was_normalized(self)
     }
 }
 
@@ -347,6 +363,38 @@ impl Source for NoSource {
     }
 }
 
+/// Document core properties (`docProps/core.xml`), for a document built in code.
+///
+/// A parsed document carries its own `core.xml` through the pass-through; a
+/// conversion (DjVu) has none, so the caller supplies the values here and the
+/// writer emits the part. OPC has no Strict/Transitional split for this part
+/// (ADR-0015): it always uses the standard namespace.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CoreProperties {
+    /// `dc:title`.
+    pub title: Option<String>,
+    /// `dc:creator`.
+    pub creator: Option<String>,
+    /// `dc:subject`.
+    pub subject: Option<String>,
+    /// `dc:description`.
+    pub description: Option<String>,
+    /// `cp:keywords`.
+    pub keywords: Option<String>,
+}
+
+impl CoreProperties {
+    /// Whether no property is set.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.title.is_none()
+            && self.creator.is_none()
+            && self.subject.is_none()
+            && self.description.is_none()
+            && self.keywords.is_none()
+    }
+}
+
 /// Options controlling a write.
 #[derive(Clone, Debug)]
 pub struct WriteOptions {
@@ -360,6 +408,8 @@ pub struct WriteOptions {
     pub write_font_table: bool,
     /// Write `word/settings.xml` even when the model recorded no setting.
     pub always_write_settings: bool,
+    /// Emit `docProps/core.xml` with these values, for a document built in code.
+    pub core_properties: Option<CoreProperties>,
 }
 
 impl Default for WriteOptions {
@@ -369,6 +419,7 @@ impl Default for WriteOptions {
             always_write_styles: false,
             write_font_table: true,
             always_write_settings: false,
+            core_properties: None,
         }
     }
 }
@@ -565,6 +616,25 @@ pub fn write_package(
             }
         }
     }
+    // `w:shapeDefaults` / `w:hdrShapeDefaults` hold VML (`o:shapedefaults`,
+    // `o:shapelayout`) and nothing else; Strict carries no VML (ADR-0014), so the
+    // parser skips them and this write names what went, child by child, so a
+    // reader of the report can tell which defaults the document lost.
+    for feature in ["w:shapeDefaults", "w:hdrShapeDefaults"] {
+        if let Some(entry) = document.support.get(feature) {
+            use strict_ooxml_core::normalize::report::{LossRecord, Severity};
+            report.record_loss(LossRecord {
+                transform_id: crate::ctx::WRITE_PARTIAL_ID,
+                feature_id: feature.to_owned(),
+                reason: "VML default shape properties are not written: o:shapedefaults \
+                         (v:fill, v:stroke, o:colormru) and o:shapelayout (o:idmap, \
+                         o:rules, o:r connector rules)"
+                    .to_owned(),
+                severity: Severity::Ignorable,
+                locations: entry.locations.clone(),
+            });
+        }
+    }
     let mut ctx = Ctx::new(&mut report);
 
     let mut rels = RelBuilder::new();
@@ -671,10 +741,13 @@ pub fn write_package(
         })
         .unwrap_or_default();
 
-    // Hyperlinks: the target only exists in the source package.
+    // Hyperlinks: a parsed link's target lives in the source package; a
+    // generated link carries its URL in `target` and gets a fresh external
+    // relationship here.
     let main = PartId::new(MAIN_DOCUMENT);
     let mut hyperlink_map: BTreeMap<String, String> = BTreeMap::new();
-    for old_id in collect_hyperlink_ids(&document.body.blocks) {
+    let (hyperlink_ids, hyperlink_targets) = collect_hyperlinks(&document.body.blocks);
+    for old_id in hyperlink_ids {
         match source.relationship(&main, &old_id) {
             Some(info) => {
                 let id = rels.add(&info.rel_type, info.target, info.external);
@@ -686,6 +759,10 @@ pub fn write_package(
                 &strict_ooxml_core::error::SourceLocation::unknown(),
             ),
         }
+    }
+    for target in hyperlink_targets {
+        let id = rels.add(&RelType::Hyperlink, target.clone(), true);
+        hyperlink_map.insert(target, id);
     }
 
     // W7: the parts this project does not model - a chart, a SmartArt diagram, a
@@ -778,14 +855,26 @@ pub fn write_package(
             .into_bytes(),
         )?;
     }
+    // Extra parts copied because a header/footer/notes part referenced them
+    // (AUD-61); merged with the document passthrough by name when writing.
+    let mut part_extra_copies: Vec<passthrough::CopiedPart> = Vec::new();
+
     if !document.numbering.is_empty() {
-        add_part(
+        // Picture bullets: `numbering.xml` owns the image relationships its
+        // `w:numPicBullet` drawings use, allocated against the written media
+        // target the same way a header's pictures are, so the ids are stable
+        // from one write to the next. Nothing else in the part refers to
+        // another part, so no foreign id is bound.
+        write_content_part_with_rels(
             &mut zip,
+            &mut ctx,
+            source,
             NUMBERING_PART,
-            part_xml(&mut ctx, NUMBERING_PART, |ctx| {
-                parts::numbering_part(ctx, &document.numbering)
-            })?
-            .into_bytes(),
+            "numbering.xml",
+            None,
+            &[],
+            &mut part_extra_copies,
+            |ctx| parts::numbering_part(ctx, &document.numbering),
         )?;
     }
     if document.settings != Default::default() || options.always_write_settings {
@@ -847,10 +936,6 @@ pub fn write_package(
             part_xml(&mut ctx, THEME_PART, |ctx| parts::theme_part(ctx, theme))?.into_bytes(),
         )?;
     }
-    // Extra parts copied because a header/footer/notes part referenced them
-    // (AUD-61); merged with the document passthrough by name when writing.
-    let mut part_extra_copies: Vec<passthrough::CopiedPart> = Vec::new();
-
     if !document.footnotes.is_empty() {
         let foreign = note_foreign_ids(&document.footnotes);
         write_content_part_with_rels(
@@ -977,29 +1062,49 @@ pub fn write_package(
         "/word/_rels/document.xml.rels",
         write_relationships(rels.relationships()).into_bytes(),
     )?;
+    let mut root_rels = vec![Relationship {
+        id: "rId1".to_owned(),
+        rel_type: RelType::OfficeDocument,
+        raw_type: strict_type_uri(&RelType::OfficeDocument),
+        target: "word/document.xml".to_owned(),
+        target_mode: TargetMode::Internal,
+        resolved: None,
+    }];
+    root_rels.extend(pass.root_relationships().iter().map(|rel| Relationship {
+        id: rel.id.clone(),
+        rel_type: RelType::Other(rel.raw_type.clone()),
+        raw_type: rel.raw_type.clone(),
+        target: rel.target.clone(),
+        target_mode: TargetMode::Internal,
+        resolved: None,
+    }));
+    if let Some(props) = &options.core_properties {
+        if !props.is_empty() {
+            content_types.insert_override(
+                PartId::new(CORE_PROPERTIES_PART),
+                CONTENT_TYPE_CORE_PROPERTIES,
+            );
+            root_rels.push(Relationship {
+                // After the office document (rId1) and any carried root
+                // relationships, so the id never collides with theirs.
+                id: format!("rId{}", root_rels.len() + 1),
+                rel_type: RelType::CoreProperties,
+                raw_type: strict_type_uri(&RelType::CoreProperties),
+                target: "docProps/core.xml".to_owned(),
+                target_mode: TargetMode::Internal,
+                resolved: None,
+            });
+            add_part(
+                &mut zip,
+                CORE_PROPERTIES_PART,
+                core_properties_xml(props).into_bytes(),
+            )?;
+        }
+    }
     add_part(
         &mut zip,
         "/_rels/.rels",
-        write_relationships(
-            &std::iter::once(Relationship {
-                id: "rId1".to_owned(),
-                rel_type: RelType::OfficeDocument,
-                raw_type: strict_type_uri(&RelType::OfficeDocument),
-                target: "word/document.xml".to_owned(),
-                target_mode: TargetMode::Internal,
-                resolved: None,
-            })
-            .chain(pass.root_relationships().iter().map(|rel| Relationship {
-                id: rel.id.clone(),
-                rel_type: RelType::Other(rel.raw_type.clone()),
-                raw_type: rel.raw_type.clone(),
-                target: rel.target.clone(),
-                target_mode: TargetMode::Internal,
-                resolved: None,
-            }))
-            .collect::<Vec<_>>(),
-        )
-        .into_bytes(),
+        write_relationships(&root_rels).into_bytes(),
     )?;
     // A hash the model never indexed (a numbering bullet, a theme texture, a
     // VML pattern tile, an empty embedded font) is still the source's bytes.
@@ -1131,11 +1236,13 @@ fn bind_part_foreign(
             let Ok(bytes) = source.read_part(&seed) else {
                 continue;
             };
+            let content_type = source.content_type(&seed);
+            passthrough::cite_carried_rewrite(ctx, source, seed.as_str(), content_type.as_deref());
             // Also copy the part's own .rels so its internal ids keep working.
             extra.push(passthrough::CopiedPart {
                 name: seed.as_str().to_owned(),
                 bytes,
-                content_type: source.content_type(&seed),
+                content_type,
             });
             if let Some(rels_part) = passthrough::rels_part_of(&seed) {
                 if let Ok(rels_bytes) = source.read_part(&rels_part) {
@@ -1336,11 +1443,61 @@ fn binary_content_type(name: &str) -> &'static str {
     }
 }
 
-/// Collects the relationship ids of every hyperlink in the body, in order.
-fn collect_hyperlink_ids(blocks: &[Block]) -> Vec<String> {
-    let mut out = UniqueIds::default();
-    collect_hyperlink_ids_in(blocks, &mut out);
-    out.into_vec()
+/// The `docProps/core.xml` part for a document built in code.
+fn core_properties_xml(props: &CoreProperties) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+    out.push_str(
+        "<cp:coreProperties \
+         xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" \
+         xmlns:dc=\"http://purl.org/dc/elements/1.1/\" \
+         xmlns:dcterms=\"http://purl.org/dc/terms/\" \
+         xmlns:dcmitype=\"http://purl.org/dc/dcmitype/\" \
+         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">",
+    );
+    for (tag, value) in [
+        ("dc:title", &props.title),
+        ("dc:creator", &props.creator),
+        ("dc:subject", &props.subject),
+        ("dc:description", &props.description),
+        ("cp:keywords", &props.keywords),
+    ] {
+        if let Some(value) = value {
+            let _ = write!(out, "<{tag}>{}</{tag}>", escape_xml(value));
+        }
+    }
+    out.push_str("</cp:coreProperties>");
+    out
+}
+
+/// Escapes the five XML metacharacters in a text node.
+fn escape_xml(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// The relationship ids and external targets of every hyperlink, in order.
+fn collect_hyperlinks(blocks: &[Block]) -> (Vec<String>, Vec<String>) {
+    let mut refs = HyperlinkRefs::default();
+    collect_hyperlinks_in(blocks, &mut refs);
+    (refs.ids.into_vec(), refs.targets.into_vec())
+}
+
+/// The hyperlink ids and targets found while walking the body.
+#[derive(Default)]
+struct HyperlinkRefs {
+    ids: UniqueIds,
+    targets: UniqueIds,
 }
 
 /// Strings in first-seen order without repeats, in O(1) per insert.
@@ -1367,47 +1524,49 @@ impl UniqueIds {
     }
 }
 
-fn collect_hyperlink_ids_in(blocks: &[Block], out: &mut UniqueIds) {
+fn collect_hyperlinks_in(blocks: &[Block], refs: &mut HyperlinkRefs) {
     for block in blocks {
         match block {
-            Block::Paragraph(paragraph) => collect_hyperlink_ids_inline(&paragraph.inlines, out),
+            Block::Paragraph(paragraph) => collect_hyperlinks_inline(&paragraph.inlines, refs),
             Block::Table(table) => {
                 for row in &table.rows {
                     for cell in &row.cells {
-                        collect_hyperlink_ids_in(&cell.blocks, out);
+                        collect_hyperlinks_in(&cell.blocks, refs);
                     }
                 }
             }
             Block::SdtBlock(sdt) => {
-                collect_hyperlink_ids_in(&sdt.blocks, out);
-                collect_hyperlink_ids_inline(&sdt.inlines, out);
+                collect_hyperlinks_in(&sdt.blocks, refs);
+                collect_hyperlinks_inline(&sdt.inlines, refs);
             }
             _ => {}
         }
     }
 }
 
-fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut UniqueIds) {
+fn collect_hyperlinks_inline(inlines: &[Inline], refs: &mut HyperlinkRefs) {
     for inline in inlines {
         match inline {
             Inline::Hyperlink(link) => {
                 if let Some(id) = &link.rel_id {
-                    let id = id.as_str().to_owned();
-                    out.insert(id);
+                    refs.ids.insert(id.as_str().to_owned());
                 }
-                collect_hyperlink_ids_inline(&link.inlines, out);
+                if let Some(target) = &link.target {
+                    refs.targets.insert(target.to_string());
+                }
+                collect_hyperlinks_inline(&link.inlines, refs);
             }
-            Inline::Field(field) => collect_hyperlink_ids_inline(&field.inlines, out),
+            Inline::Field(field) => collect_hyperlinks_inline(&field.inlines, refs),
             Inline::SdtInline(sdt) => {
-                collect_hyperlink_ids_in(&sdt.blocks, out);
-                collect_hyperlink_ids_inline(&sdt.inlines, out);
+                collect_hyperlinks_in(&sdt.blocks, refs);
+                collect_hyperlinks_inline(&sdt.inlines, refs);
             }
-            Inline::Directional(dir) => collect_hyperlink_ids_inline(&dir.inlines, out),
-            Inline::Drawing(drawing) => collect_hyperlink_ids_drawing(drawing, out),
+            Inline::Directional(dir) => collect_hyperlinks_inline(&dir.inlines, refs),
+            Inline::Drawing(drawing) => collect_hyperlinks_drawing(drawing, refs),
             Inline::Run(run) => {
                 for content in &run.content {
                     if let RunContent::Drawing(drawing) = content {
-                        collect_hyperlink_ids_drawing(drawing, out);
+                        collect_hyperlinks_drawing(drawing, refs);
                     }
                 }
             }
@@ -1416,25 +1575,25 @@ fn collect_hyperlink_ids_inline(inlines: &[Inline], out: &mut UniqueIds) {
     }
 }
 
-fn collect_hyperlink_ids_drawing(drawing: &Drawing, out: &mut UniqueIds) {
+fn collect_hyperlinks_drawing(drawing: &Drawing, refs: &mut HyperlinkRefs) {
     let graphic = match &drawing.kind {
         DrawingKind::Inline(inline) => inline.graphic.as_ref(),
         DrawingKind::Anchor(anchor) => anchor.graphic.as_ref(),
         DrawingKind::Opaque(_) => return,
     };
-    collect_hyperlink_ids_graphic(graphic, out);
+    collect_hyperlinks_graphic(graphic, refs);
 }
 
-fn collect_hyperlink_ids_graphic(graphic: &Graphic, out: &mut UniqueIds) {
+fn collect_hyperlinks_graphic(graphic: &Graphic, refs: &mut HyperlinkRefs) {
     match graphic {
         Graphic::Shape(shape) => {
             if let Some(text) = &shape.text {
-                collect_hyperlink_ids_in(&text.blocks, out);
+                collect_hyperlinks_in(&text.blocks, refs);
             }
         }
         Graphic::Group(group) => {
             for child in &group.children {
-                collect_hyperlink_ids_graphic(child, out);
+                collect_hyperlinks_graphic(child, refs);
             }
         }
         Graphic::None

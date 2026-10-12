@@ -157,7 +157,10 @@ fn parses_rich_run_properties() {
     assert_eq!(run.props.strike, TriState::Off);
     assert_eq!(run.props.italic, TriState::On);
     assert_eq!(run.props.bold, TriState::On);
-    assert!(document.support.get("w:bdr").is_some());
+    // Run borders are modelled (a58da59): all four edges, and no longer
+    // reported as partially supported.
+    assert!(run.props.borders.top.is_some() && run.props.borders.end.is_some());
+    assert!(document.support.get("w:bdr").is_none());
 }
 
 #[test]
@@ -199,7 +202,7 @@ fn parses_rich_table_properties() {
 
     let row = &table.rows[0];
     assert_eq!(row.props.height.unwrap().rule, Some(HeightRule::Exact));
-    assert!(row.props.header && row.props.cant_split);
+    assert!(row.props.header.is_on() && row.props.cant_split);
     assert_eq!(row.props.grid_before, Some(1));
     assert_eq!(row.props.grid_after, Some(1));
     assert_eq!(row.props.rsid.as_deref(), Some("00AB"));
@@ -222,6 +225,46 @@ fn parses_rich_table_properties() {
             .unwrap()
             .as_str(),
         "FFFFFF"
+    );
+}
+
+#[test]
+fn columns_without_equal_width_follow_their_col_children() {
+    // ISO/IEC 29500-1 §17.6.4: num and space are ignored, and the col
+    // elements define the columns, when equalWidth is not set.
+    let unset = paragraph_inline(
+        "<w:p/><w:sectPr><w:cols w:num=\"3\"><w:col w:w=\"2000\"/><w:col w:w=\"4000\"/></w:cols></w:sectPr>",
+    );
+    assert!(
+        !unset.sections[0]
+            .properties
+            .columns
+            .as_ref()
+            .unwrap()
+            .equal_width
+    );
+    // Word writes equal columns with neither the attribute nor children.
+    let plain =
+        paragraph_inline("<w:p/><w:sectPr><w:cols w:num=\"2\" w:space=\"720\"/></w:sectPr>");
+    assert!(
+        plain.sections[0]
+            .properties
+            .columns
+            .as_ref()
+            .unwrap()
+            .equal_width
+    );
+    // An explicit value is kept either way.
+    let explicit = paragraph_inline(
+        "<w:p/><w:sectPr><w:cols w:num=\"2\" w:equalWidth=\"true\"><w:col w:w=\"2000\"/></w:cols></w:sectPr>",
+    );
+    assert!(
+        explicit.sections[0]
+            .properties
+            .columns
+            .as_ref()
+            .unwrap()
+            .equal_width
     );
 }
 

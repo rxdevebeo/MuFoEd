@@ -23,16 +23,48 @@ use super::{attr_in_ns, is_math, is_wml, parse_i32, parse_on_off, val_attr, wml_
 /// or off. They are a table rather than thirty struct fields so that adding the
 /// thirty-first is a line here and nothing else.
 const FLAT_ON_OFF: &[&str] = &[
+    "alignBordersAndEdges",
+    "alwaysMergeEmptyNamespace",
+    "alwaysShowPlaceholderText",
+    "autoFormatOverride",
     "bookFoldPrinting",
+    "bookFoldRevPrinting",
     "bordersDoNotSurroundFooter",
     "bordersDoNotSurroundHeader",
     "doNotAutoCompressPictures",
+    "doNotDemarcateInvalidXml",
+    "doNotDisplayPageBoundaries",
+    "doNotEmbedSmartTags",
     "doNotIncludeSubdocsInStats",
+    "doNotShadeFormData",
+    "doNotTrackFormatting",
+    "doNotTrackMoves",
     "doNotUseMarginsForDrawingGridOrigin",
+    "doNotValidateAgainstSchema",
     "embedSystemFonts",
     "embedTrueTypeFonts",
+    "formsDesign",
+    "ignoreMixedContent",
+    "linkStyles",
     "noPunctuationKerning",
+    "printFormsData",
+    "printFractionalCharacterWidth",
+    "printPostScriptOverText",
+    "printTwoOnOne",
+    "removeDateAndTime",
+    "removePersonalInformation",
+    "saveFormsData",
+    "saveInvalidXml",
     "savePreviewPicture",
+    "saveSubsetFonts",
+    "saveXmlDataOnly",
+    "showEnvelope",
+    "showXMLTags",
+    "strictFirstAndLastChars",
+    "styleLockQFSet",
+    "styleLockTheme",
+    "updateFields",
+    "useXSLTWhenSaving",
 ];
 
 /// Numeric children of `w:settings`, carried as the producer's own text.
@@ -41,6 +73,10 @@ const FLAT_NUMERIC: &[&str] = &[
     "displayVerticalDrawingGridEvery",
     "drawingGridHorizontalSpacing",
     "drawingGridVerticalSpacing",
+    // `CT_TwipsMeasure`, positions 57 and 58 of `CT_Settings`. They were
+    // recorded as foreign and dropped although Strict declares both.
+    "drawingGridHorizontalOrigin",
+    "drawingGridVerticalOrigin",
 ];
 
 impl PartParser<'_> {
@@ -140,9 +176,11 @@ impl PartParser<'_> {
             "doNotHyphenateCaps" => {
                 settings.do_not_hyphenate_caps = parse_on_off(attrs).unwrap_or(false);
             }
-            "autoHyphenation" => {
-                settings.auto_hyphenation = parse_on_off(attrs).unwrap_or(false);
-            }
+            "autoHyphenation" => match parse_on_off(attrs) {
+                Some(true) => settings.auto_hyphenation = true,
+                Some(false) => settings.auto_hyphenation_off = true,
+                None => {}
+            },
             "hyphenationZone" => {
                 settings.hyphenation_zone = val_attr(attrs).and_then(parse_i32).map(Twips);
             }
@@ -194,6 +232,7 @@ impl PartParser<'_> {
                 let (pairs, flags) = self.parse_compat()?;
                 settings.compatibility.extend(pairs);
                 settings.compat_flags = flags;
+                settings.compat_present = true;
                 return Ok(true);
             }
             _ if FLAT_ON_OFF.contains(&name.local()) => {
@@ -238,6 +277,7 @@ impl PartParser<'_> {
     /// the function-length lint; the split is by nothing in particular, and it is
     /// the second of two functions that between them hold every child `CT_Settings`
     /// declares that this model carries.
+    #[allow(clippy::too_many_lines)]
     fn settings_named(
         &mut self,
         name: &super::QName,
@@ -278,8 +318,29 @@ impl PartParser<'_> {
                     settings.theme_font_lang = Some(language);
                 }
             }
-            "mirrorMargins" => {
-                settings.mirror_margins = parse_on_off(attrs).unwrap_or(false);
+            // An explicit off is kept as off: Word writes `w:val="0"`, and folding
+            // it into "absent" dropped the element from the written part.
+            "mirrorMargins" => match parse_on_off(attrs) {
+                Some(true) => settings.mirror_margins = true,
+                Some(false) => settings.mirror_margins_off = true,
+                None => {}
+            },
+            // `CT_WritingStyle` and `CT_SmartTagType` are attribute-only and
+            // unbounded; each occurrence is one entry.
+            "activeWritingStyle" => {
+                let pairs = self.attribute_pairs(attrs);
+                if !pairs.is_empty() {
+                    settings.active_writing_styles.push(pairs);
+                }
+            }
+            "smartTagType" => {
+                let pairs = self.attribute_pairs(attrs);
+                if !pairs.is_empty() {
+                    settings.smart_tag_types.push(pairs);
+                }
+            }
+            "stylePaneSortMethod" => {
+                settings.style_pane_sort_method = val_attr(attrs).map(|value| self.intern(value));
             }
             // The Strict spelling of the flag Transitional puts in
             // `w:sectPr`; both land on the same field.

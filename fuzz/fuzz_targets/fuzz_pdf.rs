@@ -20,6 +20,8 @@ fuzz_target!(|data: &[u8]| {
         max_cached_image_bytes: 1 << 20,
         max_cached_form_bytes: 1 << 20,
         max_raster_pixels: 1024 * 1024,
+        max_image_pixels: 1024 * 1024,
+        max_total_content_bytes: 8 << 20,
     };
     let Ok(mut doc) = PdfDocument::open(data, limits) else {
         return;

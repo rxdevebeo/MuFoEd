@@ -132,7 +132,7 @@ impl PartParser<'_> {
                             && name.local() == "docPr"
                         {
                             inline.doc_pr = Some(parser.parse_doc_pr(&attrs));
-                            parser.skip_element()?;
+                            parser.skip_citing_extensions()?;
                         } else if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS)
                             && name.local() == "effectExtent"
                         {
@@ -143,7 +143,7 @@ impl PartParser<'_> {
                             inline.graphic_uri = uri;
                             inline.graphic = Box::new(graphic);
                         } else {
-                            parser.skip_element()?;
+                            parser.skip_citing_extensions()?;
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -164,6 +164,12 @@ impl PartParser<'_> {
                 effect_extent: None,
                 doc_pr: None,
                 simple_pos: bool_attr(attrs, "simplePos"),
+                simple_pos_point: None,
+                hidden: plain_attr(attrs, "hidden").and_then(|value| match value {
+                    "1" | "true" | "on" => Some(true),
+                    "0" | "false" | "off" => Some(false),
+                    _ => None,
+                }),
                 position_h: None,
                 position_v: None,
                 wrap: None,
@@ -204,6 +210,15 @@ impl PartParser<'_> {
                 XmlEvent::StartElement { name, attrs } => {
                     if is_ns(&name, WORDPROCESSING_DRAWING_STRICT_NS) {
                         match name.local() {
+                            "simplePos" => {
+                                let x = plain_attr(&attrs, "x").and_then(|v| v.trim().parse().ok());
+                                let y = plain_attr(&attrs, "y").and_then(|v| v.trim().parse().ok());
+                                anchor.simple_pos_point = match (x, y) {
+                                    (Some(0) | None, Some(0) | None) => None,
+                                    (x, y) => Some((x.unwrap_or(0), y.unwrap_or(0))),
+                                };
+                                self.skip_element()?;
+                            }
                             "positionH" => {
                                 anchor.position_h = Some(self.parse_position(&attrs)?);
                             }
@@ -220,7 +235,7 @@ impl PartParser<'_> {
                             }
                             "docPr" => {
                                 anchor.doc_pr = Some(self.parse_doc_pr(&attrs));
-                                self.skip_element()?;
+                                self.skip_citing_extensions()?;
                             }
                             "wrapNone" => {
                                 anchor.wrap = Some(self.parse_wrap(WrapKind::None, &attrs)?);
@@ -238,7 +253,8 @@ impl PartParser<'_> {
                                 anchor.wrap =
                                     Some(self.parse_wrap(WrapKind::TopAndBottom, &attrs)?);
                             }
-                            _ => self.skip_element()?,
+                            // `wp:cNvGraphicFramePr` and anything else not modelled.
+                            _ => self.skip_citing_extensions()?,
                         }
                     } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "graphic" {
                         let (uri, graphic) = self.parse_graphic()?;
@@ -559,9 +575,12 @@ impl PartParser<'_> {
         attrs: &[Attr],
     ) -> Result<Option<Graphic>> {
         if is_locked_canvas_ns(name) && name.local() == "lockedCanvas" {
-            return Ok(Some(Graphic::LockedCanvas(
-                self.capture_locked_canvas(name, attrs)?,
-            )));
+            // A canvas whose markup could not be kept faithfully still
+            // occupies its place, as a payload no writer reproduces.
+            return Ok(Some(
+                self.capture_locked_canvas(name.clone(), attrs.to_vec())?
+                    .map_or(Graphic::Other, Graphic::LockedCanvas),
+            ));
         }
         if is_ns(name, PICTURE_STRICT_NS) && name.local() == "pic" {
             return Ok(Some(Graphic::Picture(self.parse_picture()?)));
@@ -581,7 +600,11 @@ impl PartParser<'_> {
                 self.parse_group()?.map_or(Graphic::None, Graphic::Group),
             ));
         }
-        if name.local() == "chart" {
+        // Both references are matched in their Strict namespace only: the
+        // normalizer has already rewritten a Transitional `c:`/`dgm:`, and a
+        // `chart` from any other vocabulary (`cx:chart`, Office's chartex) is
+        // not a `c:chart` a writer can put back under that name.
+        if is_ns(name, CHART_STRICT_NS) && name.local() == "chart" {
             // The attributes of *this* element, not of the `a:graphicData` that
             // carries it: `r:id` is where the chart part is named.
             let mut refs = self.foreign_refs(attrs, &[R_ID]);
@@ -593,7 +616,7 @@ impl PartParser<'_> {
             self.skip_element()?;
             return Ok(Some(graphic));
         }
-        if name.local() == "relIds" {
+        if is_ns(name, DIAGRAM_STRICT_NS) && name.local() == "relIds" {
             // `dgm:relIds` carries four ids in a fixed order, and the order is
             // the only thing that says which is which.
             let mut refs = self.foreign_refs(attrs, &[REL_DM, REL_LO, REL_QS, REL_CS]);
@@ -616,39 +639,46 @@ impl PartParser<'_> {
 
     /// Captures `lc:lockedCanvas` as Strict markup so `a:off`/`a:ext`/`chOff`
     /// round-trip (audit P2). The start event is already consumed.
-    fn capture_locked_canvas(&mut self, name: &QName, attrs: &[Attr]) -> Result<LockedCanvas> {
+    ///
+    /// The whole subtree is read either way, so the parser resumes after the
+    /// canvas. An `a:ext` in a namespace outside Strict is dropped, as in
+    /// [`Self::capture_fragment`]. `None` when anything left is in a namespace
+    /// [`markup_prefix`] has no prefix for: the markup would carry it with no
+    /// prefix at all, so `w:val` would come back as `val`, an attribute in no
+    /// namespace. Such a canvas is recorded and kept out of the model rather
+    /// than written back as something it was not.
+    fn capture_locked_canvas(
+        &mut self,
+        name: QName,
+        attrs: Vec<Attr>,
+    ) -> Result<Option<LockedCanvas>> {
         let location = self.location();
+        let pieces = self.read_pieces(name, attrs)?;
+        let kept = self.drop_extension_ext(&pieces);
         let mut markup = String::new();
         let mut images = Vec::new();
-        self.note_canvas_image(attrs, &mut images);
-        write_start_markup(&mut markup, name, attrs);
-        let mut depth = 1u32;
-        loop {
-            match self.next_event()? {
-                XmlEvent::StartElement { name, attrs } => {
-                    depth = depth.saturating_add(1);
-                    self.note_canvas_image(&attrs, &mut images);
-                    write_start_markup(&mut markup, &name, &attrs);
-                }
-                XmlEvent::EndElement { name } => {
-                    write_end_markup(&mut markup, &name);
-                    depth -= 1;
-                    if depth == 0 {
-                        break;
-                    }
-                }
-                XmlEvent::Text(text) => {
-                    escape_text_into_markup(&mut markup, &text);
-                }
-                XmlEvent::CData(text) => {
-                    markup.push_str("<![CDATA[");
-                    markup.push_str(&text);
-                    markup.push_str("]]>");
-                }
-                XmlEvent::Eof => {
-                    return Err(self.invalid("unexpected end of locked canvas"));
-                }
+        let mut known = true;
+        for (piece, keep) in pieces.iter().zip(&kept) {
+            if !*keep {
+                continue;
             }
+            match piece {
+                Piece::Start(name, attrs) => {
+                    self.note_canvas_image(attrs, &mut images);
+                    known &= write_start_markup(&mut markup, name, attrs);
+                }
+                Piece::End(name) => write_end_markup(&mut markup, name),
+                Piece::Text(text) => escape_text_into_markup(&mut markup, text),
+            }
+        }
+        if !known {
+            self.record(
+                "lc:lockedCanvas",
+                SupportStatus::Unsupported,
+                Some("namespace outside lc/a/r/pic; canvas not kept".to_owned()),
+                Some(location),
+            );
+            return Ok(None);
         }
         self.record(
             "lc:lockedCanvas",
@@ -656,11 +686,12 @@ impl PartParser<'_> {
             None,
             Some(location.clone()),
         );
-        Ok(LockedCanvas {
+        Ok(Some(LockedCanvas {
+            graphics: self.parse_locked_canvas_graphics(&markup).map(Box::new),
             markup: std::sync::Arc::<str>::from(markup),
             images,
             location,
-        })
+        }))
     }
 
     /// Captures the relationship ids a foreign graphic element carries.
@@ -689,7 +720,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `pic:pic`.
-    fn parse_picture(&mut self) -> Result<Picture> {
+    pub(crate) fn parse_picture(&mut self) -> Result<Picture> {
         self.nested(|parser| {
             let mut picture = Picture {
                 name: None,
@@ -700,23 +731,34 @@ impl PartParser<'_> {
                 extent: None,
                 src_rect: None,
                 xfrm: None,
+                markup: crate::model::drawing::PictureMarkup::default(),
             };
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
-                        if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "nvPicPr" {
-                            let (nv_id, name, descr) = parser.parse_nv_pic_pr()?;
+                        if (is_ns(&name, PICTURE_STRICT_NS) || is_ns(&name, DRAWINGML_STRICT_NS))
+                            && name.local() == "nvPicPr"
+                        {
+                            let (nv_id, name, descr) =
+                                parser.parse_nv_pic_pr(&mut picture.markup)?;
                             picture.nv_id = nv_id;
                             picture.name = name;
                             picture.descr = descr;
-                        } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "blipFill" {
-                            let (blip, src_rect) = parser.parse_blip_fill()?;
+                        } else if (is_ns(&name, PICTURE_STRICT_NS)
+                            || is_ns(&name, DRAWINGML_STRICT_NS))
+                            && name.local() == "blipFill"
+                        {
+                            picture.markup.blip_fill = parser.plain_attr_pairs(&attrs);
+                            let (blip, src_rect) = parser.parse_blip_fill(&mut picture.markup)?;
                             picture.blip = blip;
                             picture.src_rect = src_rect;
-                        } else if is_ns(&name, PICTURE_STRICT_NS) && name.local() == "spPr" {
+                        } else if (is_ns(&name, PICTURE_STRICT_NS)
+                            || is_ns(&name, DRAWINGML_STRICT_NS))
+                            && name.local() == "spPr"
+                        {
                             picture.bw_mode =
                                 plain_attr(&attrs, "bwMode").map(|value| parser.intern(value));
-                            let (extent, xfrm) = parser.parse_sp_pr()?;
+                            let (extent, xfrm) = parser.parse_sp_pr(&mut picture.markup)?;
                             picture.extent = extent;
                             picture.xfrm = xfrm;
                         } else {
@@ -735,6 +777,7 @@ impl PartParser<'_> {
     /// Parses `pic:nvPicPr`.
     fn parse_nv_pic_pr(
         &mut self,
+        markup: &mut crate::model::drawing::PictureMarkup,
     ) -> Result<(
         Option<u32>,
         Option<std::sync::Arc<str>>,
@@ -750,12 +793,21 @@ impl PartParser<'_> {
                         name: element,
                         attrs,
                     } => {
-                        if is_ns(&element, PICTURE_STRICT_NS) && element.local() == "cNvPr" {
+                        if (is_ns(&element, PICTURE_STRICT_NS)
+                            || is_ns(&element, DRAWINGML_STRICT_NS))
+                            && element.local() == "cNvPr"
+                        {
                             nv_id = plain_attr(&attrs, "id").and_then(|value| value.parse().ok());
                             name = plain_attr(&attrs, "name").map(|value| parser.intern(value));
                             descr = plain_attr(&attrs, "descr").map(|value| parser.intern(value));
+                        } else if is_ns(&element, PICTURE_STRICT_NS)
+                            && element.local() == "cNvPicPr"
+                        {
+                            markup.non_visual = parser.plain_attr_pairs(&attrs);
+                            markup.locks = parser.read_locks("picLocks")?;
+                            continue;
                         }
-                        parser.skip_element()?;
+                        parser.skip_citing_extensions()?;
                     }
                     XmlEvent::EndElement { .. } => break,
                     XmlEvent::Text(_) | XmlEvent::CData(_) => {}
@@ -766,8 +818,269 @@ impl PartParser<'_> {
         })
     }
 
+    /// Serialises the element whose start was just read, with its subtree, as
+    /// markup that declares on its root every namespace it uses, so the writer
+    /// can put it back wherever the element sat.
+    ///
+    /// `None` when what is left carries a relationship attribute, which the
+    /// writer would not re-map, or anything outside Strict (ADR-0014).
+    pub(super) fn capture_fragment(
+        &mut self,
+        name: QName,
+        attrs: Vec<Attr>,
+    ) -> Result<Option<std::sync::Arc<str>>> {
+        use strict_ooxml_core::xml::qname::NsUri;
+
+        let pieces = self.read_pieces(name, attrs)?;
+        let kept = self.drop_extension_ext(&pieces);
+        // ADR-0014: nothing outside Strict is written, wherever it sat.
+        let foreign = pieces
+            .iter()
+            .zip(&kept)
+            .any(|(piece, keep)| *keep && piece.is_foreign());
+        if foreign || !kept.first().copied().unwrap_or(false) {
+            return Ok(None);
+        }
+        // The part's root declares `a:` and `pic:`; a fragment that needs
+        // anything else is not kept, so the markup is the same bytes this
+        // writer produces for the same elements, and a write is a fixed point.
+        let prefix_of = |ns: Option<&NsUri>| -> Option<Option<&'static str>> {
+            let Some(uri) = ns.map(NsUri::as_str) else {
+                return Some(None);
+            };
+            match markup_prefix(Some(uri)) {
+                Some(prefix @ ("a" | "pic" | "xml")) => Some(Some(prefix)),
+                _ => None,
+            }
+        };
+        let kept_pieces: Vec<&Piece> = pieces
+            .iter()
+            .zip(&kept)
+            .filter(|(_, keep)| **keep)
+            .map(|(piece, _)| piece)
+            .collect();
+        let mut body = String::new();
+        let mut pending = false;
+        for piece in &kept_pieces {
+            match piece {
+                Piece::Start(name, attrs) => {
+                    if pending {
+                        body.push('>');
+                    }
+                    let Some(prefix) = prefix_of(name.ns.as_ref()) else {
+                        return Ok(None);
+                    };
+                    body.push('<');
+                    if let Some(prefix) = prefix {
+                        body.push_str(prefix);
+                        body.push(':');
+                    }
+                    body.push_str(name.local());
+                    for attr in attrs {
+                        let Some(prefix) = prefix_of(attr.name.ns.as_ref()) else {
+                            return Ok(None);
+                        };
+                        body.push(' ');
+                        if let Some(prefix) = prefix {
+                            body.push_str(prefix);
+                            body.push(':');
+                        }
+                        body.push_str(attr.name.local());
+                        body.push_str("=\"");
+                        let value = strict_percent(name, attr);
+                        let _ = strict_ooxml_core::xml::escape::escape_attr_into(&mut body, &value);
+                        body.push('"');
+                    }
+                    pending = true;
+                }
+                Piece::End(name) => {
+                    if pending {
+                        body.push_str("/>");
+                        pending = false;
+                        continue;
+                    }
+                    let prefix = prefix_of(name.ns.as_ref()).flatten();
+                    body.push_str("</");
+                    if let Some(prefix) = prefix {
+                        body.push_str(prefix);
+                        body.push(':');
+                    }
+                    body.push_str(name.local());
+                    body.push('>');
+                }
+                Piece::Text(text) => {
+                    if pending {
+                        body.push('>');
+                        pending = false;
+                    }
+                    escape_text_into_markup(&mut body, text);
+                }
+            }
+        }
+        Ok(Some(std::sync::Arc::from(body)))
+    }
+
+    /// The events of the element whose start was just read, through its end.
+    fn read_pieces(&mut self, name: QName, attrs: Vec<Attr>) -> Result<Vec<Piece>> {
+        let mut pieces = vec![Piece::Start(name, attrs)];
+        let mut depth = 1u32;
+        while depth > 0 {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    depth += 1;
+                    pieces.push(Piece::Start(name, attrs));
+                }
+                XmlEvent::EndElement { name } => {
+                    depth -= 1;
+                    pieces.push(Piece::End(name));
+                }
+                XmlEvent::Text(text) | XmlEvent::CData(text) => pieces.push(Piece::Text(text)),
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of a kept fragment")),
+            }
+        }
+        Ok(pieces)
+    }
+
+    /// Which pieces of a captured fragment are written: every one, except an
+    /// `a:ext` whose content is in a namespace outside Strict (`a14:useLocalDpi`,
+    /// `a14:hiddenFill`) - ADR-0014 keeps extensions out of a part this writer
+    /// regenerates - and an `a:extLst` left with no `a:ext`. Each removed
+    /// extension is recorded under `a:ext` with its `uri`.
+    fn drop_extension_ext(&mut self, pieces: &[Piece]) -> Vec<bool> {
+        let mut kept = vec![true; pieces.len()];
+        for (at, piece) in pieces.iter().enumerate() {
+            let Piece::Start(name, attrs) = piece else {
+                continue;
+            };
+            let open = kept.get(at).copied().unwrap_or(false);
+            if !open || !is_ns(name, DRAWINGML_STRICT_NS) || name.local() != "ext" {
+                continue;
+            }
+            let end = piece_end(pieces, at);
+            let foreign = pieces.iter().take(end).skip(at).any(Piece::is_foreign);
+            if foreign {
+                let uri = plain_attr(attrs, "uri").unwrap_or_default().to_owned();
+                clear_pieces(&mut kept, at, end);
+                self.record(
+                    "a:ext",
+                    SupportStatus::Unsupported,
+                    Some(format!(
+                        "Office extension {uri} is not Strict and is not written"
+                    )),
+                    Some(self.location()),
+                );
+            }
+        }
+        for (at, piece) in pieces.iter().enumerate() {
+            let Piece::Start(name, _) = piece else {
+                continue;
+            };
+            let open = kept.get(at).copied().unwrap_or(false);
+            if !open || !is_ns(name, DRAWINGML_STRICT_NS) || name.local() != "extLst" {
+                continue;
+            }
+            let end = piece_end(pieces, at);
+            let has_child = pieces
+                .iter()
+                .zip(&kept)
+                .take(end)
+                .skip(at + 1)
+                .any(|(piece, keep)| *keep && matches!(piece, Piece::Start(..)));
+            if !has_child {
+                clear_pieces(&mut kept, at, end);
+            }
+        }
+        kept
+    }
+
+    /// Skips the element whose start was just read, as `skip_element` does, and
+    /// records each Office extension inside it - an `a:ext` whose content is in
+    /// a namespace outside Strict (`a16:creationId` under `wp:docPr`) - under
+    /// `a:ext`, as a kept fragment does (ADR-0014). The extension is not
+    /// written either way; skipping it used to leave the report silent.
+    pub(super) fn skip_citing_extensions(&mut self) -> Result<()> {
+        let mut depth = 1u32;
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "ext" {
+                        // Read through its end tag; depth is unchanged.
+                        let pieces = self.read_pieces(name, attrs)?;
+                        let _ = self.drop_extension_ext(&pieces);
+                    } else {
+                        depth = depth.saturating_add(1);
+                    }
+                }
+                XmlEvent::EndElement { .. } => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return Ok(());
+                    }
+                }
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of a skipped element")),
+            }
+        }
+    }
+
+    /// The children of the element whose start was just read, through its end,
+    /// as one fragment (see [`Self::capture_fragment`]); `None` when it has none.
+    fn capture_children(&mut self) -> Result<Option<std::sync::Arc<str>>> {
+        let mut out = String::new();
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if let Some(fragment) = self.capture_fragment(name, attrs)? {
+                        out.push_str(&fragment);
+                    }
+                }
+                XmlEvent::EndElement { .. } => break,
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of a kept element")),
+            }
+        }
+        Ok((!out.is_empty()).then(|| std::sync::Arc::from(out)))
+    }
+
+    /// The unqualified attributes of an element, as written.
+    fn plain_attr_pairs(
+        &mut self,
+        attrs: &[Attr],
+    ) -> Vec<(std::sync::Arc<str>, std::sync::Arc<str>)> {
+        attrs
+            .iter()
+            .filter(|attr| attr.name.ns.is_none())
+            .map(|attr| (self.intern(attr.name.local()), self.intern(&attr.value)))
+            .collect()
+    }
+
+    /// The children of a `cNv*Pr`, whose start is consumed, through its end:
+    /// the attributes of the `a:{local}` lock element, when there is one.
+    fn read_locks(
+        &mut self,
+        local: &str,
+    ) -> Result<Option<Vec<(std::sync::Arc<str>, std::sync::Arc<str>)>>> {
+        let mut locks = None;
+        loop {
+            match self.next_event()? {
+                XmlEvent::StartElement { name, attrs } => {
+                    if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == local {
+                        locks = Some(self.plain_attr_pairs(&attrs));
+                    }
+                    self.skip_citing_extensions()?;
+                }
+                XmlEvent::EndElement { .. } => return Ok(locks),
+                XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                XmlEvent::Eof => return Err(self.invalid("unexpected end of cNvPr")),
+            }
+        }
+    }
+
     /// Parses `pic:blipFill`, resolving the image reference and crop.
-    fn parse_blip_fill(&mut self) -> Result<(Option<BlipRef>, Option<SrcRect>)> {
+    fn parse_blip_fill(
+        &mut self,
+        markup: &mut crate::model::drawing::PictureMarkup,
+    ) -> Result<(Option<BlipRef>, Option<SrcRect>)> {
         self.nested(|parser| {
             let mut blip = None;
             let mut src_rect = None;
@@ -792,7 +1105,7 @@ impl PartParser<'_> {
                                 cstate,
                                 location: parser.location(),
                             });
-                            parser.skip_element()?;
+                            markup.blip_children = parser.capture_children()?;
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "srcRect" {
                             src_rect = Some(parse_src_rect(&attrs));
                             parser.skip_element()?;
@@ -963,10 +1276,14 @@ impl PartParser<'_> {
     }
 
     /// Parses `pic:spPr`, extracting the extent and transform.
-    fn parse_sp_pr(&mut self) -> Result<(Option<Extent>, Option<Xfrm>)> {
+    fn parse_sp_pr(
+        &mut self,
+        markup: &mut crate::model::drawing::PictureMarkup,
+    ) -> Result<(Option<Extent>, Option<Xfrm>)> {
         self.nested(|parser| {
             let mut extent = None;
             let mut xfrm = None;
+            let mut rest = String::new();
             loop {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
@@ -984,8 +1301,8 @@ impl PartParser<'_> {
                                 flip_h: parts.flip_h,
                                 flip_v: parts.flip_v,
                             });
-                        } else {
-                            parser.skip_element()?;
+                        } else if let Some(fragment) = parser.capture_fragment(name, attrs)? {
+                            rest.push_str(&fragment);
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -994,6 +1311,9 @@ impl PartParser<'_> {
                         return Err(parser.invalid("unexpected end of shape properties"))
                     }
                 }
+            }
+            if !rest.is_empty() {
+                markup.shape_properties = Some(std::sync::Arc::from(rest));
             }
             Ok((extent, xfrm))
         })
@@ -1009,6 +1329,9 @@ impl PartParser<'_> {
                 nv_id: None,
                 bw_mode: None,
                 tx_box: None,
+                sp_locks: None,
+                connector: false,
+                effects: None,
                 geometry: ShapeGeometry::None,
                 xfrm: None,
                 offset: None,
@@ -1032,11 +1355,15 @@ impl PartParser<'_> {
                                         plain_attr(&attrs, "name").map(|v| parser.intern(v));
                                     shape.descr =
                                         plain_attr(&attrs, "descr").map(|v| parser.intern(v));
-                                    parser.skip_element()?;
+                                    parser.skip_citing_extensions()?;
                                 }
                                 "cNvSpPr" => {
                                     shape.tx_box = optional_bool_attr(&attrs, "txBox");
-                                    parser.skip_element()?;
+                                    shape.sp_locks = parser.read_locks("spLocks")?;
+                                }
+                                "cNvCnPr" => {
+                                    shape.connector = true;
+                                    shape.sp_locks = parser.read_locks("cxnSpLocks")?;
                                 }
                                 "spPr" => {
                                     shape.bw_mode = plain_attr(&attrs, "bwMode")
@@ -1046,10 +1373,10 @@ impl PartParser<'_> {
                                 "style" => shape.style = Some(parser.parse_shape_style()?),
                                 "txbx" => shape.text = Some(parser.parse_text_box()?),
                                 "bodyPr" => body = Some(parser.parse_text_box_body(&attrs)?),
-                                _ => parser.skip_element()?,
+                                _ => parser.skip_citing_extensions()?,
                             }
                         } else {
-                            parser.skip_element()?;
+                            parser.skip_citing_extensions()?;
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -1116,6 +1443,10 @@ impl PartParser<'_> {
                                     }
                                 }
                                 "ln" => shape.stroke = Some(parser.parse_shape_stroke(&attrs)?),
+                                "effectLst" | "effectDag" | "scene3d" | "sp3d" | "extLst" => {
+                                    let fragment = parser.capture_fragment(name.clone(), attrs)?;
+                                    shape.effects = join_markup(shape.effects.take(), fragment);
+                                }
                                 _ => parser.skip_element()?,
                             }
                         } else {
@@ -1171,9 +1502,54 @@ impl PartParser<'_> {
             let mut geometry = CustomGeometry::default();
             loop {
                 match parser.next_event()? {
-                    XmlEvent::StartElement { name, .. } => {
+                    XmlEvent::StartElement { name, attrs } => {
                         if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "pathLst" {
                             parser.parse_path_list(&mut geometry)?;
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS)
+                            && matches!(name.local(), "avLst" | "gdLst")
+                        {
+                            let guides = if name.local() == "avLst" {
+                                &mut geometry.adjustments
+                            } else {
+                                &mut geometry.guides
+                            };
+                            parser.nested(|parser| {
+                                loop {
+                                    match parser.next_event()? {
+                                        XmlEvent::StartElement { name, attrs } => {
+                                            if is_ns(&name, DRAWINGML_STRICT_NS)
+                                                && name.local() == "gd"
+                                            {
+                                                if let (Some(name), Some(formula)) = (
+                                                    plain_attr(&attrs, "name"),
+                                                    plain_attr(&attrs, "fmla"),
+                                                ) {
+                                                    guides.push((
+                                                        parser.intern(name),
+                                                        parser.intern(formula),
+                                                    ));
+                                                }
+                                            }
+                                            parser.skip_element()?;
+                                        }
+                                        XmlEvent::EndElement { .. } => break,
+                                        XmlEvent::Eof => {
+                                            return Err(
+                                                parser.invalid("unexpected end of geometry guides")
+                                            )
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                Ok(())
+                            })?;
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "rect" {
+                            if let [Some(l), Some(t), Some(r), Some(b)] = ["l", "t", "r", "b"]
+                                .map(|side| plain_attr(&attrs, side).map(|v| parser.intern(v)))
+                            {
+                                geometry.text_rect = Some([l, t, r, b]);
+                            }
+                            parser.skip_element()?;
                         } else {
                             parser.skip_element()?;
                         }
@@ -1234,38 +1610,76 @@ impl PartParser<'_> {
         self.nested(|parser| {
             loop {
                 match parser.next_event()? {
-                    XmlEvent::StartElement { name, .. } => {
+                    XmlEvent::StartElement { name, attrs } => {
                         if !is_ns(&name, DRAWINGML_STRICT_NS) {
                             parser.skip_element()?;
                             continue;
                         }
-                        match name.local() {
-                            "moveTo" => {
-                                let point = parser.parse_first_point()?;
-                                path.commands.push(PathCommand::MoveTo {
-                                    x: point.0,
-                                    y: point.1,
-                                });
-                            }
-                            "lnTo" => {
-                                let point = parser.parse_first_point()?;
-                                path.commands.push(PathCommand::LineTo {
-                                    x: point.0,
-                                    y: point.1,
-                                });
-                            }
-                            "cubicBezTo" => {
-                                let points = parser.parse_points()?;
-                                if let [(x1, y1), (x2, y2), (x, y), ..] = *points.as_slice() {
-                                    path.commands.push(PathCommand::CubicBezTo {
-                                        x1,
-                                        y1,
-                                        x2,
-                                        y2,
-                                        x,
-                                        y,
-                                    });
+                        let kind = name.local();
+                        match kind {
+                            "moveTo" | "lnTo" | "cubicBezTo" | "quadBezTo" => {
+                                let mut values = Vec::new();
+                                loop {
+                                    match parser.next_event()? {
+                                        XmlEvent::StartElement { name, attrs } => {
+                                            if is_ns(&name, DRAWINGML_STRICT_NS)
+                                                && name.local() == "pt"
+                                            {
+                                                if let (Some(x), Some(y)) = (
+                                                    plain_attr(&attrs, "x"),
+                                                    plain_attr(&attrs, "y"),
+                                                ) {
+                                                    values.push(parser.intern(x));
+                                                    values.push(parser.intern(y));
+                                                }
+                                            }
+                                            parser.skip_element()?;
+                                        }
+                                        XmlEvent::EndElement { .. } => break,
+                                        XmlEvent::Eof => {
+                                            return Err(
+                                                parser.invalid("unexpected end of path command")
+                                            )
+                                        }
+                                        _ => {}
+                                    }
                                 }
+                                let numeric: Option<Vec<i64>> =
+                                    values.iter().map(|v| v.parse().ok()).collect();
+                                let command = match (kind, numeric.as_deref()) {
+                                    ("moveTo", Some([x, y])) => {
+                                        PathCommand::MoveTo { x: *x, y: *y }
+                                    }
+                                    ("lnTo", Some([x, y])) => PathCommand::LineTo { x: *x, y: *y },
+                                    ("cubicBezTo", Some([x1, y1, x2, y2, x, y])) => {
+                                        PathCommand::CubicBezTo {
+                                            x1: *x1,
+                                            y1: *y1,
+                                            x2: *x2,
+                                            y2: *y2,
+                                            x: *x,
+                                            y: *y,
+                                        }
+                                    }
+                                    _ => PathCommand::Parametric {
+                                        kind: parser.intern(kind),
+                                        values,
+                                    },
+                                };
+                                path.commands.push(command);
+                            }
+                            "arcTo" => {
+                                let values = ["wR", "hR", "stAng", "swAng"]
+                                    .into_iter()
+                                    .map(|key| {
+                                        parser.intern(plain_attr(&attrs, key).unwrap_or("0"))
+                                    })
+                                    .collect();
+                                path.commands.push(PathCommand::Parametric {
+                                    kind: parser.intern(kind),
+                                    values,
+                                });
+                                parser.skip_element()?;
                             }
                             "close" => {
                                 path.commands.push(PathCommand::Close);
@@ -1275,42 +1689,11 @@ impl PartParser<'_> {
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
-                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of path")),
+                    _ => {}
                 }
             }
             Ok(())
-        })
-    }
-
-    /// Parses the first `a:pt` of the current element.
-    fn parse_first_point(&mut self) -> Result<(i64, i64)> {
-        let points = self.parse_points()?;
-        Ok(points.first().copied().unwrap_or((0, 0)))
-    }
-
-    /// Parses all `a:pt` children of the current element.
-    fn parse_points(&mut self) -> Result<Vec<(i64, i64)>> {
-        self.nested(|parser| {
-            let mut points = Vec::new();
-            loop {
-                match parser.next_event()? {
-                    XmlEvent::StartElement { name, attrs } => {
-                        if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "pt" {
-                            let x = plain_attr(&attrs, "x").and_then(|v| v.trim().parse().ok());
-                            let y = plain_attr(&attrs, "y").and_then(|v| v.trim().parse().ok());
-                            if let (Some(x), Some(y)) = (x, y) {
-                                points.push((x, y));
-                            }
-                        }
-                        parser.skip_element()?;
-                    }
-                    XmlEvent::EndElement { .. } => break,
-                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
-                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of point list")),
-                }
-            }
-            Ok(points)
         })
     }
 
@@ -1327,7 +1710,7 @@ impl PartParser<'_> {
                     color: color.unwrap_or_default(),
                 }))
             }
-            "gradFill" => Ok(Some(self.parse_grad_fill()?)),
+            "gradFill" => Ok(Some(self.parse_grad_fill(attrs)?)),
             "blipFill" => Ok(Some(self.parse_shape_blip_fill()?)),
             "pattFill" => {
                 let preset = plain_attr(attrs, "prst").map(|v| self.intern(v));
@@ -1423,17 +1806,20 @@ impl PartParser<'_> {
         match name.local() {
             "srgbClr" => {
                 let value = plain_attr(attrs, "val").map(Color::new);
-                self.skip_element()?;
+                let children = self.capture_children()?;
+                let markup = color_markup(name.local(), attrs, children.as_deref());
                 Ok(value.map(|value| ShapeColor {
                     value: Some(value),
                     theme: None,
+                    markup: Some(markup),
                 }))
             }
             "schemeClr" => {
                 let slot = plain_attr(attrs, "val").map(str::to_owned);
-                self.nested(|parser| {
+                let (tint, shade, children) = self.nested(|parser| {
                     let mut tint = None;
                     let mut shade = None;
+                    let mut children = String::new();
                     loop {
                         match parser.next_event()? {
                             XmlEvent::StartElement { name, attrs } => {
@@ -1444,7 +1830,9 @@ impl PartParser<'_> {
                                 {
                                     shade = plain_attr(&attrs, "val").map(|v| parser.intern(v));
                                 }
-                                parser.skip_element()?;
+                                if let Some(fragment) = parser.capture_fragment(name, attrs)? {
+                                    children.push_str(&fragment);
+                                }
                             }
                             XmlEvent::EndElement { .. } => break,
                             XmlEvent::Text(_) | XmlEvent::CData(_) => {}
@@ -1453,25 +1841,32 @@ impl PartParser<'_> {
                             }
                         }
                     }
-                    Ok(slot.map(|slot| ShapeColor {
-                        value: None,
-                        theme: Some(ThemeColorRef {
-                            color: ThemeColor::new(slot),
-                            tint,
-                            shade,
-                        }),
-                    }))
-                })
+                    Ok((tint, shade, children))
+                })?;
+                let markup = color_markup(name.local(), attrs, Some(&children));
+                Ok(slot.map(|slot| ShapeColor {
+                    value: None,
+                    theme: Some(ThemeColorRef {
+                        color: ThemeColor::new(slot),
+                        tint,
+                        shade,
+                    }),
+                    markup: Some(markup),
+                }))
             }
             "prstClr" | "sysClr" | "scrgbClr" | "hslClr" => {
-                self.skip_element()?;
+                let children = self.capture_children()?;
                 self.record(
                     "a:color",
                     SupportStatus::Partial,
-                    Some("colour space not resolved".to_owned()),
+                    Some("colour space not resolved; the element is kept".to_owned()),
                     Some(self.location()),
                 );
-                Ok(None)
+                Ok(Some(ShapeColor {
+                    value: None,
+                    theme: None,
+                    markup: Some(color_markup(name.local(), attrs, children.as_deref())),
+                }))
             }
             _ => {
                 self.skip_element()?;
@@ -1481,9 +1876,12 @@ impl PartParser<'_> {
     }
 
     /// Parses `a:gradFill`.
-    fn parse_grad_fill(&mut self) -> Result<ShapeFill> {
+    fn parse_grad_fill(&mut self, attrs: &[Attr]) -> Result<ShapeFill> {
         let mut stops = Vec::new();
         let mut angle = None;
+        let mut scaled = None;
+        let mut path_shading = None;
+        let rotate_with_shape = optional_bool_attr(attrs, "rotWithShape");
         self.nested(|parser| {
             loop {
                 match parser.next_event()? {
@@ -1492,7 +1890,11 @@ impl PartParser<'_> {
                             parser.parse_gradient_stops(&mut stops)?;
                         } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "lin" {
                             angle = parse_i32_attr(&attrs, "ang");
+                            scaled = optional_bool_attr(&attrs, "scaled");
                             parser.skip_element()?;
+                        } else if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "path" {
+                            path_shading =
+                                Some(parser.capture_fragment(name, attrs)?.unwrap_or_default());
                         } else {
                             parser.skip_element()?;
                         }
@@ -1502,7 +1904,13 @@ impl PartParser<'_> {
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of gradient fill")),
                 }
             }
-            Ok(ShapeFill::Gradient { stops, angle })
+            Ok(ShapeFill::Gradient {
+                stops,
+                angle,
+                scaled,
+                rotate_with_shape,
+                path_shading,
+            })
         })
     }
 
@@ -1513,7 +1921,13 @@ impl PartParser<'_> {
                 match parser.next_event()? {
                     XmlEvent::StartElement { name, attrs } => {
                         if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "gs" {
-                            let position = parse_i32_attr(&attrs, "pos").unwrap_or(0);
+                            // Thousandths in a part written as Strict by a producer
+                            // that kept them, or the Strict percentage the normalizer
+                            // turns them into (`100000` -> `100%`). Reading only the
+                            // integer form made every normalized stop position 0.
+                            let position = plain_attr(&attrs, "pos")
+                                .and_then(src_component_value)
+                                .unwrap_or(0);
                             let color = parser.parse_fill_color()?.unwrap_or_default();
                             stops.push(GradientStop { position, color });
                         } else {
@@ -1535,6 +1949,11 @@ impl PartParser<'_> {
             width: plain_attr(attrs, "w")
                 .and_then(|v| v.trim().parse::<i64>().ok())
                 .map(Emu),
+            attributes: self
+                .plain_attr_pairs(attrs)
+                .into_iter()
+                .filter(|(name, _)| name.as_ref() != "w")
+                .collect(),
             ..ShapeStroke::default()
         };
         self.nested(|parser| {
@@ -1566,6 +1985,9 @@ impl PartParser<'_> {
                                     stroke.tail_end =
                                         plain_attr(&attrs, "type").map(|v| parser.intern(v));
                                     parser.skip_element()?;
+                                }
+                                "round" | "bevel" | "miter" => {
+                                    stroke.join = parser.capture_fragment(name.clone(), attrs)?;
                                 }
                                 _ => parser.skip_element()?,
                             }
@@ -1738,7 +2160,7 @@ impl PartParser<'_> {
             spc_col: parse_i32_attr(attrs, "spcCol"),
             spc_first_last_para: optional_bool_attr(attrs, "spcFirstLastPara"),
         };
-        self.skip_element()?;
+        self.skip_citing_extensions()?;
         Ok(body)
     }
 
@@ -1774,9 +2196,12 @@ impl PartParser<'_> {
     fn parse_group_body(&mut self, location: SourceLocation) -> Result<GroupShape> {
         self.nested(|parser| {
             let mut group = GroupShape {
+                nv_id: None,
                 name: None,
                 descr: None,
                 xfrm: None,
+                locks: None,
+                bw_mode: None,
                 children: Vec::new(),
                 location,
             };
@@ -1799,16 +2224,21 @@ impl PartParser<'_> {
                         } else if is_group_ns(&name) {
                             match name.local() {
                                 "cNvPr" => {
+                                    group.nv_id = plain_attr(&attrs, "id")
+                                        .and_then(|value| value.trim().parse().ok());
                                     group.name =
                                         plain_attr(&attrs, "name").map(|v| parser.intern(v));
                                     group.descr =
                                         plain_attr(&attrs, "descr").map(|v| parser.intern(v));
-                                    parser.skip_element()?;
+                                    parser.skip_citing_extensions()?;
                                 }
                                 "grpSpPr" => {
+                                    group.bw_mode =
+                                        plain_attr(&attrs, "bwMode").map(|v| parser.intern(v));
                                     group.xfrm = Some(parser.parse_group_transform(&attrs)?);
                                 }
-                                _ => parser.skip_element()?,
+                                "cNvGrpSpPr" => group.locks = parser.read_locks("grpSpLocks")?,
+                                _ => parser.skip_citing_extensions()?,
                             }
                         } else {
                             parser.skip_element()?;
@@ -1839,7 +2269,7 @@ impl PartParser<'_> {
                         if is_ns(&name, DRAWINGML_STRICT_NS) && name.local() == "xfrm" {
                             parts = parser.parse_xfrm_parts(&attrs)?;
                         } else {
-                            parser.skip_element()?;
+                            parser.skip_citing_extensions()?;
                         }
                     }
                     XmlEvent::EndElement { .. } => break,
@@ -1880,6 +2310,7 @@ impl PartParser<'_> {
     /// Parses `wp:docPr` attributes.
     fn parse_doc_pr(&mut self, attrs: &[Attr]) -> DocPr {
         DocPr {
+            hidden: optional_bool_attr(attrs, "hidden"),
             id: plain_attr(attrs, "id").and_then(|value| value.trim().parse().ok()),
             name: plain_attr(attrs, "name").map(|value| self.intern(value)),
             descr: plain_attr(attrs, "descr").map(|value| self.intern(value)),
@@ -1911,12 +2342,17 @@ fn is_locked_canvas_ns(name: &QName) -> bool {
 }
 
 /// Writes a start tag with Strict namespace prefixes for locked-canvas capture.
-fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
-    let prefix = markup_prefix(
-        name.ns
-            .as_ref()
-            .map(strict_ooxml_core::xml::qname::NsUri::as_str),
-    );
+///
+/// `false` when the element or one of its namespaced attributes is in a
+/// namespace [`markup_prefix`] has no prefix for. The tag is still written, with
+/// that name unprefixed, so the caller must not keep the markup.
+fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) -> bool {
+    let element_ns = name
+        .ns
+        .as_ref()
+        .map(strict_ooxml_core::xml::qname::NsUri::as_str);
+    let prefix = markup_prefix(element_ns);
+    let mut known = element_ns.is_none() || prefix.is_some();
     out.push('<');
     if let Some(prefix) = prefix {
         out.push_str(prefix);
@@ -1937,12 +2373,13 @@ fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
         out.push('"');
     }
     for attr in attrs {
-        let attr_prefix = markup_prefix(
-            attr.name
-                .ns
-                .as_ref()
-                .map(strict_ooxml_core::xml::qname::NsUri::as_str),
-        );
+        let attr_ns = attr
+            .name
+            .ns
+            .as_ref()
+            .map(strict_ooxml_core::xml::qname::NsUri::as_str);
+        let attr_prefix = markup_prefix(attr_ns);
+        known &= attr_ns.is_none() || attr_prefix.is_some();
         out.push(' ');
         if let Some(prefix) = attr_prefix {
             // Unprefixed attributes stay unprefixed (XML Namespaces).
@@ -1953,15 +2390,17 @@ fn write_start_markup(out: &mut String, name: &QName, attrs: &[Attr]) {
         }
         out.push_str(attr.name.local());
         out.push_str("=\"");
+        let percent = strict_percent(name, attr);
         let value = match attr.name.local() {
             "uri" => strict_ooxml_core::ns::registry::strict_form(&attr.value)
                 .unwrap_or(attr.value.as_str()),
-            _ => attr.value.as_str(),
+            _ => percent.as_ref(),
         };
         let _ = strict_ooxml_core::xml::escape::escape_attr_into(out, value);
         out.push('"');
     }
     out.push('>');
+    known
 }
 
 /// Writes an end tag with the same prefix policy as [`write_start_markup`].
@@ -1982,6 +2421,115 @@ fn write_end_markup(out: &mut String, name: &QName) {
 
 fn escape_text_into_markup(out: &mut String, text: &str) {
     let _ = strict_ooxml_core::xml::escape::escape_text_into(out, text);
+}
+
+/// One event of a captured fragment (see `PartParser::capture_fragment`).
+enum Piece {
+    Start(QName, Vec<Attr>),
+    End(QName),
+    Text(String),
+}
+
+impl Piece {
+    /// A start tag in, or carrying an attribute in, a namespace outside Strict.
+    fn is_foreign(&self) -> bool {
+        let strict = |ns: Option<&strict_ooxml_core::xml::qname::NsUri>| {
+            ns.is_none_or(|ns| {
+                ns.as_str().starts_with("http://purl.oclc.org/ooxml/")
+                    || ns == "http://www.w3.org/XML/1998/namespace"
+            })
+        };
+        match self {
+            Self::Start(name, attrs) => {
+                !strict(name.ns.as_ref()) || attrs.iter().any(|attr| !strict(attr.name.ns.as_ref()))
+            }
+            Self::End(_) | Self::Text(_) => false,
+        }
+    }
+}
+
+/// Marks the pieces from `at` up to `end` as not written.
+fn clear_pieces(kept: &mut [bool], at: usize, end: usize) {
+    kept.iter_mut()
+        .take(end)
+        .skip(at)
+        .for_each(|keep| *keep = false);
+}
+
+/// The index one past the end tag that closes the start tag at `at`.
+fn piece_end(pieces: &[Piece], at: usize) -> usize {
+    let mut depth = 0usize;
+    for (index, piece) in pieces.iter().enumerate().skip(at) {
+        match piece {
+            Piece::Start(..) => depth += 1,
+            Piece::End(_) => {
+                depth -= 1;
+                if depth == 0 {
+                    return index + 1;
+                }
+            }
+            Piece::Text(_) => {}
+        }
+    }
+    pieces.len()
+}
+
+/// A DrawingML colour element as markup: its unqualified attributes and its
+/// kept children, in the form this writer gives the same element.
+fn color_markup(local: &str, attrs: &[Attr], children: Option<&str>) -> std::sync::Arc<str> {
+    let mut out = format!("<a:{local}");
+    for attr in attrs.iter().filter(|attr| attr.name.ns.is_none()) {
+        out.push(' ');
+        out.push_str(attr.name.local());
+        out.push_str("=\"");
+        let _ = strict_ooxml_core::xml::escape::escape_attr_into(&mut out, &attr.value);
+        out.push('"');
+    }
+    match children {
+        Some(children) if !children.is_empty() => {
+            out.push('>');
+            out.push_str(children);
+            out.push_str("</a:");
+            out.push_str(local);
+            out.push('>');
+        }
+        _ => out.push_str("/>"),
+    }
+    std::sync::Arc::from(out)
+}
+
+/// Two kept fragments as one, in order.
+fn join_markup(
+    first: Option<std::sync::Arc<str>>,
+    second: Option<std::sync::Arc<str>>,
+) -> Option<std::sync::Arc<str>> {
+    match (first, second) {
+        (Some(first), Some(second)) => Some(std::sync::Arc::from(format!("{first}{second}"))),
+        (first, second) => first.or(second),
+    }
+}
+
+/// The value a kept `DrawingML` attribute is written with.
+///
+/// A percentage (`a:gs/@pos`, `a:satMod/@val`, `a:fillToRect/@l`, ...) that a
+/// producer wrote as bare Transitional thousandths in a *Strict* part goes back
+/// as the Strict percentage it means: `35000` is `35%`. The normalizer does this
+/// for Transitional parts; a Strict part never meets it, and a theme kept as
+/// read carried the SDK's `pos="35000"` straight into the schema's refusal.
+/// Every other value is written as read.
+fn strict_percent<'a>(element: &QName, attr: &'a Attr) -> std::borrow::Cow<'a, str> {
+    use strict_ooxml_core::normalize::tables::{
+        drawingml_thousandths_percent, is_drawingml_percentage_attr,
+    };
+    if is_ns(element, DRAWINGML_STRICT_NS)
+        && attr.name.ns.is_none()
+        && is_drawingml_percentage_attr(element.local(), attr.name.local())
+    {
+        if let Some(strict) = drawingml_thousandths_percent(&attr.value) {
+            return std::borrow::Cow::Owned(strict);
+        }
+    }
+    std::borrow::Cow::Borrowed(attr.value.as_str())
 }
 
 /// Stable prefix for a namespace URI when serialising locked-canvas markup.

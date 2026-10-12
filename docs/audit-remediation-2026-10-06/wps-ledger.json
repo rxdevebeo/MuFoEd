@@ -9,7 +9,7 @@
     "54": {
       "pdf_sha256": "fc58febe9187b112ef7b7f5c79e8183d108bd45e3df11adf2b48774eec0d9d1b",
       "svg_sha256": "e26b2fc4c1cc0888d0c7d46d72f91b93f99d9645d6cb88b14467651b0e9274b4",
-      "svg_pages_loaded": 53,
+      "svg_pages_loaded": 51,
       "components": {
         "p54.HVR_I.0": {
           "text": "HVR-I",
@@ -250,7 +250,7 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "neighborhood",
+          "match": "unique_on_page",
           "status": "MEASURED",
           "svg_page": 54,
           "role": "snp_or_primer",
@@ -343,7 +343,7 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "neighborhood",
+          "match": "unique_on_page",
           "status": "MEASURED",
           "svg_page": 54,
           "role": "snp_or_primer",
@@ -451,8 +451,8 @@
     },
     "56": {
       "pdf_sha256": "01fb7af779291bfdcff400ecc5c164e5b5c9170afae60ca00b393913f95dadba",
-      "svg_sha256": "00260b87aed99521b8f96da2faffd20b9a895012050d443f058e65eaf63906f5",
-      "svg_pages_loaded": 53,
+      "svg_sha256": "01ad911d461ea8796ef9d4ee72b885238ab9d646f905d92121d16d189157283b",
+      "svg_pages_loaded": 51,
       "components": {
         "p56.neg_M.0": {
           "text": "-M",
@@ -538,7 +538,7 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "neighborhood",
+          "match": "unique_on_page",
           "status": "MEASURED",
           "svg_page": 56,
           "role": "snp_or_primer",
@@ -569,7 +569,7 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "neighborhood",
+          "match": "unique_on_page",
           "status": "MEASURED",
           "svg_page": 56,
           "role": "snp_or_primer",
@@ -600,7 +600,7 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "neighborhood",
+          "match": "unique_on_page",
           "status": "MEASURED",
           "svg_page": 56,
           "role": "snp_or_primer",
@@ -631,7 +631,7 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "neighborhood",
+          "match": "unique_on_page",
           "status": "MEASURED",
           "svg_page": 56,
           "role": "snp_or_primer",
@@ -662,7 +662,7 @@
             "reference": "0.05,0.0,0.0,0.05",
             "actual": "identity"
           },
-          "match": "neighborhood",
+          "match": "unique_on_page",
           "status": "MEASURED",
           "svg_page": 56,
           "role": "snp_or_primer",
@@ -738,8 +738,8 @@
     },
     "104": {
       "pdf_sha256": "f57b2818673c298be46d5dcda27c22a2e7d95128d78e293614072a312cce9d30",
-      "svg_sha256": "d117ec4297249a90ec5f2a8dde947a4f7b8604489adb6fda8db4dc9f6e0fe513",
-      "svg_pages_loaded": 53,
+      "svg_sha256": "92c8aa0cf03f25af472b3f6fb733a38790a9573d78ee3da6254fa4bd50042867",
+      "svg_pages_loaded": 51,
       "components": {
         "p104.A_C.0": {
           "text": "A,C",

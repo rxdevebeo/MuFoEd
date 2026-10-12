@@ -212,8 +212,11 @@ impl PartParser<'_> {
     /// One `w:embed*` element.
     fn parse_embed(&mut self, kind: EmbedKind, attrs: &[Attr]) -> EmbeddedFont {
         let font_key = wml_attr(attrs, "fontKey").map(|value| self.intern(value));
-        let subsetted =
-            wml_attr(attrs, "subsetted").is_some_and(|value| matches!(value, "1" | "true" | "on"));
+        let subsetted = wml_attr(attrs, "subsetted").and_then(|value| match value {
+            "1" | "true" | "on" => Some(true),
+            "0" | "false" | "off" => Some(false),
+            _ => None,
+        });
         let part = self.resolve_embedded_font(kind, attrs);
         EmbeddedFont {
             part,

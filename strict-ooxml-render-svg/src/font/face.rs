@@ -15,12 +15,35 @@ use sha2::{Digest, Sha256};
 
 use super::builtin::{face_source, FaceSource};
 
+/// Font bytes retain static bundled data or shared document-owned data.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FontBytes {
+    /// Compile-time bundled bytes.
+    Static(&'static [u8]),
+    /// Validated bytes loaded from a document.
+    Owned(std::sync::Arc<[u8]>),
+}
+impl std::ops::Deref for FontBytes {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        match self {
+            Self::Static(bytes) => bytes,
+            Self::Owned(bytes) => bytes,
+        }
+    }
+}
+impl AsRef<[u8]> for FontBytes {
+    fn as_ref(&self) -> &[u8] {
+        self
+    }
+}
+
 /// A face chosen for measurement and delivery.
 ///
 /// `bytes` are the exact program SVG embeds and PDF subsets. `resource_hash` is
 /// their SHA-256 so callers can assert layout = SVG = PDF without comparing
 /// payloads inline.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ResolvedFace {
     /// Stable id: mapped family plus style flags.
     pub id: FaceId,
@@ -33,7 +56,7 @@ pub struct ResolvedFace {
     /// Italic request the face satisfies.
     pub italic: bool,
     /// Raw font program.
-    pub bytes: &'static [u8],
+    pub bytes: FontBytes,
     /// Variable-font `wght` instance, when the face is variable.
     pub weight: Option<f32>,
     /// Whether one face serves every `(bold, italic)` combination.
@@ -91,7 +114,7 @@ pub fn resolve_face(family: &str, bold: bool, italic: bool) -> Option<ResolvedFa
     Some(cached_resolved_face(source, bold, italic))
 }
 
-fn cached_resolved_face(source: FaceSource, bold: bool, italic: bool) -> ResolvedFace {
+fn cached_resolved_face(source: FaceSource<'static>, bold: bool, italic: bool) -> ResolvedFace {
     static CACHE: OnceLock<Mutex<HashMap<FaceKey, ResolvedFace>>> = OnceLock::new();
     let key = FaceKey {
         family: source.family,
@@ -103,16 +126,16 @@ fn cached_resolved_face(source: FaceSource, bold: bool, italic: bool) -> Resolve
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(hit) = guard.get(&key) {
-        return *hit;
+        return hit.clone();
     }
     let resolved = resolved_from_source(source, bold, italic);
-    guard.insert(key, resolved);
+    guard.insert(key, resolved.clone());
     resolved
 }
 
 /// Builds a [`ResolvedFace`] from an already-looked-up [`FaceSource`].
 #[must_use]
-pub fn resolved_from_source(source: FaceSource, bold: bool, italic: bool) -> ResolvedFace {
+pub fn resolved_from_source(source: FaceSource<'static>, bold: bool, italic: bool) -> ResolvedFace {
     ResolvedFace {
         id: FaceId {
             family: source.family,
@@ -123,13 +146,13 @@ pub fn resolved_from_source(source: FaceSource, bold: bool, italic: bool) -> Res
         family: source.family,
         bold,
         italic,
-        bytes: source.data,
+        bytes: FontBytes::Static(source.data),
         weight: source.weight,
         single: source.single,
     }
 }
 
-impl FaceSource {
+impl FaceSource<'_> {
     /// SHA-256 of this face's program bytes.
     #[must_use]
     pub fn resource_hash(self) -> [u8; 32] {
@@ -146,16 +169,16 @@ impl FaceSource {
 impl ResolvedFace {
     /// Lower-hex form of [`Self::resource_hash`].
     #[must_use]
-    pub fn resource_hash_hex(self) -> String {
-        hash_face_bytes_hex(self.bytes)
+    pub fn resource_hash_hex(&self) -> String {
+        hash_face_bytes_hex(&self.bytes)
     }
 
     /// The underlying [`FaceSource`] PDF embedding already consumes.
     #[must_use]
-    pub fn as_source(self) -> FaceSource {
+    pub fn as_source(&self) -> FaceSource<'_> {
         FaceSource {
             family: self.family,
-            data: self.bytes,
+            data: &self.bytes,
             weight: self.weight,
             single: self.single,
         }
@@ -191,7 +214,7 @@ mod tests {
         let again = resolve_face("Calibri", false, false).expect("again");
         assert_eq!(again.bytes.as_ptr(), first.bytes.as_ptr());
         assert_eq!(again.resource_hash, first.resource_hash);
-        assert_eq!(again.resource_hash, hash_face_bytes(again.bytes));
+        assert_eq!(again.resource_hash, hash_face_bytes(&again.bytes));
         assert_ne!(again.resource_hash, second.resource_hash);
     }
 }

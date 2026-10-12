@@ -48,7 +48,8 @@
         clippy::todo,
         clippy::unimplemented,
         clippy::unreachable,
-        clippy::indexing_slicing
+        clippy::indexing_slicing,
+        clippy::arithmetic_side_effects
     )
 )]
 #![deny(missing_docs)]
@@ -99,3 +100,4 @@ pub use crate::text::{lines as text_lines, GlyphLine};
 pub const FLATTEN_TOLERANCE_PT: f64 = 0.125;
 
 pub use document::{PdfDocument as Document, PdfPage as Page};
+mod shading;

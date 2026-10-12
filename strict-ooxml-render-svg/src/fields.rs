@@ -46,9 +46,20 @@ pub(crate) struct FieldEnv {
     pub section_pages: usize,
     /// Default number format from `w:pgNumType/@w:fmt`.
     pub page_format: NumberFormat,
+    pub chapter: Option<(u32, NumberFormat, char)>,
 }
 
 impl FieldEnv {
+    pub(crate) fn format(self, marker: FieldMarker) -> String {
+        let (value, format) = self.resolve(marker);
+        let page = format.format(value);
+        if marker.kind == FieldKind::Page {
+            if let Some((chapter, format, separator)) = self.chapter {
+                return format!("{}{separator}{page}", format.format(chapter));
+            }
+        }
+        page
+    }
     /// Resolves a marker to `(value, format)`.
     pub(crate) fn resolve(self, marker: FieldMarker) -> (u32, NumberFormat) {
         let format = marker.format.unwrap_or(self.page_format);
@@ -60,6 +71,36 @@ impl FieldEnv {
         };
         (usize_to_u32(value), format)
     }
+}
+
+pub(crate) fn chapter_on_page(
+    ctx: &crate::layout::LayoutContext<'_>,
+    page: usize,
+    section: usize,
+) -> Option<(u32, NumberFormat, char)> {
+    let properties = ctx
+        .document
+        .sections
+        .get(section)?
+        .properties
+        .page_number
+        .as_ref()?;
+    let level = usize::from(properties.chapter_style?.checked_sub(1)?);
+    let (number, format) = ctx
+        .chapter_numbers
+        .borrow()
+        .get(page)?
+        .get(level)
+        .copied()
+        .flatten()?;
+    let separator = match properties.chapter_separator.as_deref() {
+        Some("period") => '.',
+        Some("colon") => ':',
+        Some("emDash") => '—',
+        Some("enDash") => '–',
+        _ => '-',
+    };
+    Some((number, format, separator))
 }
 
 /// Parses a field instruction, returning the computed kind (if any) and format.

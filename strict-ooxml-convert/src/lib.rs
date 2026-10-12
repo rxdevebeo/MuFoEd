@@ -64,6 +64,11 @@
     clippy::too_many_lines
 )]
 
+#[cfg(feature = "djvu")]
+mod djvu;
+#[cfg(feature = "djvu")]
+pub use djvu::{convert_djvu, DjvuOptions};
+
 mod columns;
 mod geometry;
 mod lists;
@@ -266,7 +271,7 @@ pub struct PdfOptions {
 
 /// The name of the paragraph style a recovered paragraph carries, as a reader
 /// of the converted document sees it in Word's styles pane.
-#[cfg(feature = "raster")]
+#[cfg(any(feature = "raster", feature = "djvu-image"))]
 pub const RECOVERY_STYLE_NAME: &str = "Recovered from a page image";
 
 impl Default for PdfOptions {
@@ -406,6 +411,8 @@ pub struct Converted {
 pub enum ConvertError {
     /// The reader failed; the conversion cannot start.
     Pdf(String),
+    /// The DjVu reader or conversion failed.
+    Djvu(String),
     /// The page range asked for is outside the document.
     NoSuchPage(usize),
     /// The page has no size, so nothing can be placed on it.
@@ -415,6 +422,7 @@ pub enum ConvertError {
 impl std::fmt::Display for ConvertError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Djvu(detail) => write!(f, "the DjVu could not be converted: {detail}"),
             Self::Pdf(detail) => write!(f, "the PDF could not be read: {detail}"),
             Self::NoSuchPage(number) => write!(f, "page {number} is not in the document"),
             Self::UnusablePage(number) => {

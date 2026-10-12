@@ -31,6 +31,9 @@ write = ["dep:strict-ooxml-write"]
 pdf = ["dep:strict-ooxml-render-pdf", "svg"]
 # Stage 8C+: PDF reading and the conversion of a PDF into a Strict document.
 convert = ["dep:strict-ooxml-pdf", "dep:strict-ooxml-convert"]
+djvu = ["convert", "dep:strict-ooxml-djvu", "strict-ooxml-convert/djvu"]
+djvu-image = ["djvu", "strict-ooxml-convert/djvu-image"]
+ocr-ollama = ["dep:strict-ooxml-ocr", "strict-ooxml-convert?/ocr-ollama"]
 # Parallel parsing of independent parts.
 parallel = ["strict-ooxml-wml/parallel"]
 # Transactional editing with source-aware save and shared visual geometry.
@@ -40,6 +43,8 @@ rtf = ["dep:strict-ooxml-rtf", "write"]
 
 [dependencies]
 strict-ooxml-rtf = { version = "0.1.0", path = "../strict-ooxml-rtf", optional = true }
+strict-ooxml-djvu = { version = "0.1.0", path = "../strict-ooxml-djvu", optional = true }
+strict-ooxml-ocr = { version = "0.1.0", path = "../strict-ooxml-ocr", optional = true }
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 strict-ooxml-report = { version = "0.1.0", path = "../strict-ooxml-report", optional = true }
@@ -82,3 +87,15 @@ required-features = ["edit"]
 [[test]]
 name = "pipeline_never_panics"
 required-features = ["write", "pdf"]
+
+[[test]]
+name = "control"
+required-features = ["svg"]
+
+[[test]]
+name = "clio_wps_geometry"
+required-features = ["svg"]
+
+[[test]]
+name = "picture_bullet_render"
+required-features = ["svg"]

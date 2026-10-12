@@ -57,6 +57,7 @@ fn centre_pixel(part_name: &str, bytes: Vec<u8>) -> [u8; 3] {
             part: Some(part),
             alt: String::new(),
             transform: None,
+            crop: None,
         })],
     }];
     let pdf = render_with_source(&pages, &RenderOptions::default(), Some(&media))

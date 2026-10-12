@@ -20,6 +20,10 @@ use super::address::{visit_boxes, visit_drawings};
 pub(super) struct IdIndex {
     counts: HashMap<String, usize>,
     claimed: Vec<String>,
+    /// The next tracked-change id (`w:id` of `w:ins`/`w:del`), past every one
+    /// in the document; only ever counts up, so an id is never handed out
+    /// twice in a session.
+    next_revision: u32,
 }
 impl IdIndex {
     /// The index of every story of `document`.
@@ -36,8 +40,17 @@ impl IdIndex {
             );
         for blocks in stories {
             index.add(blocks);
+            each_revision(blocks, &mut |id| {
+                index.next_revision = index.next_revision.max(id.saturating_add(1));
+            });
         }
         index
+    }
+    /// A tracked-change id no revision in the document has.
+    pub(super) fn next_revision(&mut self) -> u32 {
+        let id = self.next_revision;
+        self.next_revision = self.next_revision.saturating_add(1);
+        id
     }
     /// Whether some paragraph carries `id` (uppercased).
     pub(super) fn contains(&self, id: &str) -> bool {
@@ -88,6 +101,65 @@ impl IdIndex {
             if *count == 0 {
                 self.counts.remove(id);
             }
+        }
+    }
+}
+/// Calls `f` with the id of every annotation under `blocks` - tracked
+/// changes of paragraph marks and runs, and the numeric bookmark and comment
+/// ids, which share their id space (ISO/IEC 29500-1 17.13.4) - in tables,
+/// block SDTs, inline wrappers and text boxes.
+fn each_revision(blocks: &[Block], f: &mut dyn FnMut(u32)) {
+    fn inlines(items: &[Inline], f: &mut dyn FnMut(u32)) {
+        for item in items {
+            match item {
+                Inline::Run(run) => {
+                    if let Some(revision) = &run.revision {
+                        f(revision.id);
+                    }
+                }
+                Inline::BookmarkStart(v) => {
+                    if let Ok(id) = v.id.as_str().parse() {
+                        f(id);
+                    }
+                }
+                Inline::CommentRangeStart(v) => {
+                    if let Ok(id) = v.as_str().parse() {
+                        f(id);
+                    }
+                }
+                Inline::Hyperlink(v) => inlines(&v.inlines, f),
+                Inline::SdtInline(v) => inlines(&v.inlines, f),
+                Inline::Directional(v) => inlines(&v.inlines, f),
+                Inline::Field(v) => inlines(&v.inlines, f),
+                _ => {}
+            }
+        }
+    }
+    for b in blocks {
+        match b {
+            Block::Paragraph(p) => {
+                if let Some(revision) = &p.revision {
+                    f(revision.id);
+                }
+                inlines(&p.inlines, f);
+                visit_drawings(&p.inlines, &[], &mut |d, _, _| {
+                    let graphic = match &d.kind {
+                        DrawingKind::Inline(v) => v.graphic.as_ref(),
+                        DrawingKind::Anchor(v) => v.graphic.as_ref(),
+                        DrawingKind::Opaque(_) => return,
+                    };
+                    visit_boxes(graphic, &[], &mut |blocks, _| each_revision(blocks, f));
+                });
+            }
+            Block::Table(t) => {
+                for r in &t.rows {
+                    for c in &r.cells {
+                        each_revision(&c.blocks, f);
+                    }
+                }
+            }
+            Block::SdtBlock(s) => each_revision(&s.blocks, f),
+            _ => {}
         }
     }
 }

@@ -20,9 +20,10 @@
 //!   no-panic corpus runs; the stage flags select the echelon fixture.
 //! - `gen-jpeg [--out <dir>]` — writes the minimal JPEG fixtures used by
 //!   AUD-81 (`strict-ooxml-render-pdf/tests/fixtures`).
-//! - `corpus fetch|verify --tier <ci-core|ci-full> [--root <dir>] [--lock <path>]`
+//! - `corpus fetch|verify --tier <ci-core|ci-full|djvu> [--root <dir>] [--lock <path>]`
 //!   — downloads / checks the CC0 corpus named by `testdata-lock/cc0.toml`
-//!   (`docs/CC0_CORPUS_MIGRATION_PLAN.md` §4.2).
+//!   (`docs/CC0_CORPUS_MIGRATION_PLAN.md` §4.2), or the DjVu validation
+//!   corpus named by `testdata-lock/djvu.toml` (`STAGE-9-TASK.md`).
 
 #![allow(clippy::cast_possible_truncation, clippy::doc_markdown)]
 

@@ -1730,10 +1730,9 @@ fn note_separator_definitions_become_reserved_notes() {
         let Block::Paragraph(p) = &separator.blocks[0] else {
             panic!("separator note body");
         };
-        assert!(p
-            .inlines
-            .iter()
-            .any(|i| matches!(i, Inline::Run(r) if r.content.contains(&RunContent::Separator))));
+        assert!(p.inlines.iter().any(
+            |i| matches!(i, Inline::Run(r) if r.content.contains(&RunContent::NoteSeparator(false)))
+        ));
     }
 
     let imported = import(input, &RtfOptions::default()).unwrap();
@@ -2074,7 +2073,7 @@ fn cell_shading_margins_width_and_diagonals() {
         assert_eq!(shading.pattern.as_deref(), Some("solid"));
         assert_eq!(shading.fill.as_ref().map(Color::as_str), Some("FF0000"));
         assert_eq!(
-            cell.borders.tl2br.as_ref().unwrap().style,
+            cell.diagonal_down.as_ref().unwrap().style,
             Some(BorderStyle::Single)
         );
     }

@@ -3,7 +3,8 @@
 use std::fmt::Write as _;
 
 use super::{coord, escape_attr};
-use crate::layout::{LineItem, PathItem, RectItem};
+use crate::layout::{LineItem, PathItem, PathPaint, RectItem};
+use sha2::{Digest, Sha256};
 
 /// Writes a rectangle.
 pub(crate) fn rect_svg(out: &mut String, rect: &RectItem) {
@@ -58,11 +59,20 @@ pub(crate) fn line_svg(out: &mut String, line: &LineItem) {
 /// Writes an arbitrary shape path.
 pub(crate) fn path_svg(out: &mut String, path: &PathItem) {
     let mut attributes = String::new();
-    match &path.fill {
-        Some(fill) => {
-            let _ = write!(attributes, " fill=\"{}\"", escape_attr(fill));
+    if let Some(paint) = &path.paint {
+        let mut id = String::from("fill-");
+        for byte in Sha256::digest(format!("{paint:?}").as_bytes()) {
+            let _ = write!(id, "{byte:02x}");
         }
-        None => attributes.push_str(" fill=\"none\""),
+        paint_definition(out, &id, paint);
+        let _ = write!(attributes, " fill=\"url(#{id})\"");
+    } else {
+        match &path.fill {
+            Some(fill) => {
+                let _ = write!(attributes, " fill=\"{}\"", escape_attr(fill));
+            }
+            None => attributes.push_str(" fill=\"none\""),
+        }
     }
     if let Some(stroke) = &path.stroke {
         let _ = write!(
@@ -85,8 +95,56 @@ pub(crate) fn path_svg(out: &mut String, path: &PathItem) {
     );
 }
 
+fn paint_definition(out: &mut String, id: &str, paint: &PathPaint) {
+    out.push_str("  <defs>\n");
+    match paint {
+        PathPaint::LinearGradient { stops, start, end } => {
+            let _ = writeln!(out, "    <linearGradient id=\"{id}\" gradientUnits=\"userSpaceOnUse\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\">", coord(start.0), coord(start.1), coord(end.0), coord(end.1));
+            for (position, color) in stops {
+                let _ = writeln!(
+                    out,
+                    "      <stop offset=\"{}\" stop-color=\"{}\"/>",
+                    coord(*position),
+                    escape_attr(color)
+                );
+            }
+            out.push_str("    </linearGradient>\n");
+        }
+        PathPaint::Pattern {
+            foreground,
+            background,
+            size,
+            lines,
+            rectangles,
+        } => {
+            let _ = writeln!(out, "    <pattern id=\"{id}\" patternUnits=\"userSpaceOnUse\" width=\"{}\" height=\"{}\" viewBox=\"0 0 1 1\">", coord(*size), coord(*size));
+            let _ = writeln!(
+                out,
+                "      <rect width=\"1\" height=\"1\" fill=\"{}\"/>",
+                escape_attr(background)
+            );
+            for (x1, y1, x2, y2) in lines {
+                let _ = writeln!(out, "      <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"0.125\"/>", coord(*x1), coord(*y1), coord(*x2), coord(*y2), escape_attr(foreground));
+            }
+            for (x, y, w, h) in rectangles {
+                let _ = writeln!(
+                    out,
+                    "      <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
+                    coord(*x),
+                    coord(*y),
+                    coord(*w),
+                    coord(*h),
+                    escape_attr(foreground)
+                );
+            }
+            out.push_str("    </pattern>\n");
+        }
+    }
+    out.push_str("  </defs>\n");
+}
+
 /// Builds the SVG transform (translation + rotation/flips) for a path.
-fn path_transform(path: &PathItem) -> String {
+pub(crate) fn path_transform(path: &PathItem) -> String {
     let mut parts = vec![format!(
         "translate({} {})",
         crate::units::fmt_num(path.x),

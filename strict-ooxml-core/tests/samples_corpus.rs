@@ -144,7 +144,8 @@ fn legitimate_stress_document_opens_and_strict_ratio_still_rejects() {
             kind: LimitKind::CompressionRatio,
             actual,
             ..
-        } => assert_eq!(actual, 227, "actual must be the ratio, not bytes"),
+        // 227.x:1, reported rounded up so that it reads as over the limit.
+        } => assert_eq!(actual, 228, "actual must be the ratio, not bytes"),
         other => panic!("expected CompressionRatio, got {other:?}"),
     }
 }

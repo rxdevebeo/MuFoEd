@@ -6,7 +6,7 @@
 //! place — which is why it serves vector pages instead of rasterizing them.
 //!
 //! ```text
-//! strict-ooxml-view [DIR...] [--port N] [--transitional] [--scale N]
+//! strict-ooxml-view [DIR...] [--port N] [--transitional] [--scale N] [--cell-nowrap=spec|always]
 //! ```
 //!
 //! With no directory it serves every known corpus that contains documents, and
@@ -28,22 +28,50 @@
 )]
 
 mod http;
+mod process_limit;
 mod ui;
+mod worker;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
+#[cfg(test)]
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use http::Response;
-use strict_ooxml_view::{discover, failed, render, render_rtf, Cache, DocumentView, Entry};
+#[cfg(test)]
+use strict_ooxml::OpenControl;
+use strict_ooxml_view::{discover, Cache, DocumentView, Entry, RenderSettings};
+#[cfg(test)]
+use strict_ooxml_view::{failed, render_controlled};
 
 /// Exit code: the viewer ran and stopped cleanly.
 const EXIT_OK: u8 = 0;
 /// Exit code: the viewer could not start.
 const EXIT_ERROR: u8 = 2;
+
+/// How long one document may take to render before its request is answered
+/// with a failed view.
+///
+/// The server is single-threaded, so a render that does not finish is a viewer
+/// that does not answer — not for that document, for anything. Past this the
+/// request gets a view whose note says so, and the document is cached as that
+/// failure: asking again does not start a second render of a document that
+/// already showed it will not finish.
+const RENDER_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Stack for the render thread.
+///
+/// The renderer is budgeted for a 1 MiB stack (the Windows main thread), and a
+/// spawned thread gets 2 MiB by default; the Linux main thread the render used
+/// to run on has 8. The same 8 here, so moving the render off the main thread
+/// costs no document its render.
+#[cfg(test)]
+const RENDER_STACK_BYTES: usize = 8 * 1024 * 1024;
 
 /// One directory the viewer offers in the corpus menu.
 struct KnownCorpus {
@@ -78,21 +106,33 @@ const KNOWN_CORPORA: &[KnownCorpus] = &[
         transitional: true,
     },
     KnownCorpus {
+        id: "cc0-docx-math",
+        label: "CC0 DOCX Math",
+        path: "testdata/CC0_DOCX_MATH",
+        transitional: true,
+    },
+    KnownCorpus {
         id: "cc0",
         label: "CC0",
         path: "testdata/CC0",
         transitional: true,
     },
-    KnownCorpus {
-        id: "cc0-rtf",
-        label: "CC0 RTF",
-        path: "testdata/CC0_RTF",
-        transitional: false,
-    },
 ];
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--render-worker") {
+        let Some(path) = args.get(1) else {
+            return ExitCode::from(EXIT_ERROR);
+        };
+        return match worker::entry(Path::new(path)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::from(EXIT_ERROR)
+            }
+        };
+    }
     let Some(config) = Config::parse(&args) else {
         return ExitCode::from(EXIT_ERROR);
     };
@@ -122,8 +162,10 @@ fn main() -> ExitCode {
     let state = Arc::new(State {
         corpora,
         caches: Mutex::new(BTreeMap::new()),
-        scale: config.scale,
-        rtf_options: config.rtf_options,
+        settings: RenderSettings {
+            scale: config.scale,
+            cell_no_wrap: config.cell_no_wrap,
+        },
     });
 
     let listener = match std::net::TcpListener::bind(("127.0.0.1", config.port)) {
@@ -156,7 +198,11 @@ struct Corpus {
     id: String,
     /// Label shown in the menu.
     label: String,
-    /// Directory, as printed at startup and returned by the API.
+    /// Directory, as printed at startup.
+    ///
+    /// Not returned by the API: the page never used it, and an absolute path
+    /// is the user's home directory and account name handed to any script
+    /// that can reach the port.
     path: String,
     /// Documents in menu order.
     entries: Vec<Entry>,
@@ -170,52 +216,127 @@ struct State {
     corpora: Vec<Corpus>,
     /// Rendered pages, one cache per corpus so equal file names do not collide.
     caches: Mutex<BTreeMap<String, Cache>>,
-    /// Explicit RTF compatibility policies, ignored for DOCX entries.
-    rtf_options: strict_ooxml::RtfOptions,
-    /// Output scale, in px per inch.
+    /// Output scale (px per inch) and `w:noWrap` handling.
     ///
-    /// This is a DPI, not a multiplier: the renderer converts twips by
+    /// The scale is a DPI, not a multiplier: the renderer converts twips by
     /// dividing by 1440 and multiplying by this. Passing 1.0 renders an
     /// 8.5x11 inch page as 8.5x11 *pixels* — a postage stamp — and the
     /// content then overflows into a dozen pages.
-    scale: f64,
+    settings: RenderSettings,
 }
 
 impl State {
     /// Returns the view for `name` in `corpus`, rendering it on first request.
-    fn view(&self, corpus: &Corpus, name: &str) -> Option<DocumentView> {
+    fn view(&self, corpus: &Corpus, name: &str) -> Option<Arc<DocumentView>> {
         if let Some(cached) = self
             .caches
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .get(&corpus.id)
-            .and_then(|cache| cache.get(name).cloned())
+            .and_then(|cache| cache.get_shared(name))
         {
             return Some(cached);
         }
         let entry = corpus.entries.iter().find(|entry| entry.name == name)?;
-        // A document that will not open is still a menu entry that has to say
-        // so; showing nothing would look like a viewer bug.
-        let rendered = if entry
-            .path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("rtf"))
-        {
-            render_rtf(entry, &self.rtf_options, self.scale)
-        } else {
-            render(entry, corpus.transitional, self.scale)
-        };
-        let view = match rendered {
-            Ok(view) => view,
-            Err(error) => failed(entry, &error.to_string()),
-        };
+        let view = Arc::new(render_bounded(
+            entry,
+            corpus.transitional,
+            self.settings,
+            RENDER_TIMEOUT,
+        ));
         self.caches
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .entry(corpus.id.clone())
             .or_default()
-            .insert(view.clone());
+            .insert_shared(Arc::clone(&view));
         Some(view)
+    }
+}
+
+/// Why [`run_bounded`] came back without a value.
+#[derive(Debug, PartialEq, Eq)]
+#[cfg(test)]
+enum Unfinished {
+    /// The job is still running; it was left to finish on its own.
+    TimedOut,
+    /// The job ended without an answer (it panicked), or never started.
+    Lost(String),
+}
+
+/// Runs `job` on its own thread and waits for it at most `timeout`.
+///
+/// A job that does not finish is not stopped — a thread cannot be — but the
+/// caller stops waiting for it, and its answer, if it ever comes, goes nowhere.
+#[cfg(test)]
+fn run_bounded<T, F>(timeout: Duration, job: F) -> Result<T, Unfinished>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    let (sender, receiver) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("render".to_owned())
+        .stack_size(RENDER_STACK_BYTES)
+        .spawn(move || {
+            // The receiver is gone when the caller has stopped waiting.
+            let _ = sender.send(job());
+        });
+    if let Err(error) = spawned {
+        return Err(Unfinished::Lost(format!(
+            "could not start a thread: {error}"
+        )));
+    }
+    match receiver.recv_timeout(timeout) {
+        Ok(value) => Ok(value),
+        Err(RecvTimeoutError::Timeout) => Err(Unfinished::TimedOut),
+        Err(RecvTimeoutError::Disconnected) => Err(Unfinished::Lost(
+            "the renderer stopped without an answer".to_owned(),
+        )),
+    }
+}
+
+/// Renders `entry` off the server thread, giving up after `timeout`.
+///
+/// Always a view: a document that will not open, will not finish, or takes the
+/// renderer down with it is still a menu entry that has to say so; showing
+/// nothing would look like a viewer bug.
+fn render_bounded(
+    entry: &Entry,
+    transitional: bool,
+    settings: RenderSettings,
+    timeout: Duration,
+) -> DocumentView {
+    worker::run(entry, transitional, settings, timeout)
+}
+
+#[cfg(test)]
+fn render_in_test_thread(
+    entry: &Entry,
+    transitional: bool,
+    settings: RenderSettings,
+    timeout: Duration,
+) -> DocumentView {
+    let job = entry.clone();
+    let control = OpenControl::with_timeout(timeout);
+    let worker_control = control.clone();
+    let outcome = run_bounded(timeout, move || {
+        render_controlled(&job, transitional, settings, &worker_control)
+            .map_err(|error| error.to_string())
+    });
+    if matches!(outcome, Err(Unfinished::TimedOut)) {
+        control.cancel();
+    }
+    match outcome {
+        Ok(Ok(view)) => view,
+        Ok(Err(reason)) | Err(Unfinished::Lost(reason)) => failed(entry, &reason),
+        Err(Unfinished::TimedOut) => failed(
+            entry,
+            &format!(
+                "rendering did not finish within {} s; cancellation requested",
+                timeout.as_secs()
+            ),
+        ),
     }
 }
 
@@ -261,10 +382,41 @@ fn route(state: &State, path: &str, query: &str) -> Response {
             let Some(view) = state.view(corpus, &name) else {
                 return Response::not_found(&name);
             };
-            Response::ok(
-                "application/json; charset=utf-8",
-                document_json(&view).into_bytes(),
-            )
+            let metadata_only = query_value(query, "metadata").as_deref() == Some("1");
+            if !metadata_only && view.svg_bytes() > 96 * 1024 * 1024 {
+                return Response::payload_too_large();
+            }
+            let body = match document_json_mode(&view, metadata_only) {
+                Ok(json) => json.into_bytes(),
+                Err(error) => {
+                    return Response::bad_request(&format!("stored page unavailable: {error}"))
+                }
+            };
+            worker::log(
+                &serde_json::json!({"event":"response","document":name,"corpus":corpus.id,"bytes":body.len(),"metadata_only":metadata_only,"extreme":body.len()>8*1024*1024}),
+            );
+            Response::ok("application/json; charset=utf-8", body)
+        }
+        "/api/page" => {
+            let Some(corpus) = selected_corpus(state, query) else {
+                return Response::not_found("corpus");
+            };
+            let name = query_value(query, "name").unwrap_or_default();
+            let Some(number) =
+                query_value(query, "page").and_then(|value| value.parse::<usize>().ok())
+            else {
+                return Response::bad_request("page is required");
+            };
+            let Some(view) = state.view(corpus, &name) else {
+                return Response::not_found(&name);
+            };
+            let Some(page) = view.pages.iter().find(|page| page.number == number) else {
+                return Response::not_found("page");
+            };
+            match view.page_svg(page) {
+                Ok(svg) => Response::ok("image/svg+xml; charset=utf-8", svg.into_bytes()),
+                Err(error) => Response::bad_request(&format!("stored page unavailable: {error}")),
+            }
         }
         other => Response::not_found(other),
     }
@@ -282,10 +434,9 @@ fn selected_corpus<'a>(state: &'a State, query: &str) -> Option<&'a Corpus> {
 /// One corpus as JSON.
 fn corpus_json(corpus: &Corpus) -> String {
     format!(
-        "{{\"id\":{},\"label\":{},\"path\":{},\"count\":{},\"transitional\":{}}}",
+        "{{\"id\":{},\"label\":{},\"count\":{},\"transitional\":{}}}",
         json_string(&corpus.id),
         json_string(&corpus.label),
-        json_string(&corpus.path),
         corpus.entries.len(),
         corpus.transitional
     )
@@ -297,20 +448,30 @@ fn menu_entry_json(name: &str, size: u64) -> String {
 }
 
 /// A rendered view as the JSON the page script expects.
+#[cfg(test)]
 fn document_json(view: &DocumentView) -> String {
-    let pages: Vec<String> = view
-        .pages
-        .iter()
-        .map(|page| {
-            format!(
-                "{{\"number\":{},\"width\":{},\"height\":{},\"svg\":{}}}",
-                page.number,
-                json_number(page.width),
-                json_number(page.height),
-                json_string(&page.svg)
-            )
-        })
-        .collect();
+    document_json_mode(view, false).unwrap_or_default()
+}
+
+fn document_json_mode(view: &DocumentView, metadata_only: bool) -> std::io::Result<String> {
+    let mut pages = String::new();
+    for page in &view.pages {
+        if !pages.is_empty() {
+            pages.push(',');
+        }
+        let _ = write!(
+            pages,
+            "{{\"number\":{},\"width\":{},\"height\":{}",
+            page.number,
+            json_number(page.width),
+            json_number(page.height)
+        );
+        if !metadata_only {
+            pages.push_str(",\"svg\":");
+            write_json_string(&mut pages, &view.page_svg(page)?);
+        }
+        pages.push('}');
+    }
     // An absent value must serialize as JSON `null`, not as nothing: writing
     // an empty string where a value is expected produces `"note":,` and the
     // client cannot parse the document at all.
@@ -331,13 +492,13 @@ fn document_json(view: &DocumentView) -> String {
         .note
         .as_deref()
         .map_or_else(|| "null".to_owned(), json_string);
-    format!(
+    Ok(format!(
         "{{\"name\":{},\"conformance\":{},\"summary\":{summary},\"note\":{note},\"pipeline\":{},\"pages\":[{}]}}",
         json_string(&view.name),
         json_string(&view.conformance),
         pipeline_json(&view.pipeline),
-        pages.join(",")
-    )
+        pages
+    ))
 }
 
 /// The loss ledger, kept apart from the mechanism summary.
@@ -395,6 +556,11 @@ fn issue_json(issue: &strict_ooxml_view::ViewIssue) -> String {
 /// page of valid-but-unparseable JSON.
 fn json_string(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 2);
+    write_json_string(&mut out, value);
+    out
+}
+
+fn write_json_string(out: &mut String, value: &str) {
     out.push('"');
     for character in value.chars() {
         match character {
@@ -411,7 +577,6 @@ fn json_string(value: &str) -> String {
         }
     }
     out.push('"');
-    out
 }
 
 /// Formats a number, or `0` when it is not finite.
@@ -446,14 +611,14 @@ fn query_value(query: &str, key: &str) -> Option<String> {
 struct Config {
     /// Directories given on the command line, in order.
     dirs: Vec<PathBuf>,
-    /// Explicit RTF compatibility policies.
-    rtf_options: strict_ooxml::RtfOptions,
     /// Port to bind.
     port: u16,
     /// Whether to normalize every corpus, including Strict.
     transitional: bool,
     /// Render scale.
     scale: f64,
+    /// `--cell-nowrap=spec|always`.
+    cell_no_wrap: strict_ooxml::CellNoWrap,
 }
 
 impl Config {
@@ -461,10 +626,10 @@ impl Config {
     fn parse(args: &[String]) -> Option<Self> {
         let mut config = Self {
             dirs: Vec::new(),
-            rtf_options: strict_ooxml::RtfOptions::default(),
             port: 8181,
             transitional: false,
             scale: 96.0,
+            cell_no_wrap: strict_ooxml::CellNoWrap::default(),
         };
         let mut index = 0;
         while let Some(arg) = args.get(index) {
@@ -490,19 +655,15 @@ impl Config {
                         .filter(|scale: &f64| scale.is_finite() && *scale > 0.0)?;
                 }
                 "--transitional" => config.transitional = true,
-                "--wps-text" => {
-                    config.rtf_options.compatibility_profile =
-                        strict_ooxml::CompatibilityProfile::WpsText;
-                }
-                "--allow-unsigned-unicode" => {
-                    config.rtf_options.unicode_parameter_policy =
-                        strict_ooxml::UnicodeParameterPolicy::AllowUnsignedAndReport;
-                }
-                "--drop-nul" => {
-                    config.rtf_options.nul_policy = strict_ooxml::NulPolicy::DropAndReport;
-                }
-                "--reject-unsupported" => {
-                    config.rtf_options.unsupported_policy = strict_ooxml::UnsupportedPolicy::Reject;
+                other if other.starts_with("--cell-nowrap=") => {
+                    let Some(mode) = other
+                        .strip_prefix("--cell-nowrap=")
+                        .and_then(strict_ooxml::CellNoWrap::parse)
+                    else {
+                        eprintln!("error: --cell-nowrap expects 'spec' or 'always'");
+                        return None;
+                    };
+                    config.cell_no_wrap = mode;
                 }
                 "--help" | "-h" => {
                     print_usage();
@@ -614,14 +775,15 @@ fn unique_id(base: &str, used: &mut BTreeSet<String>) -> String {
 }
 
 fn print_usage() {
-    println!("usage: strict-ooxml-view [DIR...] [--port N] [--scale N] [--transitional]");
+    println!(
+        "usage: strict-ooxml-view [DIR...] [--port N] [--scale N] [--transitional] [--cell-nowrap=spec|always]"
+    );
     println!();
-    println!("  DIR...            directories of .docx/.rtf files");
+    println!("  DIR...            directories of .docx files");
     println!("                    (default: every known corpus that contains documents)");
-    println!("  --wps-text --allow-unsigned-unicode --drop-nul --reject-unsupported");
-    println!("                    explicit RTF compatibility policies");
     println!("  --port N          port to bind on 127.0.0.1 (default 8181)");
     println!("  --scale N         output DPI (default 96; 144 doubles the page size)");
+    println!("  --cell-nowrap=M   w:noWrap cells: spec (default, as ISO 29500) or always");
     println!("  --transitional    normalize every corpus, including Strict");
     println!();
     println!("known corpora:");
@@ -638,11 +800,13 @@ fn print_usage() {
 #[cfg(test)]
 mod tests {
     use super::{
-        corpus_json, json_number, json_string, known_for, query_value, slug, unique_id, Config,
-        Corpus, Entry, EXIT_OK, KNOWN_CORPORA,
+        corpus_json, json_number, json_string, known_for, query_value,
+        render_in_test_thread as render_bounded, run_bounded, slug, unique_id, Config, Corpus,
+        Entry, Unfinished, EXIT_OK, KNOWN_CORPORA,
     };
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
+    use std::time::Duration;
     use strict_ooxml_view::{DocumentView, PipelineView};
 
     fn empty_pipeline() -> PipelineView {
@@ -711,12 +875,10 @@ mod tests {
         assert!(ids.contains(&"strict"));
         assert!(ids.contains(&"docx"));
         assert!(ids.contains(&"cc0-docx"));
-        assert!(ids.contains(&"cc0-rtf"));
+        assert!(ids.contains(&"cc0-docx-math"));
         assert!(KNOWN_CORPORA
             .iter()
-            .filter(|known| {
-                known.id != "cc0" && known.id != "cc0-docx" && known.id != "cc0-rtf"
-            })
+            .filter(|known| !known.id.starts_with("cc0"))
             .all(|known| known.path.starts_with("strict-ooxml-core/tests/")));
     }
 
@@ -759,6 +921,66 @@ mod tests {
     }
 
     #[test]
+    fn a_corpus_listing_does_not_leak_its_directory() {
+        let corpus = Corpus {
+            id: "private".to_owned(),
+            label: "private".to_owned(),
+            path: "/home/someone/secret/private".to_owned(),
+            entries: Vec::new(),
+            transitional: false,
+        };
+        let json = corpus_json(&corpus);
+        assert!(!json.contains("\"path\""), "{json}");
+        assert!(!json.contains("/home/someone"), "{json}");
+    }
+
+    #[test]
+    fn a_job_that_finishes_in_time_returns_its_value() {
+        assert_eq!(run_bounded(Duration::from_secs(10), || 7), Ok(7));
+    }
+
+    #[test]
+    fn a_job_that_does_not_finish_is_abandoned_at_the_timeout() {
+        let started = std::time::Instant::now();
+        let outcome = run_bounded(Duration::from_millis(50), || {
+            std::thread::sleep(Duration::from_secs(5));
+        });
+        assert_eq!(outcome, Err(Unfinished::TimedOut));
+        assert!(
+            started.elapsed() < Duration::from_secs(4),
+            "the caller must not wait for the job: {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_job_that_panics_is_lost_not_fatal() {
+        let outcome = run_bounded(Duration::from_secs(10), || -> u8 {
+            panic!("renderer bug");
+        });
+        assert!(matches!(outcome, Err(Unfinished::Lost(_))), "{outcome:?}");
+    }
+
+    #[test]
+    fn a_document_that_will_not_open_is_a_failed_view() {
+        let entry = Entry {
+            name: "missing.docx".to_owned(),
+            path: PathBuf::from("does/not/exist/missing.docx"),
+            size: 0,
+        };
+        let view = render_bounded(
+            &entry,
+            false,
+            strict_ooxml_view::RenderSettings::new(96.0),
+            Duration::from_secs(30),
+        );
+        assert_eq!(view.name, "missing.docx");
+        assert!(view.pages.is_empty());
+        assert!(view.note.is_some());
+        assert_eq!(view.pipeline.outcome, "failed");
+    }
+
+    #[test]
     fn json_strings_are_escaped() {
         assert_eq!(json_string("plain"), "\"plain\"");
         assert_eq!(json_string("say \"hi\""), "\"say \\\"hi\\\"\"");
@@ -796,6 +1018,7 @@ mod tests {
         // to open looks like, and it is exactly the one that produced
         // `"note":,` — invalid JSON the client could not read.
         let view = DocumentView {
+            page_files: None,
             name: "broken.docx".to_owned(),
             conformance: "—".to_owned(),
             summary: None,
@@ -821,6 +1044,7 @@ mod tests {
     #[test]
     fn a_rendered_document_produces_valid_json() {
         let view = DocumentView {
+            page_files: None,
             name: "a.docx".to_owned(),
             conformance: "strict".to_owned(),
             summary: Some(strict_ooxml_view::Summary {

@@ -15,6 +15,11 @@ const A_NS: &str = "http://purl.oclc.org/ooxml/drawingml/main";
 
 /// A minimal DrawingML Strict theme.
 fn theme_xml() -> Vec<u8> {
+    theme_with_format_scheme("<a:fmtScheme name=\"Office\"/>")
+}
+
+/// The same theme with `format_scheme` as its `a:fmtScheme`.
+fn theme_with_format_scheme(format_scheme: &str) -> Vec<u8> {
     format!(
         "<?xml version=\"1.0\"?><a:theme xmlns:a=\"{A_NS}\" name=\"Office\"><a:themeElements>\
 <a:clrScheme name=\"Office\">\
@@ -35,7 +40,7 @@ fn theme_xml() -> Vec<u8> {
 <a:majorFont><a:latin typeface=\"Cambria\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/></a:majorFont>\
 <a:minorFont><a:latin typeface=\"Calibri\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/></a:minorFont>\
 </a:fontScheme>\
-<a:fmtScheme name=\"Office\"/>\
+{format_scheme}\
 </a:themeElements></a:theme>"
     )
     .into_bytes()
@@ -81,4 +86,52 @@ fn parses_run_theme_font_and_color_references() {
     let color = run.props.color_theme.as_ref().expect("theme color");
     assert_eq!(color.color.as_str(), "accent1");
     assert_eq!(color.shade.as_deref(), Some("80"));
+}
+
+/// A Strict theme whose fill styles carry the SDK's bare thousandths
+/// (`pos="35000"`, `val="130000"`) keeps them as the Strict percentages they
+/// mean, so the written theme validates; percentages already written as such,
+/// and angles that only look like thousandths, are kept as read.
+#[test]
+fn a_kept_format_scheme_writes_strict_percentages() {
+    let scheme = "<a:fmtScheme name=\"Office\"><a:fillStyleLst>\
+<a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill>\
+<a:gradFill rotWithShape=\"1\"><a:gsLst>\
+<a:gs pos=\"0\"><a:schemeClr val=\"phClr\"><a:tint val=\"50000\"/><a:satMod val=\"300000\"/></a:schemeClr></a:gs>\
+<a:gs pos=\"35000\"><a:schemeClr val=\"phClr\"><a:tint val=\"37%\"/></a:schemeClr></a:gs>\
+</a:gsLst><a:lin ang=\"16200000\" scaled=\"1\"/></a:gradFill>\
+<a:gradFill rotWithShape=\"1\"><a:gsLst>\
+<a:gs pos=\"100000\"><a:schemeClr val=\"phClr\"><a:shade val=\"30000\"/></a:schemeClr></a:gs>\
+</a:gsLst><a:path path=\"circle\"><a:fillToRect l=\"50000\" t=\"-80000\" r=\"50000\" b=\"180000\"/></a:path></a:gradFill>\
+</a:fillStyleLst><a:lnStyleLst><a:ln w=\"9525\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:ln></a:lnStyleLst>\
+<a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>\
+<a:bgFillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>";
+    let rels = rels(&[("rIdTheme", THEME, "theme/theme1.xml")]);
+    let parts = document_parts(
+        "<w:p/>",
+        &[
+            ("word/_rels/document.xml.rels", rels),
+            ("word/theme/theme1.xml", theme_with_format_scheme(scheme)),
+        ],
+    );
+    let document = parse_parts(&parts).expect("parse");
+    let theme = document.theme.as_ref().expect("theme parsed");
+    let kept = theme
+        .format_scheme_xml
+        .as_deref()
+        .expect("the scheme is kept");
+    for expected in [
+        r#"<a:gs pos="0%">"#,
+        r#"<a:gs pos="35%">"#,
+        r#"<a:gs pos="100%">"#,
+        r#"<a:tint val="50%"/>"#,
+        r#"<a:satMod val="300%"/>"#,
+        r#"<a:shade val="30%"/>"#,
+        r#"<a:fillToRect l="50%" t="-80%" r="50%" b="180%"/>"#,
+        r#"<a:tint val="37%"/>"#,
+        r#"<a:lin ang="16200000" scaled="1"/>"#,
+        r#"<a:ln w="9525">"#,
+    ] {
+        assert!(kept.contains(expected), "{expected} in {kept}");
+    }
 }

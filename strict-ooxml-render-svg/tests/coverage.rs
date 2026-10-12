@@ -26,7 +26,8 @@ fn rich_paragraphs_cover_formatting_paths() {
     assert!(!pages.is_empty());
     let svg = &pages[0].svg;
     assert!(svg.contains("JUSTIFIED"), "{svg}");
-    assert!(svg.contains("centered"));
+    // `w:smallCaps`: lowercase letters are drawn as smaller capitals.
+    assert!(svg.contains("CENTERED"), "{svg}");
     assert!(svg.contains("right"));
 }
 

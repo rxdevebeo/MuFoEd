@@ -237,11 +237,14 @@ impl Rasterizer {
         let width = right.saturating_sub(left).max(1).min(page_width);
         let height = bottom.saturating_sub(top).max(1).min(page_height);
         let source = pixmap.data_as_u8_slice();
-        let stride = page_width as usize * 4;
-        let mut out = Vec::with_capacity(width as usize * height as usize * 4);
-        for row in top..top + height {
-            let start = row as usize * stride + left as usize * 4;
-            let end = (start + width as usize * 4).min(source.len());
+        let stride = (page_width as usize).saturating_mul(4);
+        let row_bytes = (width as usize).saturating_mul(4);
+        let mut out = Vec::with_capacity(row_bytes.saturating_mul(height as usize));
+        for row in top..top.saturating_add(height) {
+            let start = (row as usize)
+                .saturating_mul(stride)
+                .saturating_add((left as usize).saturating_mul(4));
+            let end = start.saturating_add(row_bytes).min(source.len());
             let start = start.min(source.len());
             out.extend_from_slice(source.get(start..end).unwrap_or_default());
         }
@@ -282,7 +285,7 @@ impl Rasterizer {
         }
         self.pdf
             .pages()
-            .get(number - 1)
+            .get(number.saturating_sub(1))
             .ok_or_else(|| PdfError::Missing(format!("page {number}")))
     }
 }

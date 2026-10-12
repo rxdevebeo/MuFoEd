@@ -247,12 +247,16 @@ fn parse_math_node(
     scope: &mut MathScope,
 ) -> Result<Option<MathNode>> {
     let location = parser.location();
+    // Both refusals leave the level they entered: the depth is a count of
+    // the open elements, and an element skipped here is no longer open.
     if scope.enter(parser.max_math_depth) {
+        scope.leave();
         scope.exhaust("max_math_depth");
         parser.skip_element()?;
         return Ok(None);
     }
     if scope.charge_node(parser.max_math_nodes) {
+        scope.leave();
         scope.exhaust("max_math_nodes");
         parser.skip_element()?;
         return Ok(None);
@@ -374,10 +378,17 @@ fn parse_math_run(parser: &mut PartParser<'_>) -> Result<MathRun> {
         let mut properties = MathRunProperties::default();
         let mut run_properties: Option<Box<crate::model::props::RunProperties>> = None;
         let mut text = String::new();
+        let mut field_char = None;
         loop {
             match parser.next_event()? {
-                XmlEvent::StartElement { name, attrs: _ } => {
+                XmlEvent::StartElement { name, attrs } => {
                     if !is_math(&name) {
+                        if name.local() == "fldChar" && crate::parse::is_wml(&name) {
+                            field_char = super::wml_attr(&attrs, "fldCharType")
+                                .and_then(crate::model::values::FieldCharType::from_strict);
+                            parser.skip_element()?;
+                            continue;
+                        }
                         // `w:rPr` is a legitimate child of `m:r`
                         // (ISO/IEC 29500-1 §22.1.2.79) and carries the character
                         // formatting Word applies to a math run. It used to fall
@@ -395,7 +406,7 @@ fn parse_math_run(parser: &mut PartParser<'_>) -> Result<MathRun> {
                         }
                         // `w:br` inside a math run is a line break: represent it
                         // as a newline so the renderer honours it.
-                        if name.local() == "br" && crate::parse::is_wml(&name) {
+                        if matches!(name.local(), "br" | "cr") && crate::parse::is_wml(&name) {
                             text.push('\n');
                         } else {
                             parser.record_foreign(&name);
@@ -423,6 +434,7 @@ fn parse_math_run(parser: &mut PartParser<'_>) -> Result<MathRun> {
             }
         }
         Ok(MathRun {
+            field_char,
             properties,
             run_properties,
             text,
@@ -464,9 +476,11 @@ fn parse_math_run_properties(parser: &mut PartParser<'_>) -> Result<MathRunPrope
             XmlEvent::StartElement { name, attrs } => match name.local() {
                 "lit" => {
                     properties.literal = math_leaf(parser, &attrs, math_on_off)?;
+                    properties.literal_value = Some(properties.literal);
                 }
                 "nor" => {
                     properties.normal = math_leaf(parser, &attrs, math_on_off)?;
+                    properties.normal_value = Some(properties.normal);
                 }
                 "scr" => {
                     properties.script = Some(parse_enum(
@@ -485,6 +499,14 @@ fn parse_math_run_properties(parser: &mut PartParser<'_>) -> Result<MathRunPrope
                         MathStyle::from_strict,
                         MathStyle::Italic,
                     )?);
+                }
+                "aln"
+                    if math_val(&attrs).is_none_or(|value| {
+                        matches!(value.as_str(), "0" | "1" | "true" | "false" | "on" | "off")
+                    }) =>
+                {
+                    properties.alignment_point =
+                        math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
                 }
                 "aln" | "defJc" => {
                     properties.alignment = Some(parse_enum(
@@ -1773,8 +1795,8 @@ fn parse_eq_array(
 fn parse_eq_array_properties(
     parser: &mut PartParser<'_>,
     base_justification: &mut Option<MathVerticalAlign>,
-    max_distance: &mut Option<i32>,
-    object_distance: &mut Option<i32>,
+    max_distance: &mut Option<bool>,
+    object_distance: &mut Option<bool>,
     row_spacing_rule: &mut Option<String>,
     row_spacing: &mut Option<i32>,
     control: &mut Option<Box<crate::model::props::RunProperties>>,
@@ -1791,8 +1813,12 @@ fn parse_eq_array_properties(
                         MathVerticalAlign::Unset,
                     )?);
                 }
-                "maxDist" => *max_distance = math_leaf(parser, &attrs, math_int)?,
-                "objDist" => *object_distance = math_leaf(parser, &attrs, math_int)?,
+                "maxDist" => {
+                    *max_distance = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
+                }
+                "objDist" => {
+                    *object_distance = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
+                }
                 "rSpRule" => {
                     *row_spacing_rule = math_val(&attrs);
                     parser.skip_element()?;
@@ -2043,7 +2069,7 @@ fn parse_group_chr_properties(
                         "m:groupChrPr/m:pos",
                         &attrs,
                         MathPosition::from_strict,
-                        MathPosition::Top,
+                        MathPosition::Bottom,
                     )?);
                 }
                 "vertJc" => {
@@ -2175,6 +2201,8 @@ fn parse_border_box(
     scope: &mut MathScope,
     location: strict_ooxml_core::error::SourceLocation,
 ) -> Result<BorderBox> {
+    let mut hide_edges = [None; 4];
+    let mut strikes = [None; 4];
     let mut alignment = None;
     let mut spacing = None;
     let mut shadow = false;
@@ -2193,6 +2221,8 @@ fn parse_border_box(
                     match name.local() {
                         "borderBoxPr" => parse_border_box_properties(
                             parser,
+                            &mut hide_edges,
+                            &mut strikes,
                             &mut alignment,
                             &mut spacing,
                             &mut shadow,
@@ -2221,6 +2251,8 @@ fn parse_border_box(
             }
         }
         Ok(BorderBox {
+            hide_edges,
+            strikes,
             alignment,
             spacing,
             shadow,
@@ -2233,8 +2265,11 @@ fn parse_border_box(
 }
 
 /// Parses the children of `m:borderBoxPr` (its start element has been consumed).
+#[allow(clippy::too_many_arguments)] // one out-slot per CT_BorderBoxPr child
 fn parse_border_box_properties(
     parser: &mut PartParser<'_>,
+    hide_edges: &mut [Option<bool>; 4],
+    strikes: &mut [Option<bool>; 4],
     alignment: &mut Option<MathAlignment>,
     spacing: &mut Option<i32>,
     shadow: &mut bool,
@@ -2244,6 +2279,30 @@ fn parse_border_box_properties(
     loop {
         match parser.next_event()? {
             XmlEvent::StartElement { name, attrs } => match name.local() {
+                "hideTop" | "hideBot" | "hideLeft" | "hideRight" => {
+                    let index = match name.local() {
+                        "hideTop" => 0,
+                        "hideBot" => 1,
+                        "hideLeft" => 2,
+                        _ => 3,
+                    };
+                    let value = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
+                    if let Some(slot) = hide_edges.get_mut(index) {
+                        *slot = value;
+                    }
+                }
+                "strikeH" | "strikeV" | "strikeBLTR" | "strikeTLBR" => {
+                    let index = match name.local() {
+                        "strikeH" => 0,
+                        "strikeV" => 1,
+                        "strikeBLTR" => 2,
+                        _ => 3,
+                    };
+                    let value = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
+                    if let Some(slot) = strikes.get_mut(index) {
+                        *slot = value;
+                    }
+                }
                 "algn" => {
                     *alignment = Some(parse_enum(
                         parser,

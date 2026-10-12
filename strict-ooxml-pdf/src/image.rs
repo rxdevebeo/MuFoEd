@@ -190,10 +190,12 @@ pub const fn image_limit_kind() -> LimitKind {
 fn payload_bytes(encoded: &Encoded) -> usize {
     match encoded {
         Encoded::Jpeg { data, alpha, .. } => {
-            data.len() + alpha.as_ref().map_or(0, |mask| payload_bytes(mask))
+            let mask = alpha.as_ref().map_or(0, |mask| payload_bytes(mask));
+            data.len().saturating_add(mask)
         }
         Encoded::Raw { samples, alpha, .. } => {
-            samples.len() + alpha.as_ref().map_or(0, |mask| mask.len())
+            let mask = alpha.as_ref().map_or(0, |mask| mask.len());
+            samples.len().saturating_add(mask)
         }
     }
 }
@@ -288,8 +290,9 @@ impl ImageCache {
             Err(_) => 0,
         };
         let mut entries = self.entries.borrow_mut();
-        if self.bytes.get() + bytes <= self.limit {
-            self.bytes.set(self.bytes.get() + bytes);
+        let total = self.bytes.get().saturating_add(bytes);
+        if total <= self.limit {
+            self.bytes.set(total);
             entries.insert(
                 id,
                 CachedImage {
@@ -423,8 +426,13 @@ fn decode_inner(
     let mut encoded = match first {
         Some(b"DCTDecode") => {
             // The filter *is* the codec, so the bytes go in untouched.
+            let (jpeg_width, jpeg_height) = jpeg_size(&stream.content).unwrap_or((width, height));
+            // The bytes go on undecoded, so the byte budget never sees what
+            // drawing them costs: both the header and the dictionary are
+            // checked against the pixel budget before anything is kept.
+            check_pixels(jpeg_width, jpeg_height, limits)?;
+            check_pixels(width, height, limits)?;
             let bytes = stream.content.clone();
-            let (jpeg_width, jpeg_height) = jpeg_size(&bytes).unwrap_or((width, height));
             Encoded::Jpeg {
                 width: jpeg_width,
                 height: jpeg_height,
@@ -556,8 +564,9 @@ fn decode_flate_or_raw(
         expand_gray1_to_eight(&samples, width, height, limits)?
     } else {
         let expected = (width as usize)
-            .saturating_mul(height as usize)
-            .saturating_mul(components as usize);
+            .checked_mul(height as usize)
+            .and_then(|pixels| pixels.checked_mul(components as usize))
+            .ok_or(Reject::TooLarge)?;
         if samples.len() < expected {
             return Err(Reject::Broken("samples are truncated"));
         }
@@ -659,22 +668,26 @@ pub(crate) fn expand_gray1_to_eight(
     limits: &PdfLimits,
 ) -> Result<Vec<u8>, Reject> {
     let row_bytes = (width as usize).div_ceil(8);
-    let needed = row_bytes.saturating_mul(height as usize);
+    let needed = row_bytes
+        .checked_mul(height as usize)
+        .ok_or(Reject::TooLarge)?;
     if packed.len() < needed {
         return Err(Reject::Broken("samples are truncated"));
     }
-    let out_len = (width as usize).saturating_mul(height as usize);
+    let out_len = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or(Reject::TooLarge)?;
     if out_len > limits.max_image_bytes {
         return Err(Reject::TooLarge);
     }
     let mut out = Vec::with_capacity(out_len);
     for row in 0..height as usize {
-        let row_start = row * row_bytes;
+        let row_start = row.saturating_mul(row_bytes);
         for x in 0..width as usize {
-            let Some(&byte) = packed.get(row_start + x / 8) else {
+            let Some(&byte) = packed.get(row_start.saturating_add(x / 8)) else {
                 return Err(Reject::Broken("samples are truncated"));
             };
-            let bit = (byte >> (7 - (x % 8))) & 1;
+            let bit = byte.wrapping_shl((x % 8) as u32) & 0x80;
             out.push(if bit == 0 { 0 } else { 255 });
         }
     }
@@ -695,7 +708,7 @@ impl hayro_ccitt::Decoder for CcittLuma8 {
     }
 
     fn next_line(&mut self) {
-        self.decoded_rows += 1;
+        self.decoded_rows = self.decoded_rows.saturating_add(1);
     }
 }
 
@@ -713,8 +726,10 @@ impl hayro_jbig2::Decoder for Jbig2Luma8 {
 
     fn push_pixel_chunk(&mut self, black: bool, chunk_count: u32) {
         let byte = if black { 0x00 } else { 0xFF };
-        self.output
-            .extend(std::iter::repeat_n(byte, chunk_count as usize * 8));
+        self.output.extend(std::iter::repeat_n(
+            byte,
+            (chunk_count as usize).saturating_mul(8),
+        ));
     }
 
     fn next_line(&mut self) {}
@@ -737,7 +752,9 @@ fn decode_ccitt_bytes(
     resolve: Resolver<'_>,
     limits: &PdfLimits,
 ) -> Result<Encoded, Reject> {
-    let need = (width as usize).saturating_mul(height as usize);
+    let need = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or(Reject::TooLarge)?;
     if need > limits.max_image_bytes {
         return Err(Reject::TooLarge);
     }
@@ -803,7 +820,9 @@ fn decode_jbig2_bytes(
     if width == 0 || height == 0 {
         return Err(Reject::Broken("JBIG2 stream has empty dimensions"));
     }
-    let need = (width as usize).saturating_mul(height as usize);
+    let need = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or(Reject::TooLarge)?;
     if need > limits.max_image_bytes {
         return Err(Reject::TooLarge);
     }
@@ -875,10 +894,11 @@ pub(crate) fn decode_jpx_bytes(data: &[u8], limits: &PdfLimits) -> Result<Encode
         return Err(Reject::UnsupportedLayout("JPX colour space"));
     }
     let has_alpha = image.has_alpha();
-    let channels = u64::from(color_components) + u64::from(has_alpha);
+    let channels = u64::from(color_components).saturating_add(u64::from(has_alpha));
     let need = u64::from(width)
-        .saturating_mul(u64::from(height))
-        .saturating_mul(channels);
+        .checked_mul(u64::from(height))
+        .and_then(|pixels| pixels.checked_mul(channels))
+        .ok_or(Reject::TooLarge)?;
     if need > limits.max_image_bytes as u64 {
         return Err(Reject::TooLarge);
     }
@@ -888,7 +908,7 @@ pub(crate) fn decode_jpx_bytes(data: &[u8], limits: &PdfLimits) -> Result<Encode
         .map_err(|_| Reject::Broken("JPEG 2000 stream could not be decoded"))?;
     let bitmap = decoded.data_u8();
     let (samples, alpha) = if has_alpha {
-        let total = usize::from(color_components) + 1;
+        let total = usize::from(color_components).saturating_add(1);
         let pixels = (width as usize).saturating_mul(height as usize);
         let expected = pixels.saturating_mul(total);
         if bitmap.len() < expected {
@@ -925,6 +945,23 @@ pub(crate) fn decode_jpx_bytes(data: &[u8], limits: &PdfLimits) -> Result<Encode
     })
 }
 
+/// Refuses a picture whose stated size is over [`PdfLimits::max_image_pixels`].
+///
+/// The product is taken in `u64`, where two `u32` dimensions cannot overflow,
+/// and the refusal is [`Reject::TooLarge`] — the same answer as a picture over
+/// the byte budget, because to the page it is the same loss.
+///
+/// # Errors
+///
+/// [`Reject::TooLarge`] past the budget.
+pub(crate) fn check_pixels(width: u32, height: u32, limits: &PdfLimits) -> Result<(), Reject> {
+    let pixels = u64::from(width).saturating_mul(u64::from(height));
+    if pixels > limits.max_image_pixels {
+        return Err(Reject::TooLarge);
+    }
+    Ok(())
+}
+
 /// A JPEG's dimensions, read from its SOF marker.
 ///
 /// The compressed data is never touched, so a truncated JPEG still yields a size
@@ -933,26 +970,26 @@ fn jpeg_size(bytes: &[u8]) -> Option<(u32, u32)> {
     if !bytes.starts_with(&[0xFF, 0xD8]) {
         return None;
     }
-    let mut index = 2;
-    while index + 9 < bytes.len() {
+    let mut index = 2usize;
+    while index.saturating_add(9) < bytes.len() {
         if bytes.get(index) != Some(&0xFF) {
-            index += 1;
+            index = index.saturating_add(1);
             continue;
         }
-        let marker = *bytes.get(index + 1)?;
+        let marker = *bytes.get(index.saturating_add(1))?;
         if (0xC0..=0xCF).contains(&marker) && !matches!(marker, 0xC4 | 0xC8 | 0xCC) {
-            let height = be_u16(bytes, index + 5)?;
-            let width = be_u16(bytes, index + 7)?;
+            let height = be_u16(bytes, index.saturating_add(5))?;
+            let width = be_u16(bytes, index.saturating_add(7))?;
             if width == 0 || height == 0 {
                 return None;
             }
             return Some((u32::from(width), u32::from(height)));
         }
-        let length = be_u16(bytes, index + 2)?;
+        let length = be_u16(bytes, index.saturating_add(2))?;
         if length < 2 {
             return None;
         }
-        index += 2 + usize::from(length);
+        index = index.saturating_add(2).saturating_add(usize::from(length));
     }
     None
 }
@@ -1131,6 +1168,77 @@ mod tests {
                 255, 255, 255, 255, 0, 0, 0, 0, //
                 0, 0, 0, 0, 255, 255, 255, 255
             ]
+        );
+    }
+
+    /// A `/DCTDecode` XObject around `bytes`, with the dictionary's own size.
+    fn dct_xobject(bytes: Vec<u8>, width: i64, height: i64) -> (lopdf::Document, lopdf::ObjectId) {
+        let mut dictionary = lopdf::Dictionary::new();
+        dictionary.set("Width", width);
+        dictionary.set("Height", height);
+        dictionary.set("BitsPerComponent", 8);
+        dictionary.set("ColorSpace", lopdf::Object::Name(b"DeviceRGB".to_vec()));
+        dictionary.set("Filter", lopdf::Object::Name(b"DCTDecode".to_vec()));
+        let mut document = lopdf::Document::new();
+        let id = document.add_object(lopdf::Stream::new(dictionary, bytes));
+        (document, id)
+    }
+
+    /// A JPEG header claiming 65 535 × 65 535: 16 GiB of RGBA in 23 bytes.
+    fn giant_jpeg() -> Vec<u8> {
+        let mut bytes = vec![0xFF, 0xD8];
+        bytes.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x11, 0x08]);
+        bytes.extend_from_slice(&u16::MAX.to_be_bytes());
+        bytes.extend_from_slice(&u16::MAX.to_be_bytes());
+        bytes.extend_from_slice(&[0x03, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
+        bytes.extend_from_slice(&[0xFF, 0xD9]);
+        bytes
+    }
+
+    #[test]
+    fn a_jpeg_within_the_pixel_budget_is_carried() {
+        let (document, id) = dct_xobject(jpeg(), 32, 64);
+        let (encoded, _, _) =
+            super::decode_from(id, &document, &PdfLimits::default()).expect("small jpeg");
+        assert_eq!(encoded.pixel_size(), (32, 64));
+    }
+
+    #[test]
+    fn a_jpeg_header_over_the_pixel_budget_is_refused() {
+        // The dictionary is honest-looking; the SOF marker is the bomb.
+        let (document, id) = dct_xobject(giant_jpeg(), 10, 10);
+        let rejection =
+            super::decode_from(id, &document, &PdfLimits::default()).expect_err("pixel bomb");
+        assert_eq!(rejection, Reject::TooLarge);
+    }
+
+    #[test]
+    fn a_jpeg_dictionary_over_the_pixel_budget_is_refused() {
+        // A JPEG with no readable SOF falls back on the dictionary's size, and
+        // that size is checked the same way.
+        let (document, id) = dct_xobject(vec![0xFF, 0xD8, 0xFF, 0xD9], 100_000, 100_000);
+        let rejection =
+            super::decode_from(id, &document, &PdfLimits::default()).expect_err("pixel bomb");
+        assert_eq!(rejection, Reject::TooLarge);
+    }
+
+    #[test]
+    fn the_pixel_budget_is_the_configured_one() {
+        // 32 × 64 = 2048 pixels; a budget of 2047 refuses it and 2048 does not.
+        let tight = PdfLimits {
+            max_image_pixels: 2047,
+            ..PdfLimits::default()
+        };
+        assert_eq!(super::check_pixels(32, 64, &tight), Err(Reject::TooLarge));
+        let exact = PdfLimits {
+            max_image_pixels: 2048,
+            ..PdfLimits::default()
+        };
+        assert_eq!(super::check_pixels(32, 64, &exact), Ok(()));
+        // The product of two `u32::MAX` does not wrap into a small number.
+        assert_eq!(
+            super::check_pixels(u32::MAX, u32::MAX, &PdfLimits::default()),
+            Err(Reject::TooLarge)
         );
     }
 }

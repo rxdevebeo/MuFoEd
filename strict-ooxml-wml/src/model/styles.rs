@@ -45,6 +45,8 @@ pub struct Style {
     pub based_on: Option<StyleId>,
     /// Style applied to the next paragraph (`w:next`).
     pub next: Option<StyleId>,
+    /// Other names the style answers to, comma separated (`w:aliases`).
+    pub aliases: Option<Arc<str>>,
     /// Linked style (`w:link`).
     pub link: Option<StyleId>,
     /// Whether this is a default style (`w:default`).

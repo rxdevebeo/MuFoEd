@@ -218,12 +218,10 @@ impl PartParser<'_> {
     #[inline(never)]
     fn read_row_properties(&mut self, props: &mut RowProperties) -> Result<()> {
         let exception_borders = std::mem::take(&mut props.exception_borders);
-        let exception_spacing = props.cell_spacing;
+        let exception = props.exception.take();
         *props = self.parse_row_properties()?;
         props.exception_borders = exception_borders;
-        if props.cell_spacing.is_none() {
-            props.cell_spacing = exception_spacing;
-        }
+        props.exception = exception;
         Ok(())
     }
 
@@ -232,10 +230,8 @@ impl PartParser<'_> {
     #[inline(never)]
     fn read_row_exception(&mut self, props: &mut RowProperties) -> Result<()> {
         let ex = self.parse_table_properties()?;
-        if props.cell_spacing.is_none() {
-            props.cell_spacing = ex.cell_spacing;
-        }
-        props.exception_borders = ex.borders;
+        props.exception_borders = ex.borders.clone();
+        props.exception = Some(Box::new(ex));
         self.record(
             "w:tblPrEx",
             SupportStatus::Partial,

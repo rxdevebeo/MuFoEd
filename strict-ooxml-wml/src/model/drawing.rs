@@ -37,6 +37,8 @@ pub struct EffectExtent {
 /// Non-visual drawing properties (`wp:docPr`).
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct DocPr {
+    /// Whether the drawing is hidden (`wp:docPr/@hidden`).
+    pub hidden: Option<bool>,
     /// Drawing object id.
     pub id: Option<u32>,
     /// Name.
@@ -107,6 +109,27 @@ pub struct Picture {
     pub src_rect: Option<SrcRect>,
     /// Applied transform (`a:xfrm`) with rotation/flips.
     pub xfrm: Option<Xfrm>,
+    /// Attributes the picture carries without a field of their own.
+    pub markup: PictureMarkup,
+}
+
+/// The attributes of a `pic:pic` that nothing reads but a writer keeps:
+/// `pic:cNvPicPr@preferRelativeResize`, `a:picLocks`, `pic:blipFill@rotWithShape`
+/// and `@dpi`. Each is the attribute's local name and its value as written.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct PictureMarkup {
+    /// `pic:cNvPicPr` attributes.
+    pub non_visual: Vec<(Arc<str>, Arc<str>)>,
+    /// `a:picLocks` attributes; `None` when the element is absent.
+    pub locks: Option<Vec<(Arc<str>, Arc<str>)>>,
+    /// `pic:blipFill` attributes.
+    pub blip_fill: Vec<(Arc<str>, Arc<str>)>,
+    /// The children of `a:blip` (colour effects, `a:extLst`) as Strict markup
+    /// that declares its own namespaces.
+    pub blip_children: Option<Arc<str>>,
+    /// The children of `pic:spPr` after `a:xfrm` (geometry, fill, line,
+    /// effects, `a:extLst`), as markup in source order.
+    pub shape_properties: Option<Arc<str>>,
 }
 
 /// A colour that is either an explicit RGB value or a theme reference.
@@ -116,6 +139,11 @@ pub struct ShapeColor {
     pub value: Option<Color>,
     /// Theme colour reference.
     pub theme: Option<ThemeColorRef>,
+    /// The colour element as read (`a:srgbClr` with its `a:alpha`, a
+    /// `a:schemeClr` with `a:lumMod`/`a:lumOff`, `a:sysClr`, `a:prstClr`), which
+    /// the writer puts back instead of [`Self::value`]/[`Self::theme`]. A colour
+    /// built in code leaves it `None`.
+    pub markup: Option<Arc<str>>,
 }
 
 /// A gradient colour stop.
@@ -137,14 +165,20 @@ pub enum ShapeFill {
         /// Fill colour.
         color: ShapeColor,
     },
-    /// Linear gradient fill.
+    /// Gradient fill. Path shading is retained for writing; painting supports linear shading.
     Gradient {
         /// Colour stops, in document order.
         stops: Vec<GradientStop>,
         /// Gradient angle in 60000ths of a degree.
         angle: Option<i32>,
+        /// `a:lin/@scaled`, when written.
+        scaled: Option<bool>,
+        /// `a:gradFill/@rotWithShape`, when written.
+        rotate_with_shape: Option<bool>,
+        /// Preserved `a:path` shading markup, when this is a non-linear gradient.
+        path_shading: Option<Arc<str>>,
     },
-    /// Pattern fill (rendered as a flat foreground colour).
+    /// Pattern fill. Backends resolve supported presets to repeating tiles.
     Pattern {
         /// Pattern preset (`prst`).
         preset: Option<Arc<str>>,
@@ -181,10 +215,14 @@ pub struct ShapeStroke {
     pub head_end: Option<Arc<str>>,
     /// Tail end decoration (`a:tailEnd/@type`).
     pub tail_end: Option<Arc<str>>,
+    /// `a:ln` attributes other than `w` (`cap`, `cmpd`, `algn`), as written.
+    pub attributes: Vec<(Arc<str>, Arc<str>)>,
+    /// The line join (`a:round`, `a:bevel`, `a:miter`) as markup.
+    pub join: Option<Arc<str>>,
 }
 
 /// One command of a custom-geometry path (`a:custGeom`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PathCommand {
     /// `a:moveTo`.
     MoveTo {
@@ -215,6 +253,13 @@ pub enum PathCommand {
         /// End point Y.
         y: i64,
     },
+    /// A command with literal or named guide operands, retained without loss.
+    Parametric {
+        /// DrawingML local name: moveTo, lnTo, cubicBezTo, quadBezTo, or arcTo.
+        kind: Arc<str>,
+        /// Coordinates in point order; arcTo uses wR, hR, stAng, swAng.
+        values: Vec<Arc<str>>,
+    },
     /// `a:close`.
     Close,
 }
@@ -237,8 +282,15 @@ pub struct GeometryPath {
 /// A custom geometry (`a:custGeom`), possibly with several paths (AUD-49).
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct CustomGeometry {
+    /// Adjustment guides (`a:avLst`), as names and formulas in document order.
+    pub adjustments: Vec<(Arc<str>, Arc<str>)>,
+    /// Derived guides (`a:gdLst`), as names and formulas in document order.
+    pub guides: Vec<(Arc<str>, Arc<str>)>,
     /// Paths in document order; each keeps its own `w`/`h`.
     pub paths: Vec<GeometryPath>,
+    /// The text rectangle (`a:rect` `l`, `t`, `r`, `b`) as written: a guide
+    /// name or a coordinate. `None` writes `0 0 r b`.
+    pub text_rect: Option<[Arc<str>; 4]>,
 }
 
 /// A shape's geometry (`a:prstGeom`/`a:custGeom`).
@@ -355,6 +407,13 @@ pub struct Shape {
     pub bw_mode: Option<Arc<str>>,
     /// Whether this shape is a text box (`wps:cNvSpPr/@txBox`).
     pub tx_box: Option<bool>,
+    /// `a:spLocks` attributes as written; `None` when the element is absent.
+    pub sp_locks: Option<Vec<(Arc<str>, Arc<str>)>>,
+    /// A connector (`wps:cNvCnPr`); [`Self::sp_locks`] then holds `a:cxnSpLocks`.
+    pub connector: bool,
+    /// The `wps:spPr` children after the line (`a:effectLst`, `a:scene3d`,
+    /// `a:sp3d`, `a:extLst`) as markup that declares its own namespaces.
+    pub effects: Option<Arc<str>>,
     /// Geometry.
     pub geometry: ShapeGeometry,
     /// Transform (`a:xfrm`).
@@ -397,12 +456,19 @@ pub struct GroupTransform {
 /// A `wpg:wgp` group of graphics.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GroupShape {
+    /// Group non-visual id (`wpg:cNvPr/@id`); `None` when the group had no
+    /// `wpg:cNvPr` (a top-level `wpg:wgp` usually has none).
+    pub nv_id: Option<u32>,
     /// Group name (`wpg:cNvPr/@name`).
     pub name: Option<Arc<str>>,
     /// Group description (`wpg:cNvPr/@descr`).
     pub descr: Option<Arc<str>>,
     /// Group transform.
     pub xfrm: Option<GroupTransform>,
+    /// `a:grpSpLocks` attributes as written; `None` when the element is absent.
+    pub locks: Option<Vec<(Arc<str>, Arc<str>)>>,
+    /// `wpg:grpSpPr/@bwMode`.
+    pub bw_mode: Option<Arc<str>>,
     /// Child graphics.
     pub children: Vec<Graphic>,
     /// Source location.
@@ -501,6 +567,8 @@ pub struct DiagramDrawing {
 /// Transitional URI (ADR-0007; audit P2).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LockedCanvas {
+    /// Parsed child graphics for rendering, alongside the preserved markup.
+    pub graphics: Option<Box<GroupShape>>,
     /// Strict-form XML of the `lc:lockedCanvas` element, including children.
     pub markup: Arc<str>,
     /// Image relationships the markup still names, as `(source rId, part)`.
@@ -659,6 +727,11 @@ pub struct AnchorDrawing {
     pub doc_pr: Option<DocPr>,
     /// Simple positioning (`wp:simplePos`).
     pub simple_pos: bool,
+    /// The `wp:simplePos` point in EMU, `None` for `0, 0`. Word keeps a point
+    /// there even when `@simplePos` is off.
+    pub simple_pos_point: Option<(i64, i64)>,
+    /// `wp:anchor/@hidden`, when the producer wrote it.
+    pub hidden: Option<bool>,
     /// Horizontal position.
     pub position_h: Option<Position>,
     /// Vertical position.

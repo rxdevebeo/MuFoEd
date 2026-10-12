@@ -46,3 +46,16 @@ Matcher-level 1 px negative remains in `wps_ledger_selftest.py` (T-P0-4).
 Clio DOCX SHA-256 matches the plan.
 WPS PDF SHA-256 values match `wps-absolute-baselines.json` / P0 witnesses (reference unchanged).
 SVG SHA-256 values are the post-P1 renders listed in `witnesses.json`.
+
+## Re-check 2026-10-08 (after the hardening)
+
+Run by the hostq `wps` job, which renders Clio pages 54-104 with `--wps-times` (the calibration
+P1 is measured with; it became opt-in in `1f31fac`) and with the defaults, then runs
+`wps_ledger.py` and `wps_p1_gate_selftest.py`.
+
+- Before the fix (`fe582d4`): p. 56 FAIL - five bold Arial 4.5 pt position labels 0.52-0.67 px
+  off in dy. `9d9b372` had limited the WPS first-Exact-line rule to frames, and these labels sit
+  in a table whose paragraphs share one `w:framePr`, which was laid out outside the frame flag.
+- After `93b054a` (framed tables lay out under the frame rule): `p1_geometry PASS`, 26/26
+  MEASURED ≤ 0.25 px; tightest still `p104.modern.5` 0.248 px.
+- Defaults (no `--wps-times`): FAIL up to 3.4 px, as designed.

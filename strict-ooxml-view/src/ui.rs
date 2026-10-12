@@ -46,7 +46,7 @@ pub(crate) fn index_html() -> &'static str {
   <p id="menu-empty" hidden>no .docx files here</p>
 </nav>
 <main id="pages"></main>
-<footer id="status">choose a document from the menu</footer>
+<footer id="footer"><span id="status" role="status">choose a document from the menu</span><progress id="load-progress" aria-label="Document loading" max="100" hidden></progress></footer>
 <script>#script#</script>
 </body>
 </html>
@@ -79,7 +79,7 @@ body {
   color: var(--text);
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   grid-template-areas: "bar" "losses" "main" "status";
 }
 
@@ -143,6 +143,11 @@ body {
 }
 #losses[hidden] { display: none; }
 #losses-toggle {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font: inherit;
   color: #ffd7c8;
   background: transparent;
@@ -152,6 +157,9 @@ body {
   text-align: left;
 }
 #losses-list {
+  max-height: min(160px, 15vh);
+  overflow: auto;
+  overflow-wrap: anywhere;
   margin: 6px 0 0;
   padding-left: 18px;
   color: var(--text);
@@ -218,6 +226,7 @@ body {
 
 /* ---- pages ---- */
 #pages {
+  min-height: 0;
   grid-area: main;
   overflow: auto;
   padding: 24px;
@@ -264,8 +273,12 @@ body.gaps-off .page { box-shadow: none; border-bottom: 1px solid var(--line); }
 }
 
 /* ---- status bar ---- */
-#status {
+#footer {
   grid-area: status;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
   padding: 5px 14px;
   background: var(--panel);
   border-top: 1px solid var(--line);
@@ -273,6 +286,9 @@ body.gaps-off .page { box-shadow: none; border-bottom: 1px solid var(--line); }
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+#status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#load-progress { width: min(220px, 30vw); height: 8px; accent-color: var(--accent); }
+#load-progress[hidden] { display: none; }
 "#
 }
 
@@ -294,6 +310,7 @@ const menu = $('menu');
 const list = $('menu-list');
 const pages = $('pages');
 const status = $('status');
+const progress = $('load-progress');
 const docName = $('doc-name');
 const docMeta = $('doc-meta');
 const menuButton = $('menu-button');
@@ -307,6 +324,9 @@ let corpusId = '';
 let documents = [];
 let current = null;
 let loadToken = 0;
+let openToken = 0;
+let openController = null;
+let refreshPages = () => {};
 
 // Zoom is a fraction of the page's natural CSS size. The renderer emits
 // width/height in px at scale 1 and the SVG scales with its element, so
@@ -315,6 +335,7 @@ function applyZoom() {
   const factor = Number(zoom.value) / 100;
   for (const page of pages.querySelectorAll('.page')) {
     page.style.width = (Number(page.dataset.width) * factor) + 'px';
+    page.style.height = (Number(page.dataset.height) * factor) + 'px';
   }
   zoomValue.textContent = zoom.value + '%';
 }
@@ -393,14 +414,18 @@ function showPipeline(view) {
   if (pipeline.outcome === 'clean' && count === 0) {
     toggle.textContent = 'clean · sidecar ' + sidecar;
   } else {
-    const reason = losses.length ? losses[0].detail : pipeline.outcome;
-    toggle.textContent = pipeline.outcome + ' · ' + count + (count === 1 ? ' loss' : ' losses') + ' · sidecar ' + sidecar + ' · ' + reason;
+    toggle.textContent = pipeline.outcome + ' · ' + count + (count === 1 ? ' loss' : ' losses') + ' · details ▾';
   }
-  for (const issue of pipeline.issues || []) {
+  for (const issue of (pipeline.issues || []).slice(0, 500)) {
     const item = document.createElement('li');
     const where = [issue.part, issue.page ? ('page ' + issue.page) : '', issue.location].filter(Boolean).join(' ');
     // textContent keeps special characters visible without interpreting HTML.
     item.textContent = issue.stage + ' ' + issue.id + ' ×' + issue.count + ' ' + issue.detail + (where ? ' · ' + where : '');
+    list.append(item);
+  }
+  if ((pipeline.issues || []).length > 500) {
+    const item = document.createElement('li');
+    item.textContent = 'Showing the first 500 diagnostic entries; the complete report is available through the API.';
     list.append(item);
   }
   for (const stage of pipeline.stages || []) {
@@ -410,7 +435,7 @@ function showPipeline(view) {
       list.append(item);
     }
   }
-  list.hidden = pipeline.outcome === 'clean' && count === 0;
+  list.hidden = true;
   toggle.setAttribute('aria-expanded', String(!list.hidden));
   toggle.onclick = toggleList;
   toggle.onkeydown = (event) => {
@@ -421,13 +446,13 @@ function showPipeline(view) {
   };
 }
 
-function renderView(view) {
+async function renderView(view, token = openToken) {
   docName.textContent = view.name;
   docMeta.replaceChildren(...metaBits(view));
   showPipeline(view);
   pages.replaceChildren();
 
-  if (view.note) {
+  if (view.note && !view.pages.length) {
     showMessage(view.name + ' — ' + view.note, 'error');
     status.textContent = 'could not render ' + view.name;
     return;
@@ -438,23 +463,85 @@ function renderView(view) {
     return;
   }
 
+  const holders = [];
+  const mounted = new Map();
+  const pending = new Set();
+  let wanted = new Set();
+  const mount = async (holder, page) => {
+    if (pending.has(holder) || mounted.has(holder) || token !== openToken) return;
+    pending.add(holder);
+    try {
+      let svg = page.svg;
+      if (svg === undefined) {
+        const response = await fetch('/api/page?name=' + encodeURIComponent(view.name)
+          + '&corpus=' + encodeURIComponent(corpusId) + '&page=' + page.number,
+          { signal: openController?.signal });
+        if (!response.ok) throw new Error('page request failed: ' + response.status);
+        svg = await response.text();
+      }
+      if (token !== openToken || !wanted.has(holder)) return;
+      const label = holder.querySelector('.number');
+      holder.innerHTML = svg;
+      holder.append(label);
+      mounted.set(holder, page);
+      holder.dataset.mounted = 'true';
+    } catch (error) {
+      if (token === openToken && error.name !== 'AbortError' && wanted.has(holder)) {
+        holder.dataset.error = String(error);
+        holder.title = String(error);
+      }
+    } finally { pending.delete(holder); }
+  };
   for (const page of view.pages) {
+    if (token !== openToken) return;
     const holder = document.createElement('div');
     holder.className = 'page';
     holder.dataset.width = page.width;
+    holder.dataset.height = page.height;
     // Inline SVG rather than <img>: it scales without a re-fetch, and the
     // text layer stays selectable, which matters for reading a render.
-    holder.innerHTML = page.svg;
     const label = document.createElement('span');
     label.className = 'number';
     label.textContent = page.number;
     holder.append(label);
     pages.append(holder);
+    holders.push([holder, page]);
+    if (pages.children.length % 64 === 0) {
+      applyZoom();
+      await new Promise(requestAnimationFrame);
+    }
   }
   applyZoom();
   pages.scrollTop = 0;
+  refreshPages = () => {
+    if (token !== openToken) return;
+    const rect = pages.getBoundingClientRect();
+    const center = rect.top + rect.height / 2;
+    const closest = holders.map(([holder, page]) => {
+      const bounds = holder.getBoundingClientRect();
+      return { holder, page, distance: Math.abs(bounds.top + bounds.height / 2 - center) };
+    }).sort((a, b) => a.distance - b.distance).slice(0, 6);
+    wanted = new Set(closest.map((item) => item.holder));
+    for (const holder of mounted.keys()) {
+      if (!wanted.has(holder)) {
+        const label = holder.querySelector('.number');
+        holder.replaceChildren(label);
+        holder.dataset.mounted = 'false';
+        mounted.delete(holder);
+      }
+    }
+    for (const item of closest) mount(item.holder, item.page);
+  };
+  refreshPages();
+  // The initial page is visible before loading is reported complete.
+  const first = holders[0];
+  while (first && pending.has(first[0]) && token === openToken) {
+    await new Promise(requestAnimationFrame);
+  }
+  progress.value = 100;
   const n = view.pages.length;
   status.textContent = n + (n === 1 ? ' page' : ' pages') + ' · ' + view.name;
+  if (view.note) status.textContent += ' · ' + view.note;
 }
 
 function corpusLabel() {
@@ -463,23 +550,41 @@ function corpusLabel() {
 }
 
 async function open(name) {
+  const token = ++openToken;
+  if (openController) openController.abort();
+  openController = new AbortController();
   const openedIn = corpusId;
   current = name;
   for (const li of list.children) {
     li.setAttribute('aria-current', String(li.dataset.name === name));
   }
   status.textContent = 'rendering ' + name + '…';
+  progress.removeAttribute('value');
+  progress.hidden = false;
+  pages.setAttribute('aria-busy', 'true');
+  closeMenu();
   try {
     const response = await fetch(
-      VIEW_URL + encodeURIComponent(name) + '&corpus=' + encodeURIComponent(openedIn)
+      VIEW_URL + encodeURIComponent(name) + '&corpus=' + encodeURIComponent(openedIn) + '&metadata=1',
+      { signal: openController.signal }
     );
-    if (openedIn !== corpusId || current !== name) return;
-    renderView(await response.json());
+    if (!response.ok) throw new Error('viewer request failed: ' + response.status);
+    const view = await response.json();
+    if (token !== openToken || openedIn !== corpusId) return;
+    status.textContent = 'displaying ' + name + '…';
+    progress.value = 0;
+    await renderView(view, token);
+    await new Promise(requestAnimationFrame);
   } catch (error) {
-    if (openedIn !== corpusId) return;
+    if (token !== openToken || openedIn !== corpusId || error.name === 'AbortError') return;
     showMessage(String(error), 'error');
+    status.textContent = 'could not load ' + name;
+  } finally {
+    if (token === openToken) {
+      progress.hidden = true;
+      pages.setAttribute('aria-busy', 'false');
+    }
   }
-  closeMenu();
 }
 
 function buildMenu(filterText) {
@@ -543,6 +648,10 @@ function fillCorpora() {
 }
 
 async function loadDocuments() {
+  ++openToken;
+  if (openController) openController.abort();
+  progress.hidden = true;
+  pages.setAttribute('aria-busy', 'false');
   const token = ++loadToken;
   const id = corpusId;
   const response = await fetch(LIST_URL + encodeURIComponent(id));
@@ -562,7 +671,13 @@ menuButton.addEventListener('click', () => {
   if (menu.hidden) openMenu(); else closeMenu();
 });
 filter.addEventListener('input', () => buildMenu(filter.value));
-zoom.addEventListener('input', applyZoom);
+zoom.addEventListener('input', () => { applyZoom(); refreshPages(); });
+let scrollFrame = false;
+pages.addEventListener('scroll', () => {
+  if (scrollFrame) return;
+  scrollFrame = true;
+  requestAnimationFrame(() => { scrollFrame = false; refreshPages(); });
+});
 corpusSelect.addEventListener('change', () => {
   corpusId = corpusSelect.value;
   filter.value = '';

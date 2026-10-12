@@ -110,6 +110,18 @@ pub enum LimitKind {
     /// `PDF-OBJSTM-BOMB`: a small file whose object stream inflates to gigabytes
     /// is refused before anything is allocated for it.
     ObjectStreamBytes,
+    /// `PdfLimits::max_image_pixels`, pixels in one picture by its own header.
+    ///
+    /// A `/DCTDecode` picture is carried as its compressed bytes, so
+    /// [`LimitKind::ImageBytes`] never sees what decoding it would cost: a JPEG
+    /// header that says 65 535 × 65 535 is a 30-byte promise of 16 GiB to
+    /// whoever draws it. Refusals of a single picture are reported as
+    /// [`Reject::TooLarge`](crate::image::Reject::TooLarge); the kind is here so
+    /// the budget has a name.
+    ImagePixels,
+    /// `PdfLimits::max_total_content_bytes`, decompressed page content of the
+    /// whole document, every page read so far added together.
+    TotalContentBytes,
 }
 
 /// How many times `PdfLimits::max_content_bytes` the object and cross-reference
@@ -140,6 +152,8 @@ impl LimitKind {
             Self::RasterPixels => "raster_pixels",
             Self::InputBytes => "input_bytes",
             Self::ObjectStreamBytes => "object_stream_bytes",
+            Self::ImagePixels => "image_pixels",
+            Self::TotalContentBytes => "total_content_bytes",
         }
     }
 }
@@ -218,6 +232,26 @@ pub struct PdfLimits {
     /// and 124 MiB of RGBA before a single glyph is drawn. Checked *before* the
     /// rasterizer is asked for anything.
     pub max_raster_pixels: u64,
+    /// Pixels in one picture, by the dimensions its own header states. Default:
+    /// 67 108 864 (64 Mi pixels).
+    ///
+    /// The budget [`Self::max_image_bytes`] cannot be: a `/DCTDecode` picture is
+    /// handed on as the JPEG it is, and its decoded size is whatever its `SOF`
+    /// marker says — up to 65 535 × 65 535, 16 GiB of RGBA from a stream of a
+    /// few hundred bytes. The default carries an A4 scan at 600 dpi (35 M
+    /// pixels) and a 48-megapixel photograph, and refuses a header that is a
+    /// promise rather than a picture. Checked before the bytes are kept.
+    pub max_image_pixels: u64,
+    /// Decompressed page-content bytes for the whole document, every page read
+    /// added together. Default: 512 MiB.
+    ///
+    /// [`Self::max_content_bytes`] bounds one page; this bounds the document,
+    /// because 2 048 pages each just under the page budget are 64 GiB of
+    /// inflate work from a file small enough to pass every other check. The
+    /// document counts what each page read cost — reading the same page twice
+    /// is charged twice, because it is inflated twice — and past this ceiling
+    /// every further page read fails with [`LimitKind::TotalContentBytes`].
+    pub max_total_content_bytes: u64,
 }
 
 impl Default for PdfLimits {
@@ -236,6 +270,8 @@ impl Default for PdfLimits {
             max_cached_image_bytes: 64 * 1024 * 1024,
             max_cached_form_bytes: 64 * 1024 * 1024,
             max_raster_pixels: 4096 * 4096,
+            max_image_pixels: 64 * 1024 * 1024,
+            max_total_content_bytes: 512 * 1024 * 1024,
         }
     }
 }
@@ -261,6 +297,8 @@ impl PdfLimits {
             LimitKind::RasterPixels => self.max_raster_pixels,
             LimitKind::InputBytes => self.max_input_bytes as u64,
             LimitKind::ObjectStreamBytes => crate::preload::object_stream_budget(self) as u64,
+            LimitKind::ImagePixels => self.max_image_pixels,
+            LimitKind::TotalContentBytes => self.max_total_content_bytes,
         };
         PdfError::LimitExceeded {
             kind,
@@ -285,6 +323,24 @@ mod tests {
         assert_eq!(limits.max_input_bytes, 256 * 1024 * 1024);
         assert!(limits.max_glyphs > 0);
         assert!(limits.max_fonts > 0);
+        assert_eq!(limits.max_image_pixels, 64 * 1024 * 1024);
+        assert_eq!(limits.max_total_content_bytes, 512 * 1024 * 1024);
+        // The document budget is a multiple of the page budget, or a single
+        // page at the ceiling would exhaust it.
+        assert!(limits.max_total_content_bytes > limits.max_content_bytes as u64);
+    }
+
+    #[test]
+    fn the_new_budgets_have_stable_names() {
+        let limits = PdfLimits::default();
+        let pixels = limits.exceeded(LimitKind::ImagePixels, 1 << 32).to_string();
+        assert!(pixels.contains("image_pixels"), "{pixels}");
+        assert!(pixels.contains("67108864"), "{pixels}");
+        let total = limits
+            .exceeded(LimitKind::TotalContentBytes, 1 << 30)
+            .to_string();
+        assert!(total.contains("total_content_bytes"), "{total}");
+        assert!(total.contains("536870912"), "{total}");
     }
 
     #[test]

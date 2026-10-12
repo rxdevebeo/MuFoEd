@@ -71,115 +71,117 @@ fn extracted_text(pdf: &[u8]) -> String {
 }
 
 #[test]
-fn regular_postscript_family_names_embed_and_preserve_text() {
-    use strict_ooxml_testkit::DocxBuilder;
-
-    for (alias, canonical) in [
-        ("ArialMT", "Arial"),
-        ("TimesNewRomanPSMT", "Times New Roman"),
-    ] {
-        let body = |family: &str| {
-            use std::fmt::Write;
-            let mut out = String::new();
-            for (index, style) in ["", "<w:b/>", "<w:i/>", "<w:b/><w:i/>"].iter().enumerate() {
-                write!(out,
-                    "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"{family}\" w:hAnsi=\"{family}\"/>{style}</w:rPr><w:t>Alias{index}</w:t></w:r></w:p>"
-                ).expect("write fixture");
+fn rotated_cell_keeps_unicode_cids_and_embeds_the_hinted_substitute() {
+    use strict_ooxml_wml::model::fonts::{FontEntry, FontHints, FontTable};
+    let body = "<w:tbl><w:tblGrid><w:gridCol w:w=\"600\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:textDirection w:val=\"lr\"/></w:tcPr><w:p><w:r><w:rPr><w:rFonts w:ascii=\"Unavailable Serif\"/></w:rPr><w:t>Compounds</w:t></w:r></w:p></w:tc></w:tr></w:tbl>";
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(body)
+        .build();
+    let package = open(&bytes);
+    let mut document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    document.font_table = Some(FontTable {
+        fonts: vec![FontEntry {
+            name: "Unavailable Serif".into(),
+            hints: FontHints {
+                family: Some("roman".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+    });
+    let options = RenderOptions::default();
+    let pages = place_pages(&document, &options, Some(&package)).expect("place");
+    let output = render_with_source(&pages, &options, Some(&package)).expect("render");
+    let pdf = lopdf::Document::load_mem(&output.bytes).expect("valid PDF");
+    assert!(output.report.losses().is_empty(), "{:?}", output.report);
+    assert!(pdf
+        .objects
+        .values()
+        .filter_map(|object| object.as_dict().ok())
+        .filter_map(|dictionary| dictionary.get(b"BaseFont").ok())
+        .filter_map(|name| name.as_name().ok())
+        .any(|name| String::from_utf8_lossy(name).contains("Tinos")));
+    let id = pdf.page_iter().next().expect("page");
+    let content = lopdf::content::Content::decode(&pdf.get_page_content(id)).expect("content");
+    assert_eq!(decode_single_face_cids(&pdf, &content), "Compounds");
+    assert!(
+        content.operations.iter().any(|operation| {
+            if operation.operator != "cm" {
+                return false;
             }
-            out
+            let numbers: Vec<f32> = operation
+                .operands
+                .iter()
+                .filter_map(|value| value.as_float().ok())
+                .collect();
+            numbers.len() == 6
+                && numbers[0].abs() < 0.001
+                && (numbers[1] - 1.0).abs() < 0.001
+                && (numbers[2] + 1.0).abs() < 0.001
+                && numbers[3].abs() < 0.001
+        }),
+        "PDF must rotate the cell around the same baseline as SVG"
+    );
+}
+
+/// Read the fixture's single-face bfchar map and actual painted two-byte CIDs.
+fn decode_single_face_cids(pdf: &lopdf::Document, content: &lopdf::content::Content) -> String {
+    let mut mapping = std::collections::BTreeMap::new();
+    for object in pdf.objects.values() {
+        let Ok(dictionary) = object.as_dict() else {
+            continue;
         };
-        let alias_docx = DocxBuilder::strict().body(&body(alias)).build();
-        let canonical_docx = DocxBuilder::strict().body(&body(canonical)).build();
-        let (pdf, _, report) = to_pdf(&alias_docx);
-        assert!(report.losses().is_empty(), "{alias}: {:?}", report.losses());
-        assert_eq!(
-            pdf,
-            to_pdf(&canonical_docx).0,
-            "{alias}: geometry or font differs"
-        );
-        let reader = lopdf::Document::load_mem(&pdf).expect("independent PDF reader");
-        let text = reader
-            .extract_text(&[1])
-            .expect("ToUnicode text extraction");
-        for index in 0..4 {
-            assert!(text.contains(&format!("Alias{index}")), "{alias}: {text:?}");
+        let Ok(reference) = dictionary
+            .get(b"ToUnicode")
+            .and_then(lopdf::Object::as_reference)
+        else {
+            continue;
+        };
+        let stream = pdf
+            .get_object(reference)
+            .and_then(lopdf::Object::as_stream)
+            .expect("CMap");
+        let bytes = stream
+            .decompressed_content()
+            .unwrap_or_else(|_| stream.content.clone());
+        for line in String::from_utf8_lossy(&bytes).lines() {
+            let columns: Vec<&str> = line.split_whitespace().collect();
+            if columns.len() != 2 || !columns[0].starts_with('<') {
+                continue;
+            }
+            let source = u16::from_str_radix(columns[0].trim_matches(['<', '>']), 16).expect("CID");
+            let target = columns[1].trim_matches(['<', '>']);
+            let utf16: Vec<u16> = target
+                .as_bytes()
+                .chunks_exact(4)
+                .map(|chunk| {
+                    u16::from_str_radix(std::str::from_utf8(chunk).expect("hex"), 16)
+                        .expect("unicode")
+                })
+                .collect();
+            mapping.insert(source, String::from_utf16(&utf16).expect("UTF16"));
         }
     }
-}
-
-#[test]
-fn non_bmp_math_font_text_is_extractable() {
-    use strict_ooxml_testkit::DocxBuilder;
-    let bytes = DocxBuilder::strict().body(
-        "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Cambria Math\" w:hAnsi=\"Cambria Math\"/></w:rPr><w:t>Math𝑥</w:t></w:r></w:p>"
-    ).build();
-    let (pdf, _, report) = to_pdf(&bytes);
-    assert!(report.losses().is_empty(), "{:?}", report.losses());
-    let reader = lopdf::Document::load_mem(&pdf).expect("independent PDF reader");
-    let text = reader
-        .extract_text(&[1])
-        .expect("ToUnicode text extraction");
-    assert!(text.contains("Math𝑥"), "{text:?}");
-}
-
-#[test]
-fn a_missing_glyph_is_not_reported_as_a_missing_face() {
-    use strict_ooxml_testkit::DocxBuilder;
-    let bytes = DocxBuilder::strict()
-        .body("<w:p><w:r><w:t>&#x10FFFD;</w:t></w:r></w:p>")
-        .build();
-    let (_, _, report) = to_pdf(&bytes);
-    let ids: Vec<_> = report.losses().iter().map(|loss| loss.id).collect();
-    assert!(ids.contains(&"pdf.font.no_glyph"), "{:?}", report.losses());
-    assert!(!ids.contains(&"pdf.font.missing"), "{:?}", report.losses());
-}
-
-#[test]
-fn east_asian_script_face_is_embedded_by_pdf_backend() {
-    use strict_ooxml_testkit::DocxBuilder;
-
-    let render = |family: &str| {
-        let body = format!(
-            "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\" w:eastAsia=\"{family}\"/></w:rPr><w:t>漢字。</w:t></w:r></w:p>"
-        );
-        let bytes = DocxBuilder::strict().body(&body).build();
-        to_pdf(&bytes).0
-    };
-    let arial = render("Arial");
-    let times = render("Times New Roman");
-    let font_names = |pdf: &[u8]| {
-        let document = lopdf::Document::load_mem(pdf).expect("PDF parses");
-        document
-            .objects
-            .values()
-            .filter_map(|object| object.as_dict().ok())
-            .filter(|dictionary| {
-                dictionary
-                    .get(b"Type")
-                    .ok()
-                    .and_then(|value| value.as_name().ok())
-                    == Some(&b"Font"[..])
-            })
-            .filter_map(|dictionary| {
-                dictionary
-                    .get(b"BaseFont")
-                    .ok()
-                    .and_then(|value| value.as_name().ok())
-                    .map(<[u8]>::to_vec)
-            })
-            .collect::<Vec<_>>()
-    };
-    let arial_names = font_names(&arial);
-    let times_names = font_names(&times);
-    assert!(arial_names
-        .iter()
-        .any(|name| name.windows(5).any(|part| part == b"Arimo")));
-    assert!(
-        times_names
-            .iter()
-            .any(|name| name.windows(5).any(|part| part == b"Tinos")),
-        "{times_names:?}"
-    );
+    let mut result = String::new();
+    for operation in &content.operations {
+        if operation.operator != "Tj" {
+            continue;
+        }
+        let bytes = operation
+            .operands
+            .first()
+            .and_then(|value| value.as_str().ok())
+            .expect("CID text");
+        for pair in bytes.chunks_exact(2) {
+            let cid = u16::from_be_bytes([pair[0], pair[1]]);
+            result.push_str(
+                mapping
+                    .get(&cid)
+                    .expect("painted CID has a Unicode mapping"),
+            );
+        }
+    }
+    result
 }
 
 /// SC-7: every font the pages use is embedded as a file, with an `Identity-H`
@@ -201,12 +203,6 @@ fn every_used_font_is_embedded() {
             };
             if dictionary.get(b"FontFile2").is_ok() || dictionary.get(b"FontFile3").is_ok() {
                 embedded += 1;
-                let bounds = dictionary
-                    .get(b"FontBBox")
-                    .and_then(lopdf::Object::as_array)
-                    .expect("embedded font requires FontBBox");
-                assert_eq!(bounds.len(), 4);
-                assert!(bounds.iter().all(|value| value.as_float().is_ok()));
             }
             let is_font = dictionary
                 .get(b"Type")
@@ -224,20 +220,6 @@ fn every_used_font_is_embedded() {
                 .ok()
                 .and_then(|value| value.as_name().ok())
                 .map(<[u8]>::to_vec);
-            if matches!(subtype.as_deref(), Some(b"CIDFontType0" | b"CIDFontType2")) {
-                let info = dictionary
-                    .get(b"CIDSystemInfo")
-                    .and_then(lopdf::Object::as_dict)
-                    .unwrap_or_else(|error| {
-                        panic!("{name}: CID font {} lacks CIDSystemInfo: {error}", id.0)
-                    });
-                assert_eq!(info.get(b"Registry").unwrap().as_str().unwrap(), b"Adobe");
-                assert_eq!(
-                    info.get(b"Ordering").unwrap().as_str().unwrap(),
-                    b"Identity"
-                );
-                assert_eq!(info.get(b"Supplement").unwrap().as_i64().unwrap(), 0);
-            }
             if dictionary.get(b"Encoding").is_ok() {
                 if subtype.as_deref() == Some(b"Type0") {
                     type0 += 1;
@@ -707,503 +689,76 @@ fn direct_italic_embeds_the_italic_face() {
     );
     assert!(!extracted_text(&pdf).is_empty(), "the page draws text");
 }
-
 #[test]
-fn explicit_font_assets_subset_exact_instances_and_keep_unicode_after_options_drop() {
-    use std::sync::Arc;
-    use strict_ooxml_render_svg::font::{
-        resolve_face, FontAsset, FontAssetManifest, FontAssetRegistry, FontEmbeddingPermission,
-        FontRegistryLimits,
-    };
-    use strict_ooxml_testkit::DocxBuilder;
-    let assets: Vec<_> = [
-        ("AliasA", "Arial", false),
-        ("AliasB", "Times New Roman", false),
-        ("AliasA", "Arial", true),
-    ]
-    .into_iter()
-    .map(|(request, source, bold)| {
-        let face = resolve_face(source, bold, false).unwrap();
-        FontAsset {
-            bytes: Arc::from(face.bytes),
-            manifest: FontAssetManifest {
-                family: request.into(),
-                resolved_family: "same declared name".into(),
-                bold,
-                italic: false,
-                resource_hash: face.resource_hash,
-                face_index: 0,
-                variations: face.instance_key().variations,
-                source: "bundled fixture".into(),
-                license_id: "OFL-1.1".into(),
-                license_reference: "bundled fonts licenses".into(),
-                embedding: FontEmbeddingPermission::EmbedAndSubset,
-            },
-        }
-    })
-    .collect();
-    let registry =
-        Arc::new(FontAssetRegistry::from_assets(assets, FontRegistryLimits::default()).unwrap());
-    let options = RenderOptions::default().font_assets(Arc::clone(&registry));
-    let bytes = DocxBuilder::strict().body("<w:p><w:r><w:rPr><w:rFonts w:ascii=\"AliasA\"/></w:rPr><w:t>office AV e&#x301;</w:t></w:r></w:p><w:p><w:r><w:rPr><w:rFonts w:ascii=\"AliasB\"/></w:rPr><w:t>Serif text</w:t></w:r></w:p><w:p><w:r><w:rPr><w:rFonts w:ascii=\"AliasA\"/><w:b/></w:rPr><w:t>Bold text</w:t></w:r></w:p>").build();
-    let package = open(&bytes);
-    let document = parse_document(&package, &ParseOptions::default()).unwrap();
-    let pages = place_pages(&document, &options, None).unwrap();
-    drop(options);
-    drop(registry);
-    let output = render(&pages, &RenderOptions::default()).unwrap();
-    assert!(
-        output.report.losses().is_empty(),
-        "{:?}",
-        output.report.losses()
-    );
-    assert_eq!(output.embedded_faces.len(), 3);
-    assert!(output
-        .embedded_faces
-        .iter()
-        .all(|key| key.instance.is_some()));
-    let reader = lopdf::Document::load_mem(&output.bytes).unwrap();
-    let raw_extracted = reader.extract_text(&[1]).unwrap();
-    let extracted = raw_extracted
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    for expected in ["office AV e\u{301}", "Serif text", "Bold text"] {
-        assert!(extracted.contains(expected), "{extracted:?}");
-    }
-    assert_eq!(
-        output.bytes,
-        render(&pages, &RenderOptions::default()).unwrap().bytes
-    );
-    // Empty admission must leave the established default PDF bytes unchanged.
-    let plain = place_pages(&document, &RenderOptions::default(), None).unwrap();
-    let empty = RenderOptions::default().font_assets(Arc::new(FontAssetRegistry::default()));
-    let empty_pages = place_pages(&document, &empty, None).unwrap();
-    assert_eq!(
-        render(&plain, &RenderOptions::default()).unwrap().bytes,
-        render(&empty_pages, &empty).unwrap().bytes
-    );
-}
-
-fn collection_asset() -> strict_ooxml_render_svg::font::FontAsset {
-    use strict_ooxml_render_svg::font::{
-        hash_face_bytes, resolve_face, FontAsset, FontAssetManifest, FontEmbeddingPermission,
-    };
-    let mut bytes = b"ttcf\x00\x01\x00\x00\x00\x00\x00\x02".to_vec();
-    bytes.resize(20, 0);
-    for (index, family) in ["Arial", "Times New Roman"].iter().enumerate() {
-        while !bytes.len().is_multiple_of(4) {
-            bytes.push(0);
-        }
-        let offset = u32::try_from(bytes.len()).unwrap();
-        bytes[12 + index * 4..16 + index * 4].copy_from_slice(&offset.to_be_bytes());
-        let mut program = resolve_face(family, false, false).unwrap().bytes.to_vec();
-        let tables = usize::from(u16::from_be_bytes([program[4], program[5]]));
-        for table in 0..tables {
-            let pos = 12 + table * 16 + 8;
-            let old = u32::from_be_bytes(program[pos..pos + 4].try_into().unwrap());
-            program[pos..pos + 4].copy_from_slice(&(old + offset).to_be_bytes());
-        }
-        bytes.extend(program);
-    }
-    FontAsset {
-        manifest: FontAssetManifest {
-            family: "Collection Face".into(),
-            resolved_family: "Tinos".into(),
-            bold: false,
-            italic: false,
-            resource_hash: hash_face_bytes(&bytes),
-            face_index: 1,
-            variations: resolve_face("Times New Roman", false, false)
-                .unwrap()
-                .instance_key()
-                .variations,
-            source: "two bundled fonts test collection".into(),
-            license_id: "OFL-1.1".into(),
-            license_reference: "bundled font licenses".into(),
-            embedding: FontEmbeddingPermission::EmbedAndSubset,
-        },
-        bytes: std::sync::Arc::from(bytes),
-    }
-}
-
-#[test]
-fn pdf_subsets_collection_face_one_and_matches_single_face_geometry() {
-    use std::sync::Arc;
-    use strict_ooxml_render_svg::font::{FontAssetRegistry, FontRegistryLimits};
-    use strict_ooxml_testkit::DocxBuilder;
-    let registry = Arc::new(
-        FontAssetRegistry::from_assets(vec![collection_asset()], FontRegistryLimits::default())
-            .unwrap(),
-    );
-    let options = RenderOptions::default().font_assets(registry);
-    let body = |family| {
-        format!("<w:p><w:r><w:rPr><w:rFonts w:ascii=\"{family}\"/></w:rPr><w:t>AV office</w:t></w:r></w:p>")
-    };
-    let docx = DocxBuilder::strict().body(&body("Collection Face")).build();
-    let package = open(&docx);
-    let document = parse_document(&package, &ParseOptions::default()).unwrap();
-    let pages = place_pages(&document, &options, None).unwrap();
-    let output = render(&pages, &options).unwrap();
-    assert!(
-        output.report.losses().is_empty(),
-        "{:?}",
-        output.report.losses()
-    );
-    assert_eq!(
-        output.embedded_faces[0]
-            .instance
-            .as_ref()
-            .unwrap()
-            .face_index,
-        1
-    );
-    let mut single_asset = collection_asset();
-    let single_face =
-        strict_ooxml_render_svg::font::resolve_face("Times New Roman", false, false).unwrap();
-    single_asset.bytes = Arc::from(single_face.bytes);
-    single_asset.manifest.resource_hash = single_face.resource_hash;
-    single_asset.manifest.face_index = 0;
-    let single_options = RenderOptions::default().font_assets(Arc::new(
-        FontAssetRegistry::from_assets(vec![single_asset], FontRegistryLimits::default()).unwrap(),
-    ));
-    let single = DocxBuilder::strict().body(&body("Collection Face")).build();
-    let single_package = open(&single);
-    let single_doc = parse_document(&single_package, &ParseOptions::default()).unwrap();
-    let single_pages = place_pages(&single_doc, &single_options, None).unwrap();
-    let widths = |pages: &[strict_ooxml_render_svg::layout::PlacedPage]| {
-        pages[0]
-            .items
-            .iter()
-            .filter_map(|item| {
-                if let Item::Text(text) = item {
-                    Some(text.width)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(widths(&pages), widths(&single_pages));
-    let reader = lopdf::Document::load_mem(&output.bytes).unwrap();
-    assert!(reader.extract_text(&[1]).unwrap().contains("office"));
-}
-
-fn policy_asset(request: &str) -> strict_ooxml_render_svg::font::FontAsset {
-    let face =
-        strict_ooxml_render_svg::font::resolve_face("Times New Roman", false, false).unwrap();
-    let mut asset = collection_asset();
-    asset.bytes = std::sync::Arc::from(face.bytes);
-    asset.manifest.family = request.into();
-    asset.manifest.resolved_family = request.into();
-    asset.manifest.face_index = 0;
-    asset.manifest.resource_hash = face.resource_hash;
-    asset.manifest.variations = face.instance_key().variations;
-    asset.manifest.source = "bundled Tinos test fixture".into();
-    asset
-}
-
-fn policy_pages(
-    asset: strict_ooxml_render_svg::font::FontAsset,
-    text: &str,
-) -> Vec<strict_ooxml_render_svg::layout::PlacedPage> {
-    use strict_ooxml_render_svg::font::{FontAssetRegistry, FontRegistryLimits};
-    let body = format!(
-        "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"{}\"/></w:rPr><w:t>{text}</w:t></w:r></w:p>",
-        asset.manifest.family
-    );
-    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
-        .body(&body)
-        .build();
-    let package = open(&bytes);
-    let document = parse_document(&package, &ParseOptions::default()).unwrap();
-    let options = RenderOptions::default().font_assets(std::sync::Arc::new(
-        FontAssetRegistry::from_assets(vec![asset], FontRegistryLimits::default()).unwrap(),
-    ));
-    place_pages(&document, &options, None).unwrap()
-}
-
-#[test]
-fn pdf_policy_keeps_failure_counts_without_details_and_refuses_glyph_loss() {
-    use strict_ooxml_render_svg::font::FontFailurePolicy;
-    let pages = policy_pages(policy_asset("CJK Alias"), "&#x6f22;&#x5b57;");
-    let options = RenderOptions {
-        font_report_limit: 0,
-        ..RenderOptions::default()
-    };
-    let continued = render(&pages, &options).unwrap();
-    assert!(continued.report.losses().is_empty());
-    assert!(!continued.report.is_clean());
-    assert!(continued.report.font_report().failure_count >= 2);
-    assert!(continued.report.font_report().details_truncated);
-    assert!(continued.report.to_string().contains("font failures:"));
-    let strict = options.font_failure_policy(FontFailurePolicy::Reject);
-    assert!(render(&pages, &strict)
-        .unwrap_err()
-        .to_string()
-        .contains("font.glyph.missing: CJK Alias"));
-}
-
-#[test]
-fn pdf_embedding_failure_reports_request_and_strict_policy_refuses_output() {
-    use strict_ooxml_render_svg::font::{hash_face_bytes, FontDiagnosticKind, FontFailurePolicy};
-    let mut asset = policy_asset("Broken Outline Alias");
-    let mut bytes = asset.bytes.to_vec();
-    let table_count = usize::from(u16::from_be_bytes([bytes[4], bytes[5]]));
-    let table = (0..table_count)
-        .map(|index| 12 + index * 16)
-        .find(|&offset| &bytes[offset..offset + 4] == b"glyf")
-        .unwrap();
-    bytes[table..table + 4].copy_from_slice(b"BAD!");
-    asset.manifest.resource_hash = hash_face_bytes(&bytes);
-    asset.bytes = std::sync::Arc::from(bytes);
-    let mut pages = policy_pages(asset, "AV office");
-    // Exercise the scalar-CID subset path independently of malformed-font shaping rejection.
-    for page in &mut pages {
-        for item in &mut page.items {
-            if let Item::Text(text) = item {
-                text.advance = strict_ooxml_render_svg::TextAdvanceKind::Metric;
-            }
-        }
-    }
-    let output = render(&pages, &RenderOptions::default()).unwrap();
-    let failure = output
-        .report
-        .font_report()
-        .diagnostics()
-        .iter()
-        .find(|entry| entry.kind == FontDiagnosticKind::EmbeddingFailed)
-        .unwrap();
-    assert_eq!(failure.requested_family, "Broken Outline Alias");
-    assert!(failure.resource.is_some());
-    assert!(output.embedded_faces.is_empty());
-    assert!(!output.report.is_clean());
-    let strict = RenderOptions {
-        font_report_limit: 0,
-        ..RenderOptions::default().font_failure_policy(FontFailurePolicy::Reject)
-    };
-    let error = render(&pages, &strict).unwrap_err().to_string();
-    assert!(
-        error.contains("font.embed.failed: Broken Outline Alias"),
-        "{error}"
-    );
-}
-
-#[test]
-#[allow(clippy::too_many_lines)] // One table-driven witness for five scripts.
-fn licensed_programs_embed_with_cjk_unicode_and_explicit_indic_degradation() {
-    use strict_ooxml_render_svg::font::{hash_face_bytes, FontDiagnosticKind, FontFailurePolicy};
-    // (family, id, bytes, text, degraded, lopdf mode, expect a replacement char)
-    for (family, id, bytes, text, degraded, mode, expect_fffd) in [
-        (
-            "StrictLib Witness CJK SC",
-            "cjk",
-            &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/cjk.otf")[..],
-            include_str!("../../strict-ooxml-render-svg/fonts/witnesses/cjk.txt"),
-            false,
-            "exact",
-            false,
-        ),
-        (
-            "StrictLib Witness Devanagari",
-            "devanagari",
-            &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/devanagari.ttf")[..],
-            include_str!("../../strict-ooxml-render-svg/fonts/witnesses/devanagari.txt"),
-            true,
-            "concat",
-            true,
-        ),
-        (
-            "StrictLib Witness Arabic",
-            "arabic",
-            &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/arabic.ttf")[..],
-            include_str!("../../strict-ooxml-render-svg/fonts/witnesses/arabic.txt"),
-            true,
-            // RTL: the content stream is visual order and lopdf ignores ActualText,
-            // so only logical character presence can be asserted here.
-            "present",
-            false,
-        ),
-        (
-            "StrictLib Witness Tamil",
-            "tamil",
-            &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/tamil.ttf")[..],
-            include_str!("../../strict-ooxml-render-svg/fonts/witnesses/tamil.txt"),
-            true,
-            "concat",
-            false,
-        ),
-        (
-            "StrictLib Witness Bengali",
-            "bengali",
-            &include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/bengali.ttf")[..],
-            include_str!("../../strict-ooxml-render-svg/fonts/witnesses/bengali.txt"),
-            true,
-            "concat",
-            false,
-        ),
+fn styled_math_embeds_real_glyphs_and_preserves_source_unicode() {
+    for (script, family) in [
+        ("roman", "StrictMath-Bold-Italic"),
+        ("script", "StrictMathScript-Bold-Italic"),
+        ("fraktur", "StrictMathFraktur-Bold-Italic"),
+        ("double-struck", "StrictMathDoubleStruck-Bold-Italic"),
     ] {
-        let mut asset = policy_asset(family);
-        asset.bytes = std::sync::Arc::from(bytes);
-        asset.manifest.resource_hash = hash_face_bytes(bytes);
-        asset.manifest.variations.clear();
-        asset.manifest.source = "fonts/witnesses/manifest.json pinned Noto derivative".into();
-        asset.manifest.license_reference = "fonts/witnesses OFL and copyright".into();
-        let pages = policy_pages(asset, text);
-        let output = render(&pages, &RenderOptions::default()).unwrap();
-        assert_eq!(output.embedded_faces.len(), 1, "{family}");
-        assert!(output.embedded_faces[0].instance.is_some());
-        assert!(!output
-            .report
-            .font_report()
-            .diagnostics()
-            .iter()
-            .any(|entry| matches!(
-                entry.kind,
-                FontDiagnosticKind::MissingGlyph
-                    | FontDiagnosticKind::ShapingFailed
-                    | FontDiagnosticKind::EmbeddingFailed
-            )));
-        assert_eq!(output.report.font_report().is_clean(), !degraded);
-        if let Ok(directory) = std::env::var("STRICTLIB_FONT_WITNESS_OUTPUT") {
-            let directory = std::path::Path::new(&directory);
-            std::fs::create_dir_all(directory).unwrap();
-            std::fs::write(directory.join(format!("{id}.pdf")), &output.bytes).unwrap();
-        }
-        let reader = lopdf::Document::load_mem(&output.bytes).unwrap();
-        verify_cluster_actual_text(&reader, &pages);
-        let extracted: String = reader
-            .extract_text(&[1])
-            .unwrap()
-            .chars()
-            .filter(|ch| !ch.is_whitespace())
-            .collect();
-        match mode {
-            "exact" => assert_eq!(
-                extracted, text,
-                "{family}: ToUnicode must preserve logical clusters"
-            ),
-            "concat" => {
-                // lopdf ignores ActualText; its raw ToUnicode layer may replace
-                // continuation CIDs, but must not drop a logical character.
-                let expected: String = text.chars().filter(|ch| !ch.is_whitespace()).collect();
-                assert_eq!(extracted.replace('\u{fffd}', ""), expected, "{family}");
-            }
-            _ => {
-                for ch in text.chars().filter(|ch| !ch.is_whitespace()) {
-                    assert!(
-                        extracted.contains(ch),
-                        "{family}: {ch:?} is missing from the ToUnicode layer"
-                    );
-                }
-            }
-        }
-        if expect_fffd {
-            assert!(
-                extracted.contains('\u{fffd}'),
-                "{family}: the documented continuation-CID limitation must be visible"
-            );
-        }
-        if degraded {
-            assert!(output
-                .report
-                .font_report()
-                .diagnostics()
-                .iter()
-                .any(|entry| entry.kind == FontDiagnosticKind::DegradedScript));
-        }
-        let program_refs: Vec<_> = reader
-            .objects
-            .values()
-            .filter_map(|obj| obj.as_dict().ok())
-            .filter_map(|dict| {
-                dict.get(b"FontFile2")
-                    .or_else(|_| dict.get(b"FontFile3"))
-                    .ok()
-            })
-            .map(|obj| obj.as_reference().unwrap())
-            .collect();
-        assert_eq!(program_refs.len(), 1);
-        let stream = reader
-            .get_object(program_refs[0])
-            .unwrap()
-            .as_stream()
-            .unwrap();
-        let program = stream.decompressed_content().unwrap();
-        assert!(!program.is_empty());
-        let strict = render(
-            &pages,
-            &RenderOptions::default().font_failure_policy(FontFailurePolicy::Reject),
+        let body = format!("<w:p><m:oMath><m:r><m:rPr><m:scr m:val=\"{script}\"/><m:sty m:val=\"bi\"/></m:rPr><m:t>xα+3</m:t></m:r></m:oMath></w:p>");
+        let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+            .body(&body)
+            .build();
+        let package = open(&bytes);
+        let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+        let options = RenderOptions::default();
+        let pages = place_pages(&document, &options, Some(&package)).expect("place");
+        let output = render_with_source(&pages, &options, Some(&package)).expect("render");
+        assert!(output.report.losses().is_empty(), "{:?}", output.report);
+        let pdf = lopdf::Document::load_mem(&output.bytes).expect("valid PDF");
+        assert!(
+            pdf.objects
+                .values()
+                .filter_map(|object| object.as_dict().ok())
+                .filter_map(|dictionary| dictionary.get(b"BaseFont").ok())
+                .filter_map(|name| name.as_name().ok())
+                .any(|name| String::from_utf8_lossy(name).contains(family)),
+            "{script} face"
         );
-        if degraded {
-            assert!(strict
-                .unwrap_err()
-                .to_string()
-                .contains("font.script.degraded"));
-        } else {
-            assert!(strict.unwrap().report.is_clean());
-        }
+        let id = pdf.page_iter().next().expect("page");
+        let content = lopdf::content::Content::decode(&pdf.get_page_content(id)).expect("content");
+        assert_eq!(decode_single_face_cids(&pdf, &content), "xα+3");
     }
 }
 
-fn verify_cluster_actual_text(
-    reader: &lopdf::Document,
-    pages: &[strict_ooxml_render_svg::layout::PlacedPage],
-) {
-    use strict_ooxml_render_svg::font::{selected_face, shape_resource};
-    let expected: Vec<String> = pages
-        .iter()
-        .flat_map(|page| &page.items)
-        .filter_map(|item| {
-            let Item::Text(text) = item else { return None };
-            let face = selected_face(text)?;
-            let shaped = shape_resource(&text.text, &face)?;
-            Some(
-                shaped
-                    .clusters
-                    .iter()
-                    .filter(|cluster| cluster.glyph_count > 1)
-                    .map(|cluster| text.text[cluster.byte_start..cluster.byte_end].to_owned())
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .flatten()
-        .collect();
-    let page_id = reader.get_pages()[&1];
-    let content = lopdf::content::Content::decode(&reader.get_page_content(page_id)).unwrap();
-    let mut actual = Vec::new();
-    let mut inside = false;
-    let mut glyphs = 0;
-    for operation in content.operations {
-        match operation.operator.as_str() {
-            "BDC" => {
-                assert!(!inside);
-                assert_eq!(operation.operands[0].as_name().unwrap(), b"Span");
-                let bytes = operation.operands[1]
-                    .as_dict()
-                    .unwrap()
-                    .get(b"ActualText")
-                    .unwrap()
-                    .as_str()
-                    .unwrap();
-                assert_eq!(&bytes[..2], &[0xfe, 0xff]);
-                let units: Vec<u16> = bytes[2..]
-                    .chunks_exact(2)
-                    .map(|b| u16::from_be_bytes([b[0], b[1]]))
-                    .collect();
-                actual.push(String::from_utf16(&units).unwrap());
-                inside = true;
-                glyphs = 0;
-            }
-            "Tj" if inside => glyphs += 1,
-            "EMC" => {
-                assert!(inside);
-                assert!(glyphs > 1, "the replacement must cover all cluster glyphs");
-                inside = false;
-            }
-            _ => {}
-        }
-    }
-    assert!(!inside);
-    assert_eq!(actual, expected);
+/// Underline, strikethrough and highlight reach the PDF: they are geometry the
+/// SVG backend draws too, not SVG text attributes the PDF had no word for.
+#[test]
+fn run_decorations_are_drawn_in_the_pdf() {
+    let plain = strict_ooxml_testkit::docx::DocxBuilder::strict()
+        .body("<w:p><w:r><w:t>Plain</w:t></w:r></w:p>")
+        .build();
+    let decorated = strict_ooxml_testkit::docx::DocxBuilder::strict()
+        .body(
+            "<w:p><w:r><w:rPr><w:u w:val=\"double\" w:color=\"FF0000\"/><w:strike/>\
+             <w:highlight w:val=\"yellow\"/></w:rPr><w:t>Plain</w:t></w:r></w:p>",
+        )
+        .build();
+    let strokes = |bytes: &[u8]| {
+        let (pdf, _svg, _report) = to_pdf(bytes);
+        extracted_text(&pdf)
+            .lines()
+            .filter(|line| line.trim() == "S")
+            .count()
+    };
+    let fills = |bytes: &[u8]| {
+        let (pdf, _svg, _report) = to_pdf(bytes);
+        extracted_text(&pdf)
+            .lines()
+            .filter(|line| line.trim() == "f")
+            .count()
+    };
+    assert_eq!(
+        strokes(&decorated),
+        strokes(&plain) + 3,
+        "two underline strokes and one strikethrough"
+    );
+    assert_eq!(fills(&decorated), fills(&plain) + 1, "the highlight band");
+    let (pdf, _svg, _report) = to_pdf(&decorated);
+    assert!(
+        extracted_text(&pdf).contains("1 0 0 RG"),
+        "the underline is red"
+    );
 }

@@ -1,5 +1,5 @@
 //! The model invariants an accepted transaction must keep.
-use crate::EditError;
+use crate::{EditError, Invariant};
 use std::collections::{HashMap, HashSet};
 use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_wml::model::{
@@ -65,15 +65,18 @@ fn validate_story_ids(document: &Document, story: &Story) -> Result<(), EditErro
             .as_ref()
             .is_some_and(|id| !ids.insert(id.as_str().to_ascii_uppercase()))
         {
-            return Err(EditError::InvalidModel);
+            return Err(EditError::InvalidModel(Invariant::DuplicateId));
         }
-        if p.text_id.as_ref().is_some_and(|id| {
-            p.para_id.is_none() || !text_ids.insert(id.as_str().to_ascii_uppercase())
-        }) {
-            return Err(EditError::InvalidModel);
+        if let Some(id) = &p.text_id {
+            if p.para_id.is_none() {
+                return Err(EditError::InvalidModel(Invariant::TextIdWithoutParaId));
+            }
+            if !text_ids.insert(id.as_str().to_ascii_uppercase()) {
+                return Err(EditError::InvalidModel(Invariant::DuplicateId));
+            }
         }
         if negative_frame(p) {
-            return Err(EditError::InvalidModel);
+            return Err(EditError::InvalidModel(Invariant::Frame));
         }
     }
     Ok(())
@@ -111,7 +114,7 @@ pub(super) fn validate_patch(
     let mut frames = false;
     each_paragraph(after, &mut |p| frames |= negative_frame(p));
     if frames {
-        return Err(EditError::InvalidModel);
+        return Err(EditError::InvalidModel(Invariant::Frame));
     }
     if !identities_kept(ids, before, after)? {
         validate_story_ids(document, story)?;
@@ -183,7 +186,7 @@ fn identities_kept(ids: &IdIndex, before: &[Block], after: &[Block]) -> Result<b
         .iter()
         .any(|(para, text)| para.is_none() && text.is_some())
     {
-        return Err(EditError::InvalidModel);
+        return Err(EditError::InvalidModel(Invariant::TextIdWithoutParaId));
     }
     let paragraphs = grown(&old, &new, |(para, _)| para.as_deref());
     let texts = grown(&old, &new, |(_, text)| text.as_deref());
@@ -277,25 +280,24 @@ fn validate_global_references(document: &Document) -> Result<(), EditError> {
         let mut parent = style.based_on.as_ref();
         while let Some(id) = parent {
             if id == &style.id || ancestors.contains(id) || ancestors.len() >= 64 {
-                return Err(EditError::InvalidModel);
+                return Err(EditError::InvalidModel(Invariant::StyleChain));
             }
-            let definition = document.styles.get(id).ok_or(EditError::UnknownStyle)?;
+            let definition = document
+                .styles
+                .get(id)
+                .ok_or_else(|| EditError::UnknownStyle(id.clone()))?;
             ancestors.push(id.clone());
             parent = definition.based_on.as_ref();
         }
         if ancestors != style.based_on_chain {
-            return Err(EditError::InvalidModel);
+            return Err(EditError::InvalidModel(Invariant::StyleChain));
         }
-        if style
-            .next
-            .as_ref()
-            .is_some_and(|id| document.styles.get(id).is_none())
-            || style
-                .link
-                .as_ref()
-                .is_some_and(|id| document.styles.get(id).is_none())
+        if let Some(id) = [&style.next, &style.link]
+            .into_iter()
+            .flatten()
+            .find(|id| document.styles.get(id).is_none())
         {
-            return Err(EditError::UnknownStyle);
+            return Err(EditError::UnknownStyle(id.clone()));
         }
     }
     for number in document.numbering.nums() {
@@ -305,7 +307,7 @@ fn validate_global_references(document: &Document) -> Result<(), EditError> {
             .is_none()
             || number.overrides.iter().any(|v| !v.ilvl.is_valid())
         {
-            return Err(EditError::InvalidModel);
+            return Err(EditError::InvalidModel(Invariant::Numbering));
         }
     }
     for section in &document.sections {
@@ -320,7 +322,7 @@ fn validate_global_references(document: &Document) -> Result<(), EditError> {
                     .and_then(|part| document.header_footer(part))
                     .is_none_or(|part| part.is_header != header)
                 {
-                    return Err(EditError::InvalidModel);
+                    return Err(EditError::InvalidModel(Invariant::HeaderFooterReference));
                 }
             }
         }
@@ -331,12 +333,12 @@ fn validate_structure(blocks: &[Block], document: &Document) -> Result<(), EditE
     for b in blocks {
         match b {
             Block::Paragraph(p) => {
-                if p.props.style.as_ref().is_some_and(|id| {
+                if let Some(id) = p.props.style.as_ref().filter(|id| {
                     !document.styles.get(id).is_some_and(|s| {
                         s.style_type == strict_ooxml_wml::model::StyleType::Paragraph
                     })
                 }) {
-                    return Err(EditError::UnknownStyle);
+                    return Err(EditError::UnknownStyle(id.clone()));
                 }
                 validate_inlines(&p.inlines, document)?;
                 if let Some(n) = p.props.numbering {
@@ -344,44 +346,46 @@ fn validate_structure(blocks: &[Block], document: &Document) -> Result<(), EditE
                         || n.num_id
                             .is_some_and(|id| id.0 != 0 && document.numbering.num(id).is_none())
                     {
-                        return Err(EditError::InvalidModel);
+                        return Err(EditError::InvalidModel(Invariant::Numbering));
                     }
                 }
             }
             Block::Table(t) => {
-                if t.rows.is_empty()
-                    || t.grid
-                        .iter()
-                        .any(|g| g.width.is_some_and(|v| v.value() <= 0))
-                {
-                    return Err(EditError::InvalidModel);
+                if t.rows.is_empty() {
+                    return Err(EditError::InvalidModel(Invariant::TableTopology));
                 }
-                if t.props.style.as_ref().is_some_and(|id| {
+                if t.grid
+                    .iter()
+                    .any(|g| g.width.is_some_and(|v| v.value() <= 0))
+                {
+                    return Err(EditError::InvalidModel(Invariant::Grid));
+                }
+                if let Some(id) = t.props.style.as_ref().filter(|id| {
                     !document
                         .styles
                         .get(id)
                         .is_some_and(|s| s.style_type == strict_ooxml_wml::model::StyleType::Table)
                 }) {
-                    return Err(EditError::UnknownStyle);
+                    return Err(EditError::UnknownStyle(id.clone()));
                 }
                 let mut previous = std::collections::BTreeSet::new();
                 for r in &t.rows {
                     if r.cells.is_empty() {
-                        return Err(EditError::InvalidModel);
+                        return Err(EditError::InvalidModel(Invariant::TableTopology));
                     }
                     let mut column = usize::try_from(r.props.grid_before.unwrap_or(0))
-                        .map_err(|_| EditError::InvalidModel)?;
+                        .map_err(|_| EditError::InvalidModel(Invariant::TableTopology))?;
                     let mut next = std::collections::BTreeSet::new();
                     for c in &r.cells {
                         let span = usize::from(c.props.grid_span.unwrap_or(1));
                         if span == 0 || !matches!(c.blocks.last(), Some(Block::Paragraph(_))) {
-                            return Err(EditError::InvalidModel);
+                            return Err(EditError::InvalidModel(Invariant::TableTopology));
                         }
                         let region = (column, span);
                         match c.props.vertical_merge {
                             Some(strict_ooxml_wml::model::VerticalMerge::Continue) => {
                                 if !previous.contains(&region) {
-                                    return Err(EditError::InvalidModel);
+                                    return Err(EditError::InvalidModel(Invariant::TableTopology));
                                 }
                                 next.insert(region);
                             }
@@ -395,9 +399,9 @@ fn validate_structure(blocks: &[Block], document: &Document) -> Result<(), EditE
                     }
                     let end = column
                         + usize::try_from(r.props.grid_after.unwrap_or(0))
-                            .map_err(|_| EditError::InvalidModel)?;
+                            .map_err(|_| EditError::InvalidModel(Invariant::TableTopology))?;
                     if !t.grid.is_empty() && end > t.grid.len() {
-                        return Err(EditError::InvalidModel);
+                        return Err(EditError::InvalidModel(Invariant::TableTopology));
                     }
                     previous = next;
                 }
@@ -412,12 +416,12 @@ fn validate_inlines(inlines: &[Inline], document: &Document) -> Result<(), EditE
     for i in inlines {
         match i {
             Inline::Run(r) => {
-                if r.props.style.as_ref().is_some_and(|id| {
+                if let Some(id) = r.props.style.as_ref().filter(|id| {
                     !document.styles.get(id).is_some_and(|s| {
                         s.style_type == strict_ooxml_wml::model::StyleType::Character
                     })
                 }) {
-                    return Err(EditError::UnknownStyle);
+                    return Err(EditError::UnknownStyle(id.clone()));
                 }
                 for c in &r.content {
                     match c {
@@ -436,7 +440,7 @@ fn validate_inlines(inlines: &[Inline], document: &Document) -> Result<(), EditE
                                 .and_then(|id| document.footnotes.get(id))
                                 .is_none()
                             {
-                                return Err(EditError::InvalidModel);
+                                return Err(EditError::InvalidModel(Invariant::NoteReference));
                             }
                         }
                         RunContent::EndnoteRef(id) => {
@@ -445,7 +449,7 @@ fn validate_inlines(inlines: &[Inline], document: &Document) -> Result<(), EditE
                                 .and_then(|id| document.endnotes.get(id))
                                 .is_none()
                             {
-                                return Err(EditError::InvalidModel);
+                                return Err(EditError::InvalidModel(Invariant::NoteReference));
                             }
                         }
                         _ => {}
@@ -463,7 +467,7 @@ fn validate_inlines(inlines: &[Inline], document: &Document) -> Result<(), EditE
                     .and_then(|id| document.footnotes.get(id))
                     .is_none()
                 {
-                    return Err(EditError::InvalidModel);
+                    return Err(EditError::InvalidModel(Invariant::NoteReference));
                 }
             }
             Inline::EndnoteRef(id) => {
@@ -472,7 +476,7 @@ fn validate_inlines(inlines: &[Inline], document: &Document) -> Result<(), EditE
                     .and_then(|id| document.endnotes.get(id))
                     .is_none()
                 {
-                    return Err(EditError::InvalidModel);
+                    return Err(EditError::InvalidModel(Invariant::NoteReference));
                 }
             }
             _ => {}
@@ -489,7 +493,7 @@ fn validate_drawing(drawing: &Drawing, document: &Document) -> Result<(), EditEr
                     .and_then(|b| b.resolved.as_ref())
                     .is_some_and(|part| document.media.get(part).is_none())
                 {
-                    return Err(EditError::InvalidModel);
+                    return Err(EditError::InvalidModel(Invariant::Drawing));
                 }
             }
             Graphic::Shape(s) => {
@@ -513,7 +517,7 @@ fn validate_drawing(drawing: &Drawing, document: &Document) -> Result<(), EditEr
         DrawingKind::Opaque(_) => return Ok(()),
     };
     if extent.is_some_and(|v| v.cx.value() <= 0 || v.cy.value() <= 0) {
-        return Err(EditError::InvalidModel);
+        return Err(EditError::InvalidModel(Invariant::Drawing));
     }
     graphic(payload, document)
 }
@@ -531,22 +535,22 @@ fn validate_boundaries(blocks: &[Block]) -> Result<(), EditError> {
                 Inline::BookmarkStart(v) => {
                     let id = v.id.as_str().to_owned();
                     if !state.seen.insert(id.clone()) || !state.bookmarks.insert(id) {
-                        return Err(EditError::InvalidModel);
+                        return Err(EditError::InvalidModel(Invariant::Bookmark));
                     }
                 }
                 Inline::BookmarkEnd(v) => {
                     if !state.bookmarks.remove(v.as_str()) {
-                        return Err(EditError::InvalidModel);
+                        return Err(EditError::InvalidModel(Invariant::Bookmark));
                     }
                 }
                 Inline::CommentRangeStart(v) => {
                     if !state.comments.insert(v.as_str().to_owned()) {
-                        return Err(EditError::InvalidModel);
+                        return Err(EditError::InvalidModel(Invariant::Comment));
                     }
                 }
                 Inline::CommentRangeEnd(v) => {
                     if !state.comments.remove(v.as_str()) {
-                        return Err(EditError::InvalidModel);
+                        return Err(EditError::InvalidModel(Invariant::Comment));
                     }
                 }
                 Inline::Run(r) => {
@@ -556,15 +560,20 @@ fn validate_boundaries(blocks: &[Block]) -> Result<(), EditError> {
                             match v.kind {
                                 FieldCharType::Begin => state.fields.push(false),
                                 FieldCharType::Separate => {
-                                    let separated =
-                                        state.fields.last_mut().ok_or(EditError::InvalidModel)?;
+                                    let separated = state
+                                        .fields
+                                        .last_mut()
+                                        .ok_or(EditError::InvalidModel(Invariant::Field))?;
                                     if *separated {
-                                        return Err(EditError::InvalidModel);
+                                        return Err(EditError::InvalidModel(Invariant::Field));
                                     }
                                     *separated = true;
                                 }
                                 FieldCharType::End => {
-                                    state.fields.pop().ok_or(EditError::InvalidModel)?;
+                                    state
+                                        .fields
+                                        .pop()
+                                        .ok_or(EditError::InvalidModel(Invariant::Field))?;
                                 }
                             }
                         }
@@ -577,7 +586,7 @@ fn validate_boundaries(blocks: &[Block]) -> Result<(), EditError> {
                     let mut child = Boundaries::default();
                     inlines(&v.inlines, &mut child)?;
                     if !child.fields.is_empty() || !child.bookmarks.is_empty() {
-                        return Err(EditError::InvalidModel);
+                        return Err(EditError::InvalidModel(Invariant::Field));
                     }
                 }
                 _ => {}
@@ -604,9 +613,13 @@ fn validate_boundaries(blocks: &[Block]) -> Result<(), EditError> {
     }
     let mut state = Boundaries::default();
     walk(blocks, &mut state)?;
-    if state.bookmarks.is_empty() && state.comments.is_empty() && state.fields.is_empty() {
-        Ok(())
+    if !state.bookmarks.is_empty() {
+        Err(EditError::InvalidModel(Invariant::Bookmark))
+    } else if !state.comments.is_empty() {
+        Err(EditError::InvalidModel(Invariant::Comment))
+    } else if !state.fields.is_empty() {
+        Err(EditError::InvalidModel(Invariant::Field))
     } else {
-        Err(EditError::InvalidModel)
+        Ok(())
     }
 }

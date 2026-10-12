@@ -277,6 +277,17 @@ impl LineJoin {
     }
 }
 
+/// A resolved RGB axial shading, in the vector's user coordinate space.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AxialGradient {
+    /// Colour stops on the unit interval.
+    pub stops: Vec<(f64, Rgb)>,
+    /// Start point of the gradient axis.
+    pub start: (f64, f64),
+    /// End point of the gradient axis.
+    pub end: (f64, f64),
+}
+
 /// A filled or stroked path.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Vector {
@@ -284,6 +295,8 @@ pub struct Vector {
     pub subpaths: Vec<SubPath>,
     /// Fill colour, when the path is filled.
     pub fill: Option<Rgb>,
+    /// A non-solid fill retained from an axial shading operator.
+    pub gradient: Option<AxialGradient>,
     /// Stroke colour, when the path is stroked.
     pub stroke: Option<Rgb>,
     /// Line width in points.
@@ -359,7 +372,7 @@ impl PathBuilder {
             .iter()
             .map(|subpath| subpath.points.len())
             .sum::<usize>()
-            + self.current.len()
+            .saturating_add(self.current.len())
     }
 
     /// Moves to a point, starting a new subpath. Returns points added.
@@ -498,6 +511,8 @@ struct State {
     ctm: Matrix,
     stroke: Rgb,
     fill: Rgb,
+    /// Most recent clip path in its original user space and CTM.
+    clip: Option<ClipPath>,
     line_width: f64,
     line_cap: LineCap,
     line_join: LineJoin,
@@ -514,12 +529,21 @@ struct State {
     render_mode: RenderMode,
 }
 
+#[derive(Clone, Debug)]
+struct ClipPath {
+    subpaths: std::rc::Rc<Vec<SubPath>>,
+    ctm: Matrix,
+    even_odd: bool,
+    intersected: bool,
+}
+
 impl Default for State {
     fn default() -> Self {
         Self {
             ctm: Matrix::IDENTITY,
             stroke: Rgb(0.0, 0.0, 0.0),
             fill: Rgb(0.0, 0.0, 0.0),
+            clip: None,
             line_width: 1.0,
             line_cap: LineCap::Butt,
             line_join: LineJoin::Miter,
@@ -577,6 +601,10 @@ impl Ignored {
 
 /// The resources a page needs to interpret its operators.
 pub trait Resources {
+    /// A supported RGB axial shading. Unsupported resources return `None`.
+    fn shading(&self, _name: &str) -> Option<AxialGradient> {
+        None
+    }
     /// The font resource `name`.
     fn font(&self, name: &str) -> Option<&PdfFont>;
     /// The image XObject `name`.
@@ -658,7 +686,7 @@ impl PageBudget {
             self.stopped = Some("operations");
             return false;
         }
-        self.operations += 1;
+        self.operations = self.operations.saturating_add(1);
         true
     }
 
@@ -671,7 +699,7 @@ impl PageBudget {
             self.stopped = Some("glyphs");
             return false;
         }
-        self.glyphs += 1;
+        self.glyphs = self.glyphs.saturating_add(1);
         true
     }
 
@@ -1173,10 +1201,10 @@ fn interpret_from(
                     number_at(args, 3),
                 ) {
                     let mut added = path.move_to(x, y);
-                    added += path.line_to(x + w, y);
-                    added += path.line_to(x + w, y + h);
-                    added += path.line_to(x, y + h);
-                    added += path.close();
+                    added = added.saturating_add(path.line_to(x + w, y));
+                    added = added.saturating_add(path.line_to(x + w, y + h));
+                    added = added.saturating_add(path.line_to(x, y + h));
+                    added = added.saturating_add(path.close());
                     if !budget.charge_path_points(added, &limits) {
                         break;
                     }
@@ -1259,10 +1287,16 @@ fn interpret_from(
                 std::mem::take(&mut path);
             }
             "W" | "W*" => {
+                current.clip = Some(ClipPath {
+                    subpaths: std::rc::Rc::new(path.clone().finish()),
+                    ctm: current.ctm,
+                    even_odd: operator == "W*",
+                    intersected: current.clip.is_some(),
+                });
                 // Clipping changes what is visible and not what is drawn; the
                 // consumer keeps the whole path and notes that it was clipped.
                 out.ignored
-                    .push(Ignored::new("pdf.clip", "clip path is not applied"));
+                    .push(Ignored::new("pdf.clip", "clip paths are retained for supported axial shading; other clipping is not applied"));
             }
             "Do" => {
                 if let Some(name) = name_at(args, 0) {
@@ -1287,10 +1321,37 @@ fn interpret_from(
             op if op == crate::inline::INLINE_OP => {
                 place_inline(args, inlines, &current, &mut out);
             }
-            "sh" => out.ignored.push(Ignored::new(
-                "pdf.shading",
-                "shading pattern is not carried",
-            )),
+            "sh" => {
+                let gradient = name_at(args, 0).and_then(|name| resources.shading(&name));
+                if let (Some(gradient), Some(clip)) = (gradient, &current.clip) {
+                    if clip.ctm == current.ctm && !clip.intersected && !clip.subpaths.is_empty() {
+                        let points = clip
+                            .subpaths
+                            .iter()
+                            .map(|subpath| subpath.points.len())
+                            .sum();
+                        if !budget.charge_path_points(points, &limits) {
+                            break;
+                        }
+                        paint(
+                            &mut out,
+                            (*clip.subpaths).clone(),
+                            &current,
+                            false,
+                            false,
+                            clip.even_odd,
+                        );
+                        if let Some(Item::Vector(vector)) = out.items.last_mut() {
+                            vector.gradient = Some(gradient);
+                        }
+                        continue;
+                    }
+                }
+                out.ignored.push(Ignored::new(
+                    "pdf.shading",
+                    "shading pattern is not carried",
+                ));
+            }
             "BMC" | "BDC" | "EMC" | "MP" | "DP" | "BX" | "EX" => {}
             other => {
                 if !other.is_empty() {
@@ -1319,6 +1380,7 @@ fn paint(
     out.items.push(Item::Vector(Vector {
         subpaths,
         fill: fill.then_some(state.fill),
+        gradient: None,
         stroke: stroke.then_some(state.stroke),
         line_width: state.line_width * scale,
         line_cap: state.line_cap,
@@ -1372,13 +1434,15 @@ fn place_form(
         limits,
         tolerance,
         seed,
-        depth + 1,
+        depth.saturating_add(1),
         budget,
     )?;
     out.items.extend(content.items);
     out.ignored.extend(content.ignored);
-    out.unmapped_glyphs += content.unmapped_glyphs;
-    out.estimated_widths += content.estimated_widths;
+    out.unmapped_glyphs = out.unmapped_glyphs.saturating_add(content.unmapped_glyphs);
+    out.estimated_widths = out
+        .estimated_widths
+        .saturating_add(content.estimated_widths);
     Ok(())
 }
 
@@ -1578,7 +1642,7 @@ fn render_glyph(
         || font.differences.contains_key(&(code as u8))
         || (font.encoding_stated && character.is_some());
     if character.is_none() {
-        out.unmapped_glyphs += 1;
+        out.unmapped_glyphs = out.unmapped_glyphs.saturating_add(1);
     }
     let ch = character.unwrap_or_else(|| "\u{fffd}".to_owned());
     let (ascent, descent) = font.vertical_metrics();
@@ -1586,7 +1650,7 @@ fn render_glyph(
     let estimated = measured.is_estimated();
     let _width = measured.value();
     if estimated {
-        out.estimated_widths += 1;
+        out.estimated_widths = out.estimated_widths.saturating_add(1);
     }
     Some(Glyph {
         text: ch,
@@ -1675,10 +1739,11 @@ fn matrix_from(args: &[Object]) -> Option<Matrix> {
 /// The fonts a page used, by resource name, in the order they were reached.
 #[must_use]
 pub fn fonts_used(content: &Content) -> BTreeMap<String, usize> {
-    let mut out = BTreeMap::new();
+    let mut out: BTreeMap<String, usize> = BTreeMap::new();
     for item in &content.items {
         if let Item::Glyph(glyph) = item {
-            *out.entry(glyph.font.clone()).or_default() += 1;
+            let count = out.entry(glyph.font.clone()).or_default();
+            *count = count.saturating_add(1);
         }
     }
     out

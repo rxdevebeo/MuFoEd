@@ -83,7 +83,12 @@ pub(crate) fn decorate_pages(
         let Some(section) = inherited_section(sections, section_index) else {
             continue;
         };
-        let margins = geometry_for(Some(&section), ctx.options.scale, None);
+        let margins = geometry_for(
+            Some(&section),
+            ctx.options.scale,
+            None,
+            ctx.document.settings.gutter_at_top,
+        );
         let geometry = Geometry {
             width: page.width_px,
             height: page.height_px,
@@ -92,6 +97,11 @@ pub(crate) fn decorate_pages(
             right: margins.right,
             bottom: margins.bottom,
             grid_line_pitch: None,
+            // Headers and footers are never set in columns.
+            columns: crate::layout::ColumnLayout::single(
+                page.width_px - margins.left - margins.right,
+            ),
+            active_column: 0,
         };
         let content_width = geometry.content_width();
         let left = geometry.left;
@@ -138,6 +148,7 @@ pub(crate) fn decorate_pages(
                 .unwrap_or(1)
                 .max(1),
             page_format,
+            chapter: crate::fields::chapter_on_page(ctx, index, section_index),
         };
         let mut decorated: Vec<Item> = Vec::with_capacity(page.items.len() + 16);
 
@@ -161,7 +172,7 @@ pub(crate) fn decorate_pages(
                     &mut dynamic,
                 )
             }) {
-                ctx.charge_items(region.items.len())?;
+                ctx.charge_items(region.items.iter().map(|item| item.leaves().count()).sum())?;
                 for item in &region.items {
                     decorated.push(offset_item(item, 0.0, header_offset));
                 }
@@ -190,7 +201,7 @@ pub(crate) fn decorate_pages(
                     &mut dynamic,
                 )
             }) {
-                ctx.charge_items(region.items.len())?;
+                ctx.charge_items(region.items.iter().map(|item| item.leaves().count()).sum())?;
                 let y = (page.height_px - footer_offset - region.height).max(0.0);
                 for item in &region.items {
                     decorated.push(offset_item(item, 0.0, y));
@@ -324,6 +335,11 @@ pub(crate) fn page_body_reserve(query: &PageRegionQuery<'_>) -> PageRegionReserv
         section_index: query.section_index + 1,
         section_pages: query.section_pages.max(1),
         page_format: query.page_format,
+        chapter: crate::fields::chapter_on_page(
+            query.ctx,
+            query.page_ordinal.saturating_sub(1),
+            query.section_index,
+        ),
     };
     let header = select_reference(
         Some(&section),

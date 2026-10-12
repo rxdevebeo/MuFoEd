@@ -56,6 +56,7 @@
 pub mod error;
 pub mod font;
 pub mod layout;
+pub mod metafile;
 pub mod style;
 pub mod units;
 
@@ -69,6 +70,7 @@ mod table_style;
 pub use layout::{
     ImageItem, Item, LineItem, PathItem, PlacedPage, RectItem, TextAdvanceKind, TextItem,
 };
+use strict_ooxml_core::control;
 use strict_ooxml_core::error::Result;
 use strict_ooxml_core::opc::Package;
 use strict_ooxml_core::part::PartId;
@@ -157,23 +159,30 @@ pub enum RevisionView {
     Original,
 }
 
+/// Coordinate interpretation for wrapping polygons.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WrapCoordinates {
+    /// ISO coordinates and this library's VML-normalized model, in EMU.
+    #[default]
+    Emu,
+    /// Office's fixed 21600 by 21600 shape space (MS-OI29500 2.1.1349).
+    Office21600,
+}
+
 /// Options controlling rendering.
 #[derive(Clone, Debug)]
 pub struct RenderOptions {
+    /// Maximum combined SVG payload. Painting stops with a warning before
+    /// retaining output beyond this bound; the default is unlimited.
+    pub max_svg_bytes: usize,
+    /// Wrapping polygon coordinate convention; no size-based guessing is used.
+    pub wrap_coordinates: WrapCoordinates,
     /// Output scale: px per inch (default `96.0` = 96 DPI).
     pub scale: f64,
     /// Media emission mode.
     pub media: MediaMode,
     /// Font provider kind.
     pub font_provider: FontProviderKind,
-    /// Optional explicitly admitted font assets. Absent by default.
-    pub font_assets: Option<std::sync::Arc<font::FontAssetRegistry>>,
-    /// Font failures default to reported continuation; Reject refuses unresolved/degraded text.
-    pub font_failure_policy: font::FontFailurePolicy,
-    /// Inspect bundled font requests as well; the policy builder enables this.
-    pub font_diagnostics: bool,
-    /// Retained font diagnostics per page (SVG) or document (PDF). Hard ceiling: 4096.
-    pub font_report_limit: usize,
     /// Page selection.
     pub pages: PageSelection,
     /// Draw a white page background.
@@ -207,18 +216,22 @@ pub struct RenderOptions {
     /// the `strict-text` pixel gate failed. It is kept for reproducing that
     /// audit, behind this switch.
     pub wps_times_calibration: bool,
+    /// How `w:noWrap` on a table cell is honoured. Default [`CellNoWrap::Spec`].
+    pub cell_no_wrap: CellNoWrap,
+    /// Progress and cancellation handle (default none); see
+    /// [`strict_ooxml_core::control`]. Layout reports pages laid out, painting
+    /// pages written, and either stops with `StrictError::Cancelled`.
+    pub control: Option<strict_ooxml_core::control::OpenControl>,
 }
 
 impl Default for RenderOptions {
     fn default() -> Self {
         Self {
+            max_svg_bytes: usize::MAX,
+            wrap_coordinates: WrapCoordinates::Emu,
             scale: 96.0,
             media: MediaMode::EmbedDataUri,
             font_provider: FontProviderKind::Builtin,
-            font_assets: None,
-            font_failure_policy: font::FontFailurePolicy::default(),
-            font_diagnostics: false,
-            font_report_limit: 256,
             pages: PageSelection::All,
             background: true,
             floating: true,
@@ -226,35 +239,18 @@ impl Default for RenderOptions {
             revisions: RevisionView::Final,
             limits: strict_ooxml_core::limits::ResourceLimits::default(),
             wps_times_calibration: false,
+            cell_no_wrap: CellNoWrap::Spec,
+            control: None,
         }
     }
 }
 
 impl RenderOptions {
-    /// Supplies immutable explicit font assets for placement and both backends.
+    /// Selects the coordinate convention used by anchored wrap polygons.
     #[must_use]
-    pub fn font_assets(mut self, assets: std::sync::Arc<font::FontAssetRegistry>) -> Self {
-        self.font_assets = Some(assets);
+    pub fn wrap_coordinates(mut self, coordinates: WrapCoordinates) -> Self {
+        self.wrap_coordinates = coordinates;
         self
-    }
-
-    /// Sets the font failure policy for shared placement and backend delivery.
-    #[must_use]
-    pub fn font_failure_policy(mut self, policy: font::FontFailurePolicy) -> Self {
-        self.font_failure_policy = policy;
-        self.font_diagnostics = true;
-        self
-    }
-
-    fn make_font_provider(&self) -> Box<dyn font::FontProvider> {
-        let fallback = self.font_provider.make();
-        match &self.font_assets {
-            Some(assets) => Box::new(font::registry::RegistryFontProvider::new(
-                std::sync::Arc::clone(assets),
-                fallback,
-            )),
-            None => fallback,
-        }
     }
 
     /// Sets the scale (px per inch).
@@ -270,6 +266,13 @@ impl RenderOptions {
     #[must_use]
     pub fn media(mut self, media: MediaMode) -> Self {
         self.media = media;
+        self
+    }
+
+    /// Sets the progress and cancellation handle.
+    #[must_use]
+    pub fn control(mut self, control: strict_ooxml_core::control::OpenControl) -> Self {
+        self.control = Some(control);
         self
     }
 
@@ -300,13 +303,44 @@ impl RenderOptions {
         self.wps_times_calibration = enabled;
         self
     }
+
+    /// Sets [`Self::cell_no_wrap`].
+    #[must_use]
+    pub fn cell_no_wrap(mut self, mode: CellNoWrap) -> Self {
+        self.cell_no_wrap = mode;
+        self
+    }
+}
+
+/// How `w:tcPr/w:noWrap` is honoured (ISO/IEC 29500-1 §17.4.30).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CellNoWrap {
+    /// As specified: the flag acts only under the automatic table layout. A
+    /// cell with a fixed (`dxa`) preferred width keeps wrapping its text and
+    /// is only never made narrower than that width; a cell with an `auto`,
+    /// `pct` or absent width is laid out without line breaks. WPS does this.
+    #[default]
+    Spec,
+    /// The flag always suppresses line breaks, whatever the cell width and
+    /// table layout (the behaviour before the option existed).
+    Always,
+}
+
+impl CellNoWrap {
+    /// Parses a CLI value: `spec` or `always`.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "spec" => Some(Self::Spec),
+            "always" => Some(Self::Always),
+            _ => None,
+        }
+    }
 }
 
 /// One rendered page.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Page {
-    /// Bounded resolution/failure diagnostics for text actually painted on this page.
-    pub font_report: font::FontReport,
     /// Zero-based index of the page in the document.
     pub index: usize,
     /// Page width in px.
@@ -317,6 +351,8 @@ pub struct Page {
     pub svg: String,
     /// What the page could not show as the model has it, one line each,
     /// prefixed with a stable id (`render.invalid-xml-char: ...`).
+    /// Document layout warnings are repeated on every returned page; only
+    /// paint diagnostics such as invalid XML characters identify this page.
     pub warnings: Vec<String>,
 }
 
@@ -343,20 +379,24 @@ pub fn place_pages(
     options: &RenderOptions,
     media: Option<&dyn MediaSource>,
 ) -> Result<Vec<PlacedPage>> {
-    let provider = options.make_font_provider();
+    let _scope = options.control.as_ref().map(control::OpenControl::enter);
+    let provider = options.font_provider.make();
     let context = layout::LayoutContext {
         document,
         options,
         font: provider.as_ref(),
         media,
         media_mode: options.media,
+        font_programs: std::sync::Arc::new(font::embedded::FontPrograms::load(document, media)),
         note_numbers: notes::NoteNumbering::build(document),
         numbering: numbering::NumberingMarkers::build(document),
         block_depth: std::cell::Cell::new(0),
         warnings: std::cell::RefCell::new(Vec::new()),
         field_env: std::cell::Cell::new(None),
+        current_section: std::cell::Cell::new(0),
+        chapter_numbers: std::cell::RefCell::new(Vec::new()),
         render_items: std::cell::Cell::new(0),
-        frame_anchor: std::cell::Cell::new((0.0, 0.0, 0.0, 0.0, 0.0)),
+        frame_anchor: std::cell::Cell::new(layout::FrameAnchor::default()),
         frame_cursors: std::cell::RefCell::new(Vec::new()),
         frame_prior_exact: std::cell::Cell::new(None),
         frame_force_exact_grid: std::cell::Cell::new(false),
@@ -364,20 +404,8 @@ pub fn place_pages(
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };
-    let mut pages = layout::paginate::layout_document(&context)?.pages;
-    retain_font_assets(&mut pages, options);
-    if options.font_failure_policy == font::FontFailurePolicy::Reject {
-        for page in &pages {
-            font::inspect_page_fonts(
-                page,
-                options.font_failure_policy,
-                font::FontBackend::Placement,
-                options.font_report_limit,
-                options.font_diagnostics,
-            )?;
-        }
-    }
-    Ok(pages
+    Ok(layout::paginate::layout_document(&context)?
+        .pages
         .into_iter()
         .enumerate()
         .filter(|(index, _)| options.pages.contains(index + 1))
@@ -407,20 +435,24 @@ pub fn render_with_media(
     options: &RenderOptions,
     media: Option<&dyn MediaSource>,
 ) -> Result<Vec<Page>> {
-    let provider = options.make_font_provider();
+    let _scope = options.control.as_ref().map(control::OpenControl::enter);
+    let provider = options.font_provider.make();
     let context = layout::LayoutContext {
         document,
         options,
         font: provider.as_ref(),
         media,
         media_mode: options.media,
+        font_programs: std::sync::Arc::new(font::embedded::FontPrograms::load(document, media)),
         note_numbers: notes::NoteNumbering::build(document),
         numbering: numbering::NumberingMarkers::build(document),
         block_depth: std::cell::Cell::new(0),
         warnings: std::cell::RefCell::new(Vec::new()),
         field_env: std::cell::Cell::new(None),
+        current_section: std::cell::Cell::new(0),
+        chapter_numbers: std::cell::RefCell::new(Vec::new()),
         render_items: std::cell::Cell::new(0),
-        frame_anchor: std::cell::Cell::new((0.0, 0.0, 0.0, 0.0, 0.0)),
+        frame_anchor: std::cell::Cell::new(layout::FrameAnchor::default()),
         frame_cursors: std::cell::RefCell::new(Vec::new()),
         frame_prior_exact: std::cell::Cell::new(None),
         frame_force_exact_grid: std::cell::Cell::new(false),
@@ -428,49 +460,51 @@ pub fn render_with_media(
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };
-    let mut laid_out = layout::paginate::layout_document(&context)?;
-    retain_font_assets(&mut laid_out.pages, options);
+    let laid_out = layout::paginate::layout_document(&context)?;
     let layout_warnings = laid_out.warnings.clone();
 
-    let mut pages = Vec::new();
+    let mut pages: Vec<Page> = Vec::new();
+    let mut svg_bytes = 0usize;
+    control::stage(control::Stage::Painting, laid_out.pages.len() as u64);
     for (index, page) in laid_out.pages.iter().enumerate() {
+        control::checkpoint_now()?;
+        control::advance(index as u64);
         if !options.pages.contains(index + 1) {
             continue;
         }
-        let font_report = font::inspect_page_fonts(
-            page,
-            options.font_failure_policy,
-            font::FontBackend::Svg,
-            options.font_report_limit,
-            options.font_diagnostics,
-        )?;
-        let font_warnings = font_report.warnings();
+        let svg = paint::render_page(page, options.background);
+        if svg_bytes.saturating_add(svg.len()) > options.max_svg_bytes {
+            let warning = format!(
+                "render.output-limit: SVG payload exceeds {} bytes; remaining pages omitted",
+                options.max_svg_bytes
+            );
+            if pages.is_empty() {
+                return Err(RenderError::LimitExceeded {
+                    what: "SVG bytes",
+                    limit: options.max_svg_bytes as u64,
+                    actual: svg.len() as u64,
+                }
+                .into_strict());
+            }
+            for previous in &mut pages {
+                previous.warnings.push(warning.clone());
+            }
+            break;
+        }
+        svg_bytes += svg.len();
         pages.push(Page {
-            font_report,
             index,
             width_px: page.width_px,
             height_px: page.height_px,
-            svg: paint::render_page(page, options.background),
+            svg,
             warnings: paint::invalid_char_warning(page)
                 .into_iter()
                 .chain(layout_warnings.iter().cloned())
-                .chain(font_warnings)
                 .collect(),
         });
     }
+    control::advance(laid_out.pages.len() as u64);
     Ok(pages)
-}
-
-fn retain_font_assets(pages: &mut [PlacedPage], options: &RenderOptions) {
-    if let Some(assets) = &options.font_assets {
-        for page in pages {
-            for item in &mut page.items {
-                if let layout::Item::Text(text) = item {
-                    text.run.font_assets = Some(std::sync::Arc::clone(assets));
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]

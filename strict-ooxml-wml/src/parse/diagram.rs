@@ -99,6 +99,61 @@ fn is_drawingml(name: &QName) -> bool {
 }
 
 impl PartParser<'_> {
+    /// Reuses the DrawingML tree parser for a preserved locked canvas.
+    pub(crate) fn parse_locked_canvas_graphics(&mut self, markup: &str) -> Option<GroupShape> {
+        let limits = self.diagrams.limits;
+        let bytes = format!(
+            "<root xmlns:a=\"{}\" xmlns:lc=\"{}\" xmlns:pic=\"{}\" xmlns:r=\"{}\">{markup}</root>",
+            crate::DRAWINGML_STRICT_NS,
+            crate::LOCKED_CANVAS_STRICT_NS,
+            crate::PICTURE_STRICT_NS,
+            crate::RELS_STRICT_NS
+        )
+        .into_bytes();
+        let mut parser = match PartParser::new(self.package, self.part.clone(), bytes, &limits) {
+            Ok(parser) => parser,
+            Err(error) => {
+                self.record(
+                    "lc:lockedCanvas/render",
+                    SupportStatus::Partial,
+                    Some(error.to_string()),
+                    Some(self.location()),
+                );
+                return None;
+            }
+        };
+        let mut budget = ShapeBudget {
+            left: MAX_DIAGRAM_SHAPES,
+            dropped: 0,
+        };
+        let parsed = (|| {
+            parser.next_event()?;
+            parser.next_event()?;
+            parser.parse_dsp_group(&mut budget)
+        })();
+        self.support.merge(std::mem::take(&mut parser.support));
+        super::merge_media(&mut self.media, &parser.media);
+        if budget.dropped > 0 {
+            self.record(
+                "lc:lockedCanvas/render",
+                SupportStatus::Partial,
+                Some("canvas shape limit reached; remaining graphics omitted".to_owned()),
+                Some(self.location()),
+            );
+        }
+        match parsed {
+            Ok(group) => Some(group),
+            Err(error) => {
+                self.record(
+                    "lc:lockedCanvas/render",
+                    SupportStatus::Partial,
+                    Some(error.to_string()),
+                    Some(self.location()),
+                );
+                None
+            }
+        }
+    }
     /// The cached drawing of the diagram whose data part `data_rel` names, if
     /// it can be read.
     pub(crate) fn diagram_for(
@@ -260,17 +315,22 @@ impl PartParser<'_> {
         let location = self.location();
         self.nested(|parser| {
             let mut group = GroupShape {
+                nv_id: None,
                 name: None,
                 descr: None,
                 xfrm: None,
+                locks: None,
+                bw_mode: None,
                 children: Vec::new(),
                 location,
             };
             loop {
                 match parser.next_event()? {
-                    XmlEvent::StartElement { name, attrs } if is_dsp(&name) => {
+                    XmlEvent::StartElement { name, attrs }
+                        if is_dsp(&name) || is_drawingml(&name) =>
+                    {
                         match name.local() {
-                            "sp" if budget.take() => {
+                            "sp" | "cxnSp" if budget.take() => {
                                 group
                                     .children
                                     .push(Graphic::Shape(parser.parse_dsp_shape()?));
@@ -278,6 +338,11 @@ impl PartParser<'_> {
                             "grpSp" if budget.take() => {
                                 let child = parser.parse_dsp_group(budget)?;
                                 group.children.push(Graphic::Group(child));
+                            }
+                            "pic" if budget.take() => {
+                                group
+                                    .children
+                                    .push(Graphic::Picture(parser.parse_picture()?));
                             }
                             "nvGrpSpPr" => {
                                 let (_, group_name, descr) = parser.parse_dsp_non_visual()?;
@@ -294,6 +359,18 @@ impl PartParser<'_> {
                             }
                             _ => parser.skip_element()?,
                         }
+                    }
+                    XmlEvent::StartElement { name, .. }
+                        if name.local() == "pic"
+                            && name
+                                .ns
+                                .as_ref()
+                                .is_some_and(|ns| ns == crate::PICTURE_STRICT_NS)
+                            && budget.take() =>
+                    {
+                        group
+                            .children
+                            .push(Graphic::Picture(parser.parse_picture()?));
                     }
                     XmlEvent::StartElement { .. } => parser.skip_element()?,
                     XmlEvent::EndElement { .. } => break,
@@ -343,6 +420,9 @@ impl PartParser<'_> {
                 nv_id: None,
                 bw_mode: None,
                 tx_box: None,
+                sp_locks: None,
+                connector: false,
+                effects: None,
                 geometry: ShapeGeometry::None,
                 xfrm: None,
                 offset: None,
@@ -355,7 +435,9 @@ impl PartParser<'_> {
             };
             loop {
                 match parser.next_event()? {
-                    XmlEvent::StartElement { name, attrs } if is_dsp(&name) => {
+                    XmlEvent::StartElement { name, attrs }
+                        if is_dsp(&name) || is_drawingml(&name) =>
+                    {
                         parser.parse_dsp_shape_child(&mut shape, name.local(), &attrs)?;
                     }
                     XmlEvent::StartElement { .. } => parser.skip_element()?,
@@ -669,5 +751,6 @@ fn scheme_color(slot: &Arc<str>) -> ShapeColor {
             tint: None,
             shade: None,
         }),
+        markup: None,
     }
 }

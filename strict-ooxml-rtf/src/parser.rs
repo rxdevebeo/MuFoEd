@@ -454,7 +454,11 @@ fn is_field_instruction_formatting(name: &str) -> bool {
 fn field_char_marker(kind: FieldCharType, dirty: bool) -> Inline {
     Inline::Run(Run {
         props: RunProperties::default(),
-        content: vec![RunContent::FieldChar(FieldChar { kind, dirty })],
+        content: vec![RunContent::FieldChar(FieldChar {
+            kind,
+            dirty,
+            form_data: None,
+        })],
         revision: None,
         location: SourceLocation::unknown(),
     })
@@ -637,6 +641,7 @@ impl Parser<'_> {
         )?;
         if !self.numbering.insert_abstract(AbstractNum {
             id: AbstractNumId(id),
+            name: None,
             multi_level_type: Some(Arc::from("multilevel")),
             num_style_link: None,
             style_link: None,
@@ -891,6 +896,32 @@ impl Parser<'_> {
     }
     /// Returns the mutable edge slot a running border targets.
     fn border_slot(&mut self, target: BorderTarget) -> &mut Border {
+        // Cell diagonals (`\cldgll`/`\cldglu`) are `w:tcBorders` children that
+        // the shared model keeps beside `Borders` (`CellProperties`), not as
+        // `Borders` edges.
+        if matches!(target.scope, BorderScope::Cell) {
+            match target.side {
+                BorderSide::TopLeftToBottomRight => {
+                    return self
+                        .row
+                        .as_mut()
+                        .expect("cell border requires a row")
+                        .next_props
+                        .diagonal_down
+                        .get_or_insert_with(Border::default);
+                }
+                BorderSide::BottomLeftToTopRight => {
+                    return self
+                        .row
+                        .as_mut()
+                        .expect("cell border requires a row")
+                        .next_props
+                        .diagonal_up
+                        .get_or_insert_with(Border::default);
+                }
+                _ => {}
+            }
+        }
         let borders = match target.scope {
             BorderScope::Paragraph => &mut self.state.paragraph.borders,
             BorderScope::Cell => {
@@ -925,8 +956,9 @@ impl Parser<'_> {
             }
             BorderSide::Bar => borders.bar.get_or_insert_with(Border::default),
             BorderSide::Between => borders.between.get_or_insert_with(Border::default),
-            BorderSide::TopLeftToBottomRight => borders.tl2br.get_or_insert_with(Border::default),
-            BorderSide::BottomLeftToTopRight => borders.tr2bl.get_or_insert_with(Border::default),
+            BorderSide::TopLeftToBottomRight | BorderSide::BottomLeftToTopRight => {
+                unreachable!("cell diagonals are handled above")
+            }
         }
     }
     /// Removes the edge a running border targets (used by `\brdrtbl` inherit).
@@ -941,6 +973,27 @@ impl Parser<'_> {
                 }
             }
             return;
+        }
+        if matches!(target.scope, BorderScope::Cell) {
+            match target.side {
+                BorderSide::TopLeftToBottomRight => {
+                    self.row
+                        .as_mut()
+                        .expect("cell border requires a row")
+                        .next_props
+                        .diagonal_down = None;
+                    return;
+                }
+                BorderSide::BottomLeftToTopRight => {
+                    self.row
+                        .as_mut()
+                        .expect("cell border requires a row")
+                        .next_props
+                        .diagonal_up = None;
+                    return;
+                }
+                _ => {}
+            }
         }
         let borders = match target.scope {
             BorderScope::Paragraph => &mut self.state.paragraph.borders,
@@ -974,8 +1027,9 @@ impl Parser<'_> {
             BorderSide::InsideVertical => borders.inside_vertical = None,
             BorderSide::Bar => borders.bar = None,
             BorderSide::Between => borders.between = None,
-            BorderSide::TopLeftToBottomRight => borders.tl2br = None,
-            BorderSide::BottomLeftToTopRight => borders.tr2bl = None,
+            BorderSide::TopLeftToBottomRight | BorderSide::BottomLeftToTopRight => {
+                unreachable!("cell diagonals are handled above")
+            }
         }
     }
     /// Applies a border style/width/colour/space token to the running page edge.
@@ -1401,6 +1455,7 @@ impl Parser<'_> {
             id: draft.id,
             style_type: draft.kind,
             name: Some(Arc::from(draft.name.trim().trim_end_matches(';'))),
+            aliases: None,
             based_on: draft.parent,
             next: draft.next,
             link: draft.link,
@@ -3331,8 +3386,8 @@ impl Parser<'_> {
                     self.pending_note_marker = Some(span);
                 }
             }
-            "chftnsep" => self.content(RunContent::Separator, span.start)?,
-            "chftnsepc" => self.content(RunContent::ContinuationSeparator, span.start)?,
+            "chftnsep" => self.content(RunContent::NoteSeparator(false), span.start)?,
+            "chftnsepc" => self.content(RunContent::NoteSeparator(true), span.start)?,
             "tqc" => self.state.tab_alignment = TabAlignment::Center,
             "tqr" => self.state.tab_alignment = TabAlignment::End,
             "tqdec" => self.state.tab_alignment = TabAlignment::Decimal,
@@ -3942,9 +3997,10 @@ impl Parser<'_> {
                     reason: "row property outside row",
                 })?;
                 if name == "trhdr" {
-                    row.props.header = n != Some(0);
+                    row.props.header = toggle;
                 } else {
                     row.props.cant_split = n != Some(0);
+                    row.props.cant_split_state = toggle;
                 }
             }
             // `w:tblLook` conditional-formatting flags, repeated on every row.

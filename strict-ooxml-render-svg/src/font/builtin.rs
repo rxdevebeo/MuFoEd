@@ -35,8 +35,8 @@ struct FaceSpec {
     italic: bool,
     /// Whether the single face serves every `(bold, italic)` combination.
     ///
-    /// STIX Two Math ships one upright face only; the mathematical italic of
-    /// variables is a *slant* of the same outlines, so the same advances apply.
+    /// The original STIX face provides unchanged symbols for any style.
+    /// Derived Strict Math faces select actual styled alphabet outlines.
     single: bool,
     /// Variable-font `wght` value, when the face is a variable font instance.
     weight: Option<f32>,
@@ -216,6 +216,142 @@ const FACE_SPECS: &[FaceSpec] = &[
         weight: None,
         data: include_bytes!("../../assets/fonts/stix/STIXTwoMath-Regular.otf"),
     },
+    FaceSpec {
+        family: "Strict Math",
+        bold: false,
+        italic: false,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMath-Regular.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math",
+        bold: false,
+        italic: true,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMath-Italic.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math",
+        bold: true,
+        italic: false,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMath-Bold.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math",
+        bold: true,
+        italic: true,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMath-BoldItalic.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math Script",
+        bold: false,
+        italic: false,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMathScript-Regular.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math Script",
+        bold: false,
+        italic: true,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMathScript-Italic.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math Script",
+        bold: true,
+        italic: false,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMathScript-Bold.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math Script",
+        bold: true,
+        italic: true,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMathScript-BoldItalic.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math Fraktur",
+        bold: false,
+        italic: false,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMathFraktur-Regular.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math Fraktur",
+        bold: false,
+        italic: true,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMathFraktur-Italic.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math Fraktur",
+        bold: true,
+        italic: false,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMathFraktur-Bold.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math Fraktur",
+        bold: true,
+        italic: true,
+        single: false,
+        weight: None,
+        data: include_bytes!(
+            "../../assets/fonts/stix/strict-math/StrictMathFraktur-BoldItalic.otf"
+        ),
+    },
+    FaceSpec {
+        family: "Strict Math DoubleStruck",
+        bold: false,
+        italic: false,
+        single: false,
+        weight: None,
+        data: include_bytes!(
+            "../../assets/fonts/stix/strict-math/StrictMathDoubleStruck-Regular.otf"
+        ),
+    },
+    FaceSpec {
+        family: "Strict Math DoubleStruck",
+        bold: false,
+        italic: true,
+        single: false,
+        weight: None,
+        data: include_bytes!(
+            "../../assets/fonts/stix/strict-math/StrictMathDoubleStruck-Italic.otf"
+        ),
+    },
+    FaceSpec {
+        family: "Strict Math DoubleStruck",
+        bold: true,
+        italic: false,
+        single: false,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/stix/strict-math/StrictMathDoubleStruck-Bold.otf"),
+    },
+    FaceSpec {
+        family: "Strict Math DoubleStruck",
+        bold: true,
+        italic: true,
+        single: false,
+        weight: None,
+        data: include_bytes!(
+            "../../assets/fonts/stix/strict-math/StrictMathDoubleStruck-BoldItalic.otf"
+        ),
+    },
 ];
 
 /// The default, platform-independent font provider.
@@ -232,11 +368,11 @@ pub struct BuiltinFontProvider {
 /// advances is the one that gets embedded, which is what makes the PDF's text
 /// positions agree with the layout.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FaceSource {
+pub struct FaceSource<'a> {
     /// The bundled family name (the metric-compatible substitute).
-    pub family: &'static str,
+    pub family: &'a str,
     /// The raw font program.
-    pub data: &'static [u8],
+    pub data: &'a [u8],
     /// The `wght` instance to apply, when the face is a variable font.
     pub weight: Option<f32>,
     /// Whether one face serves every `(bold, italic)` combination.
@@ -248,7 +384,7 @@ pub struct FaceSource {
 /// `family` goes through [`map_family`], so `Calibri` yields the Carlito face —
 /// the same substitution the layout used, which is the point.
 #[must_use]
-pub fn face_source(family: &str, bold: bool, italic: bool) -> Option<FaceSource> {
+pub fn face_source(family: &str, bold: bool, italic: bool) -> Option<FaceSource<'static>> {
     let mapped = map_family(family);
     let exact = FACE_SPECS
         .iter()
@@ -332,6 +468,25 @@ impl BuiltinFontProvider {
                     .find(|entry| entry.family == family && entry.single)
             })
     }
+
+    /// Rightmost outline coordinate, in em, for one delivered SVG scalar.
+    pub(crate) fn ink_right_em(
+        &self,
+        family: &str,
+        ch: char,
+        bold: bool,
+        italic: bool,
+    ) -> Option<f64> {
+        let entry = self.face(map_family(family), bold, italic)?;
+        let glyph = entry.font.charmap().map(ch)?;
+        let glyphs = GlyphMetrics::new(
+            &entry.font,
+            Size::unscaled(),
+            LocationRef::new(&entry.location),
+        );
+        let bounds = glyphs.bounds(glyph)?;
+        Some(f64::from(bounds.x_max) / entry.units_per_em)
+    }
 }
 
 impl Default for BuiltinFontProvider {
@@ -341,6 +496,27 @@ impl Default for BuiltinFontProvider {
 }
 
 impl FontProvider for BuiltinFontProvider {
+    fn glyph_vertical_em(
+        &self,
+        family: &str,
+        ch: char,
+        bold: bool,
+        italic: bool,
+    ) -> Option<(f64, f64)> {
+        let entry = self.face(map_family(family), bold, italic)?;
+        let glyph = entry.font.charmap().map(ch)?;
+        let glyphs = GlyphMetrics::new(
+            &entry.font,
+            Size::unscaled(),
+            LocationRef::new(&entry.location),
+        );
+        let bounds = glyphs.bounds(glyph)?;
+        Some((
+            f64::from(bounds.y_max).max(0.0) / entry.units_per_em,
+            (-f64::from(bounds.y_min)).max(0.0) / entry.units_per_em,
+        ))
+    }
+
     fn metrics(&self, family: &str, bold: bool, italic: bool) -> FontMetrics {
         let Some(entry) = self.face(map_family(family), bold, italic) else {
             return FontMetrics {
@@ -403,8 +579,9 @@ pub fn family_scale(family: &str) -> f64 {
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
 mod tests {
-    use super::{family_scale, BuiltinFontProvider};
+    use super::{family_scale, BuiltinFontProvider, FontRef};
     use crate::font::FontProvider;
+    use skrifa::MetadataProvider;
 
     #[test]
     fn builtin_metrics_are_stable() {
@@ -431,9 +608,9 @@ mod tests {
                 "missing glyph {ch:?}"
             );
         }
-        // A single face serves every style: mathematical italic is a slant.
+        // True mathematical styles use separate cmap mappings, not faux slants.
         assert!(provider.advance_em("Cambria Math", 'x', true, true) > 0.0);
-        assert_eq!(
+        assert_ne!(
             provider.advance_em("Cambria Math", 'x', true, true),
             provider.advance_em("Cambria Math", 'x', false, false)
         );
@@ -475,5 +652,57 @@ mod tests {
         );
         // Unknown family falls back to the deterministic model.
         assert!(provider.advance_em("Totally Unknown", 'a', false, false) > 0.0);
+    }
+    #[test]
+    fn mathematical_scripts_select_original_script_outlines() {
+        let original = FontRef::new(include_bytes!(
+            "../../assets/fonts/stix/STIXTwoMath-Regular.otf"
+        ))
+        .expect("source font");
+        for (family, bold, plain, styled) in [
+            ("Strict Math Script", false, 'H', '\u{210B}'),
+            ("Strict Math Script", true, 'H', '\u{1D4D7}'),
+            ("Strict Math Fraktur", false, 'H', '\u{210C}'),
+            ("Strict Math Fraktur", true, 'H', '\u{1D573}'),
+            ("Strict Math DoubleStruck", false, 'R', '\u{211D}'),
+            ("Strict Math DoubleStruck", true, 'R', '\u{211D}'),
+        ] {
+            for italic in [false, true] {
+                let source = super::face_source(family, bold, italic).expect("script face");
+                let font = FontRef::new(source.data).expect("font");
+                assert_eq!(
+                    font.charmap().map(plain),
+                    original.charmap().map(styled),
+                    "{family}"
+                );
+                assert_eq!(font.charmap().map('+'), original.charmap().map('+'));
+                assert!(!source.single);
+            }
+        }
+    }
+    #[test]
+    fn mathematical_styles_use_the_original_alphabet_outlines() {
+        let original = FontRef::new(include_bytes!(
+            "../../assets/fonts/stix/STIXTwoMath-Regular.otf"
+        ))
+        .expect("source font");
+        for (bold, italic, styled_x) in [
+            (false, false, 'x'),
+            (false, true, '\u{1D465}'),
+            (true, false, '\u{1D431}'),
+            (true, true, '\u{1D499}'),
+        ] {
+            let source = super::face_source("Cambria Math", bold, italic).expect("style");
+            let styled = FontRef::new(source.data).expect("derived font");
+            assert_eq!(styled.charmap().map('x'), original.charmap().map(styled_x));
+            assert_eq!(styled.charmap().map('+'), original.charmap().map('+'));
+            assert!(!source.single, "each style has its own font program");
+        }
+        let source = super::face_source("Cambria Math", false, true).expect("italic");
+        let italic = FontRef::new(source.data).expect("font");
+        for (plain, styled) in [('h', '\u{210E}'), ('φ', '\u{1D711}'), ('ϕ', '\u{1D719}')] {
+            assert_eq!(italic.charmap().map(plain), original.charmap().map(styled));
+        }
+        assert_eq!(italic.charmap().map('3'), original.charmap().map('3'));
     }
 }

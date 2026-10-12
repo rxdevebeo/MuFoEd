@@ -254,6 +254,7 @@ fn picture_fixture() -> (
             dist_left: None,
             dist_right: None,
             doc_pr: Some(DocPr {
+                hidden: None,
                 id: Some(1),
                 name: Some("red pixel".into()),
                 descr: None,
@@ -275,6 +276,7 @@ fn picture_fixture() -> (
                 extent: Some(extent),
                 src_rect: None,
                 xfrm: None,
+                markup: strict_ooxml_wml::model::drawing::PictureMarkup::default(),
             })),
             location: location.clone(),
         }),

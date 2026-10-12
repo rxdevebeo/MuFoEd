@@ -71,6 +71,7 @@
 )]
 
 pub mod document;
+mod fills;
 pub mod font;
 pub mod image;
 pub mod matrix;

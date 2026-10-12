@@ -156,6 +156,26 @@ impl PartParser<'_> {
                                 props.bidi = parse_on_off_tristate(parser, &attrs, "w:bidi");
                                 parser.skip_element()?;
                             }
+                            "autoSpaceDE" => {
+                                props.auto_space_de =
+                                    parse_on_off_tristate(parser, &attrs, "w:autoSpaceDE");
+                                parser.skip_element()?;
+                            }
+                            "autoSpaceDN" => {
+                                props.auto_space_dn =
+                                    parse_on_off_tristate(parser, &attrs, "w:autoSpaceDN");
+                                parser.skip_element()?;
+                            }
+                            "adjustRightInd" => {
+                                props.adjust_right_ind =
+                                    parse_on_off_tristate(parser, &attrs, "w:adjustRightInd");
+                                parser.skip_element()?;
+                            }
+                            "suppressOverlap" => {
+                                props.suppress_overlap =
+                                    parse_on_off_tristate(parser, &attrs, "w:suppressOverlap");
+                                parser.skip_element()?;
+                            }
                             "pBdr" => props.borders = parser.parse_borders()?,
                             "shd" => {
                                 props.shading = Some(parser.parse_shading(&attrs));
@@ -185,7 +205,7 @@ impl PartParser<'_> {
                                 props.text_direction = parser.val_enum(
                                     &attrs,
                                     "w:textDirection",
-                                    TextDirection::from_strict,
+                                    TextDirection::from_ooxml,
                                 );
                                 parser.skip_element()?;
                             }
@@ -206,7 +226,7 @@ impl PartParser<'_> {
                                 parser.record(
                                     "w:framePr",
                                     SupportStatus::Partial,
-                                    Some("text frame kept in flow".to_owned()),
+                                    Some("text frame positioning retained for layout".to_owned()),
                                     Some(parser.location()),
                                 );
                                 parser.skip_element()?;
@@ -372,6 +392,14 @@ impl PartParser<'_> {
                                     parse_on_off_tristate(parser, &attrs, "w:smallCaps");
                             }
                             "rtl" => props.rtl = parse_on_off_tristate(parser, &attrs, "w:rtl"),
+                            "cs" => {
+                                props.complex_script =
+                                    parse_on_off_tristate(parser, &attrs, "w:cs");
+                            }
+                            "specVanish" => {
+                                props.spec_vanish =
+                                    parse_on_off_tristate(parser, &attrs, "w:specVanish");
+                            }
                             "vanish" => {
                                 props.vanish = parse_on_off_tristate(parser, &attrs, "w:vanish");
                             }
@@ -396,16 +424,11 @@ impl PartParser<'_> {
                             }
                             "shd" => props.shading = Some(parser.parse_shading(&attrs)),
                             "bdr" => {
-                                // `w:rPr/w:bdr` is one `CT_Border` (attributes, no
-                                // children). Keep it on the `top` edge slot, the
-                                // slot the writer reads back.
-                                props.borders.top = Some(parser.parse_border_edge(&attrs));
-                                parser.record(
-                                    "w:bdr",
-                                    SupportStatus::Supported,
-                                    None,
-                                    Some(parser.location()),
-                                );
+                                let border = parser.parse_border_edge(&attrs);
+                                props.borders.top = Some(border.clone());
+                                props.borders.bottom = Some(border.clone());
+                                props.borders.start = Some(border.clone());
+                                props.borders.end = Some(border);
                             }
                             "ins" | "del" => {
                                 let kind = if name.local() == "ins" {
@@ -442,10 +465,16 @@ impl PartParser<'_> {
                                 }
                             }
                             "rPrChange" => {
+                                // The previous properties inside it can carry the
+                                // mark's own w:ins/w:del; they leave with it.
                                 parser.record(
                                     "w:rPrChange",
                                     SupportStatus::Partial,
-                                    Some("property change history dropped".to_owned()),
+                                    Some(
+                                        "property change history dropped, with the w:ins/w:del \
+                                         marks its previous properties record"
+                                            .to_owned(),
+                                    ),
                                     Some(parser.location()),
                                 );
                             }
@@ -505,8 +534,28 @@ impl PartParser<'_> {
         }
     }
 
-    /// Parses a border-collection element (`w:pBdr`, `w:tblBorders`, `w:tcBorders`).
+    /// Parses a border-collection element (`w:pBdr`, `w:tblBorders`).
     fn parse_borders(&mut self) -> Result<Borders> {
+        self.parse_border_container(None)
+    }
+
+    /// Parses `w:tcBorders`: the edges, and the two diagonals `CT_TcBorders`
+    /// adds (`w:tl2br`, `w:tr2bl`) into `diagonals`. A container holding only a
+    /// diagonal used to come back empty, and the writer then dropped the whole
+    /// `w:tcBorders`.
+    fn parse_cell_borders(
+        &mut self,
+        diagonals: &mut (Option<Border>, Option<Border>),
+    ) -> Result<Borders> {
+        self.parse_border_container(Some(diagonals))
+    }
+
+    /// The shared body of [`Self::parse_borders`] and
+    /// [`Self::parse_cell_borders`]; `diagonals` is `Some` only for a cell.
+    fn parse_border_container(
+        &mut self,
+        mut diagonals: Option<&mut (Option<Border>, Option<Border>)>,
+    ) -> Result<Borders> {
         self.nested(|parser| {
             let mut borders = Borders::default();
             loop {
@@ -514,17 +563,17 @@ impl PartParser<'_> {
                     XmlEvent::StartElement { name, attrs } => {
                         if is_wml(&name) {
                             let border = parser.parse_border_edge(&attrs);
-                            match name.local() {
-                                "top" => borders.top = Some(border),
-                                "bottom" => borders.bottom = Some(border),
-                                "start" | "left" => borders.start = Some(border),
-                                "end" | "right" => borders.end = Some(border),
-                                "insideH" => borders.inside_horizontal = Some(border),
-                                "insideV" => borders.inside_vertical = Some(border),
-                                "tl2br" => borders.tl2br = Some(border),
-                                "tr2bl" => borders.tr2bl = Some(border),
-                                "between" => borders.between = Some(border),
-                                "bar" => borders.bar = Some(border),
+                            match (name.local(), diagonals.as_deref_mut()) {
+                                ("tl2br", Some(diagonals)) => diagonals.0 = Some(border),
+                                ("tr2bl", Some(diagonals)) => diagonals.1 = Some(border),
+                                ("top", _) => borders.top = Some(border),
+                                ("bottom", _) => borders.bottom = Some(border),
+                                ("start" | "left", _) => borders.start = Some(border),
+                                ("end" | "right", _) => borders.end = Some(border),
+                                ("insideH", _) => borders.inside_horizontal = Some(border),
+                                ("insideV", _) => borders.inside_vertical = Some(border),
+                                ("between", _) => borders.between = Some(border),
+                                ("bar", _) => borders.bar = Some(border),
                                 _ => {
                                     record_unmodelled_property(parser, &name)?;
                                     continue;
@@ -656,6 +705,7 @@ impl PartParser<'_> {
     }
 
     /// Parses the children of a `w:tblPr`.
+    #[allow(clippy::too_many_lines)] // flat dispatch over the CT_TblPr children
     pub(crate) fn parse_table_properties(&mut self) -> Result<TableProperties> {
         let location = self.location();
         self.nested(|parser| {
@@ -706,16 +756,33 @@ impl PartParser<'_> {
                                 props.indent = parser
                                     .measure_or_percent(&attrs, "w", "w:tblInd")
                                     .map(Twips);
+                                props.indent_kind =
+                                    wml_attr(&attrs, "type").and_then(WidthKind::from_strict);
                             }
                             "bidiVisual" => {
                                 props.bidi_visual = parse_on_off(&attrs).unwrap_or(false);
+                                props.bidi_visual_state = if props.bidi_visual {
+                                    crate::model::values::TriState::On
+                                } else {
+                                    crate::model::values::TriState::Off
+                                };
+                            }
+                            "tblOverlap" => {
+                                props.allow_overlap =
+                                    wml_attr(&attrs, "val").and_then(|value| match value {
+                                        "never" => Some(false),
+                                        "overlap" => Some(true),
+                                        _ => None,
+                                    });
                             }
                             "tblpPr" => {
                                 props.positioning = Some(Self::parse_tblp_pr(&attrs, parser));
                                 parser.record(
                                     "w:tblpPr",
                                     SupportStatus::Partial,
-                                    Some("floating table kept in flow".to_owned()),
+                                    Some(
+                                        "floating table positioning retained for layout".to_owned(),
+                                    ),
                                     Some(parser.location()),
                                 );
                             }
@@ -764,8 +831,8 @@ impl PartParser<'_> {
                         match name.local() {
                             "trHeight" => props.height = Some(parser.parse_row_height(&attrs)),
                             "tblHeader" => {
-                                props.header = parse_on_off(&attrs).unwrap_or(false);
-                                if props.header {
+                                props.header = parse_on_off_tristate(parser, &attrs, "w:tblHeader");
+                                if props.header.is_on() {
                                     parser.record(
                                         "w:tblHeader",
                                         SupportStatus::Supported,
@@ -774,7 +841,14 @@ impl PartParser<'_> {
                                     );
                                 }
                             }
-                            "cantSplit" => props.cant_split = parse_on_off(&attrs).unwrap_or(false),
+                            "cantSplit" => {
+                                props.cant_split = parse_on_off(&attrs).unwrap_or(false);
+                                props.cant_split_state = if props.cant_split {
+                                    crate::model::values::TriState::On
+                                } else {
+                                    crate::model::values::TriState::Off
+                                };
+                            }
                             "tblCellMar" => {
                                 props.cell_margins = parser.parse_cell_margins()?;
                                 continue;
@@ -819,6 +893,7 @@ impl PartParser<'_> {
     }
 
     /// Parses `w:tcPr`.
+    #[allow(clippy::too_many_lines)] // flat dispatch over the CT_TcPr children
     pub(crate) fn parse_cell_properties(&mut self) -> Result<CellProperties> {
         let location = self.location();
         self.nested(|parser| {
@@ -868,11 +943,13 @@ impl PartParser<'_> {
                                 props.text_direction = parser.val_enum(
                                     &attrs,
                                     "w:textDirection",
-                                    TextDirection::from_strict,
+                                    TextDirection::from_ooxml,
                                 );
                             }
                             "tcBorders" => {
-                                props.borders = parser.parse_borders()?;
+                                let mut diagonals = (None, None);
+                                props.borders = parser.parse_cell_borders(&mut diagonals)?;
+                                (props.diagonal_down, props.diagonal_up) = diagonals;
                                 continue;
                             }
                             "shd" => props.shading = Some(parser.parse_shading(&attrs)),
@@ -880,9 +957,30 @@ impl PartParser<'_> {
                                 props.margins = parser.parse_cell_margins()?;
                                 continue;
                             }
-                            "hideMark" => props.hide_mark = parse_on_off(&attrs).unwrap_or(false),
-                            "tcFitText" => props.fit_text = parse_on_off(&attrs).unwrap_or(false),
-                            "noWrap" => props.no_wrap = parse_on_off(&attrs).unwrap_or(false),
+                            "hideMark" => {
+                                props.hide_mark = parse_on_off(&attrs).unwrap_or(false);
+                                props.hide_mark_state = if props.hide_mark {
+                                    crate::model::values::TriState::On
+                                } else {
+                                    crate::model::values::TriState::Off
+                                };
+                            }
+                            "tcFitText" => {
+                                props.fit_text = parse_on_off(&attrs).unwrap_or(false);
+                                props.fit_text_state = if props.fit_text {
+                                    crate::model::values::TriState::On
+                                } else {
+                                    crate::model::values::TriState::Off
+                                };
+                            }
+                            "noWrap" => {
+                                props.no_wrap = parse_on_off(&attrs).unwrap_or(false);
+                                props.no_wrap_state = if props.no_wrap {
+                                    crate::model::values::TriState::On
+                                } else {
+                                    crate::model::values::TriState::Off
+                                };
+                            }
                             "tcPrChange" => {
                                 record_property_change(parser, "w:tcPrChange")?;
                                 continue;
@@ -1093,11 +1191,15 @@ impl PartParser<'_> {
                                         "linePitch",
                                         "w:docGrid",
                                     ),
-                                    character_space: parser.measure_i32(
-                                        &attrs,
-                                        "charSpace",
-                                        "w:docGrid",
-                                    ),
+                                    // Word writes a negative pitch as its unsigned
+                                    // 32-bit pattern (`4294961151` is -6145).
+                                    character_space: wml_attr(&attrs, "charSpace")
+                                        .and_then(|value| value.trim().parse::<u32>().ok())
+                                        .filter(|value| i32::try_from(*value).is_err())
+                                        .map(u32::cast_signed)
+                                        .or_else(|| {
+                                            parser.measure_i32(&attrs, "charSpace", "w:docGrid")
+                                        }),
                                 });
                             }
                             "vAlign" => {
@@ -1117,7 +1219,7 @@ impl PartParser<'_> {
                                 props.text_direction = parser.val_enum(
                                     &attrs,
                                     "w:textDirection",
-                                    TextDirection::from_strict,
+                                    TextDirection::from_ooxml,
                                 );
                             }
                             "lnNumType" => {
@@ -1213,6 +1315,7 @@ impl PartParser<'_> {
             theme_color: theme_color_ref(self, attrs, "themeColor", "themeTint", "themeShade")
                 .map(Box::new),
             shadow: attr_on(attrs, "shadow"),
+            frame: attr_on(attrs, "frame"),
         }
     }
 
@@ -1235,14 +1338,12 @@ impl PartParser<'_> {
     /// Parses `w:cols`.
     fn parse_columns(&mut self, attrs: &[Attr]) -> Result<Columns> {
         self.nested(|parser| {
-            let equal_width = match wml_attr(attrs, "equalWidth") {
-                None => true,
-                Some(value) => matches!(value, "true" | "on" | "1"),
-            };
+            let equal_width =
+                wml_attr(attrs, "equalWidth").map(|value| matches!(value, "true" | "on" | "1"));
             let mut columns = Columns {
                 count: parser.measure_u16(attrs, "num", "w:cols"),
                 space: parser.measure_twips(attrs, "space", "w:cols"),
-                equal_width,
+                equal_width: equal_width.unwrap_or(true),
                 separator: attr_on(attrs, "sep"),
                 columns: Vec::new(),
             };
@@ -1261,6 +1362,14 @@ impl PartParser<'_> {
                     XmlEvent::Text(_) | XmlEvent::CData(_) => {}
                     XmlEvent::Eof => return Err(parser.invalid("unexpected end of columns")),
                 }
+            }
+            // ISO/IEC 29500-1 §17.6.4: without `equalWidth` the columns are the
+            // `w:col` children ("num ... is ignored ... if equalWidth is not
+            // set"). Word writes equal columns as `num`/`space` with neither the
+            // attribute nor children, so equal widths remain the reading when
+            // there is no `w:col` to follow.
+            if equal_width.is_none() {
+                columns.equal_width = columns.columns.is_empty();
             }
             Ok(columns)
         })
@@ -1323,8 +1432,11 @@ impl PartParser<'_> {
             y: parser.measure_i32(attrs, "y", "w:framePr"),
             y_align: wml_attr(attrs, "yAlign").map(|value| parser.intern(value)),
             height_rule: wml_attr(attrs, "hRule").map(|value| parser.intern(value)),
-            anchor_lock: wml_attr(attrs, "anchorLock")
-                .is_some_and(|value| matches!(value, "true" | "on" | "1")),
+            anchor_lock: wml_attr(attrs, "anchorLock").and_then(|value| match value {
+                "true" | "on" | "1" => Some(true),
+                "false" | "off" | "0" => Some(false),
+                _ => None,
+            }),
         }
     }
 

@@ -351,6 +351,19 @@ def test_one_of_two_same_nodes_is_visible() -> None:
             raise SystemExit(f"one of two w:p was hidden: {rows}")
 
 
+def test_chart_whole_percents_are_one_value() -> None:
+    same = census_gate._same_attr_value
+    if not same("val", "150", "150%", element="gapWidth", namespace="c"):
+        raise SystemExit("c:gapWidth 150 and 150% are one amount")
+    if not same("val", "-100", "-100%", element="overlap", namespace="c"):
+        raise SystemExit("c:overlap -100 and -100% are one amount")
+    # Not thousandths: 100 is 100%, so 100000% is a different label offset.
+    if same("val", "100", "0.1%", element="lblOffset", namespace="c"):
+        raise SystemExit("c:lblOffset must not use the DrawingML thousandths rule")
+    if same("val", "150", "160%", element="gapWidth", namespace="c"):
+        raise SystemExit("a different gap must stay visible")
+
+
 def test_attribute_value_and_resource_bytes() -> None:
     config = xsd_gate.load_config()
     oracle = xsd_gate.Oracle(xsd_gate.locate_schemas(config))
@@ -592,6 +605,15 @@ def test_process_choice_inventory_does_not_count_fallback() -> None:
 
 
 def main() -> int:
+    test_p15_duplicate_proof_state_is_one()
+    test_p15_document_protection_needs_its_citation()
+    test_p15_bare_on_off_counts()
+    test_p15_unsigned_char_space_is_the_signed_pitch()
+    test_p15_extension_names_match_whole()
+    test_p15_extension_ext_is_stripped_alone()
+    test_p15_empty_border_container_is_nothing()
+    test_vml_group_members_are_one_drawing()
+    test_word_art_is_its_string()
     test_namespace_identity_cannot_hide_a_change()
     test_relationship_rename_requires_identical_resource_and_type()
     test_twip_and_point_are_one_measure()
@@ -604,6 +626,7 @@ def main() -> int:
     test_p10_resource_identity()
     test_p11_graphic_uri_pair()
     test_p12_header_digest_keeps_text()
+    test_p12_header_digest_ignores_the_strict_spellings()
     test_p12_foreign_footnote_id_is_not_waived()
     test_p13_ignorable_is_narrow()
     test_p14_alias_is_not_a_docpart_waiver()
@@ -613,6 +636,7 @@ def main() -> int:
     test_vanished_emits_qualified_context()
     test_one_of_two_same_nodes_is_visible()
     test_attribute_value_and_resource_bytes()
+    test_chart_whole_percents_are_one_value()
     test_xsd_negative_control_still_fails()
     test_unnamed_element_loss_fails_as_ours()
     test_process_choice_inventory_does_not_count_fallback()
@@ -648,6 +672,89 @@ def test_p12_header_digest_keeps_text() -> None:
     ).encode()
     if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(changed):
         raise SystemExit("a changed header paragraph matched")
+
+
+def test_p12_header_digest_ignores_the_strict_spellings() -> None:
+    """The writer's Strict spellings of one header are the same part."""
+    transitional = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    strict = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+    source = (
+        f'<w:hdr xmlns:w="{transitional}"><w:p><w:pPr><w:jc w:val="right"/>'
+        f'<w:ind w:left="120" w:firstLine="0"/></w:pPr><w:r><w:rPr><w:b w:val="0"/></w:rPr>'
+        f"<w:t>Page</w:t></w:r><w:r><w:rPr/><w:t>1</w:t></w:r></w:p></w:hdr>"
+    ).encode()
+    written = (
+        f'<w:hdr xmlns:w="{strict}"><w:p><w:pPr><w:jc w:val="end"/>'
+        f'<w:ind w:start="6pt" w:firstLine="0pt"/></w:pPr><w:r><w:rPr><w:b w:val="false"/></w:rPr>'
+        f'<w:t xml:space="preserve">Page</w:t></w:r><w:r><w:t>1</w:t></w:r></w:p></w:hdr>'
+    ).encode()
+    if census_gate._semantic_part_digest(source) != census_gate._semantic_part_digest(written):
+        raise SystemExit("the Strict spelling of a header was a different part")
+    table_source = (
+        f'<w:hdr xmlns:w="{transitional}"><w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/>'
+        f'<w:tblLook w:val="04A0"/></w:tblPr></w:tbl><w:p><w:proofErr w:type="gramStart"/>'
+        f'<w:pPr><w:pBdr><w:between w:val="nil"/><w:left w:val="single"/></w:pBdr></w:pPr></w:p></w:hdr>'
+    ).encode()
+    table_written = (
+        f'<w:hdr xmlns:w="{strict}"><w:tbl><w:tblPr><w:tblW w:w="100%" w:type="pct"/>'
+        f'<w:tblLook w:firstRow="true" w:lastRow="false" w:firstColumn="1" w:lastColumn="0" '
+        f'w:noHBand="0" w:noVBand="1"/></w:tblPr></w:tbl><w:p>'
+        f'<w:pPr><w:pBdr><w:start w:val="single"/></w:pBdr></w:pPr></w:p></w:hdr>'
+    ).encode()
+    if census_gate._semantic_part_digest(table_source) != census_gate._semantic_part_digest(
+        table_written
+    ):
+        raise SystemExit("tblLook/pct width/nil border/proofErr spellings were a different part")
+    banded = table_written.replace(b'w:noHBand="0"', b'w:noHBand="1"')
+    if census_gate._semantic_part_digest(table_source) == census_gate._semantic_part_digest(banded):
+        raise SystemExit("a different table look matched")
+    vml = (
+        f'<w:hdr xmlns:w="{transitional}" xmlns:v="urn:schemas-microsoft-com:vml"><w:p><w:r><w:pict>'
+        f'<v:shape style="position:absolute"><v:textbox><w:txbxContent><w:p><w:r><w:t>Logo</w:t>'
+        f"</w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p></w:hdr>"
+    ).encode()
+    dml = (
+        f'<w:hdr xmlns:w="{strict}" xmlns:wp="http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing">'
+        f"<w:p><w:r><w:drawing><wp:anchor><wp:txbx><w:txbxContent><w:p><w:r><w:t>Logo</w:t></w:r></w:p>"
+        f"</w:txbxContent></wp:txbx></wp:anchor></w:drawing></w:r></w:p></w:hdr>"
+    ).encode()
+    if census_gate._semantic_part_digest(vml) != census_gate._semantic_part_digest(dml):
+        raise SystemExit("a VML text box converted to DrawingML was a different header")
+    if census_gate._semantic_part_digest(vml) == census_gate._semantic_part_digest(
+        dml.replace(b"Logo", b"Other")
+    ):
+        raise SystemExit("a text box with different text matched")
+    mce = (
+        f'<w:hdr xmlns:w="{transitional}" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+        f'<w:p><w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><w:txbxContent><w:p><w:r>'
+        f"<w:t>Logo</w:t></w:r></w:p></w:txbxContent></w:drawing></mc:Choice><mc:Fallback><w:pict>"
+        f"<w:txbxContent><w:p><w:r><w:t>Logo</w:t></w:r></w:p></w:txbxContent></w:pict></mc:Fallback>"
+        f"</mc:AlternateContent></w:r></w:p></w:hdr>"
+    ).encode()
+    if census_gate._semantic_part_digest(mce) != census_gate._semantic_part_digest(dml):
+        raise SystemExit("the chosen mc:Choice branch was a different header")
+    sym_source = (
+        f'<w:hdr xmlns:w="{transitional}"><w:p><w:r><w:sym w:font="Wingdings 2" w:char="F097"/>'
+        f'<w:sym w:font="Wingdings" w:char="f0a7"/></w:r></w:p></w:hdr>'
+    ).encode()
+    sym_written = (
+        f'<w:hdr xmlns:w="{strict}"><w:p><w:r><w:sym w:font="Wingdings 2" w:char="0097"/>'
+        f'<w:sym w:font="Wingdings" w:char="00A7"/></w:r></w:p></w:hdr>'
+    ).encode()
+    if census_gate._semantic_part_digest(sym_source) != census_gate._semantic_part_digest(
+        sym_written
+    ):
+        raise SystemExit("the remapped Symbol-font char was a different header")
+    if census_gate._semantic_part_digest(sym_source) == census_gate._semantic_part_digest(
+        sym_written.replace(b'"0097"', b'"0098"')
+    ):
+        raise SystemExit("a different sym char matched")
+    moved = written.replace(b'w:start="6pt"', b'w:start="7pt"')
+    if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(moved):
+        raise SystemExit("a different indent matched")
+    centred = written.replace(b'w:val="end"', b'w:val="center"')
+    if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(centred):
+        raise SystemExit("a different alignment matched")
 
 
 def test_p12_foreign_footnote_id_is_not_waived() -> None:
@@ -836,6 +943,138 @@ def test_p10_resource_identity() -> None:
             raise SystemExit(f"recompressed png was hidden: {rows}")
         if "resource:word/media/image#.gif" not in labels:
             raise SystemExit(f"dropped gif was hidden after recompress: {rows}")
+
+
+def test_p15_duplicate_proof_state_is_one() -> None:
+    """P15: a repeated identical `w:proofState` is one setting; a different one stays."""
+    root = etree.fromstring(
+        f"<w:settings xmlns:w='{WML_T}'>"
+        "<w:proofState w:spelling='clean' w:grammar='clean'/>"
+        "<w:proofState w:spelling='clean' w:grammar='clean'/>"
+        "<w:proofState w:spelling='dirty'/></w:settings>"
+    )
+    census_gate._drop_duplicate_singletons(root)
+    if len(root) != 2:
+        raise SystemExit("a repeated proofState was counted twice, or a different one dropped")
+
+
+def test_p15_bare_on_off_counts() -> None:
+    """P15: a bare `w:titlePg` is counted; one with a `val` or children is not."""
+    root = etree.fromstring(
+        f"<w:sectPr xmlns:w='{WML_T}'><w:titlePg/><w:titlePg w:val='0'/>"
+        "<w:pgSz w:w='1'/><w:cols><w:col/></w:cols></w:sectPr>"
+    )
+    bare = census_gate._bare_elements(root)
+    if bare[("titlePg", "sectPr", "w", "w")] != 1 or bare[("cols", "sectPr", "w", "w")]:
+        raise SystemExit(f"bare on/off elements miscounted: {dict(bare)}")
+
+
+def test_p15_unsigned_char_space_is_the_signed_pitch() -> None:
+    """P15: `4294961151` and `-6145` are one `w:docGrid@charSpace`."""
+    if not census_gate._same_attr_value("charSpace", "4294961151", "-6145", "docGrid"):
+        raise SystemExit("the unsigned charSpace pattern was a different pitch")
+    if census_gate._same_attr_value("charSpace", "4294961151", "-6144", "docGrid"):
+        raise SystemExit("a different charSpace matched")
+
+
+def test_p15_extension_names_match_whole() -> None:
+    """P15: TZ-13 counts w14 `shadow`, not the a14 `shadowObscured` an extLst keeps."""
+    registry = census_gate.load_census()
+    signals = {
+        name: []
+        for name in ("message", "element", "dropped", "unaccounted", "lossy", "picture", "mce")
+    }
+    signals["extension"] = [("shadowObscured", "shadowObscured", ""), ("shadow", "shadow", "")]
+    hits = census_gate.census_hits(registry, signals)
+    if hits["counts"]["TZ-13"] != 1:
+        raise SystemExit(f"TZ-13 counted {hits['counts']['TZ-13']} extension nodes, not 1")
+
+
+def test_p15_extension_ext_is_stripped_alone() -> None:
+    """P15: an a14 `a:ext` and its emptied list go; a Strict-only one stays."""
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    root = etree.fromstring(
+        f"<a:blip xmlns:a='{a}' xmlns:a14='http://schemas.microsoft.com/office/drawing/2010/main'>"
+        "<a:lum bright='1'/><a:extLst><a:ext uri='{28A0092B-C50C-407E-A947-70E740481C1C}'>"
+        "<a14:useLocalDpi val='0'/></a:ext></a:extLst></a:blip>"
+    )
+    census_gate._strip_extension_ext(root)
+    if [etree.QName(child).localname for child in root] != ["lum"]:
+        raise SystemExit("the a14 extension or its empty list survived")
+    kept = etree.fromstring(
+        f"<a:blip xmlns:a='{a}'><a:extLst><a:ext uri='x'><a:lum bright='1'/></a:ext>"
+        "</a:extLst></a:blip>"
+    )
+    census_gate._strip_extension_ext(kept)
+    if len(kept) != 1:
+        raise SystemExit("an extension with only DrawingML content was stripped")
+
+
+def test_p15_empty_border_container_is_nothing() -> None:
+    """P15: an empty `w:tcBorders` goes; one with an edge stays."""
+    root = etree.fromstring(
+        f"<w:tc xmlns:w='{WML_T}'><w:tcPr><w:tcBorders></w:tcBorders></w:tcPr>"
+        "<w:tcPr><w:tcBorders><w:top w:val='single'/></w:tcBorders></w:tcPr></w:tc>"
+    )
+    census_gate._drop_empty_containers(root)
+    if [len(tc_pr) for tc_pr in root] != [0, 1]:
+        raise SystemExit("an empty tcBorders was counted, or a bordered one dropped")
+
+
+def test_vml_group_members_are_one_drawing() -> None:
+    """A VML group written as several `w:drawing` in one run is one header drawing."""
+    transitional = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    strict = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+    source = (
+        f"<w:ftr xmlns:w='{transitional}'><w:p><w:r><w:pict/></w:r></w:p></w:ftr>"
+    ).encode()
+    written = (
+        f"<w:ftr xmlns:w='{strict}'><w:p><w:r><w:drawing/><w:drawing/></w:r></w:p></w:ftr>"
+    ).encode()
+    if census_gate._semantic_part_digest(source) != census_gate._semantic_part_digest(written):
+        raise SystemExit("a group's members counted as several drawings")
+
+
+def test_word_art_is_its_string() -> None:
+    """A WordArt `v:textpath` and the text box T7 makes of it are one header."""
+    transitional = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    strict = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+    source = (
+        f"<w:hdr xmlns:w='{transitional}' xmlns:v='urn:schemas-microsoft-com:vml'><w:p><w:r>"
+        "<w:pict><v:shape><v:textpath string='DRAFT'/></v:shape></w:pict></w:r></w:p></w:hdr>"
+    ).encode()
+    written = (
+        f"<w:hdr xmlns:w='{strict}'><w:p><w:r><w:drawing><w:txbxContent><w:p><w:pPr><w:jc w:val='center'/>"
+        "</w:pPr><w:r><w:t>DRAFT</w:t></w:r></w:p></w:txbxContent></w:drawing></w:r></w:p></w:hdr>"
+    ).encode()
+    if census_gate._semantic_part_digest(source) != census_gate._semantic_part_digest(written):
+        raise SystemExit("a WordArt watermark written as a text box was a different header")
+    if census_gate._semantic_part_digest(source) == census_gate._semantic_part_digest(
+        written.replace(b"DRAFT", b"OTHER")
+    ):
+        raise SystemExit("a different watermark string matched")
+
+
+def test_p15_document_protection_needs_its_citation() -> None:
+    """P15: the Strict protection mapping is accepted only when the writer cites it."""
+    registry = {entry["id"]: entry for entry in census_gate.load_census()}
+    where = "a.docx: word/settings.xml"
+    cited = (
+        "parent=settings|namespace=w|parent_namespace=w|attribute_namespace=w"
+        "|attr=hash|was=x|removed=1|named=1|cited=w:documentProtection"
+    )
+    if not census_gate.element_item_matches(
+        registry["TZ-52"], where, "w:documentProtection@hash", cited
+    ):
+        raise SystemExit("TZ-52 must accept a cited hash rename")
+    if census_gate.element_item_matches(
+        registry["TZ-52"], where, "w:documentProtection@hash", cited.replace("w:documentProtection", "")
+    ):
+        raise SystemExit("TZ-52 must not accept a silent hash drop")
+    if census_gate.element_item_matches(
+        registry["TZ-53"], where, "w:documentProtection@enforcement", cited
+    ):
+        raise SystemExit("TZ-53 must not swallow enforcement")
 
 
 def test_p9_hint_cs_and_duplicate_rfonts() -> None:

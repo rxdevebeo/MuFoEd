@@ -380,7 +380,9 @@ fn region(command: &Edit) -> (usize, usize) {
     }
     match command {
         Edit::Insert { .. } => (at.block, at.block),
-        Edit::Join { .. } => (at.block, at.block.saturating_add(2)),
+        Edit::Join { .. } | Edit::AcceptRevisions { .. } | Edit::RejectRevisions { .. } => {
+            (at.block, at.block.saturating_add(2))
+        }
         _ => (at.block, at.block.saturating_add(1)),
     }
 }

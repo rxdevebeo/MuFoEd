@@ -316,7 +316,12 @@ impl PdfFont {
     /// Splits a PDF string into its character codes.
     #[must_use]
     pub fn codes(&self, bytes: &[u8]) -> Vec<u32> {
-        let mut out = Vec::with_capacity(bytes.len() / if self.two_byte { 2 } else { 1 });
+        let capacity = if self.two_byte {
+            bytes.len() / 2
+        } else {
+            bytes.len()
+        };
+        let mut out = Vec::with_capacity(capacity);
         if self.two_byte {
             // `as_chunks` rather than `chunks_exact(2)`: same semantics (a
             // trailing odd byte is ignored) and it says the chunk size once.
@@ -380,7 +385,7 @@ impl PdfFont {
     /// The codes this reader can turn into characters, for diagnostics.
     #[must_use]
     pub fn mapped_codes(&self) -> usize {
-        self.to_unicode.len() + self.differences.len()
+        self.to_unicode.len().saturating_add(self.differences.len())
     }
 }
 
@@ -457,7 +462,7 @@ fn read_encoding(
                                 let name = String::from_utf8_lossy(name).into_owned();
                                 differences.insert(byte, name);
                             }
-                            code += 1;
+                            code = code.saturating_add(1);
                         }
                         _ => {}
                     }
@@ -503,18 +508,18 @@ fn read_cid_widths(
         return;
     };
     let items = array_items(w, resolve);
-    let mut index = 0;
+    let mut index = 0usize;
     while index < items.len() {
         let Some(first) = items.get(index).and_then(|item| number_of(item, resolve)) else {
             break;
         };
         let Some(second) = items
-            .get(index + 1)
+            .get(index.saturating_add(1))
             .and_then(|item| number_of(item, resolve))
         else {
             break;
         };
-        match items.get(index + 2) {
+        match items.get(index.saturating_add(2)) {
             Some(array @ Object::Array(_)) => {
                 for (offset, width) in array_items(array, resolve).into_iter().enumerate() {
                     if let Some(width) = number_of(&width, resolve) {
@@ -524,7 +529,7 @@ fn read_cid_widths(
                         );
                     }
                 }
-                index += 3;
+                index = index.saturating_add(3);
             }
             Some(item) => {
                 let Some(width) = number_of(item, resolve) else {
@@ -540,7 +545,7 @@ fn read_cid_widths(
                         "pdf.font.widths-reversed".to_owned(),
                         format!("a /W group runs from {first} down to {second}"),
                     ));
-                    index += 3;
+                    index = index.saturating_add(3);
                     continue;
                 }
                 // The run is bounded by the glyph budget, and a group that does
@@ -550,19 +555,19 @@ fn read_cid_widths(
                 // font (AUD-12).
                 let wanted = second.saturating_sub(first).saturating_add(1) as usize;
                 let wanted = wanted.min(limits.max_font_glyphs.saturating_sub(out.len()).max(1));
-                if (second - first) as usize + 1 > wanted {
+                let run = (second.saturating_sub(first) as usize).saturating_add(1);
+                if run > wanted {
                     notes.push((
                         "pdf.font.widths-truncated".to_owned(),
                         format!(
-                            "a /W group of {} glyphs was cut to {wanted} by the glyph budget",
-                            (second - first) as usize + 1
+                            "a /W group of {run} glyphs was cut to {wanted} by the glyph budget"
                         ),
                     ));
                 }
                 for code in first..=first.saturating_add((wanted as u32).saturating_sub(1)) {
                     out.insert(code, width);
                 }
-                index += 3;
+                index = index.saturating_add(3);
             }
             None => break,
         }
@@ -592,12 +597,12 @@ fn read_to_unicode(
     // is for a caller to read.
     let mut reported_invalid = false;
     while let Some(found) = text.get(cursor..).and_then(|rest| rest.find("begin")) {
-        let tag_start = cursor + found + "begin".len();
+        let tag_start = cursor.saturating_add(found).saturating_add("begin".len());
         let after_begin = text.get(tag_start..).unwrap_or_default();
         let (tag, section_start) = if after_begin.starts_with("bfchar") {
-            ("bfchar", tag_start + "bfchar".len())
+            ("bfchar", tag_start.saturating_add("bfchar".len()))
         } else if after_begin.starts_with("bfrange") {
-            ("bfrange", tag_start + "bfrange".len())
+            ("bfrange", tag_start.saturating_add("bfrange".len()))
         } else {
             cursor = tag_start;
             continue;
@@ -607,7 +612,8 @@ fn read_to_unicode(
         let Some(offset) = text.get(section_start..).and_then(|rest| rest.find("end")) else {
             break;
         };
-        let Some(body) = text.get(section_start..section_start + offset) else {
+        let section_end = section_start.saturating_add(offset);
+        let Some(body) = text.get(section_start..section_end) else {
             break;
         };
         if tag == "bfchar" {
@@ -624,14 +630,15 @@ fn read_to_unicode(
                     continue;
                 };
                 if out.len() >= limits.max_font_glyphs {
-                    return Err(limits.exceeded(LimitKind::FontGlyphs, out.len() as u64 + 1));
+                    let count = (out.len() as u64).saturating_add(1);
+                    return Err(limits.exceeded(LimitKind::FontGlyphs, count));
                 }
                 out.insert(code, ch);
             }
         } else {
             read_bfrange(body, out, limits, notes)?;
         }
-        cursor = section_start + offset;
+        cursor = section_end;
     }
     Ok(())
 }
@@ -665,12 +672,14 @@ fn read_bfrange(
             let Some(close) = trimmed.get(bracket..).and_then(|rest| rest.find(']')) else {
                 continue;
             };
-            let Some(values) = trimmed.get(bracket + 1..bracket + 1 + close) else {
+            let open = bracket.saturating_add(1);
+            let Some(values) = trimmed.get(open..open.saturating_add(close)) else {
                 continue;
             };
             for (offset, ch) in utf16_values(values) {
                 if out.len() >= limits.max_font_glyphs {
-                    return Err(limits.exceeded(LimitKind::FontGlyphs, out.len() as u64 + 1));
+                    let count = (out.len() as u64).saturating_add(1);
+                    return Err(limits.exceeded(LimitKind::FontGlyphs, count));
                 }
                 out.insert(low.wrapping_add(offset), ch.to_string());
             }
@@ -701,20 +710,19 @@ fn read_bfrange(
         let wanted = (span as usize)
             .saturating_add(1)
             .min(limits.max_font_glyphs.saturating_sub(out.len()).max(1));
-        if span as usize + 1 > wanted {
+        let run = (span as usize).saturating_add(1);
+        if run > wanted {
             notes.push((
                 "pdf.font.bfrange-truncated".to_owned(),
-                format!(
-                    "a bfrange of {} codes was cut to {wanted} by the glyph budget",
-                    span as usize + 1
-                ),
+                format!("a bfrange of {run} codes was cut to {wanted} by the glyph budget"),
             ));
         }
         // `0..wanted`, not `0..wanted - 1`: the run is `wanted` codes long and the
         // last one is the point of the budget.
         for offset in 0..u32::try_from(wanted).unwrap_or(0) {
             if out.len() >= limits.max_font_glyphs {
-                return Err(limits.exceeded(LimitKind::FontGlyphs, out.len() as u64 + 1));
+                let count = (out.len() as u64).saturating_add(1);
+                return Err(limits.exceeded(LimitKind::FontGlyphs, count));
             }
             let ch =
                 char::from_u32(u32::from(destination).wrapping_add(offset)).unwrap_or('\u{fffd}');

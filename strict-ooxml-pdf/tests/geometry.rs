@@ -102,14 +102,44 @@ fn glyphs(page: &PdfPage) -> Vec<&Glyph> {
         .collect()
 }
 
-fn text_items(page: &PlacedPage) -> Vec<&TextItem> {
-    page.items
-        .iter()
-        .filter_map(|item| match item {
-            strict_ooxml_render_svg::Item::Text(text) => Some(text),
-            _ => None,
-        })
-        .collect()
+/// The page's text runs in paint order, groups included: an inline formula is
+/// a group placed by its matrix, and the PDF writes its glyphs where the group
+/// puts them.
+#[allow(clippy::many_single_char_names)] // affine matrix a..f
+fn text_items(page: &PlacedPage) -> Vec<TextItem> {
+    #[allow(clippy::many_single_char_names)]
+    fn walk(items: &[strict_ooxml_render_svg::Item], matrix: [f64; 6], out: &mut Vec<TextItem>) {
+        let [a, b, c, d, e, f] = matrix;
+        for item in items {
+            match item {
+                strict_ooxml_render_svg::Item::Text(text) => {
+                    let mut text = text.clone();
+                    let (x, y) = (text.x, text.baseline);
+                    text.x = a * x + c * y + e;
+                    text.baseline = b * x + d * y + f;
+                    text.width *= a;
+                    text.size_px *= d;
+                    out.push(text);
+                }
+                strict_ooxml_render_svg::Item::Group(group) => {
+                    let [ga, gb, gc, gd, ge, gf] = group.matrix;
+                    let combined = [
+                        a * ga + c * gb,
+                        b * ga + d * gb,
+                        a * gc + c * gd,
+                        b * gc + d * gd,
+                        a * ge + c * gf + e,
+                        b * ge + d * gf + f,
+                    ];
+                    walk(&group.items, combined, out);
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(&page.items, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0], &mut out);
+    out
 }
 
 /// One baseline recovered from the PDF.

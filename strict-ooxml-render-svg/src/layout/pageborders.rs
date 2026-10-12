@@ -8,9 +8,10 @@ use strict_ooxml_wml::model::values::BorderStyle;
 
 use strict_ooxml_core::error::Result;
 
-use crate::layout::{geometry_for, Item, LayoutContext, LineItem, PlacedPage};
+use crate::layout::border::{edge_items, ResolvedBorder, Side as BorderSide};
+use crate::layout::{geometry_for, Item, LayoutContext, PlacedPage};
 use crate::style::resolve_shape_color;
-use crate::units::{eighths_point_to_px, pt_to_px};
+use crate::units::pt_to_px;
 
 /// One page-border edge.
 #[derive(Clone, Copy)]
@@ -38,7 +39,8 @@ pub(crate) fn apply(
     sections: &[Section],
 ) -> Result<()> {
     let scale = ctx.options.scale;
-    for page in pages.iter_mut() {
+    let mirrored = ctx.document.settings.mirror_margins;
+    for (index, page) in pages.iter_mut().enumerate() {
         let section = sections
             .get(page.section_index)
             .map(|section| &section.properties);
@@ -48,7 +50,11 @@ pub(crate) fn apply(
         if !has_visible_edge(borders) {
             continue;
         }
-        let geometry = geometry_for(section, scale, None);
+        let mut geometry = geometry_for(section, scale, None, ctx.document.settings.gutter_at_top);
+        // An even page of a mirrored document has its margins swapped.
+        if mirrored && index % 2 == 1 {
+            std::mem::swap(&mut geometry.left, &mut geometry.right);
+        }
         let from_text = matches!(borders.offset_from, Some(BorderOffsetFrom::Text));
         let (left, top, right, bottom) = if from_text {
             (
@@ -79,10 +85,9 @@ pub(crate) fn apply(
         let mut items = Vec::new();
         for (side, edge) in edges {
             if let Some(edge) = edge {
-                if let Some(line) = edge_line(ctx, edge, side, left, top, right, bottom, pad, scale)
-                {
-                    items.push(line);
-                }
+                items.extend(edge_line(
+                    ctx, edge, side, left, top, right, bottom, pad, scale,
+                ));
             }
         }
         if items.is_empty() {
@@ -133,49 +138,43 @@ fn edge_line(
     bottom: f64,
     pad: Insets,
     scale: f64,
-) -> Option<Item> {
-    if !is_visible(edge) {
-        return None;
-    }
+) -> Vec<Item> {
+    let Some(style) = edge.style.filter(|_| is_visible(edge)) else {
+        return Vec::new();
+    };
     let color = resolve_shape_color(
         ctx.document.theme.as_ref(),
         &ShapeColor {
             value: edge.color.clone(),
             theme: edge.theme_color.as_deref().cloned(),
+            markup: None,
         },
     )
     .unwrap_or_else(|| "#000000".to_owned());
-    let width = edge
-        .size
-        .map_or(0.5, |size| eighths_point_to_px(size.value(), scale))
-        .max(0.25);
+    let border = ResolvedBorder {
+        frame: edge.frame,
+        shadow: edge.shadow,
+        style,
+        width_pt: edge
+            .size
+            .map_or(0.375, |size| f64::from(size.value()) / 8.0)
+            .max(0.25),
+        color,
+        space_pt: 0.0,
+    };
+    let px_per_pt = pt_to_px(1.0, scale);
     let x0 = left + pad.left;
     let x1 = right - pad.right;
     let y0 = top + pad.top;
     let y1 = bottom - pad.bottom;
-    let (x1, y1, x2, y2) = match side {
-        Side::Top => (x0, y0, x1, y0),
-        Side::Bottom => (x0, y1, x1, y1),
-        Side::Left => (x0, y0, x0, y1),
-        Side::Right => (x1, y0, x1, y1),
+    // The edge's band is centred where a single line used to be drawn, so a
+    // `double` or `thinThick` page border keeps the box it always had.
+    let half = border.band_pt() * px_per_pt / 2.0;
+    let (side, at, from, to) = match side {
+        Side::Top => (BorderSide::Top, y0 + half, x0, x1),
+        Side::Bottom => (BorderSide::Bottom, y1 - half, x0, x1),
+        Side::Left => (BorderSide::Left, x0 + half, y0, y1),
+        Side::Right => (BorderSide::Right, x1 - half, y0, y1),
     };
-    let dashed = matches!(
-        edge.style,
-        Some(
-            BorderStyle::Dashed
-                | BorderStyle::Dotted
-                | BorderStyle::DashSmallGap
-                | BorderStyle::DotDash
-                | BorderStyle::DotDotDash
-        )
-    );
-    Some(Item::Line(LineItem {
-        x1,
-        y1,
-        x2,
-        y2,
-        color,
-        width,
-        dashed,
-    }))
+    edge_items(&border, side, at, from, to, px_per_pt)
 }

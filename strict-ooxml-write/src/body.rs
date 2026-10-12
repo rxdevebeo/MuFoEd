@@ -5,7 +5,7 @@ use strict_ooxml_wml::model::block::{
     Block, Paragraph, SdtCheckboxState, SdtContainer, SdtControl, SdtDocPart, SdtListItem,
     SdtProperties, Table, TableCell, TableRow,
 };
-use strict_ooxml_wml::model::inline::{Inline, Run, RunContent, TextNode};
+use strict_ooxml_wml::model::inline::{FormFieldElement, Inline, Run, RunContent, TextNode};
 use strict_ooxml_wml::model::values::{Space, Twips, WidthKind};
 
 use crate::ctx::Ctx;
@@ -172,12 +172,18 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
         Inline::Hyperlink(link) => {
             xml.start("w:hyperlink");
             // The parsed id belongs to the source package; this write emits its
-            // own, and the map is empty when there is no source to ask.
-            if let Some(id) = link
+            // own, and the map is empty when there is no source to ask. A
+            // generated link carries its URL in `target` instead.
+            let id = link
                 .rel_id
                 .as_ref()
                 .and_then(|id| ctx.hyperlink_rel(id.as_str()))
-            {
+                .or_else(|| {
+                    link.target
+                        .as_deref()
+                        .and_then(|target| ctx.hyperlink_rel(target))
+                });
+            if let Some(id) = id {
                 xml.attr("r:id", id);
             }
             xml.attr_w_opt("anchor", link.anchor.as_deref());
@@ -212,6 +218,8 @@ pub fn inline_item(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, inline: &Inline) {
             // at, so every internal link into a bookmark lost its destination
             // (`XS-20`).
             xml.attr_w("name", bookmark.name.as_ref());
+            xml.attr_w_opt("colFirst", bookmark.col_first);
+            xml.attr_w_opt("colLast", bookmark.col_last);
             xml.end();
         }
         Inline::BookmarkEnd(id) => {
@@ -303,6 +311,12 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent,
         RunContent::Text(node) => text_node(xml, node, if deleted { "w:delText" } else { "w:t" }),
         RunContent::Tab => xml.empty("w:tab"),
         RunContent::Break(kind) => xml.empty_attr_w("w:br", "type", kind.as_str()),
+        RunContent::ClearingBreak(clear) => {
+            xml.start("w:br");
+            xml.attr_w("type", "textWrapping");
+            xml.attr_w("clear", clear.as_str());
+            xml.end();
+        }
         RunContent::CarriageReturn => xml.empty("w:cr"),
         RunContent::Drawing(drawing) => crate::drawing::drawing_element(ctx, xml, drawing),
         RunContent::InstrText(text) => {
@@ -320,6 +334,15 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent,
             xml.attr_w("fldCharType", field.kind.as_str());
             if field.dirty {
                 xml.attr_w("dirty", "true");
+            }
+            // `CT_FFData` needs at least one child, so an empty `w:ffData` (which
+            // the schema would refuse) is not written.
+            if let Some(form_data) = field.form_data.as_deref().filter(|data| !data.is_empty()) {
+                xml.start("w:ffData");
+                for element in form_data {
+                    form_field_element(xml, element);
+                }
+                xml.end();
             }
             xml.end();
         }
@@ -343,6 +366,13 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent,
             xml.attr_w("relativeTo", relative_to.as_ref());
             xml.attr_w("leader", leader.as_ref());
             xml.end();
+        }
+        RunContent::NoteSeparator(continuation) => {
+            xml.empty(if *continuation {
+                "w:continuationSeparator"
+            } else {
+                "w:separator"
+            });
         }
         RunContent::NoteRef => {
             // The note's own number is substituted by the renderer; writing the
@@ -368,8 +398,6 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent,
         RunContent::LastRenderedPageBreak => xml.empty("w:lastRenderedPageBreak"),
         RunContent::NoBreakHyphen => xml.empty("w:noBreakHyphen"),
         RunContent::SoftHyphen => xml.empty("w:softHyphen"),
-        RunContent::Separator => xml.empty("w:separator"),
-        RunContent::ContinuationSeparator => xml.empty("w:continuationSeparator"),
         RunContent::Opaque(opaque) => {
             ctx.report_unsupported(
                 &opaque.feature_id(),
@@ -380,19 +408,27 @@ pub fn run_content(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, content: &RunContent,
     }
 }
 
+/// Writes one kept `w:ffData` element and its children, as read.
+///
+/// The parser bounds the depth of the subtree (`FORM_FIELD_MAX_DEPTH` in
+/// `wml/src/parse/document.rs`), so this recursion is bounded too.
+fn form_field_element(xml: &mut XmlWriter, element: &FormFieldElement) {
+    xml.start(&format!("w:{}", element.local));
+    for (local, value) in &element.attributes {
+        xml.attr_w(local, value.as_ref());
+    }
+    for child in &element.children {
+        form_field_element(xml, child);
+    }
+    xml.end();
+}
+
 /// Writes `w:t` or `w:delText`, including the `xml:space` attribute the model recorded.
 ///
-/// The attribute is only written when the text actually needs it: leading or
-/// trailing whitespace is stripped by an XML parser without `preserve`, so a
-/// text node without edge whitespace does not carry it.
+/// Preserve the recorded whitespace policy; adding `preserve` to a default
+/// node would change its visible leading/trailing whitespace on round trip.
 fn text_node(xml: &mut XmlWriter, node: &TextNode, tag: &str) {
-    let needs_preserve = matches!(node.space, Space::Preserve)
-        || node.text.chars().next().is_some_and(char::is_whitespace)
-        || node
-            .text
-            .chars()
-            .next_back()
-            .is_some_and(char::is_whitespace);
+    let needs_preserve = matches!(node.space, Space::Preserve);
     if node.text.is_empty() && !needs_preserve {
         xml.empty(tag);
         return;
@@ -652,6 +688,16 @@ fn sdt_properties(ctx: &mut Ctx<'_>, xml: &mut XmlWriter, sdt: &SdtProperties) {
             .prefix_mappings
             .as_deref()
             .map(strict_prefix_mappings);
+        if mappings.as_deref() != binding.prefix_mappings.as_deref() {
+            // Cited so the census can tell this declared rewrite (a
+            // Transitional namespace URI inside the XPath mappings, written in
+            // its Strict form) from an attribute that disappeared.
+            ctx.report_info(
+                "w:dataBinding@prefixMappings",
+                "namespace URIs in the XPath prefix mappings written in their Strict form",
+                &SourceLocation::unknown(),
+            );
+        }
         xml.attr_w_opt("prefixMappings", mappings.as_deref());
         xml.attr_w("xpath", &*binding.xpath);
         xml.attr_w("storeItemID", &*binding.store_item_id);
@@ -931,12 +977,9 @@ mod tests {
     }
 
     #[test]
-    fn leading_whitespace_forces_xml_space_preserve() {
+    fn leading_whitespace_keeps_default_space_policy() {
         let text = render(&[text_paragraph(" lead", Space::Default)]);
-        assert!(
-            text.contains("<w:t xml:space=\"preserve\"> lead</w:t>"),
-            "{text}"
-        );
+        assert!(text.contains("<w:t> lead</w:t>"), "{text}");
     }
 
     #[test]

@@ -17,8 +17,9 @@ use std::collections::HashSet;
 use std::ops::Range;
 use strict_ooxml_core::limits::ResourceLimits;
 use strict_ooxml_wml::model::{
-    Block, Color, Document, Fonts, HalfPoints, Highlight, Inline, Paragraph, Run, RunContent,
-    RunProperties, Space, StyleId, StyleType, TextNode, TriState, Underline, VertAlign,
+    Block, Color, Document, Fonts, HalfPoints, Highlight, Inline, Paragraph, Revision,
+    RevisionKind, Run, RunContent, RunProperties, Space, StyleId, StyleType, TextNode, TriState,
+    Underline, VertAlign,
 };
 
 mod structured;
@@ -106,16 +107,16 @@ pub enum EditError {
     StaleRevision,
     /// The target is absent or is not a body paragraph.
     InvalidParagraph,
-    /// The paragraph contains structured or tracked content.
-    UnsupportedContent,
+    /// The target holds content the edit cannot change; the detail says what.
+    UnsupportedContent(Unsupported),
     /// The scalar range is reversed or out of bounds.
     InvalidRange,
     /// Text contains XML-invalid or structural control characters.
     InvalidText,
-    /// A style reference is missing or has the wrong kind.
-    UnknownStyle,
-    /// Existing body identity or section invariants are inconsistent.
-    InvalidModel,
+    /// A style reference is missing or has the wrong kind; it carries the id.
+    UnknownStyle(StyleId),
+    /// The model breaks, or the edit would break, the invariant named.
+    InvalidModel(Invariant),
     /// A configured resource or revision limit was exceeded.
     LimitExceeded,
     /// There is nothing to undo or redo.
@@ -123,22 +124,128 @@ pub enum EditError {
 }
 impl std::fmt::Display for EditError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::StaleRevision => "the revision is stale; re-read the document and retry",
-            Self::InvalidParagraph => "the address does not name an editable paragraph",
-            Self::UnsupportedContent => {
-                "the paragraph holds structured or tracked content this edit cannot change"
+        match self {
+            Self::StaleRevision => {
+                f.write_str("the revision is stale; re-read the document and retry")
             }
-            Self::InvalidRange => "the range is reversed or past the end of the text",
-            Self::InvalidText => "the text holds a character XML or a paragraph cannot carry",
-            Self::UnknownStyle => "the style does not exist or is of the wrong type",
-            Self::InvalidModel => "the document model breaks an identity or section invariant",
-            Self::LimitExceeded => "an edit, history or nesting limit was exceeded",
-            Self::EmptyHistory => "there is nothing to undo or redo",
-        })
+            Self::InvalidParagraph => {
+                f.write_str("the address does not name an editable paragraph")
+            }
+            Self::UnsupportedContent(what) => {
+                write!(
+                    f,
+                    "the paragraph holds content this edit cannot change: {what}"
+                )
+            }
+            Self::InvalidRange => f.write_str("the range is reversed or past the end of the text"),
+            Self::InvalidText => {
+                f.write_str("the text holds a character XML or a paragraph cannot carry")
+            }
+            Self::UnknownStyle(id) => {
+                write!(
+                    f,
+                    "style `{}` does not exist or is of the wrong type",
+                    id.as_str()
+                )
+            }
+            Self::InvalidModel(invariant) => {
+                write!(f, "the edit would break a model invariant: {invariant}")
+            }
+            Self::LimitExceeded => f.write_str("an edit, history or nesting limit was exceeded"),
+            Self::EmptyHistory => f.write_str("there is nothing to undo or redo"),
+        }
     }
 }
 impl std::error::Error for EditError {}
+/// What an edit met that it cannot change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Unsupported {
+    /// The paragraph or one of its runs carries a tracked insertion or deletion.
+    TrackedChange,
+    /// A run holds something other than text: a tab, a break, a field character, a drawing, a
+    /// symbol.
+    RunContent,
+    /// The paragraph holds an inline that is not a plain run: a hyperlink, a field, an inline
+    /// SDT, a bookmark, math.
+    Inline,
+    /// The drawing is kept as opaque markup.
+    OpaqueDrawing,
+    /// The address names a target of another kind than the command needs (not a run, not a
+    /// shape, not a table...).
+    Target,
+    /// A cached field result, which the field's next update would overwrite.
+    FieldResult,
+}
+impl std::fmt::Display for Unsupported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::TrackedChange => "a tracked change",
+            Self::RunContent => "a run holding more than text",
+            Self::Inline => "an inline that is not a plain run",
+            Self::OpaqueDrawing => "an opaque drawing",
+            Self::Target => "a target of another kind than the command needs",
+            Self::FieldResult => "a cached field result",
+        })
+    }
+}
+/// The model invariant an edit found broken or would break.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Invariant {
+    /// A paragraph id, or a text id, appears twice in a story.
+    DuplicateId,
+    /// A paragraph has a text id but no paragraph id.
+    TextIdWithoutParaId,
+    /// The section list and the body's section breaks disagree.
+    Sections,
+    /// The edit would delete, join or move a section break.
+    SectionBoundary,
+    /// A bookmark start or end is unmatched or repeated.
+    Bookmark,
+    /// A comment range start or end is unmatched.
+    Comment,
+    /// Complex field characters are unbalanced, or a simple field holds unbalanced content.
+    Field,
+    /// An empty table or row, a cell not ending in a paragraph, or a span, grid or vertical
+    /// merge mismatch.
+    TableTopology,
+    /// An unknown numbering instance or an invalid list level.
+    Numbering,
+    /// A `basedOn` cycle, or a cached style chain that disagrees with the styles.
+    StyleChain,
+    /// A header or footer reference names no header or footer part.
+    HeaderFooterReference,
+    /// A negative frame size.
+    Frame,
+    /// A non-positive grid column width.
+    Grid,
+    /// A footnote or endnote reference names no note.
+    NoteReference,
+    /// A picture names no media part, or a drawing extent is not positive.
+    Drawing,
+}
+impl std::fmt::Display for Invariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::DuplicateId => "a paragraph or text id used twice in a story",
+            Self::TextIdWithoutParaId => "a text id without a paragraph id",
+            Self::Sections => "the section list and the section breaks disagree",
+            Self::SectionBoundary => "a section break deleted, joined or moved",
+            Self::Bookmark => "a bookmark start or end without its pair",
+            Self::Comment => "a comment range start or end without its pair",
+            Self::Field => "unbalanced field characters",
+            Self::TableTopology => "a table, row or cell of invalid shape",
+            Self::Numbering => "an unknown numbering instance or an invalid list level",
+            Self::StyleChain => "a style chain with a cycle or a stale cache",
+            Self::HeaderFooterReference => "a header or footer reference without its part",
+            Self::Frame => "a negative frame size",
+            Self::Grid => "a non-positive grid column width",
+            Self::NoteReference => "a note reference without its note",
+            Self::Drawing => "a picture without its media or a drawing of non-positive size",
+        })
+    }
+}
 #[derive(Clone, Copy, Debug)]
 /// Bounds for history and text processing.
 pub struct EditLimits {
@@ -264,7 +371,7 @@ impl<'a> EditSession<'a> {
                             .get(id)
                             .is_some_and(|style| style.style_type == StyleType::Character)
                         {
-                            return Err(EditError::UnknownStyle);
+                            return Err(EditError::UnknownStyle(id.clone()));
                         }
                     }
                     Edit::Format {
@@ -307,23 +414,22 @@ impl<'a> EditSession<'a> {
     }
 }
 
+/// The paragraph's runs with their text, for an edit by scalar offsets.
+///
+/// Runs with a tracked change are included and count in the offsets - their
+/// text is on the page, struck through or underlined - but stay whole: see
+/// [`check_tracked`].
 fn plain_runs(paragraph: &Paragraph, max: usize) -> Result<Vec<(Run, String)>, EditError> {
-    if paragraph.revision.is_some() {
-        return Err(EditError::UnsupportedContent);
-    }
     let mut count = 0_usize;
     let mut runs = Vec::new();
     for inline in &paragraph.inlines {
         let Inline::Run(run) = inline else {
-            return Err(EditError::UnsupportedContent);
+            return Err(EditError::UnsupportedContent(Unsupported::Inline));
         };
-        if run.revision.is_some() {
-            return Err(EditError::UnsupportedContent);
-        }
         let mut text = String::new();
         for content in &run.content {
             let RunContent::Text(node) = content else {
-                return Err(EditError::UnsupportedContent);
+                return Err(EditError::UnsupportedContent(Unsupported::RunContent));
             };
             count = count
                 .checked_add(node.text.chars().count())
@@ -339,6 +445,27 @@ fn plain_runs(paragraph: &Paragraph, max: usize) -> Result<Vec<(Run, String)>, E
 }
 fn slice(text: &str, start: usize, end: usize) -> String {
     text.chars().skip(start).take(end - start).collect()
+}
+/// Refuses a range that would cut into or replace part of a run with a
+/// tracked change: until the change is accepted or rejected the run is one
+/// unit. An insertion at either edge of such a run is fine.
+fn check_tracked(runs: &[(Run, String)], range: &Range<usize>) -> Result<(), EditError> {
+    let mut offset = 0;
+    for (run, text) in runs {
+        let end = offset + text.chars().count();
+        if run.revision.is_some() {
+            let touches = if range.is_empty() {
+                offset < range.start && range.start < end
+            } else {
+                range.start < end && offset < range.end
+            };
+            if touches {
+                return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
+            }
+        }
+        offset = end;
+    }
+    Ok(())
 }
 fn text_run(template: Option<&Run>, text: String) -> Inline {
     let mut run = template.cloned().unwrap_or(Run {
@@ -359,6 +486,45 @@ fn replace_text(
     range: &Range<usize>,
     replacement: &str,
 ) {
+    replace_text_with(paragraph, runs, range, replacement, &Marks::default());
+}
+/// How [`replace_text_with`] marks what it does.
+#[derive(Default)]
+struct Marks {
+    /// The replaced text stays, carrying this revision, instead of going.
+    deleted: Option<Revision>,
+    /// The revision of the new text; `None` for untracked text.
+    inserted: Option<Revision>,
+}
+/// Whether `range` lies inside one tracked insertion: an insertion point
+/// inside it or at its end, or a range within it. Typing there extends the
+/// insertion, and deleting there takes back what it inserted.
+fn inside_insertion(runs: &[(Run, String)], range: &Range<usize>) -> Option<Revision> {
+    let mut offset = 0;
+    for (run, text) in runs {
+        let end = offset + text.chars().count();
+        if let Some(revision) = &run.revision {
+            let within = if range.is_empty() {
+                offset < range.start && range.start <= end
+            } else {
+                offset <= range.start && range.end <= end
+            };
+            if within && matches!(revision.kind, RevisionKind::Insert) {
+                return Some(revision.clone());
+            }
+        }
+        offset = end;
+    }
+    None
+}
+/// Replaces `range` with `replacement`, marking both as `marks` says.
+fn replace_text_with(
+    paragraph: &mut Paragraph,
+    runs: &[(Run, String)],
+    range: &Range<usize>,
+    replacement: &str,
+    marks: &Marks,
+) {
     let old: String = runs.iter().map(|(_, text)| text.as_str()).collect();
     if slice(&old, range.start, range.end) == replacement {
         return;
@@ -376,6 +542,7 @@ fn replace_text(
         found
     });
     let mut prefix = Vec::new();
+    let mut deleted = Vec::new();
     let mut suffix = Vec::new();
     offset = 0;
     for (run, text) in runs {
@@ -394,6 +561,16 @@ fn replace_text(
         } else if offset < range.start {
             prefix.push(text_run(Some(run), slice(text, 0, range.start - offset)));
         }
+        if let Some(revision) = &marks.deleted {
+            let (from, to) = (range.start.max(offset), range.end.min(end));
+            if from < to {
+                let mut piece = text_run(Some(run), slice(text, from - offset, to - offset));
+                if let Inline::Run(piece) = &mut piece {
+                    piece.revision = Some(revision.clone());
+                }
+                deleted.push(piece);
+            }
+        }
         if offset >= range.end {
             suffix.push(Inline::Run(run.clone()));
         } else if end > range.end {
@@ -401,8 +578,17 @@ fn replace_text(
         }
         offset = end;
     }
+    for piece in deleted {
+        push_merged(&mut prefix, piece);
+    }
     if !replacement.is_empty() {
-        push_merged(&mut prefix, text_run(template, replacement.to_owned()));
+        let mut inserted = text_run(template, replacement.to_owned());
+        // Typed next to a tracked run, the text is not part of that change
+        // unless the marks say so.
+        if let Inline::Run(run) = &mut inserted {
+            run.revision.clone_from(&marks.inserted);
+        }
+        push_merged(&mut prefix, inserted);
     }
     let mut suffix = suffix.into_iter();
     if let Some(first) = suffix.next() {
@@ -527,11 +713,11 @@ fn validate_body(document: &Document) -> Result<(), EditError> {
     if (!boundaries.is_empty() || !document.sections.is_empty())
         && document.sections.len() != boundaries.len() + 1
     {
-        return Err(EditError::InvalidModel);
+        return Err(EditError::InvalidModel(Invariant::Sections));
     }
     for (boundary, section) in boundaries.iter().zip(&document.sections) {
         if **boundary != section.properties {
-            return Err(EditError::InvalidModel);
+            return Err(EditError::InvalidModel(Invariant::Sections));
         }
     }
     Ok(())
@@ -550,25 +736,26 @@ fn validate_blocks(
             Block::Paragraph(p) => {
                 if let Some(id) = &p.para_id {
                     if !ids.insert(id.as_str().to_ascii_uppercase()) {
-                        return Err(EditError::InvalidModel);
+                        return Err(EditError::InvalidModel(Invariant::DuplicateId));
                     }
                 }
-                if p.props
+                if let Some(id) = p
+                    .props
                     .style
                     .as_ref()
-                    .is_some_and(|id| document.styles.get(id).is_none())
+                    .filter(|id| document.styles.get(id).is_none())
                 {
-                    return Err(EditError::UnknownStyle);
+                    return Err(EditError::UnknownStyle(id.clone()));
                 }
                 for inline in &p.inlines {
                     if let Inline::Run(run) = inline {
-                        if run
+                        if let Some(id) = run
                             .props
                             .style
                             .as_ref()
-                            .is_some_and(|id| document.styles.get(id).is_none())
+                            .filter(|id| document.styles.get(id).is_none())
                         {
-                            return Err(EditError::UnknownStyle);
+                            return Err(EditError::UnknownStyle(id.clone()));
                         }
                     }
                 }

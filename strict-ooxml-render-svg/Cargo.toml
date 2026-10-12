@@ -23,11 +23,16 @@ strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
 skrifa.workspace = true
 # OpenType shaping shared by layout measurement and paint cluster positions (F07).
 harfrust.workspace = true
+# Raster previews from legacy WMF/EMF parts before embedding them in SVG.
+emfsdk = { version = "0.2.0", features = ["render"] }
 # Hash of the exact face bytes delivered to SVG `@font-face` and PDF embedding.
 sha2.workspace = true
 # Grapheme clusters: an unbreakable token is split between lines only at a
 # cluster boundary, so a combining mark or a ZWJ sequence stays whole.
 unicode-segmentation = "1.13"
+unicode-bidi = "0.3.18"
+# Embedded language patterns for automatic, language-aware word hyphenation.
+hypher = "0.1.8"
 
 [dev-dependencies]
 # The CC0 corpus by its lock file (`tests/corpus.rs`). Path only: see the testkit

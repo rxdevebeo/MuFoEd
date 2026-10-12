@@ -308,11 +308,16 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // substantial row is the bottom edge, where one renderer puts the stroke's
     // antialiasing on one side and the other puts it on the other.
     ("strict-stage5b", 0, -1.0, 2.0),
-    ("05-strict-math-simple", 0, 0.0, 3.0),
+    // Compact inline fractions and real math faces bring +3 px down to zero.
+    ("05-strict-math-simple", 0, 0.0, 0.0),
     ("06-strict-math-display", 0, 0.0, 6.0),
     ("07-strict-drawingml-shapes", 0, 0.0, 1.0),
-    ("10-strict-math-eqarr", 0, 0.0, 7.0),
-    ("strict-stage5c", 0, 1.0, 21.0),
+    // 7 -> 2 (2026-10-12): display grids centred on the math axis.
+    ("10-strict-math-eqarr", 0, 0.0, 2.0),
+    // Correct delimiter centring above the baseline reduces 12 -> 5 px.
+    // 5 -> -4 (2026-10-12): inline formula lines reserve glyph ink, inline
+    // n-ary limits at the side, groupChr base on the baseline (as the SVG gate).
+    ("strict-stage5c", 0, 1.0, -4.0),
     // 30 -> 28 -> 29 on this page, and every pixel of the move is accounted for.
     //
     // The stage-5C fixture is ours, and the XSD gate found markup in it that the
@@ -331,9 +336,11 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // The pin is not a target and the page's SSIM (0.9513) is the number that
     // judges the rendering; what moved here is a fixture that was carrying markup
     // its own schema rejects.
-    // AUD-50 multi-`m:oMath` stacking (see SVG `EXTENT_RATCHET` / waiver
-    // `STAGE5C-P1-LAYOUT`). Measured on hayro after the same layout change.
-    ("strict-stage5c", 1, 13.0, 240.0),
+    // Removing implicit breaks between adjacent m:oMath objects brings the
+    // bottom drift from +193 px to +23 px on the PDF path (WPS probe verified).
+    // 23 -> 25 (2026-10-12): display grids centred on the math axis; the `{`
+    // around the equation array was 58 px off after 55f1584.
+    ("strict-stage5c", 1, 1.0, 25.0),
 ];
 
 /// SC-6 criteria 2–4: every gated page, compared the way the SVG gate compares.

@@ -256,6 +256,7 @@ async function openDocument(session, name) {
       const docName = document.getElementById('doc-name');
       const status = document.getElementById('status');
       if (!docName || docName.textContent !== name) return null;
+      if (document.getElementById('pages')?.getAttribute('aria-busy') === 'true') return null;
       if (status && status.textContent.includes('rendering')) return null;
       const losses = document.getElementById('losses');
       const list = document.getElementById('losses-list');
@@ -477,12 +478,155 @@ async function scenarioF07(session, baseUrl, expectedCarlito) {
   ];
 }
 
+async function scenarioGraphics(session, baseUrl, reportPath) {
+  await openShell(session, baseUrl);
+  // Delay an actual request to observe the waiting state even on cache hits.
+  const waiting = await session.evaluate(`(async () => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      if (String(args[0]).startsWith('/api/document?')) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      return originalFetch(...args);
+    };
+    window.viewerGateFetch = originalFetch;
+    open('01-gradient-rectangle.docx');
+    await new Promise(requestAnimationFrame);
+    const progress = document.getElementById('load-progress');
+    return { visible: !progress.hidden, indeterminate: !progress.hasAttribute('value'),
+      busy: document.getElementById('pages').getAttribute('aria-busy') };
+  })()`);
+  if (!waiting.visible || !waiting.indeterminate || waiting.busy !== 'true') {
+    throw new Error(`loading indicator missing: ${JSON.stringify(waiting)}`);
+  }
+  for (let attempt = 0; attempt < 50; attempt++) {
+    if (await session.evaluate(`document.getElementById('load-progress').hidden`)) break;
+    await sleep(100);
+  }
+  const settled = await session.evaluate(`(() => {
+    window.fetch = window.viewerGateFetch;
+    delete window.viewerGateFetch;
+    return document.getElementById('load-progress').hidden;
+  })()`);
+  if (!settled) throw new Error('loading indicator did not settle');
+  const cases = [
+    ["01-gradient-rectangle.docx", "linearGradient"],
+    ["02-gradient-ellipse.docx", "linearGradient"],
+    ["03-pattern-cross.docx", "pattern"],
+    ["04-pattern-diagonal.docx", "pattern"],
+    ["05-pattern-dots.docx", "pattern"],
+    ["06-tight-contour.docx", null],
+    ["07-through-contour.docx", null],
+    ["08-unsupported-pattern-warning.docx", "render.pattern"],
+    ["09-path-gradient-warning.docx", "render.gradient"],
+  ];
+  const results = [{ id: 'viewer-loading-progress', ok: true }];
+  for (const [name, expected] of cases) {
+    const { dom, api } = await openDocument(session, name);
+    if (dom.pageCount < 1 || dom.hasError) {
+      throw new Error(`graphics pages missing: ${name}: ${JSON.stringify(dom)}`);
+    }
+    if (expected?.startsWith("render.")) {
+      if (api.pipeline?.outcome !== "degraded" || dom.outcome !== "degraded"
+        || !dom.listText.includes(expected)) {
+        throw new Error(`graphics warning missing after JS: ${name}`);
+      }
+      if (!dom.listHidden) throw new Error('degraded details must start collapsed');
+      await keyboardExpand(session);
+    } else if (expected) {
+      const count = await session.evaluate(
+        `document.querySelectorAll('#pages svg ${expected}').length`,
+      );
+      if (count < 1) throw new Error(`graphics paint definition missing: ${name}`);
+    }
+    let screenshot = null;
+    if (reportPath) {
+      screenshot = join(dirname(resolve(reportPath)), `${name.slice(0, -5)}.png`);
+      const capture = await session.send("Page.captureScreenshot", { format: "png" });
+      writeFileSync(screenshot, Buffer.from(capture.data, "base64"));
+    }
+    results.push({ id: name, ok: true, pageCount: dom.pageCount, outcome: dom.outcome, screenshot });
+  }
+  const bounds = await session.evaluate(`(async () => {
+    const view = await (await fetch('/api/document?name=09-path-gradient-warning.docx')).json();
+    view.pipeline.issues = Array.from({ length: 1000 }, (_, i) => ({
+      stage: 'render', id: 'stress.' + i, severity: 'warning', count: 1,
+      detail: 'A long diagnostic detail '.repeat(30)
+    }));
+    await renderView(view);
+    const collapsed = document.getElementById('losses-list').hidden;
+    document.getElementById('losses-toggle').click();
+    await new Promise(requestAnimationFrame);
+    const panel = document.getElementById('losses').getBoundingClientRect();
+    const pages = document.getElementById('pages').getBoundingClientRect();
+    const list = document.getElementById('losses-list');
+    return { collapsed, panel: panel.height, pages: pages.height, viewport: innerHeight,
+      scrolls: list.scrollHeight > list.clientHeight };
+  })()`);
+  if (!bounds.collapsed || bounds.panel > bounds.viewport * 0.3
+    || bounds.pages < bounds.viewport * 0.5 || !bounds.scrolls) {
+    throw new Error(`diagnostics crowd out document: ${JSON.stringify(bounds)}`);
+  }
+  results.push({ id: 'viewer-bounded-diagnostics-1000', ok: true, ...bounds });
+  const lazy = await session.evaluate(`(async () => {
+    const view = await (await fetch('/api/document?name=01-gradient-rectangle.docx')).json();
+    const first = view.pages[0];
+    view.pages = Array.from({length:24}, (_, i) => ({...first, number:i+1}));
+    await renderView(view);
+    const initial = document.querySelectorAll('#pages svg').length;
+    const column = document.getElementById('pages');
+    column.scrollTop = column.scrollHeight;
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+    return {initial, after:document.querySelectorAll('#pages svg').length,
+      placeholders:document.querySelectorAll('#pages .page').length,
+      firstEvicted:!document.querySelector('#pages .page').querySelector('svg'),
+      lastMounted:!!document.querySelector('#pages .page:last-child svg')};
+  })()`);
+  if (lazy.initial > 6 || lazy.after > 6 || lazy.placeholders !== 24 || !lazy.firstEvicted || !lazy.lastMounted) {
+    throw new Error('page virtualization failed: ' + JSON.stringify(lazy));
+  }
+  results.push({id:'viewer-lazy-pages-24',ok:true,...lazy});
+  return results;
+}
+
 function defaultCarlitoHash() {
   const path = join(
     REPO,
     "strict-ooxml-render-svg/assets/fonts/carlito/Carlito-Regular.ttf",
   );
   return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+async function scenarioAllPages(session, baseUrl) {
+  await openShell(session, baseUrl);
+  const initial = await session.evaluate(`(async () => {
+    corpusId = 'cc0-docx';
+    await open('091_MTD_A1_Ma_Thoi_Den_Thanh_Co_Tinh_Tuyet.docx');
+    const column = document.getElementById('pages');
+    const count = column.querySelectorAll('.page').length;
+    column.scrollTop = column.scrollHeight;
+    return {count,busy:column.getAttribute('aria-busy')};
+  })()`);
+  if (initial.count !== 1374 || initial.busy !== 'false') {
+    throw new Error('full document missing: ' + JSON.stringify(initial));
+  }
+  let result;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    result = await session.evaluate(`(() => {
+      const last = document.querySelector('#pages .page:last-child');
+      return {lastNumber:last?.querySelector('.number')?.textContent,
+        lastMounted:!!last?.querySelector('svg'),
+        mounted:document.querySelectorAll('#pages svg').length,
+        firstEvicted:!document.querySelector('#pages .page')?.querySelector('svg')};
+    })()`);
+    if (result.lastMounted) break;
+    await sleep(100);
+  }
+  if (result.lastNumber !== '1374' || !result.lastMounted || result.mounted > 6 || !result.firstEvicted) {
+    throw new Error('last page cannot be viewed: ' + JSON.stringify(result));
+  }
+  return [{id:'viewer-all-pages-1374',ok:true,...initial,...result}];
 }
 
 async function main() {
@@ -526,6 +670,12 @@ async function main() {
     }
     if (args.scenarios.includes("f07-face")) {
       all.push(...(await scenarioF07(browser.session, baseUrl, expectedCarlito)));
+    }
+    if (args.scenarios.includes("graphics")) {
+      all.push(...(await scenarioGraphics(browser.session, baseUrl, args.report)));
+    }
+    if (args.scenarios.includes("all-pages")) {
+      all.push(...(await scenarioAllPages(browser.session, baseUrl)));
     }
     const report = {
       status: "PASS",

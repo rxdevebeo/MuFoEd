@@ -820,6 +820,7 @@ fn image_paragraph(
                 extent: Some(extent),
                 effect_extent: None,
                 doc_pr: Some(strict_ooxml_wml::model::drawing::DocPr {
+                    hidden: None,
                     id: None,
                     name: Some(Arc::from("Picture")),
                     // The field a screen reader reads, and the only place a
@@ -848,6 +849,7 @@ fn image_paragraph(
                         extent: Some(extent),
                         src_rect: None,
                         xfrm: None,
+                        markup: strict_ooxml_wml::model::drawing::PictureMarkup::default(),
                     },
                 )),
                 location: location.clone(),

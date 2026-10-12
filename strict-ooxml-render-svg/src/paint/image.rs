@@ -14,13 +14,13 @@ const DEFAULT_IMAGE_PX: f64 = 96.0;
 
 /// Builds an [`ImageItem`] for an inline drawing.
 ///
-/// A supported inline raster picture resolves to its media part. Any other
-/// *picture-shaped* inline drawing with a declared extent — a chart without
-/// readable cached data, a diagram,
-/// EMF/WMF, a missing blip — is reserved as a placeholder of that size: Stage 4
-/// cannot rasterize it, but reserving the extent keeps pagination aligned with
-/// the producer (S4F.6). An inline *shape or group* is not an image at all: it
-/// is left to `crate::paint::graphics::inline_items`, which draws its geometry
+/// A supported inline raster picture resolves to its media part. WMF/EMF media
+/// is rasterized as a PNG preview. Any other *picture-shaped* inline drawing
+/// with a declared extent — a chart without readable cached data, a diagram, or
+/// a missing blip — is reserved as a placeholder of that size: reserving the
+/// extent keeps pagination aligned with the producer (S4F.6). An inline *shape
+/// or group* is not an image at all: it is left to
+/// `crate::paint::graphics::inline_items`, which draws its geometry
 /// (STAGE-5C-REWORK-1 D3). `wp:anchor` (floating) drawings are out of scope and
 /// yield `None`.
 pub(crate) fn layout_inline_image(
@@ -52,19 +52,11 @@ pub(crate) fn layout_inline_image(
         return None;
     }
     let extent = extent.unwrap_or_default();
+    // `wp:effectExtent` is room for effects around the picture: it widens the
+    // space the line reserves (see `inline_effect_margins`), never the picture
+    // itself (ISO/IEC 29500-1 §20.4.2.6).
     let mut w = emu_to_px(extent.cx.value(), ctx.options.scale);
     let mut h = emu_to_px(extent.cy.value(), ctx.options.scale);
-    // AUD-50: `wp:effectExtent` expands the occupied block.
-    if let Some(effect) = &inline.effect_extent {
-        w += emu_to_px(
-            effect.left.value() + effect.right.value(),
-            ctx.options.scale,
-        );
-        h += emu_to_px(
-            effect.top.value() + effect.bottom.value(),
-            ctx.options.scale,
-        );
-    }
     if w <= 0.0 {
         w = DEFAULT_IMAGE_PX;
     }
@@ -83,21 +75,59 @@ pub(crate) fn layout_inline_image(
         y,
         w,
         h,
-        href: part.and_then(|part| media_href(ctx, part)),
+        href: part.and_then(|part| media_href(ctx, part, w, h)),
         part: part.cloned(),
         alt,
         transform: None,
+        crop: picture.and_then(|picture| src_rect_crop(picture.src_rect)),
     })
 }
 
+/// `wp:effectExtent` of an inline drawing as `[left, top, right, bottom]` px:
+/// the margins the line reserves around the drawing for its effects (AUD-50).
+pub(crate) fn inline_effect_margins(
+    ctx: &LayoutContext<'_>,
+    drawing: &strict_ooxml_wml::model::Drawing,
+) -> [f64; 4] {
+    let strict_ooxml_wml::model::DrawingKind::Inline(inline) = &drawing.kind else {
+        return [0.0; 4];
+    };
+    inline.effect_extent.as_ref().map_or([0.0; 4], |effect| {
+        [effect.left, effect.top, effect.right, effect.bottom]
+            .map(|value| emu_to_px(value.value(), ctx.options.scale).max(0.0))
+    })
+}
+
+/// The `a:srcRect` of a picture as cut-away fractions, `None` when it cuts
+/// nothing. The attributes are thousandths of a percent.
+pub(crate) fn src_rect_crop(
+    rect: Option<strict_ooxml_wml::model::drawing::SrcRect>,
+) -> Option<[f64; 4]> {
+    let rect = rect?;
+    let crop =
+        [rect.left, rect.top, rect.right, rect.bottom].map(|value| f64::from(value) / 100_000.0);
+    crop.iter().any(|value| value.abs() > 1e-9).then_some(crop)
+}
+
 /// Resolves the `href`/data URI for a media part according to the media mode.
-pub(crate) fn media_href(ctx: &LayoutContext<'_>, part: &PartId) -> Option<String> {
+pub(crate) fn media_href(
+    ctx: &LayoutContext<'_>,
+    part: &PartId,
+    width_px: f64,
+    height_px: f64,
+) -> Option<String> {
     match ctx.media_mode {
         MediaMode::None => None,
         MediaMode::ExternalFiles => Some(unique_media_file_name(&ctx.document.media, part)),
         MediaMode::EmbedDataUri => {
             let media = ctx.media?;
             let bytes = media.read_media(part).ok()?;
+            let raster = crate::metafile::rasterize_metafile_preview(
+                &bytes,
+                width_px,
+                height_px,
+                ctx.options.limits.max_single_uncompressed,
+            );
             let content_type = ctx
                 .document
                 .media
@@ -106,9 +136,13 @@ pub(crate) fn media_href(ctx: &LayoutContext<'_>, part: &PartId) -> Option<Strin
                 .map_or(String::from("application/octet-stream"), |ct| {
                     ct.to_string()
                 });
+            let (bytes, content_type) = raster.as_deref().map_or_else(
+                || (bytes.as_slice(), content_type.as_str()),
+                |png| (png, "image/png"),
+            );
             Some(format!(
                 "data:{content_type};base64,{}",
-                base64_encode(&bytes)
+                base64_encode(bytes)
             ))
         }
     }
@@ -176,7 +210,33 @@ pub(crate) fn image_svg(out: &mut String, item: &ImageItem) {
     let transform = item.transform.as_deref().map_or_else(String::new, |value| {
         format!(" transform=\"{}\"", crate::paint::escape_attr(value))
     });
-    if let Some(href) = &item.href {
+    if let (Some(href), Some(_)) = (&item.href, item.crop) {
+        // The cropped part fills the box: the whole picture is drawn larger,
+        // inside a viewport the size of the box that clips the rest.
+        let (full_x, full_y, full_w, full_h) = item.uncropped_box();
+        let open = item.transform.as_deref().map_or_else(String::new, |value| {
+            format!("  <g transform=\"{}\">\n", crate::paint::escape_attr(value))
+        });
+        let close = if open.is_empty() { "" } else { "  </g>\n" };
+        let _ = write!(
+            out,
+            "{open}  <svg x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" viewBox=\"{} {} {} {}\" preserveAspectRatio=\"none\" overflow=\"hidden\"><image x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" preserveAspectRatio=\"none\" xlink:href=\"{}\">{}</image></svg>\n{close}",
+            crate::paint::coord(item.x),
+            crate::paint::coord(item.y),
+            crate::paint::coord(item.w.max(0.0)),
+            crate::paint::coord(item.h.max(0.0)),
+            crate::paint::coord(item.x),
+            crate::paint::coord(item.y),
+            crate::paint::coord(item.w.max(0.0)),
+            crate::paint::coord(item.h.max(0.0)),
+            crate::paint::coord(full_x),
+            crate::paint::coord(full_y),
+            crate::paint::coord(full_w.max(0.0)),
+            crate::paint::coord(full_h.max(0.0)),
+            crate::paint::escape_attr(href),
+            title,
+        );
+    } else if let Some(href) = &item.href {
         let _ = writeln!(
             out,
             "  <image x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" preserveAspectRatio=\"none\"{} xlink:href=\"{}\">{}</image>",

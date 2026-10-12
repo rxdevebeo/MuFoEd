@@ -431,6 +431,7 @@ impl<'c, 'a> Painter<'c, 'a> {
     fn path(&mut self, frame: Frame, d: String, fill: Option<String>, stroke: Option<String>) {
         let stroke_w = if stroke.is_some() { self.line_px } else { 0.0 };
         self.push(Item::Path(PathItem {
+            paint: None,
             x: frame.x,
             y: frame.y,
             w: frame.w,
@@ -1033,6 +1034,7 @@ impl Painter<'_, '_> {
                 let d = sector(centre, outer, hole, angle, angle + sweep);
                 let color = point_color(Some(series), index);
                 self.push(Item::Path(PathItem {
+                    paint: None,
                     x: inner.x,
                     y: inner.y,
                     w: inner.w,

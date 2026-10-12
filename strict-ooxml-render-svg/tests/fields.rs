@@ -18,6 +18,36 @@ const PAGE_SETUP: &str = "<w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
 <w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\"/>";
 const FOOTER_REL: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/footer";
 
+#[test]
+fn end_tab_accounts_for_resolved_page_field_width() {
+    let footer = format!("<w:ftr xmlns:w=\"{W}\"><w:p><w:pPr><w:tabs><w:tab w:val=\"end\" w:pos=\"9360\"/></w:tabs></w:pPr><w:r><w:tab/></w:r><w:fldSimple w:instr=\" PAGE \"/></w:p></w:ftr>");
+    let pages = build_with_footer(&three_page_body(PAGE_SETUP), &footer);
+    assert_eq!(pages.len(), 3);
+    for page in pages {
+        assert!(
+            !page
+                .warnings
+                .iter()
+                .any(|w| w.contains("render.line-overflow")),
+            "page field must end at the tab"
+        );
+        let xml = roxmltree::Document::parse(&page.svg).expect("SVG");
+        let number = xml
+            .descendants()
+            .find(|n| n.tag_name().name() == "text" && matches!(n.text(), Some("1" | "2" | "3")))
+            .expect("number");
+        let x: f64 = number
+            .attribute("x")
+            .expect("x")
+            .split_whitespace()
+            .next()
+            .expect("x")
+            .parse()
+            .expect("x");
+        assert!(x < 720.0 && x > 700.0, "right-aligned PAGE origin: {x}");
+    }
+}
+
 /// Builds a Strict package with the given body and renders it.
 fn build(body: &str) -> Vec<Page> {
     let bytes = build_docx(&[

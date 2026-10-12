@@ -57,6 +57,7 @@ Inventory element changes and XSD messages are different measurements:
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import collections
 import fnmatch
 import hashlib
@@ -120,6 +121,14 @@ NS_PREFIX = {
     "http://schemas.openxmlformats.org/drawingml/2006/picture": "pic",
     "http://purl.oclc.org/ooxml/drawingml/picture": "pic",
     "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing": "xdr",
+    # A canvas, a chart's drawing and a diagram keep their markup; without the
+    # pair the Strict copy of the same `a:sp` was a removal and an addition.
+    "http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas": "lc",
+    "http://purl.oclc.org/ooxml/drawingml/lockedCanvas": "lc",
+    "http://schemas.openxmlformats.org/drawingml/2006/chartDrawing": "cdr",
+    "http://purl.oclc.org/ooxml/drawingml/chartDrawing": "cdr",
+    "http://schemas.openxmlformats.org/drawingml/2006/diagram": "dgm",
+    "http://purl.oclc.org/ooxml/drawingml/diagram": "dgm",
     "http://schemas.openxmlformats.org/package/2006/metadata/core-properties": "cp",
     "http://purl.oclc.org/ooxml/officeDocument/relationships": "r",
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships": "r",
@@ -175,6 +184,17 @@ def load_census() -> list[dict]:
         return tomllib.load(handle)["item"]
 
 
+# T7 moves a text box's `w:txbxContent` from `v:textbox` to `wps:txbx`; the
+# content is the same and a missing one is still a missing one.
+_TEXT_BOX_WRAPPERS = {"textbox", "txbx"}
+
+
+def _text_box_context(local, parent, namespace, parent_namespace):
+    if local == "txbxContent" and parent in _TEXT_BOX_WRAPPERS:
+        return (local, "text box", namespace, None)
+    return (local, parent, namespace, parent_namespace)
+
+
 def vanished_elements(
     source: str, written: str, oracle, named: set[str]
 ) -> list[tuple[str, str, str]]:
@@ -209,6 +229,13 @@ def vanished_elements(
                 continue
             _drop_duplicate_singletons(old)
             _drop_duplicate_singletons(new)
+            _drop_empty_containers(old)
+            _drop_empty_containers(new)
+            # ADR-0014: an Office extension inside `a:extLst` is not written, and
+            # the report names it under `a:ext`. Without that citation the whole
+            # subtree stays inventory.
+            if _is_named(named, "a:ext"):
+                _strip_extension_ext(old)
             # `CT_RPr` allows one `w:rFonts`. A second sibling overrides only the
             # attributes it sets; the comparison uses that same overlay so a
             # repeated value is not a second fact and a slot the writer dropped
@@ -219,12 +246,12 @@ def vanished_elements(
                 _keep_last_duplicate_style(old)
                 _keep_last_duplicate_style(new)
             old_rows = [
-                (local, parent, namespace, parent_namespace)
+                _text_box_context(local, parent, namespace, parent_namespace)
                 for local, parent, namespace, parent_namespace in _element_contexts(old)
                 if local not in ("AlternateContent", "Choice", "Fallback")
             ]
             new_rows = [
-                (local, parent, namespace, parent_namespace)
+                _text_box_context(local, parent, namespace, parent_namespace)
                 for local, parent, namespace, parent_namespace in _element_contexts(new)
                 if local not in ("AlternateContent", "Choice", "Fallback")
             ]
@@ -284,7 +311,105 @@ def _strict_namespace_map() -> dict[str, str]:
 _STRICT_NS = _strict_namespace_map()
 
 
-def _semantic_part_digest(payload: bytes) -> str:
+# With `--write-reports DIR` the semantic text of every header and footer is
+# kept under DIR/semantic-parts/, so a relationship row that differs can be
+# explained by diffing the two sides instead of by guessing. An environment
+# variable, not a global: the comparisons run in worker processes.
+_SEMANTIC_DUMP_ENV = "CENSUS_SEMANTIC_DUMP"
+
+
+_XML_NS = "http://www.w3.org/XML/1998/namespace"
+# Editor state, not content: proofing marks.
+_SEMANTIC_SKIP = {"proofErr"}
+_BORDER_EDGES = {
+    "top", "left", "bottom", "right", "start", "end", "between", "bar", "insideH", "insideV",
+}
+# `w:tblLook` bits (ISO/IEC 29500-1 17.4.56 / -4 14.10.5): the Strict attributes.
+_TBL_LOOK = (
+    ("firstRow", 0x0020), ("lastRow", 0x0040), ("firstColumn", 0x0080),
+    ("lastColumn", 0x0100), ("noHBand", 0x0200), ("noVBand", 0x0400),
+)
+
+
+_WML_STRICT = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+
+
+def _text_boxes(element: etree._Element) -> list[etree._Element]:
+    """The outermost `w:txbxContent` under `element`, in document order."""
+    found: list[etree._Element] = []
+    for child in element:
+        if not isinstance(child.tag, str):
+            continue
+        if etree.QName(child).localname == "txbxContent":
+            found.append(child)
+        else:
+            found.extend(_text_boxes(child))
+    return found
+
+
+def _table_look(element: etree._Element) -> list[str]:
+    """`w:tblLook` as its six flags, whether written as a hex `val` or as attributes."""
+    flags: dict[str, bool] = {}
+    for key, value in element.attrib.items():
+        name = etree.QName(key).localname
+        if name == "val":
+            try:
+                bits = int(value, 16)
+            except ValueError:
+                continue
+            for flag, bit in _TBL_LOOK:
+                flags.setdefault(flag, bool(bits & bit))
+        elif name in dict(_TBL_LOOK):
+            flags[name] = value.lower() in {"1", "true", "on"}
+    return [f"{flag}={int(flags.get(flag, False))}" for flag, _bit in _TBL_LOOK]
+# T3 renames these attributes; the values stay.
+_DIRECTION_ATTRS = {
+    "left": "start", "right": "end", "leftChars": "startChars", "rightChars": "endChars",
+}
+
+
+def _canonical_value(name: str, value: str) -> str | None:
+    """One spelling per meaning, as `_same_attr_value` compares them.
+
+    `None` drops a default on/off `val`. On/off and direction words collapse to
+    one token, and a length is written in twips whether it came as `120` or
+    `6pt`. Both sides go through this, so a different value stays different.
+    """
+    lowered = value.lower()
+    # On/off is a number here, so `1`, `true` and `on` are one token whatever
+    # the attribute, and `0` stays equal to `0pt`.
+    if lowered in {"true", "on"}:
+        lowered = "1"
+    elif lowered in {"false", "off"}:
+        lowered = "0"
+    if name == "val":
+        if lowered == "1":
+            return None
+        if lowered in {"left", "start"}:
+            return "start"
+        if lowered in {"right", "end"}:
+            return "end"
+    if name == "char":
+        # `w:sym@char` is hex, not a length; the Symbol-font remap writes
+        # `F0A7` as `00A7` (`_same_sym_char`).
+        try:
+            code = int(value, 16)
+        except ValueError:
+            return value
+        if 0xF000 <= code <= 0xF0FF:
+            code -= 0xF000
+        return f"{code:04X}"
+    twips = _twips(lowered)
+    if twips is not None:
+        # `wp:wrap*` and `wp:anchor` distances: the writer spells out the zero.
+        if name.startswith("dist") and twips == 0:
+            return None
+        return f"{round(twips, 2):g}tw"
+    # A namespace URI as a value (`a:graphicData@uri`) in its Strict form.
+    return _STRICT_NS.get(value, value)
+
+
+def _semantic_part_digest(payload: bytes, dump_name: str | None = None) -> str:
     """Header and footer identity after the Strict rewrite.
 
     Editor marks, `mc:Ignorable`, a default on/off `val`, and the complex-script
@@ -305,32 +430,117 @@ def _semantic_part_digest(payload: bytes) -> str:
             return
         qname = etree.QName(element)
         namespace = _STRICT_NS.get(qname.namespace or "", qname.namespace or "")
-        chunks.append(f"<{namespace} {qname.localname}")
+        local = qname.localname
+        if local in _SEMANTIC_SKIP:
+            return
+        # Markup compatibility: the output keeps the branch the reader chose
+        # (the first `mc:Choice`, else `mc:Fallback`) without the wrapper.
+        if local == "AlternateContent" and "markup-compatibility" in (qname.namespace or ""):
+            branches = [child for child in element if isinstance(child.tag, str)]
+            chosen = next(
+                (b for b in branches if etree.QName(b).localname == "Choice"),
+                next((b for b in branches if etree.QName(b).localname == "Fallback"), None),
+            )
+            if chosen is not None:
+                for child in chosen:
+                    walk(child, chunks)
+            return
+        # A border edge of `nil`/`none` is no border.
+        if local in _BORDER_EDGES and any(
+            etree.QName(key).localname == "val" and value in {"nil", "none"}
+            for key, value in element.attrib.items()
+        ):
+            return
+        # T3 renames the left/right edges and margins to start/end.
+        local = {"left": "start", "right": "end"}.get(local, local)
+        if local == "tblLook":
+            chunks.append(f"<{namespace} tblLook")
+            chunks.append(" ".join(_table_look(element)))
+            return
+        # A drawing counts by the text of its text boxes. VML becomes DrawingML
+        # (T7) and its geometry, locks and extensions are attribute and element
+        # rows of this part; the header's identity is what it says.
+        if local in {"pict", "drawing"} and namespace == _WML_STRICT:
+            # T7 writes each member of a VML group as its own `w:drawing` in the
+            # same run: the run's drawings are one mark.
+            previous = element.getprevious()
+            run_of_drawings = previous is not None and isinstance(previous.tag, str) and (
+                etree.QName(previous).localname in {"pict", "drawing"}
+            )
+            if not run_of_drawings:
+                chunks.append(f"<{namespace} drawing")
+            # A drawing is what it says: the text of its boxes, and the string of
+            # a WordArt `v:textpath`, which T7 writes as a text box.
+            for box in _text_boxes(element):
+                text = "".join(
+                    node.text or ""
+                    for node in box.iter()
+                    if isinstance(node.tag, str) and etree.QName(node).localname == "t"
+                )
+                if text:
+                    chunks.append(f"text={text}")
+            for node in element.iter():
+                if isinstance(node.tag, str) and etree.QName(node).localname == "textpath":
+                    if node.get("string"):
+                        chunks.append(f"text={node.get('string')}")
+            return
+        # A pct width is fiftieths of a percent in Transitional and `100%` in Strict.
+        pct = any(
+            etree.QName(key).localname == "type" and value == "pct"
+            for key, value in element.attrib.items()
+        )
         attributes: list[str] = []
         for key, value in element.attrib.items():
             attr = etree.QName(key)
-            if attr.localname in _EDITOR_ATTRS or attr.localname == "Ignorable":
+            name = attr.localname
+            if name in _EDITOR_ATTRS or name == "Ignorable":
                 continue
-            if qname.localname == "rFonts" and attr.localname == "hint" and value.lower() == "cs":
+            # The writer spells out xml:space on every text run.
+            if attr.namespace == _XML_NS and name == "space":
                 continue
-            if attr.localname == "val" and value.lower() in {"true", "on"}:
+            if qname.localname == "rFonts" and name == "hint" and value.lower() == "cs":
+                continue
+            if name == "prefixMappings":
+                # Namespace URIs inside the mapping string, in their Strict form.
+                for old_uri, strict_uri in _STRICT_NS.items():
+                    value = value.replace(old_uri, strict_uri)
+            elif pct and name == "w":
+                number = _percent_number(value)
+                if number is not None:
+                    value = f"{number if value.endswith('%') else number / 50.0:g}pct"
+            else:
+                value = _canonical_value(name, value)
+            if value is None:
                 continue
             attr_ns = _STRICT_NS.get(attr.namespace or "", attr.namespace or "")
-            attributes.append(f"{attr_ns} {attr.localname}={value}")
-        if attributes:
-            chunks.append(" ".join(sorted(attributes)))
-        text = (element.text or "").strip()
-        if text:
-            chunks.append(text)
+            name = _DIRECTION_ATTRS.get(name, name)
+            attributes.append(f"{attr_ns} {name}={value}")
         children = [child for child in element if isinstance(child.tag, str)]
         if qname.localname in property_bags:
             children.sort(key=lambda child: etree.QName(child).localname)
+        inner: list[str] = []
         for child in children:
-            walk(child, chunks)
+            walk(child, inner)
+        text = (element.text or "").strip()
+        # An empty property bag says nothing - also once its nil borders are
+        # gone; the writer leaves it out.
+        if qname.localname in property_bags and not attributes and not inner and not text:
+            return
+        chunks.append(f"<{namespace} {local}")
+        if attributes:
+            chunks.append(" ".join(sorted(attributes)))
+        if text:
+            chunks.append(text)
+        chunks.extend(inner)
 
     chunks: list[str] = []
     walk(root, chunks)
-    return hashlib.sha256("\n".join(chunks).encode("utf-8")).hexdigest()
+    text = "\n".join(chunks)
+    dump = os.environ.get(_SEMANTIC_DUMP_ENV)
+    if dump and dump_name:
+        Path(dump).mkdir(parents=True, exist_ok=True)
+        (Path(dump) / dump_name).write_text(text, encoding="utf-8")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
@@ -375,8 +585,14 @@ def _load_rels(archive: zipfile.ZipFile, part: str) -> dict[str, tuple]:
             # A regenerated header or footer is a different zip entry even when
             # the paragraphs are the same. The relationship row is the part
             # identity; attribute losses inside the part stay their own rows.
+            package = Path(archive.filename or "package")
+            # The written copy keeps the input's file name; its folder tells
+            # the two sides apart.
+            dump_name = (
+                f"{package.parent.name}--{package.name}--{resolved.replace('/', '_')}.txt"
+            )
             digest = (
-                _semantic_part_digest(payload)
+                _semantic_part_digest(payload, dump_name)
                 if kind.endswith("/header") or kind.endswith("/footer")
                 else hashlib.sha256(payload).hexdigest()
             )
@@ -409,6 +625,8 @@ def _changed_attributes(
     old_bag, namespace_of, old_stripped = _attribute_bag(old, old_rels)
     new_bag, _new_ns, new_stripped = _attribute_bag(new, new_rels)
     pane_left = _written_style_pane_sets(new_stripped)
+    bare_left = _bare_elements(new_stripped)
+    bare_left.subtract(_bare_elements(old_stripped))
     # `w:type="pct"` stores fiftieths (`5000`) in Transitional and `100%` in
     # Strict. Pair by element and type so a dxa `5000` cannot cancel a percent.
     _cancel_percent_widths(old_stripped, new_stripped, old_bag, new_bag)
@@ -470,6 +688,17 @@ def _changed_attributes(
                     continue
                 take = min(removed, spare)
                 appeared[other_key] -= take
+                removed -= take
+        # `w:vMerge` without `val` is `continue`, as `CT_OnOff` without it is on.
+        default_val = value.lower() in _TRUE_VALUES or (
+            elem_local == "vMerge" and value == "continue"
+        )
+        if removed > 0 and attr_local == "val" and default_val:
+            element_key = (elem_local, parent, elem_ns, parent_ns)
+            spare = bare_left[element_key]
+            if spare > 0:
+                take = min(removed, spare)
+                bare_left[element_key] -= take
                 removed -= take
         if (
             removed > 0
@@ -554,6 +783,38 @@ def _attribute_bag(
                 value = "relationship:" + json.dumps(relationships[value], ensure_ascii=True)
             bag[(qname.localname, parent_local, attr, value, elem_key[2], elem_key[3], _prefix_or_uri(namespace))] += 1
     return bag, namespace_of, copy
+
+
+def _bare_elements(stripped: etree._Element) -> collections.Counter:
+    """Childless elements with no `val`, keyed as `_attribute_bag` keys elements.
+
+    `CT_OnOff` with no `w:val` is on, so `<w:titlePg w:val="1"/>` written as
+    `<w:titlePg/>` is the same flag. Each new bare element pays for one lost
+    true `val`; the old bare ones are subtracted first.
+    """
+    bare: collections.Counter = collections.Counter()
+    for element in stripped.iter():
+        if not isinstance(element.tag, str) or len(element):
+            continue
+        if any(etree.QName(key).localname == "val" for key in element.attrib):
+            continue
+        qname = etree.QName(element)
+        parent = element.getparent()
+        if parent is None or not isinstance(parent.tag, str):
+            continue
+        parent_qname = etree.QName(parent)
+        bare[
+            (
+                qname.localname,
+                parent_qname.localname,
+                _prefix_or_uri(qname.namespace),
+                _prefix_or_uri(parent_qname.namespace),
+            )
+        ] += 1
+    return bare
+
+
+_TRUE_VALUES = {"1", "true", "on"}
 
 
 def _changed_resources(
@@ -773,7 +1034,9 @@ def census_hits(
                 elif signal == "mce":
                     hit = any(marker in where for marker in item["elements"])
                 elif signal == "extension":
-                    hit = any(marker in where for marker in item["elements"])
+                    # `where` is one local name. A substring match counted
+                    # `a14:shadowObscured`, kept inside `a:extLst`, as w14 `shadow`.
+                    hit = where in item["elements"]
                 elif signal == "element":
                     hit = element_item_matches(item, where, label, detail)
                 else:
@@ -916,7 +1179,69 @@ _SINGLETON_CHILDREN = {
         "lang", "shd", "rStyle",
     },
     "pPr": {"spacing", "ind", "jc", "pStyle", "rPr", "pBdr", "shd", "tabs"},
+    # `CT_Settings` holds each of these once; a Tamil corpus family writes
+    # `w:proofState` twice with the same attributes.
+    "settings": {
+        "proofState", "zoom", "defaultTabStop", "characterSpacingControl",
+        "view", "hyphenationZone", "decimalSymbol", "listSeparator",
+    },
 }
+
+
+_DRAWINGML = {
+    "http://schemas.openxmlformats.org/drawingml/2006/main",
+    "http://purl.oclc.org/ooxml/drawingml/main",
+}
+
+
+def _strip_extension_ext(root: etree._Element) -> None:
+    """Remove each DrawingML `a:ext` whose content is outside ECMA-376.
+
+    A namespace `NS_PREFIX` does not know (`a14`, `a15`, ...) is an extension.
+    An `a:extLst` left without an `a:ext` goes with them, since the writer does
+    not write an empty list.
+    """
+    known = set(NS_PREFIX) | {"http://www.w3.org/XML/1998/namespace"}
+
+    def foreign(element: etree._Element) -> bool:
+        for node in element.iter():
+            if not isinstance(node.tag, str):
+                continue
+            if etree.QName(node).namespace not in known:
+                return True
+            for key in node.attrib:
+                if key.startswith("{") and key[1:].split("}")[0] not in known:
+                    return True
+        return False
+
+    for ext in list(root.iter(*(f"{{{ns}}}ext" for ns in _DRAWINGML))):
+        parent = ext.getparent()
+        if parent is None or etree.QName(parent).localname != "extLst":
+            continue
+        if foreign(ext):
+            parent.remove(ext)
+            if not any(isinstance(child.tag, str) for child in parent):
+                grand = parent.getparent()
+                if grand is not None:
+                    grand.remove(parent)
+
+
+# Border, margin and tab containers whose meaning is their children: an empty
+# one (`<w:tcBorders></w:tcBorders>`) says nothing a missing one does not.
+_EMPTY_CONTAINERS = {"tcBorders", "tblBorders", "pBdr", "tcMar", "tblCellMar", "tabs"}
+
+
+def _drop_empty_containers(root: etree._Element) -> None:
+    for element in list(root.iter()):
+        if not isinstance(element.tag, str):
+            continue
+        if etree.QName(element).localname not in _EMPTY_CONTAINERS:
+            continue
+        if element.attrib or any(isinstance(child.tag, str) for child in element):
+            continue
+        parent = element.getparent()
+        if parent is not None:
+            parent.remove(element)
 
 
 def _drop_duplicate_singletons(root: etree._Element) -> None:
@@ -1109,6 +1434,13 @@ def _same_attr_value(
         return True
     if _same_measure(left, right):
         return True
+    # Word writes a negative `w:docGrid@charSpace` as its unsigned 32-bit pattern.
+    if element == "docGrid" and attr == "charSpace":
+        try:
+            if (int(left) - int(right)) % (1 << 32) == 0:
+                return True
+        except ValueError:
+            pass
     if _same_hex(left, right):
         return True
     # DrawingML ST_Percentage uses thousandths in Transitional and a percent
@@ -1126,12 +1458,29 @@ def _same_attr_value(
         or (element in {"defRPr", "rPr", "endParaRPr"} and attr == "baseline")
         or (element in {"spcPct", "buSzPct"} and attr == "val")
         or (element == "miter" and attr == "lim")
+        or (element == "lum" and attr in {"bright", "contrast"})
+        or (element in {"alphaModFix", "tint"} and attr == "amt")
+        or (element in {"alphaBiLevel", "biLevel"} and attr == "thresh")
+        or (element == "alphaRepl" and attr == "a")
+        or (element == "hsl" and attr in {"sat", "lum"})
+        or (element == "outerShdw" and attr in {"sx", "sy"})
+        or (element == "reflection" and attr in {"stA", "stPos", "endA", "endPos", "sx", "sy"})
     )
     if drawing_percent:
         a, b = _percent_number(left), _percent_number(right)
         if a is not None and b is not None:
             a = a if left.endswith("%") else a / 1000.0
             b = b if right.endswith("%") else b / 1000.0
+            return abs(a - b) < 1e-9
+    # Chart amounts are whole percents on both sides: Transitional `150`, Strict
+    # `150%` (T4.chart-percent) - the same number, unlike DrawingML thousandths.
+    chart_percent = namespace == "c" and attr == "val" and element in {
+        "gapWidth", "gapDepth", "overlap", "lblOffset", "holeSize",
+        "secondPieSize", "bubbleScale", "depthPercent", "hPercent",
+    }
+    if chart_percent:
+        a, b = _percent_number(left), _percent_number(right)
+        if a is not None and b is not None:
             return abs(a - b) < 1e-9
     # `w:w/@w:val` is ST_TextScale: Strict writes `90%`, Transitional writes `90`.
     # The number is a percentage of the normal character width, not a length.
@@ -1671,6 +2020,8 @@ def main(argv: list[str]) -> int:
     # process still performs the writes and keeps the bytes for receipts.
     parser.add_argument("--written", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.write_reports:
+        os.environ[_SEMANTIC_DUMP_ENV] = str(Path(args.write_reports) / "semantic-parts")
     if args.written:
         raise SystemExit(
             "error: census_gate.py measures the write's own loss report, so it cannot judge "
@@ -1734,6 +2085,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
     registry = load_census()
     signals: dict[str, list[tuple[str, str, str]]] = collections.defaultdict(list)
     out_schema: collections.Counter = collections.Counter()
+    written_paths: dict[str, str] = {}
     dropped: collections.Counter = collections.Counter()
     unaccounted: collections.Counter = collections.Counter()
     silent_elements: collections.Counter = collections.Counter()
@@ -1782,6 +2134,7 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
                 label_in += sum(incoming.schema.values())
                 continue
             validated += 1
+            written_paths[name] = path
             outgoing = xsd_gate.validate_package(path, oracle)
             incoming_count = sum(incoming.schema.values())
             outgoing_count = sum(outgoing.schema.values())
@@ -1953,6 +2306,29 @@ def report(args, oracle: xsd_gate.Oracle, cli: str, written_root: str) -> int:
         )
         for where, local, detail in hits["unclassified_element_changes"][:40]:
             print(f"  {where} [{local}]: {detail}")
+        # The first 40 rows are one or two documents; the labels say what is left.
+        labels = collections.Counter(local for _, local, _ in hits["unclassified_element_changes"])
+        print("\n=== unclassified by label")
+        for local, count in labels.most_common(60):
+            print(f"  {local:<48} {count:>4}")
+        if args.write_reports:
+            # The written package of each document with a row, to read what
+            # the writer did without rerunning it.
+            kept = Path(args.write_reports) / "written"
+            for where, _, _ in hits["unclassified_element_changes"]:
+                name = where.split(": ", 1)[0]
+                source = written_paths.get(name)
+                if source and not (kept / name).exists():
+                    kept.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, kept / name)
+            rows = Path(args.write_reports) / "unclassified.txt"
+            rows.write_text(
+                "".join(
+                    f"{where} [{local}]: {detail}\n"
+                    for where, local, detail in hits["unclassified_element_changes"]
+                ),
+                encoding="utf-8",
+            )
 
     if not args.quiet_messages and out_schema:
         print("\n=== every message, so nothing is counted on trust")

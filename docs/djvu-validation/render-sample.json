@@ -1,0 +1,102 @@
+{
+  "what": "SC-D7 IW44 regression sample: every page of the 14 smallest corpus files, measured 2026-10-09. Bounded so the nightly stays within its timeout.",
+  "files": {
+    "LandgerichtMunchen_az-7o-1533-12.djvu": [
+      1,
+      2,
+      3
+    ],
+    "AfbeeldingenVvdReferendumEuropeseGrondwwet.djvu": [
+      1,
+      2
+    ],
+    "LettreDuMnstreDeLaDefenseAuMaireDeJoyeuse.djvu": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "comesa.039.f.ds.2004.djvu": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "DenunciaDoCaajaAoMinisterioPublicoARespeitoDossantinhoseleitorais.djvu": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "eo_XV_1892.djvu": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "NederlandsTijdschriftVoorGeneeskunde.djvu": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "HenryRenna-ComentariosSobreElLibroCiudadesParaTodoshic2007.djvu": [
+      1,
+      2,
+      3
+    ],
+    "Gnomonica.StudiSiStoriaDellaGnomonica.ParteTerza.djvu": [
+      1,
+      2
+    ],
+    "GeopoliticvsChildSiveRepublicanismvsGeopoliticvsAmicisEtHostibvsMitto_.djvu": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "GoogleBoekRecensieMetRechtDiscriminatieBestrijden.djvu": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "SPTrans_201306_permissao.djvu": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "ec.cpe.006.1983.djvu": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ],
+    "KlachtenrechtZorgsector.djvu": [
+      1,
+      2,
+      3
+    ]
+  }
+}

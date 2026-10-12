@@ -18,8 +18,6 @@ pub enum RenderError {
     },
     /// The document contains no usable section geometry.
     NoGeometry,
-    /// An explicitly selected font resource cannot be delivered by this backend.
-    UnsupportedFontAsset(String),
     /// An internal invariant failed.
     Internal(String),
     /// Page/region geometry did not stabilize within the bounded reflow limit.
@@ -49,7 +47,6 @@ impl std::fmt::Display for RenderError {
                 f,
                 "render limit exceeded ({what}): limit = {limit}, actual = {actual}"
             ),
-            Self::UnsupportedFontAsset(detail) => write!(f, "unsupported font asset: {detail}"),
             Self::NoGeometry => f.write_str("document has no page geometry"),
             Self::Internal(detail) => write!(f, "internal render error: {detail}"),
             Self::DidNotConverge { passes } => write!(

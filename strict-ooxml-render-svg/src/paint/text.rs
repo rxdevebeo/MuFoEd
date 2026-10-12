@@ -3,28 +3,65 @@
 use std::fmt::Write as _;
 
 use super::coord;
-use crate::font::{shape_bundled, unicode_x_positions_px, BuiltinFontProvider, FontProvider};
+use crate::font::{shape_bundled_run, unicode_x_positions_px, BuiltinFontProvider, FontProvider};
 use crate::layout::{TextAdvanceKind, TextItem};
 
-/// Writes one text fragment, optionally with a highlight rectangle behind it.
-pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
-    if crate::style::registered_face(&item.run, &item.text)
-        .is_some_and(|face| !crate::font::svg_resource_supported(&face))
-    {
-        return;
+/// Outline edge using the same scalar positions and face as SVG paint.
+pub(crate) fn text_ink_right(item: &TextItem) -> Option<f64> {
+    thread_local! {
+        static FONTS: BuiltinFontProvider = BuiltinFontProvider::new();
     }
-    if let Some(highlight) = &item.run.highlight {
-        // Highlight: an approximate box around the glyphs.
-        let height = item.size_px * 1.2;
-        let top = item.baseline - item.size_px * 0.9;
+    let shown = crate::font::present_text(&item.run.family, &item.text);
+    let family = crate::style::chosen_family(&item.run, &item.text);
+    let positions = shaped_x_attribute(&shown, &family, item);
+    FONTS.with(|fonts| {
+        shown
+            .chars()
+            .zip(positions.split_whitespace())
+            .filter_map(|(ch, x)| {
+                let x = x.parse::<f64>().ok()?;
+                let right = fonts.ink_right_em(&family, ch, item.run.bold, item.run.italic)?;
+                Some(item.x + (x - item.x + right * item.size_px) * item.run.char_scale)
+            })
+            .max_by(f64::total_cmp)
+    })
+}
+
+/// Writes one text fragment with its shading, highlight, underline and
+/// strikethrough.
+pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
+    if item.run.rotation_deg != 0.0 {
         let _ = writeln!(
             out,
-            "  <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
+            "<g transform=\"rotate({} {} {})\">",
+            coord(item.run.rotation_deg),
             coord(item.x),
-            coord(top),
-            coord(item.width),
-            coord(height),
-            super::escape_attr(highlight),
+            coord(item.baseline)
+        );
+    }
+    // Decorations are geometry shared with the PDF backend, rotated with the
+    // text they belong to.
+    let decorations = crate::layout::text_decorations(item);
+    for decoration in &decorations.behind {
+        super::item_svg(out, decoration);
+    }
+    text_svg_unrotated(out, item);
+    for decoration in &decorations.over {
+        super::item_svg(out, decoration);
+    }
+    if item.run.rotation_deg != 0.0 {
+        out.push_str("</g>\n");
+    }
+}
+
+fn text_svg_unrotated(out: &mut String, item: &TextItem) {
+    if (item.run.char_scale - 1.0).abs() > 1e-9 {
+        let _ = writeln!(
+            out,
+            "<g transform=\"translate({} 0) scale({} 1) translate({} 0)\">",
+            coord(item.x),
+            coord(item.run.char_scale),
+            coord(-item.x)
         );
     }
     let shown = crate::font::present_text(&item.run.family, &item.text);
@@ -45,39 +82,13 @@ pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
     if item.run.italic {
         attributes.push_str(" font-style=\"italic\"");
     }
-    if let Some(face) = crate::style::registered_face(&item.run, &item.text) {
-        let mut asset_style = String::from("font-optical-sizing: none; font-synthesis: none");
-        if !face.resource.key().variations.is_empty() {
-            let settings = face
-                .resource
-                .key()
-                .variations
-                .iter()
-                .map(|axis| {
-                    let mut tag = String::with_capacity(16);
-                    for byte in axis.tag() {
-                        let _ = write!(tag, "\\{byte:02x} ");
-                    }
-                    format!("'{tag}' {}", axis.value())
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            let _ = write!(asset_style, "; font-variation-settings: {settings}");
-        }
+    if item.run.outline {
         let _ = write!(
             attributes,
-            " style=\"{}\"",
-            super::escape_attr(&asset_style)
+            " stroke=\"{}\" stroke-width=\"{}\"",
+            super::escape_attr(&fill),
+            coord((item.size_px * 0.035).max(0.5))
         );
-    }
-    let decoration = match (item.run.underline, item.run.strike) {
-        (true, true) => Some("underline line-through"),
-        (true, false) => Some("underline"),
-        (false, true) => Some("line-through"),
-        (false, false) => None,
-    };
-    if let Some(decoration) = decoration {
-        let _ = write!(attributes, " text-decoration=\"{decoration}\"");
     }
     // Explicit per-scalar x from the shared shaper so the browser does not
     // re-shape against a different face (F07). Ligature clusters share one x.
@@ -87,25 +98,25 @@ pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
         "  <text x=\"{x_attr}\" y=\"{}\" {} fill=\"{}\" xml:space=\"preserve\">{}</text>",
         coord(item.baseline),
         attributes,
-        super::escape_attr(&fill),
+        if item.run.outline {
+            "none".to_owned()
+        } else {
+            super::escape_attr(&fill)
+        },
         super::escape_text(&shown),
     );
+    if (item.run.char_scale - 1.0).abs() > 1e-9 {
+        out.push_str("</g>\n");
+    }
 }
 
 fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
     if shown.is_empty() || shown.chars().count() == 1 {
         return coord(item.x);
     }
-    let owned = crate::style::registered_face(&item.run, &item.text);
-    let provider = BuiltinFontProvider::new();
-    let advance = |ch| {
-        owned.as_ref().map_or_else(
-            || provider.advance_em(family, ch, item.run.bold, item.run.italic),
-            |face| face.resource.advance_em(ch).unwrap_or(0.0),
-        )
-    };
     let xs = match item.advance {
         TextAdvanceKind::Metric => {
+            let provider = BuiltinFontProvider::new();
             let extra = crate::style::spacing_px(&item.run, item.size_px);
             let mut cursor = item.x;
             let mut prev = None;
@@ -121,7 +132,13 @@ fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
                     item.compress_punctuation,
                     item.plain_space_factor,
                 );
-                cursor += advance(ch) * item.size_px * factor;
+                cursor += crate::style::space_advance_em(
+                    &item.run,
+                    family,
+                    ch,
+                    provider.advance_em(family, ch, item.run.bold, item.run.italic),
+                ) * item.size_px
+                    * factor;
                 if !ch.is_whitespace() {
                     cursor += extra;
                     prev = Some(ch);
@@ -132,46 +149,22 @@ fn shaped_x_attribute(shown: &str, family: &str, item: &TextItem) -> String {
             metric
         }
         TextAdvanceKind::Shaped => {
-            let mut xs = if let Some(face) = &owned {
-                let Some(shaped) = crate::font::shape_resource(shown, face) else {
-                    return coord(item.x);
-                };
-                unicode_x_positions_px(shown, &shaped, item.x, item.size_px)
-            } else {
-                let Some(shaped) = shape_bundled(shown, family, item.run.bold, item.run.italic)
-                else {
-                    return coord(item.x);
-                };
-                unicode_x_positions_px(shown, &shaped, item.x, item.size_px)
+            let Some(shaped) = shape_bundled_run(shown, family, &item.run) else {
+                return coord(item.x);
             };
-            let extra = crate::style::spacing_px(&item.run, item.size_px);
-            let compress = item.compress_punctuation;
-            if extra != 0.0 || compress {
-                let chars: Vec<char> = shown.chars().collect();
-                let mut prev = None;
-                let mut non_space_index = 0usize;
-                let mut compress_shift = 0.0;
-                for (logical, &ch) in chars.iter().enumerate() {
-                    let next = chars.get(logical + 1).copied().or(item.following_non_space);
-                    let factor = crate::style::compressed_char_factor(
-                        prev,
-                        ch,
-                        next,
-                        compress,
-                        item.plain_space_factor,
-                    );
-                    if let Some(x) = xs.get_mut(logical) {
-                        *x += extra * non_space_index as f64 + compress_shift;
-                    }
-                    if (factor - 1.0).abs() > f64::EPSILON {
-                        compress_shift -= advance(ch) * item.size_px * (1.0 - factor);
-                    }
-                    if !ch.is_whitespace() {
-                        non_space_index += 1;
-                        prev = Some(ch);
-                    } else if factor > 0.0 {
-                        prev = Some(ch);
-                    }
+            let mut xs = unicode_x_positions_px(shown, &shaped, item.x, item.size_px);
+            let offsets = crate::font::shaped_cluster_offsets_px(item, shown, &shaped);
+            let mut cluster_index = 0;
+            for (scalar, (byte, _)) in shown.char_indices().enumerate() {
+                while shaped
+                    .clusters
+                    .get(cluster_index)
+                    .is_some_and(|cluster| cluster.byte_end <= byte)
+                {
+                    cluster_index += 1;
+                }
+                if let (Some(x), Some(offset)) = (xs.get_mut(scalar), offsets.get(cluster_index)) {
+                    *x += offset;
                 }
             }
             xs

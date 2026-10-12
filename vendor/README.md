@@ -41,3 +41,38 @@ without the limits above. To fail closed, the vendored `hayro` exports a
 `raster` build against upstream `hayro` does not compile. Default-feature builds
 (no `raster`) do not depend on `hayro` and are unaffected. Remove the marker
 reference together with the vendored copy once upstream ships the fixes.
+
+### WMF / EMF previews (`emfsdk`)
+
+`emfsdk` 0.2.0 (MIT OR Apache-2.0, [KaiserY/emfsdk](https://github.com/KaiserY/emfsdk))
+rasterizes the WMF/EMF preview of an OLE object (a MathType equation) to its
+laid-out frame (`strict-ooxml-render-svg/src/metafile.rs`). The crate ships no
+licence files; its `Cargo.toml` states the licence. Every patch is marked
+`StrictLib patch:` in `src/render.rs` (`grep -rn "StrictLib patch" vendor/emfsdk`).
+Covered by `strict-ooxml-render-svg/tests/metafile_preview.rs`; each test fails
+against the upstream release.
+
+| Patch | Why |
+|---|---|
+| Font height and pen width are logical units, mapped to the canvas like coordinates (`EmfVectorState::draw_text`, `set_pen_pixel`) | Taken as device pixels, a MathType font (384 units at 2306/inch, ~32px) was drawn 384px tall on a 66x30 raster: the equation showed as a fragment of one glyph, or nothing, and a fraction bar as a solid block |
+| `SetTextAlign` / `EMR_SETTEXTALIGN`: `TA_UPDATECP` (the run starts at the current position and moves it), `TA_TOP`/`TA_BASELINE`/`TA_BOTTOM`, `TA_LEFT`/`TA_CENTER`/`TA_RIGHT` | MathType places every run by `MoveTo` and writes (0, 0) in `ExtTextOut`; drawn at (0, 0) the text sat above the raster |
+| The `ExtTextOut` `dx` array positions the glyphs (WMF and EMF, `ETO_PDY` pairs too) | The producer's spacing, not our fallback font's advances |
+| The run's LOGFONT picks the face (family, weight, italic); a glyph the face lacks comes from a fallback chain; system fonts are scanned once per process | One sans-serif face for everything; a single missing glyph sent the whole run to the 5x7 bitmap font; every metafile rescanned the system fonts |
+| The Symbol face's codes are mapped to Unicode (Adobe Symbol encoding; `U+F020..U+F0FF` in UTF-16 runs); other single-byte runs are decoded in their LOGFONT charset (Windows-125x) | `0xCE` drew `Î` instead of `∈` |
+| Glyphs are filled with anti-aliased coverage (4 sub-scanlines, exact span overlap) | One sample at each pixel centre dropped a stroke thinner than a pixel - a minus sign - unless it crossed that centre |
+
+Known gaps: `MT Extra` codes (accent dots and the like) are drawn as their
+Latin-1 characters; glyphs come from the system fonts, not the bundled ones, so
+a raster differs between machines.
+
+### DjVu import budgets
+
+`djvu-bzz` and `djvu-jb2` 0.40.2 are vendored from MIT-licensed
+[matyushkin/djvu-rs](https://github.com/matyushkin/djvu-rs), independently of
+the PrintCraft patches above. Their original license notices are retained.
+The `bzz_decode_with_limits`, `decode_with_limits` and
+`decode_dict_with_limits` and `decode_indexed_with_limits` APIs enforce caller budgets before allocating blocks,
+canvases and record tables. Existing public APIs remain available.
+These patches are wired in both the root and separate fuzz workspaces;
+`strict-ooxml-djvu/tests/read.rs` and `tests/image.rs` exercise their guards.
+See `strict-ooxml-djvu/PROVENANCE.md` for derivation.

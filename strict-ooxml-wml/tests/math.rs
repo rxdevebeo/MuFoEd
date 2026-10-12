@@ -247,15 +247,15 @@ fn matrices_and_equation_arrays_keep_their_grid() {
     assert_eq!(matrix.columns[0].justification, Some(MathAlignment::Center));
 
     let MathNode::EquationArray(array) = first_node(
-        "<m:oMath><m:eqArr><m:eqArrPr><m:baseJc m:val=\"center\"/><m:maxDist m:val=\"4\"/>\
-<m:objDist m:val=\"3\"/><m:rSp m:val=\"120\"/><m:rSpRule m:val=\"exact\"/></m:eqArrPr>\
+        "<m:oMath><m:eqArr><m:eqArrPr><m:baseJc m:val=\"center\"/><m:maxDist m:val=\"true\"/>\
+<m:objDist m:val=\"0\"/><m:rSp m:val=\"120\"/><m:rSpRule m:val=\"exact\"/></m:eqArrPr>\
 <m:e><m:r><m:t>a</m:t></m:r></m:e><m:e><m:r><m:t>b</m:t></m:r></m:e></m:eqArr></m:oMath>",
     ) else {
         panic!("expected an equation array");
     };
     assert_eq!(array.rows.len(), 2);
-    assert_eq!(array.max_distance, Some(4));
-    assert_eq!(array.object_distance, Some(3));
+    assert_eq!(array.max_distance, Some(true));
+    assert_eq!(array.object_distance, Some(false));
     assert_eq!(array.base_justification, Some(MathVerticalAlign::Center));
 }
 

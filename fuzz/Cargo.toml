@@ -8,6 +8,7 @@ edition = "2021"
 cargo-fuzz = true
 
 [dependencies]
+strict-ooxml-djvu = { path = "../strict-ooxml-djvu", features = ["djvu-image"] }
 libfuzzer-sys = "0.4"
 strict-ooxml-core = { path = "../strict-ooxml-core" }
 strict-ooxml-wml = { path = "../strict-ooxml-wml" }
@@ -63,4 +64,14 @@ path = "fuzz_targets/fuzz_convert.rs"
 test = false
 doc = false
 
+[[bin]]
+name = "fuzz_djvu"
+path = "fuzz_targets/fuzz_djvu.rs"
+test = false
+doc = false
+
 [workspace]
+
+[patch.crates-io]
+djvu-bzz = { path = "../vendor/djvu-bzz" }
+djvu-jb2 = { path = "../vendor/djvu-jb2" }

@@ -10,7 +10,7 @@ use super::drawing::Drawing;
 use super::math::{MathExpression, MathParagraph};
 use super::props::RunProperties;
 use super::revision::Revision;
-use super::values::{BreakKind, FieldCharType, Space};
+use super::values::{BreakClear, BreakKind, FieldCharType, Space};
 
 /// A text node with its `xml:space` handling (`w:t`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -31,12 +31,33 @@ pub struct Symbol {
 }
 
 /// A field character (`w:fldChar`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FieldChar {
     /// Character kind.
     pub kind: FieldCharType,
     /// Preserve formatting during update.
     pub dirty: bool,
+    /// The children of a legacy form field's `w:ffData` (`CT_FFData`: name,
+    /// enabled, calcOnExit, checkBox, textInput, ddList, ...), kept as read and
+    /// written back in source order. `None` when the field character has no
+    /// `w:ffData`. Nothing reads them; they are kept so a form field is still a
+    /// form field after a write.
+    pub form_data: Option<Vec<FormFieldElement>>,
+}
+
+/// One element of a kept `w:ffData` subtree.
+///
+/// Every element and attribute of `CT_FFData` is in the `w:`
+/// namespace and carries no character data, so a name, its `w:` attributes and
+/// its children are the whole element.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FormFieldElement {
+    /// Local name (`checkBox`, `default`, `textInput`, ...).
+    pub local: Arc<str>,
+    /// Local names and values of the element's `w:` attributes, in source order.
+    pub attributes: Vec<(Arc<str>, Arc<str>)>,
+    /// Child elements in source order.
+    pub children: Vec<FormFieldElement>,
 }
 
 /// Content of a run (`w:r`).
@@ -48,6 +69,14 @@ pub enum RunContent {
     Tab,
     /// Break (`w:br`).
     Break(BreakKind),
+    /// A text wrapping break that also clears floating objects
+    /// (`w:br w:clear="left|right|all"`): the next line starts below the floats
+    /// on that side.
+    ///
+    /// A variant of its own rather than a field of [`Self::Break`]: `ST_BrClear`
+    /// applies to text wrapping breaks only, and every reader of `Break` keeps
+    /// matching the one shape it always had.
+    ClearingBreak(BreakClear),
     /// Carriage return (`w:cr`).
     CarriageReturn,
     /// Inline drawing (`w:drawing`).
@@ -63,11 +92,8 @@ pub enum RunContent {
     /// The number marker inside a footnote/endnote body (`w:footnoteRef`/
     /// `w:endnoteRef`); replaced by the note's number when rendered.
     NoteRef,
-    /// The separator marker (`w:separator`) inside a separator note body.
-    Separator,
-    /// The continuation-separator marker (`w:continuationSeparator`) inside a
-    /// continuation-separator note body.
-    ContinuationSeparator,
+    /// Separator rule inside a note definition; true means continuation rule.
+    NoteSeparator(bool),
     /// Absolute position tab (`w:ptab`).
     ///
     /// All three attributes are `use="required"`, so this is three strings rather
@@ -129,6 +155,13 @@ pub struct Run {
 pub struct Hyperlink {
     /// Relationship id (`r:id`), for external/internal targets.
     pub rel_id: Option<RelId>,
+    /// External target URL, for a link a converter generates.
+    ///
+    /// In a parsed document the URL lives in the source package's `.rels` and
+    /// only `rel_id` is set. A generated document has no such package, so the
+    /// converter sets this instead and the writer allocates an external
+    /// hyperlink relationship for it.
+    pub target: Option<Arc<str>>,
     /// Document anchor (`w:anchor`).
     pub anchor: Option<Arc<str>>,
     /// Tooltip (`w:tooltip`).
@@ -185,6 +218,10 @@ pub struct Bookmark {
     pub id: BookmarkId,
     /// `w:name`, the bookmark's name in the document.
     pub name: Arc<str>,
+    /// `w:colFirst`: the first table column a column bookmark covers.
+    pub col_first: Option<u32>,
+    /// `w:colLast`: the last table column a column bookmark covers.
+    pub col_last: Option<u32>,
 }
 
 impl Bookmark {
@@ -193,6 +230,8 @@ impl Bookmark {
         Self {
             id: BookmarkId::new(id),
             name: name.into(),
+            col_first: None,
+            col_last: None,
         }
     }
 }

@@ -90,9 +90,19 @@
 #![deny(rust_2018_idioms)]
 #![allow(clippy::doc_markdown)]
 
+#[cfg(feature = "djvu")]
+pub use strict_ooxml_convert::{convert_djvu, DjvuOptions};
+#[cfg(feature = "djvu")]
+pub use strict_ooxml_djvu::{
+    DjvuDocument, DjvuError, DjvuLimits, DjvuMetadata, DjvuPage, TextLayer as DjvuTextLayer,
+};
+#[cfg(feature = "ocr-ollama")]
+pub use strict_ooxml_ocr::ollama::{OllamaConfig, OllamaVision};
+
 use std::io::Read;
 use std::path::Path;
 
+use strict_ooxml_core::control;
 use strict_ooxml_core::error::Result;
 #[cfg(feature = "report")]
 use strict_ooxml_core::ns::Conformance;
@@ -120,6 +130,7 @@ pub use strict_ooxml_convert::{
     convert as convert_pdf, ConversionReport, ConvertError, Converted, Mode, ParagraphRules,
     PdfOptions,
 };
+pub use strict_ooxml_core::control::{CancelReason, OpenControl, Progress, Stage};
 pub use strict_ooxml_core::error::StrictError;
 pub use strict_ooxml_core::limits::ResourceLimits;
 /// How much a normalization removal matters.
@@ -140,12 +151,9 @@ pub use strict_ooxml_render_pdf::{
     PdfOutput, PdfReport,
 };
 #[cfg(feature = "svg")]
-pub use strict_ooxml_render_svg::font::{
-    FaceInstanceKey, FaceVariation, FontAsset, FontAssetManifest, FontAssetRegistry,
-    FontEmbeddingPermission, FontFailurePolicy, FontRegistryError, FontRegistryLimits,
+pub use strict_ooxml_render_svg::{
+    CellNoWrap, MediaMode, Page, PageSelection, RenderError, RenderOptions, WrapCoordinates,
 };
-#[cfg(feature = "svg")]
-pub use strict_ooxml_render_svg::{MediaMode, Page, PageSelection, RenderError, RenderOptions};
 #[cfg(feature = "report")]
 pub use strict_ooxml_report::{
     Feature, FeatureStatus, Location, OverallStatus, Severity, SupportReport,
@@ -159,7 +167,8 @@ pub use strict_ooxml_wml::{parse_document, ParseOptions};
 pub use strict_ooxml_write::package::{MediaBag, NoSource, RelationshipInfo, Source};
 #[cfg(feature = "write")]
 pub use strict_ooxml_write::{
-    dropped_count, verify_no_silent_loss, write_package, WriteOptions, WriteOutput, WriteReport,
+    dropped_count, verify_no_silent_loss, write_package, CoreProperties, WriteOptions, WriteOutput,
+    WriteReport,
 };
 
 /// An opened Strict document: the OPC package plus its parsed model.
@@ -196,10 +205,12 @@ impl StrictDocument {
     ///
     /// See [`StrictDocument::from_package`].
     pub fn open_path(path: impl AsRef<Path>, options: &OpenOptions) -> Result<Self> {
+        let _scope = options.control.as_ref().map(OpenControl::enter);
         let path = path.as_ref();
         let package = Package::open_path(path, options)?;
         let mut document = Self::from_package(package, &parse_options_from(options))?;
         document.file = path.display().to_string();
+        control::stage(Stage::Finished, 0);
         Ok(document)
     }
 
@@ -209,9 +220,11 @@ impl StrictDocument {
     ///
     /// See [`StrictDocument::from_package`].
     pub fn open_reader<R: Read>(reader: R, options: &OpenOptions) -> Result<Self> {
+        let _scope = options.control.as_ref().map(OpenControl::enter);
         let package = Package::open_reader(reader, options)?;
         let mut document = Self::from_package(package, &parse_options_from(options))?;
         document.file = String::from("<reader>");
+        control::stage(Stage::Finished, 0);
         Ok(document)
     }
 
@@ -381,7 +394,14 @@ impl StrictDocument {
     /// ```
     #[cfg(feature = "svg")]
     pub fn render_svg(&self, options: &RenderOptions) -> Result<Vec<Page>> {
-        strict_ooxml_render_svg::render_with_media(&self.document, options, Some(&self.package))
+        let _scope = options.control.as_ref().map(OpenControl::enter);
+        let pages = strict_ooxml_render_svg::render_with_media(
+            &self.document,
+            options,
+            Some(&self.package),
+        )?;
+        control::stage(Stage::Finished, 0);
+        Ok(pages)
     }
 
     /// Renders a single page to an SVG string (zero-based `index`).
@@ -433,9 +453,13 @@ impl StrictDocument {
     /// exceeded.
     #[cfg(feature = "pdf")]
     pub fn render_pdf(&self, options: &RenderOptions) -> Result<PdfOutput> {
+        let _scope = options.control.as_ref().map(OpenControl::enter);
         let pages =
             strict_ooxml_render_svg::place_pages(&self.document, options, Some(&self.package))?;
-        strict_ooxml_render_pdf::render_with_source(&pages, options, Some(&self.package))
+        let output =
+            strict_ooxml_render_pdf::render_with_source(&pages, options, Some(&self.package))?;
+        control::stage(Stage::Finished, 0);
+        Ok(output)
     }
 }
 
