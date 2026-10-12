@@ -796,6 +796,16 @@ fn arabic_and_tibetan_embed_the_script_faces() {
             "{family} not in {faces:?}"
         );
     }
+    // Noto Naskh draws a letter's dots as glyphs of their own; each such
+    // cluster carries its text as `ActualText`, so a reader gets the letter
+    // back and not one stray character per extra glyph.
+    let content = extracted_text(&pdf);
+    assert!(content.contains("/ActualText"), "no ActualText span");
+    assert_eq!(
+        content.matches("BDC").count(),
+        content.matches("EMC").count(),
+        "unbalanced marked content"
+    );
     let page = &svg.first().expect("page").svg;
     assert!(
         page.contains("font-family: \"Noto Naskh Arabic\""),

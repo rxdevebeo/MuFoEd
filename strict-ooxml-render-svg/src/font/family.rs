@@ -14,14 +14,7 @@ pub fn map_family(family: &str) -> &'static str {
 /// Returns a bundled face only for a recognized family or alias.
 #[must_use]
 pub fn known_family(family: &str) -> Option<&'static str> {
-    let lower = family.trim().to_ascii_lowercase();
-    // Nastaliq is a different calligraphic style with its own, much taller
-    // line box; an Urdu document that asks for one (Jameel Noori Nastaleeq,
-    // AlQalam Taj Nastaleeq, …) gets the bundled Nastaliq face as such.
-    if lower.contains("nastaleeq") || lower.contains("nastaliq") {
-        return Some("Noto Nastaliq Urdu");
-    }
-    Some(match lower.as_str() {
+    Some(match family.trim().to_ascii_lowercase().as_str() {
         "calibri" | "carlito" => "Carlito",
         // Calibri is the wildcard below: it is the family Carlito metrics match.
         "cambria" | "caladea" => "Caladea",
@@ -42,7 +35,6 @@ pub fn known_family(family: &str) -> Option<&'static str> {
         // [`script_fallback`] maps to itself on the next pass.
         "noto naskh arabic" => "Noto Naskh Arabic",
         "noto sans arabic" => "Noto Sans Arabic",
-        "noto nastaliq urdu" => "Noto Nastaliq Urdu",
         "jomolhari" => "Jomolhari",
         // An unknown CSS family is measured and delivered as Carlito, the bundled
         // Calibri-metric face. Leaving the request unchanged made layout use the
@@ -57,7 +49,9 @@ pub fn known_family(family: &str) -> Option<&'static str> {
 /// Word and WPS draw Arabic and Tibetan from a font that has them (WQ-004).
 /// Arabic next to a sans face (Arial, Tahoma via Arimo) takes the sans
 /// Arabic design, otherwise the Naskh one, which is the style of Times New
-/// Roman's and Traditional Arabic's Arabic.
+/// Roman's and Traditional Arabic's Arabic. Urdu set in a Nastaliq family
+/// that is not installed comes out in Naskh too, as WPS draws it: a Nastaliq
+/// face needs a line box twice as tall, and the requested font's box is unknown.
 #[must_use]
 pub fn script_fallback(base: &str, ch: char) -> Option<&'static str> {
     match ch {
@@ -151,12 +145,11 @@ mod tests {
         assert_eq!(script_fallback("Carlito", 'a'), None);
         assert_eq!(script_fallback("Tinos", 'א'), None);
         assert!(is_script_fallback("Jomolhari"));
-        assert!(!is_script_fallback("Noto Nastaliq Urdu"));
+        assert!(!is_script_fallback("Tinos"));
         for family in ["Noto Naskh Arabic", "Noto Sans Arabic", "Jomolhari"] {
             assert_eq!(map_family(family), family);
         }
-        assert_eq!(map_family("Jameel Noori Nastaleeq"), "Noto Nastaliq Urdu");
-        assert_eq!(map_family("AlQalam Taj Nastaleeq"), "Noto Nastaliq Urdu");
+        assert_eq!(super::known_family("Jameel Noori Nastaleeq"), None);
     }
 
     #[test]
