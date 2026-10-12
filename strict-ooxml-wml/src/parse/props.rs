@@ -137,6 +137,11 @@ impl PartParser<'_> {
                                     parse_on_off_tristate(parser, &attrs, "w:suppressLineNumbers");
                                 parser.skip_element()?;
                             }
+                            "suppressAutoHyphens" => {
+                                props.suppress_auto_hyphens =
+                                    parse_on_off_tristate(parser, &attrs, "w:suppressAutoHyphens");
+                                parser.skip_element()?;
+                            }
                             "contextualSpacing" => {
                                 props.contextual_spacing =
                                     parse_on_off_tristate(parser, &attrs, "w:contextualSpacing");

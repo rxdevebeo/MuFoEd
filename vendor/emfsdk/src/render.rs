@@ -728,6 +728,14 @@ struct EmfVectorState {
   device_px_per_mm: (f32, f32),
   bounds_origin: (i32, i32),
   device_to_canvas: (f32, f32),
+  // StrictLib patch: EMF+ dual files ([MS-EMFPLUS] 3.1.1.1): once an
+  // EmfPlusHeader is played, the GDI records are the fallback and are skipped,
+  // except those that follow an EmfPlusGetDC. Both sets drawn at once share
+  // one world transform, and the GDI one moved the EMF+ drawing off the
+  // canvas (doc 088, the ChemDraw structure "5c").
+  prefer_emf_plus: bool,
+  emf_plus_header: bool,
+  gdi_after_get_dc: bool,
   world_transform: EmfTransform,
   brush_colors: std::collections::HashMap<u32, EmfColor>,
   pens: std::collections::HashMap<u32, EmfPen>,
@@ -1164,6 +1172,9 @@ impl EmfVectorState {
         width as f32 / natural_width as f32,
         height as f32 / natural_height as f32,
       ),
+      prefer_emf_plus: true,
+      emf_plus_header: false,
+      gdi_after_get_dc: false,
       world_transform: EmfTransform::identity(),
       brush_colors: std::collections::HashMap::new(),
       pens: std::collections::HashMap::new(),
@@ -2036,7 +2047,31 @@ fn decode_vector_emf_as_png(
   data: &[u8],
   options: RenderOptions,
 ) -> Result<DecodedMetafile, String> {
+  // StrictLib patch: a dual file is played as EMF+; when that leaves the
+  // canvas blank (EMF+ records this renderer does not draw), the GDI records
+  // are played instead.
+  let plus = decode_vector_emf_pass(data, options, true)?;
+  if plus.emf_plus_header && plus.rgb.iter().all(|value| *value == 255) {
+    let gdi = decode_vector_emf_pass(data, options, false)?;
+    return finish_vector_emf(&gdi);
+  }
+  finish_vector_emf(&plus)
+}
+
+fn finish_vector_emf(state: &EmfVectorState) -> Result<DecodedMetafile, String> {
+  Ok(DecodedMetafile {
+    data: rgb_to_png(&state.rgb, state.width as u32, state.height as u32)?,
+    content_type: "image/png",
+  })
+}
+
+fn decode_vector_emf_pass(
+  data: &[u8],
+  options: RenderOptions,
+  prefer_emf_plus: bool,
+) -> Result<EmfVectorState, String> {
   let mut state = EmfVectorState::new_with_options(data, options)?;
+  state.prefer_emf_plus = prefer_emf_plus;
   let mut pos = emf_header_size(data);
 
   while pos + EMF_RECORD_HEADER_SIZE <= data.len() {
@@ -2046,6 +2081,15 @@ fn decode_vector_emf_as_png(
       return Err(format!(
         "invalid EMF record at offset {pos}: type=0x{record_type:08x} size={record_size}"
       ));
+    }
+    if state.prefer_emf_plus
+      && state.emf_plus_header
+      && !state.gdi_after_get_dc
+      && record_type != EMR_COMMENT
+      && record_type != EMR_EOF
+    {
+      pos += record_size;
+      continue;
     }
 
     match record_type {
@@ -2371,10 +2415,7 @@ fn decode_vector_emf_as_png(
     pos += record_size;
   }
 
-  Ok(DecodedMetafile {
-    data: rgb_to_png(&state.rgb, state.width as u32, state.height as u32)?,
-    content_type: "image/png",
-  })
+  Ok(state)
 }
 
 #[derive(Clone, Debug)]
@@ -2453,6 +2494,9 @@ impl WmfRenderState {
         device_px_per_mm: (96.0 / 25.4, 96.0 / 25.4),
         bounds_origin: (0, 0),
         device_to_canvas: (1.0, 1.0),
+        prefer_emf_plus: false,
+        emf_plus_header: false,
+        gdi_after_get_dc: false,
         world_transform: EmfTransform::identity(),
         brush_colors: std::collections::HashMap::new(),
         pens: std::collections::HashMap::new(),
@@ -3174,7 +3218,14 @@ fn process_emf_plus_comment(
     let record_bytes = &data[cursor..cursor + size];
     let mut reader = Reader::new(std::io::Cursor::new(record_bytes));
     if let Ok(record) = EmfPlusRecord::read_from(&mut reader, record_bytes.len() as u64) {
-      if record.record_kind() == Some(EmfPlusRecordType::Object) {
+      match record.record_kind() {
+        Some(EmfPlusRecordType::Header) => state.emf_plus_header = true,
+        Some(EmfPlusRecordType::GetDc) => state.gdi_after_get_dc = true,
+        _ => state.gdi_after_get_dc = false,
+      }
+      if !state.prefer_emf_plus {
+        // The GDI pass draws the fallback records only.
+      } else if record.record_kind() == Some(EmfPlusRecordType::Object) {
         if let Ok(fragment) = record.into_object_fragment() {
           process_emf_plus_object(fragment, state)?;
         }

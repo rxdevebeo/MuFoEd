@@ -138,6 +138,7 @@ fn paragraph_child(
             }
         }
         "suppressLineNumbers" => toggle(xml, "w:suppressLineNumbers", props.suppress_line_numbers),
+        "suppressAutoHyphens" => toggle(xml, "w:suppressAutoHyphens", props.suppress_auto_hyphens),
         "pBdr" => {
             if !borders_empty(&props.borders) {
                 borders_element(xml, "w:pBdr", &props.borders, EdgeNames::Paragraph);
@@ -271,6 +272,7 @@ fn is_empty_paragraph(props: &ParagraphProperties) -> bool {
         && props.section.is_none()
         && props.text_direction.is_none()
         && props.suppress_line_numbers == TriState::Absent
+        && props.suppress_auto_hyphens == TriState::Absent
         && props.contextual_spacing == TriState::Absent
         && props.word_wrap == TriState::Absent
         && props.snap_to_grid == TriState::Absent

@@ -2139,12 +2139,40 @@ struct LineSink<'a, 'b> {
 }
 
 impl LineSink<'_, '_> {
+    /// The end of the free interval that holds all of `line`, when wrap
+    /// exclusions narrow it.
+    fn wrapped_right_edge(&self, line: &LineBuilder) -> Option<f64> {
+        if self.exclusions.is_empty() || line.items.is_empty() {
+            return None;
+        }
+        let left = line
+            .items
+            .iter()
+            .map(|item| item.x)
+            .fold(f64::INFINITY, f64::min);
+        let right = line
+            .items
+            .iter()
+            .map(|item| item.x + item.width)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let spans = free_spans(self, f64::NEG_INFINITY, provisional_line_height(self));
+        spans
+            .into_iter()
+            .find(|(start, end)| *start <= left + 0.5 && right <= *end + 0.5)
+            .map(|(_, end)| end)
+            .filter(|end| *end < self.right_edge - 0.5)
+    }
+
     fn emit(&mut self, line: LineBuilder, last: bool) {
+        // Beside a wrapped object the line ends where its free interval ends:
+        // justification and alignment work up to the object, not under it
+        // (WQ-012). A line whose text crosses the object keeps the column edge.
+        let right_edge = self.wrapped_right_edge(&line).unwrap_or(self.right_edge);
         let mut finished = finish_line(
             self.ctx,
             self.computed,
             line,
-            self.right_edge,
+            right_edge,
             self.grid_line_pitch,
             last,
         );
@@ -2608,6 +2636,7 @@ fn place_formatted_word(
             });
             if settings.auto_hyphenation
                 && !settings.auto_hyphenation_off
+                && !sink.computed.suppress_auto_hyphens
                 && word.len() <= 4096
                 && (*x <= normal_x + 0.001 || end - *x > zone)
                 && !(settings.do_not_hyphenate_caps
@@ -2745,6 +2774,7 @@ fn hyphenated_prefix(
     let settings = &sink.ctx.document.settings;
     if !settings.auto_hyphenation
         || settings.auto_hyphenation_off
+        || sink.computed.suppress_auto_hyphens
         || available <= 0.0
         || token.len() > 4096
     {

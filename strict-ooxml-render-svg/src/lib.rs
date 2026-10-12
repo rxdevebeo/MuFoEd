@@ -315,10 +315,11 @@ impl RenderOptions {
 /// How `w:tcPr/w:noWrap` is honoured (ISO/IEC 29500-1 §17.4.30).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CellNoWrap {
-    /// As specified: the flag acts only under the automatic table layout. A
-    /// cell with a fixed (`dxa`) preferred width keeps wrapping its text and
-    /// is only never made narrower than that width; a cell with an `auto`,
-    /// `pct` or absent width is laid out without line breaks. WPS does this.
+    /// As specified for the automatic table layout: a cell with a fixed
+    /// (`dxa`) preferred width keeps wrapping its text and is only never made
+    /// narrower than that width; a cell with an `auto`, `pct` or absent width
+    /// is laid out without line breaks. In a fixed-layout table the flag keeps
+    /// the text unbroken. This is what WPS draws.
     #[default]
     Spec,
     /// The flag always suppresses line breaks, whatever the cell width and

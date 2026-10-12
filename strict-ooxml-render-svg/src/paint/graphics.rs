@@ -133,7 +133,7 @@ pub(crate) fn picture_items(
             .or_else(|| picture.name.clone())
             .map_or_else(String::new, |value| value.to_string())
     });
-    vec![Item::Image(ImageItem {
+    let image = Item::Image(ImageItem {
         x,
         y,
         w,
@@ -143,7 +143,54 @@ pub(crate) fn picture_items(
         alt,
         transform: xfrm_transform(picture.xfrm, x, y, w, h),
         crop: crate::paint::image::src_rect_crop(picture.src_rect),
-    })]
+    });
+    match picture
+        .markup
+        .blip_children
+        .as_deref()
+        .and_then(blip_washout)
+    {
+        Some(opacity) => vec![Item::Group(crate::layout::GroupItem {
+            matrix: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            items: vec![image],
+            bounds: [x, y, w, h],
+            clip: None,
+            clip_path: None,
+            clip_inverse: false,
+            opacity,
+        })],
+        None => vec![image],
+    }
+}
+
+/// The opacity that stands in for a picture's colour effects: a washed-out
+/// picture (`a:lum` with negative contrast or positive brightness, Word's
+/// watermark) or `a:alphaModFix`. Blending with the white page under it gives
+/// the light picture WPS draws (WQ-028 / doc 028's header logo).
+fn blip_washout(children: &str) -> Option<f64> {
+    let attribute = |element: &str, name: &str| -> Option<f64> {
+        let rest = children.get(children.find(&format!("<a:{element} "))?..)?;
+        let tag = rest.get(..rest.find('>')?)?;
+        let key = format!(" {name}=\"");
+        let value = tag.split_once(&key)?.1.split('"').next()?;
+        // Strict writes a percentage (`70%`), Transitional thousandths of one.
+        match value.strip_suffix('%') {
+            Some(percent) => percent.parse::<f64>().ok().map(|value| value / 100.0),
+            None => value.parse::<f64>().ok().map(|value| value / 100_000.0),
+        }
+    };
+    let mut opacity: f64 = 1.0;
+    let contrast = attribute("lum", "contrast").unwrap_or(0.0);
+    let bright = attribute("lum", "bright").unwrap_or(0.0);
+    if contrast < 0.0 {
+        opacity = opacity.min(1.0 + contrast);
+    } else if bright > 0.0 {
+        opacity = opacity.min(1.0 - bright);
+    }
+    if let Some(alpha) = attribute("alphaModFix", "amt") {
+        opacity *= alpha;
+    }
+    (opacity < 0.999).then_some(opacity.clamp(0.05, 1.0))
 }
 
 /// Builds the items of a shape (path + optional text box).

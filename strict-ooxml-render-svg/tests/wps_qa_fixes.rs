@@ -175,20 +175,21 @@ fn wq036_a_right_tab_past_the_margin_is_honoured() {
     assert!(number.0 > 48.0 + 288.0 - 30.0, "near the stop: {found:?}");
 }
 
-/// WQ-020: `w:noWrap` in a fixed-width cell keeps wrapping under the spec
-/// mode; `always` keeps the line whole.
+/// WQ-020: `w:noWrap` in a fixed-width cell of an automatic-layout table
+/// wraps under the spec mode when the unbroken row does not fit the table;
+/// `always` keeps the line whole.
 #[test]
 fn wq020_no_wrap_in_a_fixed_cell_follows_the_option() {
     let body = format!(
         "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr>\
 <w:tblGrid><w:gridCol w:w=\"1304\"/><w:gridCol w:w=\"1304\"/></w:tblGrid>\
 <w:tr><w:tc><w:tcPr><w:tcW w:w=\"1304\" w:type=\"dxa\"/><w:noWrap/></w:tcPr>\
-<w:p><w:r><w:t>Fossil feathers (tail)</w:t></w:r></w:p></w:tc>\
+<w:p><w:r><w:t>Fossil feathers (tail) of the preserved specimen</w:t></w:r></w:p></w:tc>\
 <w:tc><w:tcPr><w:tcW w:w=\"1304\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr>\
 </w:tbl><w:p/>{NARROW}"
     );
-    let lines = |mode: CellNoWrap| {
-        let page = pages(&body, &RenderOptions::default().cell_no_wrap(mode)).remove(0);
+    let lines = |body: &str, mode: CellNoWrap| {
+        let page = pages(body, &RenderOptions::default().cell_no_wrap(mode)).remove(0);
         let mut found: Vec<f64> = texts(&page)
             .into_iter()
             .filter(|(_, _, text)| text != "x")
@@ -199,10 +200,16 @@ fn wq020_no_wrap_in_a_fixed_cell_follows_the_option() {
         found.len()
     };
     assert!(
-        lines(CellNoWrap::Spec) > 1,
+        lines(&body, CellNoWrap::Spec) > 1,
         "wraps inside the 1304-twip cell"
     );
-    assert_eq!(lines(CellNoWrap::Always), 1, "the old behaviour");
+    assert_eq!(lines(&body, CellNoWrap::Always), 1, "the old behaviour");
+    // A fixed-layout table keeps the text unbroken (WPS, doc 092).
+    let fixed = body.replace(
+        "<w:tblW w:w=\"0\" w:type=\"auto\"/>",
+        "<w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblLayout w:type=\"fixed\"/>",
+    );
+    assert_eq!(lines(&fixed, CellNoWrap::Spec), 1);
 }
 
 /// WQ-006: a `w:framePr` in the document defaults does not turn every

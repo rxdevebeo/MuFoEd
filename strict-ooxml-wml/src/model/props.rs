@@ -74,6 +74,8 @@ pub struct ParagraphProperties {
     pub text_direction: Option<TextDirection>,
     /// Suppress line numbers (`w:suppressLineNumbers`).
     pub suppress_line_numbers: TriState,
+    /// Suppress automatic hyphenation (`w:suppressAutoHyphens`).
+    pub suppress_auto_hyphens: TriState,
     /// Contextual spacing (`w:contextualSpacing`).
     pub contextual_spacing: TriState,
     /// Word wrap (`w:wordWrap`).

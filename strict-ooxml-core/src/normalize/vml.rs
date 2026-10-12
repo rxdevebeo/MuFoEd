@@ -153,6 +153,11 @@ pub struct VmlPicture {
     /// The relationship id `v:imagedata/@r:id` carried, reused as
     /// `a:blip/@r:embed`.
     pub rel_id: String,
+    /// `v:imagedata/@gain` and `@blacklevel` as `a:lum` `(bright, contrast)`
+    /// in thousandths of a percent: Word's "washout" picture (a watermark) is
+    /// `gain="19661f" blacklevel="22938f"`, which is
+    /// `bright=70000 contrast=-70000` in `DrawingML`.
+    pub lum: Option<(i64, i64)>,
 }
 
 /// What a buffered `w:pict` / `w:object` subtree turned out to be.
@@ -464,6 +469,7 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
     let mut frame: Option<VmlShape> = None;
     let mut element = String::new();
     let mut rel_id: Option<String> = None;
+    let mut lum: Option<(i64, i64)> = None;
     let mut has_textbox = false;
     let mut path: Option<String> = None;
     let mut wrap = Wrap::None;
@@ -514,6 +520,7 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
                 if let Some(id) = attributes.get("id") {
                     rel_id = Some(id.clone());
                 }
+                lum = imagedata_lum(&attributes);
             }
             "textbox" => has_textbox = true,
             "textpath" if is_vml(uri) && text_path.is_none() => {
@@ -545,6 +552,7 @@ pub(crate) fn classify(subtree: &[Event<'static>], context: &PartContext) -> Opt
         stroke,
         text_path,
         rel_id,
+        lum,
         has_textbox,
         path,
     };
@@ -558,6 +566,7 @@ struct Found {
     stroke: Option<Attributes>,
     text_path: Option<Attributes>,
     rel_id: Option<String>,
+    lum: Option<(i64, i64)>,
     has_textbox: bool,
     path: Option<String>,
 }
@@ -574,7 +583,11 @@ fn settle(mut shape: VmlShape, found: Found) -> Option<Shape> {
     // `r:id` and a text box is an OLE object whose *preview* is that image, and the
     // preview is what the reader saw.
     if let Some(rel_id) = found.rel_id {
-        return Some(Shape::Picture(VmlPicture { shape, rel_id }));
+        return Some(Shape::Picture(VmlPicture {
+            shape,
+            rel_id,
+            lum: found.lum,
+        }));
     }
     if found.has_textbox {
         shape.preset = shape.preset.or(Some("rect"));
@@ -1078,6 +1091,7 @@ pub(crate) fn group_member_events(
     (head, tail)
 }
 
+#[allow(clippy::too_many_lines)]
 fn finish_grouped(
     events: &[Event<'static>],
     frame: &GroupFrame,
@@ -1090,19 +1104,21 @@ fn finish_grouped(
     let name = String::from_utf8_lossy(start.name().as_ref()).into_owned();
     let local = name.rsplit(':').next().unwrap_or_default().to_owned();
     let attributes = attributes_of(start.attributes().flatten());
-    let picture_id = events.iter().find_map(|event| {
+    let picture = events.iter().find_map(|event| {
         let (Event::Start(start) | Event::Empty(start)) = event else {
             return None;
         };
         let (local, uri) = qualified(start, part_context)?;
         if local == "imagedata" && is_vml(&uri) {
-            attributes_of(start.attributes().flatten())
-                .get("id")
-                .cloned()
+            let attributes = attributes_of(start.attributes().flatten());
+            let lum = imagedata_lum(&attributes);
+            attributes.get("id").cloned().map(|id| (id, lum))
         } else {
             None
         }
     });
+    let picture_id = picture.as_ref().map(|(id, _)| id.clone());
+    let picture_lum = picture.and_then(|(_, lum)| lum);
     let content = textbox_children(events);
     let preset = match &content {
         Some(_) => preset_of(&local, &attributes).or(Some("rect")),
@@ -1166,7 +1182,11 @@ fn finish_grouped(
     };
     if let Some(rel_id) = picture_id {
         return Some(GroupedTextBox {
-            shape: Shape::Picture(VmlPicture { shape, rel_id }),
+            shape: Shape::Picture(VmlPicture {
+                shape,
+                rel_id,
+                lum: picture_lum,
+            }),
             wrap,
             content: Vec::new(),
         });
@@ -1651,7 +1671,9 @@ fn doc_pr_events(name: &str, description: Option<&str>, doc_pr_id: u32) -> Vec<E
 /// markup, so the two can never disagree about what a shape is.
 fn graphic_events(class: &Shape, cx: i64, cy: i64) -> Vec<Event<'static>> {
     match class {
-        Shape::Picture(picture) => picture_payload(&picture.shape.name, &picture.rel_id, cx, cy),
+        Shape::Picture(picture) => {
+            picture_payload(&picture.shape.name, &picture.rel_id, picture.lum, cx, cy)
+        }
         // A freeform keeps its frame and loses its geometry; a text box's content
         // is spliced in by the caller. Both losses are recorded there, where the
         // shape's name is in scope.
@@ -1660,8 +1682,28 @@ fn graphic_events(class: &Shape, cx: i64, cy: i64) -> Vec<Event<'static>> {
     }
 }
 
-fn picture_payload(name: &str, rel_id: &str, cx: i64, cy: i64) -> Vec<Event<'static>> {
-    vec![
+fn picture_payload(
+    name: &str,
+    rel_id: &str,
+    lum: Option<(i64, i64)>,
+    cx: i64,
+    cy: i64,
+) -> Vec<Event<'static>> {
+    let blip = match lum {
+        Some((bright, contrast)) => vec![
+            Event::Start(el("a:blip", &[("r:embed", rel_id)])),
+            Event::Empty(el(
+                "a:lum",
+                &[
+                    ("bright", &bright.to_string()),
+                    ("contrast", &contrast.to_string()),
+                ],
+            )),
+            Event::End(BytesEnd::new("a:blip").into_owned()),
+        ],
+        None => vec![Event::Empty(el("a:blip", &[("r:embed", rel_id)]))],
+    };
+    let mut events = vec![
         Event::Start(el("a:graphic", &[])),
         Event::Start(el("a:graphicData", &[("uri", URI_PICTURE)])),
         Event::Start(el("pic:pic", &[])),
@@ -1675,7 +1717,9 @@ fn picture_payload(name: &str, rel_id: &str, cx: i64, cy: i64) -> Vec<Event<'sta
         // relationship behind it is the same image part with the same
         // `.../relationships/image` type - which the normalizer has already
         // rewritten to its Strict form. Nothing about the relationship changes.
-        Event::Empty(el("a:blip", &[("r:embed", rel_id)])),
+    ];
+    events.extend(blip);
+    events.extend([
         Event::Start(el("a:stretch", &[])),
         Event::Empty(el("a:fillRect", &[])),
         Event::End(BytesEnd::new("a:stretch").into_owned()),
@@ -1692,7 +1736,33 @@ fn picture_payload(name: &str, rel_id: &str, cx: i64, cy: i64) -> Vec<Event<'sta
         Event::End(BytesEnd::new("pic:pic").into_owned()),
         Event::End(BytesEnd::new("a:graphicData").into_owned()),
         Event::End(BytesEnd::new("a:graphic").into_owned()),
-    ]
+    ]);
+    events
+}
+
+/// `v:imagedata/@gain` and `@blacklevel` as the `DrawingML` `a:lum`
+/// `(bright, contrast)`, in thousandths of a percent. Values are VML fixed point
+/// (`19661f` is 19661/65536) or plain decimals.
+#[allow(clippy::cast_possible_truncation)] // clamped to ±100000 below
+fn imagedata_lum(attributes: &Attributes) -> Option<(i64, i64)> {
+    let number = |name: &str| {
+        let value = attributes.get(name)?.trim();
+        match value.strip_suffix('f') {
+            Some(fixed) => fixed.parse::<f64>().ok().map(|value| value / 65536.0),
+            None => value.parse::<f64>().ok(),
+        }
+    };
+    let gain = number("gain");
+    let black = number("blacklevel");
+    if gain.is_none() && black.is_none() {
+        return None;
+    }
+    let contrast = gain.map_or(0, |gain| ((gain - 1.0) * 100_000.0).round() as i64);
+    let bright = black.map_or(0, |black| (black * 2.0 * 100_000.0).round() as i64);
+    Some((
+        bright.clamp(-100_000, 100_000),
+        contrast.clamp(-100_000, 100_000),
+    ))
 }
 
 /// `wps:wsp`, the shape the writer already reads and writes back.

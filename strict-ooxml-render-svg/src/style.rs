@@ -307,6 +307,8 @@ pub struct ComputedParagraph {
     pub widow_control: bool,
     /// Leave the paragraph's lines out of line numbering (`w:suppressLineNumbers`).
     pub suppress_line_numbers: bool,
+    /// No automatic hyphenation in this paragraph (`w:suppressAutoHyphens`).
+    pub suppress_auto_hyphens: bool,
     /// `w:spacing/@w:beforeAutospacing`: the space before is Word's HTML
     /// spacing, not `w:before`.
     pub before_autospacing: bool,
@@ -360,6 +362,7 @@ impl Default for ComputedParagraph {
             contextual_spacing: false,
             widow_control: false,
             suppress_line_numbers: false,
+            suppress_auto_hyphens: false,
             before_autospacing: false,
             after_autospacing: false,
             style: None,
@@ -666,6 +669,7 @@ pub fn apply_paragraph_props(
     apply_paragraph_props_mode(computed, props, theme, ToggleMode::Cascade);
 }
 
+#[allow(clippy::too_many_lines)]
 fn apply_paragraph_props_mode(
     computed: &mut ComputedParagraph,
     props: &ParagraphProperties,
@@ -741,6 +745,10 @@ fn apply_paragraph_props_mode(
     apply_flag(
         &mut computed.suppress_line_numbers,
         props.suppress_line_numbers,
+    );
+    apply_flag(
+        &mut computed.suppress_auto_hyphens,
+        props.suppress_auto_hyphens,
     );
     if let Some(fill) = props
         .shading

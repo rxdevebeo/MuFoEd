@@ -1435,10 +1435,14 @@ pub(crate) fn table_total_width(ctx: &LayoutContext<'_>, table: &Table, content_
         // A non-positive dxa (including the common `w:w="0"`) is not a 1 px
         // table. It means "no preferred width": the grid, then the container,
         // decide (A12).
+        //
+        // An explicit width wider than the text column is kept: Word and WPS
+        // let such a table run into the margin rather than squeeze its
+        // columns (doc 092: a 10003-twip table in an 8640-twip column).
         Some(Width {
             kind: WidthKind::Dxa,
             value: Some(value),
-        }) if value > 0 => twips_to_px(value, scale),
+        }) if value > 0 => return twips_to_px(value, scale),
         Some(Width {
             kind: WidthKind::Pct,
             value: Some(value),
@@ -2430,9 +2434,12 @@ fn shading_fill(ctx: &LayoutContext<'_>, cell: &CellProperties) -> Option<String
 
 /// Whether a cell's `w:noWrap` lays its text out without line breaks.
 ///
-/// Under [`crate::CellNoWrap::Spec`] that holds only for the automatic table
-/// layout and a cell whose preferred width is not fixed (ISO/IEC 29500-1
-/// §17.4.30): a fixed `dxa` width keeps the text wrapping.
+/// Under [`crate::CellNoWrap::Spec`] a cell with an `auto`, `pct` or absent
+/// preferred width, and any cell of a fixed-layout table, stays unbroken. A
+/// cell with a fixed `dxa` width under the automatic layout stays unbroken
+/// while the table's unbroken rows fit its width; otherwise the width is only a
+/// minimum and the text wraps (ISO/IEC 29500-1 §17.4.30). That is what WPS
+/// draws: doc 092 keeps its numbers on one line, docs 074 and 093 wrap.
 fn suppresses_breaks(
     ctx: &LayoutContext<'_>,
     table: &Table,
@@ -2444,12 +2451,56 @@ fn suppresses_breaks(
     match ctx.options.cell_no_wrap {
         crate::CellNoWrap::Always => true,
         crate::CellNoWrap::Spec => {
-            table.props.layout != Some(strict_ooxml_wml::model::values::TableLayout::Fixed)
-                && !properties
+            table.props.layout == Some(strict_ooxml_wml::model::values::TableLayout::Fixed)
+                || !properties
                     .width
                     .is_some_and(|width| width.kind == WidthKind::Dxa && width.value.is_some())
+                || unbroken_rows_fit(ctx, table)
         }
     }
+}
+
+thread_local! {
+    /// [`unbroken_rows_fit`] per table, by address, for the current layout.
+    static UNBROKEN_FIT: std::cell::RefCell<std::collections::HashMap<(usize, usize, usize), bool>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Whether every row of `table`, with its `noWrap` cells unbroken and the
+/// others at their longest word, fits the table's width.
+fn unbroken_rows_fit(ctx: &LayoutContext<'_>, table: &Table) -> bool {
+    // The address alone could be reused by a later table of another layout;
+    // the shape makes a stale hit unlikely, and a miss only costs time.
+    let key = (
+        std::ptr::from_ref(table) as usize,
+        table.rows.len(),
+        table.rows.iter().map(|row| row.cells.len()).sum::<usize>(),
+    );
+    if let Some(known) = UNBROKEN_FIT.with(|cache| cache.borrow().get(&key).copied()) {
+        return known;
+    }
+    let width = table_total_width(ctx, table, f64::INFINITY);
+    let margin = twips_to_px(DEFAULT_CELL_MARGIN * 2, ctx.options.scale);
+    let fits = width.is_finite()
+        && table.rows.iter().all(|row| {
+            let demand: f64 = row
+                .cells
+                .iter()
+                .map(|cell| {
+                    let (word, line) = intrinsic_cell_width(ctx, &cell.blocks, 0);
+                    margin + if cell.props.no_wrap { line } else { word }
+                })
+                .sum();
+            demand <= width + 0.5
+        });
+    UNBROKEN_FIT.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.len() > 4096 {
+            cache.clear();
+        }
+        cache.insert(key, fits);
+    });
+    fits
 }
 
 #[cfg(test)]
