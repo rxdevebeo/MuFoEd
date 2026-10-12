@@ -129,7 +129,8 @@ fn outline(font: &EmbeddedFont, cid: u16) -> Option<(Vec<u8>, [f32; 4], f32)> {
         return None;
     }
     pen.out.push_str("f\n");
-    Some((pen.out.into_bytes(), pen.bounds(), units_per_em))
+    let bounds = pen.bounds();
+    Some((pen.out.into_bytes(), bounds, units_per_em))
 }
 
 /// Collects an outline as `m`/`l`/`c`/`h` operators and tracks its bounds.
