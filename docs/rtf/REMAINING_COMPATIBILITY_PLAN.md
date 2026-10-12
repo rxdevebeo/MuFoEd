@@ -1058,6 +1058,17 @@ document_settings_and_compat_controls_are_info}`. Receipts —
 unknown LCID закреплены тестами; хвост низкоуверенных флагов (`\newtblstyruls`,
 `\sectlinegrid`, `\horzdoc`, `\stshf*`, `\clmar*`, `\gaph`, `\fet`, shape-stroke).
 
+Обновление 2026-10-12: закрыты picture crop (`a:srcRect`), `\picprop`, `\ts`,
+`{\*\pn}` и не-визуальные метаданные (`\defchp`/`\defpap`/`\template`/`\datastore`/
+`\blipuid`/`\updnprop`/`\mmathPr`/`\themedata`/`\colorschememapping`). Проверка
+декодированного body-text показала, что `wps:leading-group-line-ending` был
+консервативной ошибкой: WPS пишет тот же `&#10;`, тексты совпадают для всех
+затронутых (005/058/059/075), поэтому это Info. Losses **4441 → 1580**, все срезы
+severity-only кроме crop (меняется только 075), pagination 66/100 без изменений.
+Receipts — `target/rtf-import/rc09-slice12/`. Остаток — content-классы
+(shapes/OLE/comments/revisions/textboxes), pinned unknown LCID, implicit `\s0`,
+низкоуверенный хвост.
+
 ### RC04: resolver-probe (заметка) — 2026-10-11
 
 Проверен `xtool/rtf/effective_style_resolver.py` на текущем выходе 019/039 против

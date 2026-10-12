@@ -21,7 +21,7 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 | RC06 tables | Done | all table controls mapped (grid/merge/borders/shading/margins/widths/diagonals); nested tables = explicit Reject | parser + shared model |
 | RC07 metafiles | Planned | bounded WMF/EMF decoder in typed primitives | shared render |
 | RC08 regions/fields | InProgress | column layout + multi-paragraph field block **done (2026-10-11)**; remaining: custom marks, `\ftncn`, continuous-section same-page geometry | shared layout/model |
-| RC09 other losses | InProgress | revision/compat metadata + table/char controls with slots **done (2026-10-11)** (losses 83 671 → 4 441); remaining: `wps:leading-group-line-ending`, `\ts` table styles, picture crop, comments/revisions/textboxes/OLE/metadata | shared model |
+| RC09 other losses | InProgress | revision/compat metadata + table/char controls with slots **done (2026-10-11)** (losses 83 671 → 4 441); picture crop, table styles, non-visual metadata and the WPS line ending **done (2026-10-12)** (→ 1 580); remaining: shapes/OLE/comments/revisions | shared model |
 | RC10 hardening | непрерывно | fuzz/budgets/hostile на каждом новом декодере | все crates |
 | RC11 acceptance | Blocked | полный корпусный/профильный прогон, 100 verdicts | harness/assets |
 | RC12 public/CI | Planned | матрица фич, CI без WPS, публичный frontend | CI |
@@ -29,8 +29,8 @@ acceptance), а не мелкие mapping-срезы. Для каждого эт
 Текущие dev-цифры (полный прогон `RC06-final3`, свежий WPS oracle 2026-10-11):
 import resource 100/100, text 99/100 (014 — WPS field-recompute quirk), `check`
 100/100 `ok: strict`, pagination 66/100, pixels 6/100 док. / 22/458 стр.
-Import losses 4 441 (после RC09-срезов 2026-10-11; было 11 394, 83 671 после
-RC06, 127 228 изначально).
+Import losses 1 580 (после RC09-срезов 2026-10-12; было 4 441, 11 394,
+83 671 после RC06, 127 228 изначально).
 
 ---
 
@@ -284,27 +284,47 @@ Asian layout-контролы, чья bare-форма равна Strict-дефо
   settings/cocoa/view/drawing-grid/math/rsid-семейства, `\widowctrl`, `\additive`,
   `\pardirnatural`, `\deflang*`.
 
-Итог: import losses **83 671 → 11 394 → 4 441**; pagination 66/100 (0 изменений
-номеров страниц против `RC08-columns-layout`), `check` 100/100 `ok: strict`.
-Metadata/settings-срезы severity-only → DOCX SHA-256 идентичен. Тесты —
+**Продолжение (2026-10-12).**
+- **picture crop** `\piccrop{t,b,l,r}` → `a:srcRect` (twips→тысячные процента
+  extent; нулевой crop не пишет элемент). Единственные ненулевые в корпусе —
+  075 (`\piccropr4308`/`\piccropr4490`), меняется только его DOCX; WPS crop не
+  пишет (квирк WPS, у нас честный маппинг).
+- **`{\*\picprop}`** (shape-хинты для картинки) → Info; **table styles**
+  `{\*\tsN}`/`\tsN`/`\tsdN` → Info (`destination:ts`, `table-style-compat:ts`);
+  **`{\*\pn}`** (легаси-нумерация), `\defchp`/`\defpap`, `\template`,
+  `\datastore`, `\blipuid`, `\updnprop`, `\mmathPr`, `\themedata`/
+  `\colorschememapping` → Info;
+- **`wps:leading-group-line-ending`** (было 2 541) переклассифицирован в Info:
+  WPS пишет тот же `&#10;`, декодированный body-text совпадает с оракулом для
+  всех затронутых (005/058/059/075) — прежняя классификация была консервативной
+  ошибкой (severity-only).
+
+Итог: import losses **127 228 → 83 671 → 11 394 → 4 441 → 1 580**; pagination
+66/100 (0 изменений номеров страниц против `RC08-columns-layout`), `check`
+100/100 `ok: strict`. Все срезы кроме crop severity-only → DOCX SHA-256
+идентичен; crop меняет только 075 (без смены числа страниц). Тесты —
 `structure.rs::{legacy_layout_and_revision_controls_are_info_not_losses,
 non_default_legacy_layout_controls_stay_losses,
 document_settings_and_compat_controls_are_info,
 kerning_underline_colour_and_character_background_map_to_run_props,
 table_padding_row_height_alignment_and_layout_map,
 default_tab_stop_and_compat_controls_map_and_classify,
-font_panose_maps_and_metadata_destinations_are_info}`. Карточка
+font_panose_maps_and_metadata_destinations_are_info,
+picture_crop_maps_to_the_source_rectangle_and_shape_hints_are_info,
+absent_picture_crop_writes_no_source_rectangle,
+table_style_definition_and_reference_are_info,
+legacy_numbering_and_non_visual_metadata_destinations_are_info}` и
+`import.rs::wps_leading_group_line_endings_are_info_not_losses`. Карточка
 [compatibility/RC09](compatibility/RC09/STATUS.json).
 
-**Осталось.** (a) `wps:leading-group-line-ending` (2 541) — WPS пишет `&#10;`, наш
-WPS-профиль сохраняет байт как LF, тексты расходятся, поэтому остаётся явным Loss;
-(b) `\ts` table styles (`w:tblStyle`); (c) picture crop `\piccrop*`/`{\*\picprop}`
-(нужен `a:srcRect`); (d) content-классы, которым нужен shared model — comments,
-revisions, textboxes/shapes, OLE, document metadata; (e) language-сентинелы
-`\lang0`/`\lang1024` и прочие unknown LCID закреплены как Loss тестами; (f) хвост
-низкоуверенных application/layout-флагов (`\newtblstyruls`, `\sectlinegrid`,
-`\horzdoc`, `\stshf*`, `\clmar*`, `\gaph`, `\fet`, shape-stroke) сознательно не
-переклассифицирован.
+**Осталось.** (a) content-классы, которым нужен shared model — shapes (`\shp`),
+OLE (`\object`/`\objdata`), comments (`\annotation`), revisions, textboxes; WPS
+пишет их как transitional `w:pict`/`v:shape`, Strict его запрещает, поэтому
+нужен DrawingML-маппинг; (b) language-сентинелы `\lang0`/`\lang1024` и прочие
+unknown LCID закреплены как Loss тестами; (c) implicit `\s0` сознательно не
+материализуется; (d) хвост низкоуверенных application/layout-флагов
+(`\newtblstyruls`, `\sectlinegrid`, `\horzdoc`, `\stshf*`, `\clmar*`, `\gaph`,
+`\fet`, shape-stroke) сознательно не переклассифицирован.
 
 **DoD.** у каждого наблюдаемого класса — implemented semantics + independent
 roundtrip test либо явное неподдержанное правило с открытым compatibility status.
@@ -389,8 +409,9 @@ unsupported statuses и подробный report. Merge/release — отдел�
 6. **RC07 metafiles** (отдельная очередь) + RC10.
 7. **RC09 по семантическому impact** — сделано (2026-10-11): revision/compat
    metadata, table/char-контролы с реальными слотами и метаданные-дестинации
-   (losses 83 671 → 4 441); далее — `\ts` table styles, picture crop и
-   content-классы (comments/revisions/textboxes/OLE/metadata).
+   (losses 83 671 → 4 441); продолжено (2026-10-12): picture crop,
+   `\picprop`/`\ts`/`\pn`/не-визуальные метаданные Info и WPS line-ending
+   (→ 1 580); далее — content-классы (shapes/comments/revisions/textboxes/OLE).
 8. **RC11** после RC02–RC10; **RC12** после RC11.
 
 Правила параллелизма из плана сохраняются: shared `parser.rs`, model и layout не

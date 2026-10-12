@@ -1,8 +1,8 @@
 {
   "card": "RC09",
   "status": "InProgress",
-  "updated": "2026-10-11",
-  "scope": "remaining loss classes: revision/compat metadata, table/character controls with WML slots, comments, revisions, textboxes, OLE, document metadata",
+  "updated": "2026-10-12",
+  "scope": "remaining loss classes: revision/compat metadata, table/char controls with WML slots, comments, revisions, textboxes, OLE, document metadata",
   "base_commit": "16f3203",
   "dependencies": ["RC01"],
   "implemented": [
@@ -14,14 +14,16 @@
     "the non-visual metadata destinations are named Info: `{\\*\\falt}`, `{\\*\\hyphen}`, `{\\*\\pnseclvl}`, `{\\*\\rsidtbl}`, `{\\*\\revtbl}`, `{\\*\\latentstyles}`, `{\\*\\expandedcolortbl}`, `{\\*\\xmlnstbl}`, `{\\*\\pgptbl}`, `{\\*\\pgdsctbl}`, `{\\*\\wgrffmtfilter}`, `{\\*\\userprops}`, `{\\*\\fname}` and `{\\*\\generator}`.",
     "document settings and metadata control families are named Info: the table/section/style revision ids (`\\styrsid`/`\\tblrsid`/`\\sectrsid`/`\\rsidroot`), view settings, Word-for-Mac Cocoa flags, drawing-grid display settings, math layout settings (`w:mathPr`), Word application settings, `\\widowctrl` (the Strict default), `\\additive`, `\\pardirnatural`, and the Word 6/7 default-language hints (`\\deflang`/`\\deflangfe`/`\\adeflang`).",
     "the WPS-default controls whose reference writes nothing back are named Info: `\\hyphpar0`/`\\noline` (`paragraph-compat`), `\\nooverflow`/`\\nocwrap` (`table-cell-compat`), `\\cltxlrtb` (the default cell direction), `\\hres`/`\\chhres` (`picture-resolution`), `\\qk`/`\\qnatural` (`paragraph-compat`), `\\animtext` (`character-compat`) and the row-width unit/value hints (`table-row-compat`).",
-    "the WPS profile's leading group whitespace drop (`wps:header-whitespace:dropped`) is a named Info: WPS drops the same whitespace, so matching it is not a loss."
+    "the WPS profile's leading group whitespace drop (`wps:header-whitespace:dropped`) is a named Info: WPS drops the same whitespace, so matching it is not a loss.",
+    "picture crop `\\piccrop{t,b,l,r}` maps to DrawingML `a:srcRect`: the twips inset becomes thousandths of a percent of the displayed extent, and an all-zero crop writes no `a:srcRect` (witness 075 has the only non-zero crops).",
+    "`{\\*\\picprop ...}` Word 97 shape hints are a named Info: the WPS reference writes no picture properties back and the Strict picture has no non-visual slot.",
+    "table styles (`{\\*\\tsN ...}` and `\\tsN`/`\\tsdN`) are a named Info (`destination:ts`, `table-style-compat:ts`/`:tsd`): every independent WPS reference writes a single built-in \"Normal Table\" style and reproduces the effective table properties directly from the rows the producer repeats.",
+    "legacy numbering and non-visual metadata destinations are named Info: `{\\*\\pn ...}` (superseded by the list table), `\\defchp`/`\\defpap` (superseded by `w:docDefaults`), `\\template`, `\\datastore`, `\\blipuid`, `\\updnprop`, `\\mmathPr`, and `\\themedata`/`\\colorschememapping` (unreferenced because RTF resolves theme colours to the explicit colour table).",
+    "the WPS leading-group line ending (`wps:leading-group-line-ending`) is a named Info, not a Loss: the WPS profile preserves the line feed exactly as WPS does (the reference writes the same `&#10;`), and the decoded body text matches the oracle for every affected document (005/058/059/075). This corrects the earlier conservative classification."
   ],
   "remaining": [
-    "comments, tracked revisions, textboxes/shapes, OLE objects and document metadata (author/dates/docprops) are still Loss; they need per-class mapping tasks (RC08 already took fields/bookmarks/notes).",
-    "`wps:leading-group-line-ending` (2541) is still Loss: WPS writes a `&#10;`-encoded line end where our WPS profile preserves the byte as a plain line feed, so the two texts differ and the mismatch is reported rather than silently accepted.",
-    "table styles (`\\ts`) remain Loss: the `{\\*\\tsNN ...}` / `\\tsNN` table-style definition and reference need a `w:tblStyle` model path that does not exist yet.",
+    "comments, tracked revisions, textboxes/shapes (`\\shp`), OLE objects (`\\object`/`\\objdata`) and their stroke controls are still Loss; they need per-class mapping tasks (RC08 already took fields/bookmarks/notes). The independent WPS reference writes these as transitional `w:pict`/`v:shape` VML, which Strict forbids, so a DrawingML mapping is required.",
     "the implicit `\\s0` (a stylesheet whose first entry omits `\\s0`) is deliberately NOT materialized as a `w:default` Normal style: WPS does not do so, and doing it reflowed 004/017/018/021/051/087 (pagination 66 -> 63, 004 117 -> 156 pages). The `style:undefined-parent:rtf-s0` and `stylesheet:unbound-text` losses therefore stay.",
-    "picture crop (`\\piccrop{t,b,l,r}`) and `{\\*\\picprop}` remain Loss: they need DrawingML `a:srcRect`/shape-property support.",
     "the language sentinels `\\lang0`/`\\lang1024` and other unknown LCIDs stay explicit `language:unknown-lcid` Loss (pinned by `unknown_language_lcid_remains_an_explicit_loss`/`unknown_alang_lcid_remains_an_explicit_loss`).",
     "lower-confidence application/layout flags are deliberately left as Loss rather than blanket-renamed to Info: `\\newtblstyruls`, `\\notbrkcnstfrctbl`, `\\indrlsweleven`, `\\sectlinegrid`, `\\horzdoc`, `\\stshf*`, `\\clmar*`, `\\gaph`, `\\fet`, and the shape stroke controls."
   ],
@@ -49,15 +51,29 @@
         "every classified control produces loss_count 0 with its named Info feature"
       ]
     },
+    "picture_table_metadata_and_wps_classes": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::picture_crop_maps_to_the_source_rectangle_and_shape_hints_are_info",
+        "strict-ooxml-rtf/tests/structure.rs::absent_picture_crop_writes_no_source_rectangle",
+        "strict-ooxml-rtf/tests/structure.rs::table_style_definition_and_reference_are_info",
+        "strict-ooxml-rtf/tests/structure.rs::legacy_numbering_and_non_visual_metadata_destinations_are_info",
+        "strict-ooxml-rtf/tests/import.rs::wps_leading_group_line_endings_are_info_not_losses"
+      ],
+      "assertions": [
+        "picture crop round-trips to a:srcRect through the writer and reader; zero crop writes none",
+        "the WPS leading-group line feed matches the independent oracle text and is Info"
+      ]
+    },
     "corpus_ledger": {
       "status": "Measured",
-      "date": "2026-10-11",
-      "receipt": "target/rtf-import/rc09-slice8/",
+      "date": "2026-10-12",
+      "receipt": "target/rtf-import/rc09-slice12/",
       "results": {
-        "import_losses": "11394 -> 4441 (-6953)",
+        "import_losses": "4441 -> 1580 (-2861); 127228 -> 1580 across the session",
         "pagination": "66/100 unchanged vs RC08-columns-layout (0 page-count changes)",
         "check": "100/100 ok: strict",
-        "output_identity": "the metadata/settings Info slices are severity-only: every imported DOCX is SHA-256 identical to the previous slice; the highlight slice changes only 086"
+        "output_identity": "all slices are severity-only (every imported DOCX SHA-256 identical) except picture crop, which changes only 075 and not its page count"
       }
     }
   }

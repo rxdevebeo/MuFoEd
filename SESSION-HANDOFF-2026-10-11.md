@@ -1,6 +1,6 @@
 # Передача сессии — RTF-очередь (strict-ooxml)
 
-**Дата:** 2026-10-11
+**Дата:** 2026-10-11 (продолжено 2026-10-12)
 **Ветка:** `codex/rtf-import-integrated`
 **Worktree:** `C:/Users/gamer/.codex/worktrees/rtf-import-integrated/StrictLib`
 **План:** [docs/rtf/REMAINING_MAJOR_WORK.md](docs/rtf/REMAINING_MAJOR_WORK.md),
@@ -53,11 +53,21 @@ model/render/write менять согласованно и с regression-тес
 | `aa7f690` | **RC09 `\highlight`** → `w:highlight` по цветовой таблице (меняется только 086) |
 | `450319c` | **RC09** `wps:header-whitespace:dropped` → Info (severity-only) |
 
-**Цифры корпуса сейчас:** import losses **4 441** (было 11 394 на входе сессии;
-83 671 после RC06; 127 228 изначально); resource 100/100; text 99/100 (014 —
+### Продолжение (2026-10-12)
+
+| Коммит | Суть |
+|---|---|
+| `2e453ce` | **RC09 picture crop**: `\piccrop{t,b,l,r}` → `a:srcRect` (twips→тысячные процента extent; нулевой crop = нет элемента); `{\*\picprop}` → Info |
+| `69a6e73` | **RC09 table styles**: `{\*\tsN}`/`\tsN`/`\tsdN` → Info (WPS всегда пишет built-in Normal Table) |
+| `7f28d2b` | **RC09 metadata/numbering**: `{\*\pn}`, `\defchp`/`\defpap`, `\template`, `\datastore`, `\blipuid`, `\updnprop`, `\mmathPr`, `\themedata`/`\colorschememapping` → Info |
+| `6f270e0` | **RC09** `wps:leading-group-line-ending` → Info (WPS пишет тот же `&#10;`, body-text совпадает с оракулом) |
+
+**Цифры корпуса сейчас:** import losses **1 580** (было 11 394 на входе сессии,
+4 441 после RC09-срезов 2026-10-11, 83 671 после RC06, 127 228 изначально);
+resource 100/100; text 99/100 (014 —
 WPS field-recompute quirk); `check` 100/100 `ok: strict`; pagination **66/100**;
-pixels 6/100 док. / 22/458 стр. Severity-only срезы дали SHA-256-идентичный DOCX;
-slot-маппинг срезы не меняли номера страниц (0 изменений vs `RC08-columns-layout`).
+pixels 6/100 док. / 22/458 стр. Срезы 2026-10-12 severity-only (SHA-256-идентичный
+DOCX), кроме picture crop — меняется только 075, без смены номера страниц.
 
 **Единственный красный тест (pre-existing, не наш):**
 `strict-ooxml-render-svg::font::family::tests::maps_regular_postscript_names_to_the_same_bundled_faces`.
@@ -75,7 +85,7 @@ slot-маппинг срезы не меняли номера страниц (0 
 | RC04 | resolver-probe **исправлен** (rFonts overlay + default-normalization); остаток диффов 019/039 — genuine (`\sl276` WPS-quirk, `\f2` vs docDefaults, слот `w:cs`). Pixel — **blocked** на faces (RC02/RC03) |
 | RC03 | **Blocked** на bidi-oracle с per-char levels |
 | RC07 | не начат: bounded WMF/EMF decoder (крупный, high-risk, +RC10) |
-| RC09 | **InProgress**: ledger 83 671 → **4 441**. Остаток — `wps:leading-group-line-ending` (2541; наш LF vs WPS `&#10;`), `\ts` table styles (`w:tblStyle`), picture crop (`a:srcRect`; WPS его не пишет), content-классы (shapes/OLE/comments/metadata), unknown LCID (закреплены тестами), implicit `\s0` (сознательно не материализуется), хвост низкоуверенных флагов |
+| RC09 | **InProgress**: ledger 83 671 → **1 580**. Закрыто 2026-10-12: picture crop (`a:srcRect`), `\picprop`/`\ts`/`\pn`/`\defchp`/`\defpap`/`\template`/`\datastore`/`\blipuid`/`\updnprop`/`\mmathPr`/`themedata`/`colorschememapping` → Info, `wps:leading-group-line-ending` → Info. Остаток — content-классы (shapes `\shp`/OLE `\object`/comments/revisions/textboxes; WPS пишет их как transitional VML), unknown LCID (закреплены тестами), implicit `\s0` (сознательно не материализуется), хвост низкоуверенных флагов |
 | RC10 / RC11 / RC12 | не начаты / Blocked / Planned |
 
 ## 5. Как проверять (рецепты)
@@ -129,6 +139,10 @@ python xtool/rtf/effective_style_resolver.py \
    отсутствию; заодно guard на `docDefaults` без `pPrDefault`/`rPrDefault`.
 7. **Shared model уже всё нужное имеет** (`RowHeight`/`CellMargins`/`SrcRect`/
    `FontHints.panose1`/`Settings.default_tab_stop`) — большинство маппингов parser-local.
+8. **Loss-класс может быть консервативной ошибкой.** `wps:leading-group-line-ending`
+   держался как Loss, но декодированный body-text совпадал с WPS-оракулом для всех
+   затронутых (005/058/059/075), а WPS пишет тот же `&#10;`. Перед сохранением
+   «deliberate loss» проверять его декодированным текстом, не raw XML (2026-10-12).
 
 ## 7. Риски / внешние активы
 
@@ -140,14 +154,13 @@ python xtool/rtf/effective_style_resolver.py \
 
 ## 8. Рекомендуемый следующий шаг
 
-1. **Продолжить RC09** (наибольший оставшийся ledger):
-   (a) `\ts` table styles → `w:tblStyle` (нужна модель table-style; осторожно —
-       стилевой код уже давал регрессию);
-   (b) picture crop `\piccrop{t,b,l,r}` → `a:srcRect` (DrawingML; но WPS его
-       не пишет — возможно, explicit non-support);
-   (c) content-классы: shapes (`\shp`), OLE (`\object`/`\objdata`, opaque
-       payload/relations без activation), comments (`\annotation`), document
-       metadata.
+1. **Продолжить RC09** (оставшийся ledger, 1 580):
+   (a) content-классы: shapes (`\shp`), OLE (`\object`/`\objdata`, opaque
+       payload/relations без activation), comments (`\annotation`), revisions,
+       textboxes. WPS пишет их как transitional `w:pict`/`v:shape` VML, Strict
+       его запрещает — нужен DrawingML-маппинг (`Shape`/`TextBox` в модели уже есть);
+   (b) хвост низкоуверенных флагов (`\stshf*`, `\clmar*`, `\gaph`, `\fet`,
+       `\horzdoc`, `\sectlinegrid`, shape-stroke) — только по WPS-доказательству.
 2. Либо **RC07** metafiles (следующий по порядку, крупный, +RC10).
 3. Либо RC04 corpus geometry (нужен растеризатор; pixel заблокирован на faces).
 

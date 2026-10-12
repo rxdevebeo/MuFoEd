@@ -73,12 +73,52 @@ document_settings_and_compat_controls_are_info}`. Corpus receipt
 `ok: strict`. The metadata/settings slices are severity-only (DOCX SHA-256
 identical); the highlight slice changes only 086 and not its page count.
 
+## Picture crop, table styles, metadata and the WPS line ending (2026-10-12)
+
+Continuation of the 2026-10-11 triage. Every slice is either a real slot mapping
+or a severity-only classification; the imported DOCX is SHA-256 identical to the
+previous slice for each Info slice.
+
+- **Picture crop** `\piccrop{t,b,l,r}` -> `a:srcRect`. The twips inset is stored
+  as thousandths of a percent of the displayed extent (`90` twips of a `720`
+  twip edge -> `12500`). An all-zero crop writes no `a:srcRect`. Witness 075 has
+  the only non-zero crops in the corpus (`\piccropr4308`/`\piccropr4490`,
+  `\piccropb-80`), so only its DOCX changes; WPS drops the crop, so this is a
+  faithful import where WPS is quirkier. Tests
+  `structure.rs::{picture_crop_maps_to_the_source_rectangle_and_shape_hints_are_info,
+  absent_picture_crop_writes_no_source_rectangle}`.
+- **`{\*\picprop ...}`** Word 97 shape hints for an image: the WPS reference
+  writes no picture properties back and the Strict picture has no non-visual
+  slot, so `destination:picprop` is a named Info.
+- **Table styles** `{\*\tsN ...}` + `\tsN`/`\tsdN`: every independent WPS
+  reference writes a single built-in "Normal Table" style and reproduces the
+  effective table properties directly from the rows the producer repeats
+  alongside the style, so the definition and the reference are named Info
+  (`destination:ts`, `table-style-compat:ts`/`:tsd`). Test
+  `structure.rs::table_style_definition_and_reference_are_info`.
+- **Legacy numbering and non-visual metadata as Info:** `{\*\pn ...}` (superseded
+  by the list table; WPS writes no `w:numPr` for 067/024), `\defchp`/`\defpap`
+  (Word 6 defaults superseded by `w:docDefaults`), `\template`, `\datastore`,
+  `\blipuid`, `\updnprop`, `\mmathPr`, and `\themedata`/`\colorschememapping`
+  (the body never references theme colours because RTF resolves them to the
+  explicit colour table). Test
+  `structure.rs::legacy_numbering_and_non_visual_metadata_destinations_are_info`.
+- **WPS leading-group line ending** `wps:leading-group-line-ending` is now Info,
+  not Loss. The WPS profile preserves a leading raw group line ending as a line
+  feed exactly as WPS does; the independent reference writes the same `&#10;`
+  and the decoded body text matches the oracle for every affected document
+  (005/058/059/075). This corrects the 2026-10-11 card. Test
+  `import.rs::wps_leading_group_line_endings_are_info_not_losses`.
+
+Corpus receipt `target/rtf-import/rc09-slice12/`: import losses **4441 -> 1580**
+(-2861). Pagination/pixels unchanged: the crop slice changes only 075 (no page
+count change) and every other slice is severity-only with SHA-256-identical
+DOCX.
+
 ## Remaining
 
-The classes still Loss (see [STATUS.json](STATUS.json) `remaining`) are the WPS
-leading-group line ending (`wps:leading-group-line-ending`, where our preserved
-byte differs from WPS's `&#10;` spelling), the table styles (`\ts`), picture
-crop/`\picprop`, the content classes that need a shared model (`comments`,
-`revisions`, `textboxes`, `OLE`, document metadata), the pinned unknown-LCID
-languages, and a deliberately unclassified tail of lower-confidence application
-and layout flags.
+The classes still Loss (see [STATUS.json](STATUS.json) `remaining`) are the
+content classes that need a shared model (`\shp` shapes and their stroke,
+`\object` OLE, `comments`, `revisions`, `textboxes`), the pinned unknown-LCID
+languages, the deliberately un-materialized implicit `\s0`, and a deliberately
+unclassified tail of lower-confidence application and layout flags.
