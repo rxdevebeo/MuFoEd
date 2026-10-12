@@ -79,22 +79,21 @@ impl GlyphForms {
     /// an outline (a space), which draws nothing.
     pub(crate) fn name(&mut self, font: &EmbeddedFont, cid: u16) -> Option<&str> {
         let key = (font.key.clone(), cid);
-        let slot = match self.index.get(&key) {
-            Some(slot) => *slot,
-            None => {
-                let slot = outline(font, cid).map(|(content, bbox, units_per_em)| {
-                    let index = self.forms.len();
-                    self.forms.push(GlyphForm {
-                        name: format!("G{}", index + 1),
-                        content,
-                        bbox,
-                        units_per_em,
-                    });
-                    index
+        let slot = if let Some(slot) = self.index.get(&key) {
+            *slot
+        } else {
+            let slot = outline(font, cid).map(|(content, bbox, units_per_em)| {
+                let index = self.forms.len();
+                self.forms.push(GlyphForm {
+                    name: format!("G{}", index + 1),
+                    content,
+                    bbox,
+                    units_per_em,
                 });
-                self.index.insert(key, slot);
-                slot
-            }
+                index
+            });
+            self.index.insert(key, slot);
+            slot
         };
         slot.and_then(|index| self.forms.get(index))
             .map(|form| form.name.as_str())
