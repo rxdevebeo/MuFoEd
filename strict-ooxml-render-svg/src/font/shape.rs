@@ -228,7 +228,7 @@ pub fn shape_bundled_run(
                 bold: run.bold,
                 italic: run.italic,
             },
-            resource_hash: super::hash_face_bytes(&program.bytes),
+            resource_hash: program.hash,
             family: "OOXML",
             bold: run.bold,
             italic: run.italic,
@@ -261,7 +261,11 @@ pub fn shape_bundled_run(
         None
     };
     let mut shaped = if let Some(program) = program {
-        shape_with_program_configured(text, face, language, direction, kern, Some(program))?
+        // The face carries the program's hash, so the configured-run cache
+        // keys it apart from every other face.
+        let mut shaped = shape_with_face_configured_cached(text, face, language, direction, kern)?;
+        shaped.program = Some(program);
+        shaped
     } else if language.is_none() && direction.is_none() && kern {
         shape_with_face(text, face)?
     } else {
@@ -481,8 +485,8 @@ fn shape_with_face(text: &str, resolved: ResolvedFace) -> Option<ShapedText> {
     if let Some(hit) = cached_shaped(&resolved, text) {
         return Some(hit);
     }
-    let shaped = shape_with_face_uncached(text, resolved.clone())?;
-    store_shaped(&resolved, text, &shaped);
+    let shaped = shape_with_face_uncached(text, resolved)?;
+    store_shaped(&shaped.face, text, &shaped);
     Some(shaped)
 }
 
@@ -534,7 +538,7 @@ fn shape_with_program_configured(
     }
     let features = [Feature::new(Tag::new(b"kern"), u32::from(kern), ..)];
     let (units, glyphs) = with_parsed_face(&resolved, |cached| {
-        let font = FontRef::from_index(&cached.bytes, 0).expect("validated cached face");
+        let font = FontRef::from_index(&cached.bytes, 0).ok()?;
         let shaper = cached
             .data
             .shaper(&font)
@@ -542,8 +546,8 @@ fn shape_with_program_configured(
             .build();
         let units = f64::from(shaper.units_per_em());
         let glyphs = shaper.shape(buffer, ShapeOptions::new().features(&features));
-        (units, glyphs)
-    })?;
+        Some((units, glyphs))
+    })??;
     if units <= 0.0 {
         return None;
     }

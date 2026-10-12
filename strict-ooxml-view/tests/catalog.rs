@@ -23,7 +23,9 @@ fn every_strict_corpus_document_opens_without_panic() {
     let mut opened = 0usize;
     let mut noted = 0usize;
     for entry in &entries {
-        let outcome = catch_unwind(AssertUnwindSafe(|| render(entry, false, 96.0)));
+        let outcome = catch_unwind(AssertUnwindSafe(|| {
+            render(entry, false, strict_ooxml_view::RenderSettings::new(96.0))
+        }));
         assert!(
             outcome.is_ok(),
             "viewer panicked on {}: {:?}",

@@ -256,6 +256,7 @@ fn merge_row(
 }
 
 /// Resolves table and row properties before width and pagination decisions.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn resolve_table(document: &Document, table: &Table) -> Table {
     let Some(style) = table_style(document, table) else {
         return table.clone();
@@ -321,12 +322,18 @@ pub(crate) fn resolve_table(document: &Document, table: &Table) -> Table {
                 merge_table(&mut defaults, &condition.table);
             }
             merge_table(&mut defaults, &table.props);
-            if let Some(exception) = table.rows[index].props.exception.as_deref() {
+            if let Some(exception) = table
+                .rows
+                .get(index)
+                .and_then(|row| row.props.exception.as_deref())
+            {
                 merge_table(&mut defaults, exception);
             }
-            let mut effective = CellProperties::default();
-            effective.margins = defaults.cell_margins;
-            effective.shading = defaults.shading;
+            let mut effective = CellProperties {
+                margins: defaults.cell_margins,
+                shading: defaults.shading,
+                ..CellProperties::default()
+            };
             effective.borders.top = if index == 0 {
                 defaults.borders.top.clone()
             } else {
@@ -348,12 +355,11 @@ pub(crate) fn resolve_table(document: &Document, table: &Table) -> Table {
                 defaults.borders.inside_vertical.clone()
             };
             merge_cell(&mut effective, &style_cell_layer(document, style, mask));
-            merge_margins(
-                &mut effective.margins,
-                &table.rows[index].props.cell_margins,
-            );
+            if let Some(source) = table.rows.get(index) {
+                merge_margins(&mut effective.margins, &source.props.cell_margins);
+            }
             merge_cell(&mut effective, &cell.props);
-            effective.location = cell.props.location.clone();
+            effective.location.clone_from(&cell.props.location);
             effective.grid_span = cell.props.grid_span;
             effective.vertical_merge = cell.props.vertical_merge;
             cell.props = effective;
@@ -495,10 +501,10 @@ fn merge_cell(target: &mut CellProperties, layer: &CellProperties) {
         target.no_wrap = true;
     }
     if layer.diagonal_down.is_some() {
-        target.diagonal_down = layer.diagonal_down.clone();
+        target.diagonal_down.clone_from(&layer.diagonal_down);
     }
     if layer.diagonal_up.is_some() {
-        target.diagonal_up = layer.diagonal_up.clone();
+        target.diagonal_up.clone_from(&layer.diagonal_up);
     }
     if layer.shading.is_some() {
         target.shading.clone_from(&layer.shading);
@@ -543,7 +549,7 @@ pub(crate) fn resolve_cell_properties(
         resolved.width = direct.width;
     }
     resolved.grid_span = direct.grid_span;
-    resolved.location = direct.location.clone();
+    resolved.location.clone_from(&direct.location);
     resolved.vertical_merge = direct.vertical_merge;
     merge_cell(&mut resolved, direct);
     resolved

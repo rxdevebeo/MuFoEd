@@ -212,8 +212,7 @@ fn columns_are_balanced_before_a_continuous_break() {
     let (after_x, after_y) = text_at(svg, "After");
     let (_, last_left_y) = (1..=10)
         .map(|index| text_at(svg, &format!("Item{index:02}")))
-        .filter(|(x, _)| near(*x, 96.0))
-        .last()
+        .rfind(|(x, _)| near(*x, 96.0))
         .expect("items in the first column");
     assert!(near(after_x, 96.0));
     assert!(

@@ -157,7 +157,10 @@ fn parses_rich_run_properties() {
     assert_eq!(run.props.strike, TriState::Off);
     assert_eq!(run.props.italic, TriState::On);
     assert_eq!(run.props.bold, TriState::On);
-    assert!(document.support.get("w:bdr").is_some());
+    // Run borders are modelled (a58da59): all four edges, and no longer
+    // reported as partially supported.
+    assert!(run.props.borders.top.is_some() && run.props.borders.end.is_some());
+    assert!(document.support.get("w:bdr").is_none());
 }
 
 #[test]

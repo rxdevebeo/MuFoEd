@@ -797,6 +797,7 @@ fn layout_wrapped_nodes(frame: &Frame<'_, '_>, nodes: &[MathNode], width: f64) -
     layout_soft_wrapped_nodes(&frame, nodes, width)
 }
 
+#[allow(clippy::too_many_lines)]
 fn layout_soft_wrapped_nodes(
     frame: &Frame<'_, '_>,
     nodes: &[MathNode],
@@ -932,10 +933,8 @@ fn layout_soft_wrapped_nodes(
                                 &frame.math_run(effective_style(&run.properties)),
                             )
                             .width
-                            + atom_gap(
-                                group.last().map(classify).unwrap_or(Atom::Ordinary),
-                                Atom::Binary,
-                            ) * frame.em(),
+                            + atom_gap(group.last().map_or(Atom::Ordinary, classify), Atom::Binary)
+                                * frame.em(),
                     )
                 })
                 .unwrap_or(0.0)
@@ -1023,6 +1022,7 @@ fn layout_soft_wrapped_nodes(
 /// `content_left`/`content_width` are the text column, so the returned items
 /// are already positioned in page coordinates relative to the block's top-left
 /// corner's x.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn layout_display(
     ctx: &LayoutContext<'_>,
     paragraph: &MathParagraph,
@@ -1062,8 +1062,30 @@ pub(crate) fn layout_display(
     let mut boxed = MathBox::empty();
     let mut line = MathBox::empty();
     let mut trailing_break = false;
-    for (expression_index, expression) in paragraph.equations.iter().enumerate() {
-        for (wrapped_index, next) in layout_wrapped_nodes(&frame, &expression.nodes, available)
+    // Word's equation number: everything after a `#` in the formula is set at
+    // the right margin, on the formula's baseline (WQ-014).
+    let mut number: Option<MathBox> = None;
+    let split: Vec<(Vec<MathNode>, Option<Vec<MathNode>>)> = paragraph
+        .equations
+        .iter()
+        .map(|expression| split_equation_number(&expression.nodes))
+        .collect();
+    let single = paragraph.equations.len() == 1;
+    for (expression_index, ((nodes, numbered), expression)) in
+        split.iter().zip(&paragraph.equations).enumerate()
+    {
+        if single {
+            if let Some(numbered) = numbered {
+                number = Some(layout_nodes(&frame, numbered));
+            }
+        }
+        // Several formulas in one paragraph keep their `#` as text.
+        let nodes = if single || numbered.is_none() {
+            nodes
+        } else {
+            &expression.nodes
+        };
+        for (wrapped_index, next) in layout_wrapped_nodes(&frame, nodes, available)
             .into_iter()
             .enumerate()
         {
@@ -1133,10 +1155,59 @@ pub(crate) fn layout_display(
             (available - boxed.size.width).max(0.0) / 2.0
         }
     };
-    boxed.shifted(
-        crate::units::finite(content_left) + left_margin + shift,
-        0.0,
-    )
+    let left = crate::units::finite(content_left) + left_margin;
+    let formula_right = left + shift + boxed.size.width;
+    let mut out = boxed.shifted(left + shift, 0.0);
+    if let Some(number) = number {
+        // At the right margin, or just after a formula that reaches it.
+        let x = (left + available - number.size.width).max(formula_right + frame.em());
+        out.place(number, x, 0.0);
+    }
+    out
+}
+
+/// Splits a formula at Word's equation-number marker: a `#` in a top-level run,
+/// or in the single row of a top-level equation array. Returns the formula
+/// without the marker and the number after it, or the nodes unchanged.
+fn split_equation_number(nodes: &[MathNode]) -> (Vec<MathNode>, Option<Vec<MathNode>>) {
+    fn split_list(nodes: &[MathNode]) -> Option<(Vec<MathNode>, Vec<MathNode>)> {
+        let index = nodes
+            .iter()
+            .position(|node| matches!(node, MathNode::Run(run) if run.text.contains('#')))?;
+        let MathNode::Run(run) = nodes.get(index)? else {
+            return None;
+        };
+        let (before, after) = run.text.split_once('#')?;
+        let mut head: Vec<MathNode> = nodes.get(..index)?.to_vec();
+        let mut tail: Vec<MathNode> = Vec::new();
+        if !before.is_empty() {
+            let mut part = run.clone();
+            before.clone_into(&mut part.text);
+            head.push(MathNode::Run(part));
+        }
+        if !after.is_empty() {
+            let mut part = run.clone();
+            after.clone_into(&mut part.text);
+            tail.push(MathNode::Run(part));
+        }
+        tail.extend(nodes.get(index + 1..)?.iter().cloned());
+        (!tail.is_empty()).then_some((head, tail))
+    }
+    if let Some((head, tail)) = split_list(nodes) {
+        return (head, Some(tail));
+    }
+    if let [MathNode::EquationArray(array)] = nodes {
+        if let [row] = array.rows.as_slice() {
+            if let Some((head, tail)) = split_list(&row.nodes) {
+                let mut array = array.clone();
+                if let Some(row) = array.rows.first_mut() {
+                    row.nodes = head;
+                }
+                return (vec![MathNode::EquationArray(array)], Some(tail));
+            }
+        }
+    }
+    (nodes.to_vec(), None)
 }
 
 pub(crate) fn use_display_defaults(ctx: &LayoutContext<'_>) -> bool {
@@ -1212,7 +1283,7 @@ fn apply_control(frame: &Frame<'_, '_>, boxed: &mut MathBox, control: &RunProper
 fn recolor_item(item: &mut Item, color: &str) {
     match item {
         Item::Text(text) => text.run.color = Some(color.to_owned()),
-        Item::Line(line) => line.color = color.to_owned(),
+        Item::Line(line) => color.clone_into(&mut line.color),
         Item::Path(path) => path.stroke = Some(color.to_owned()),
         Item::Rect(rect) => rect.stroke = Some(color.to_owned()),
         Item::Group(group) => {
@@ -1491,7 +1562,9 @@ fn layout_radical(frame: &Frame<'_, '_>, radical: &Radical) -> MathBox {
     };
     let gap = RADICAL_GAP * frame.em();
     let bar_y = -radicand.size.height - gap;
-    let sign_height = (-bar_y).max(MIN_DELIMITER_HEIGHT_PX);
+    // The hook reaches the bottom of the radicand, including what hangs below
+    // the baseline (a fraction's denominator).
+    let sign_height = (-bar_y + radicand.size.depth).max(MIN_DELIMITER_HEIGHT_PX);
     let sign_width = (sign_height * DELIMITER_WIDTH).max(MIN_DELIMITER_PX);
     let degree_width = if degree.is_empty() {
         0.0
@@ -1644,9 +1717,10 @@ fn layout_nary(frame: &Frame<'_, '_>, nary: &NaryOperator) -> MathBox {
     // An operator without `m:limLoc` follows the document: `m:intLim` for
     // integrals, `m:naryLim` for the rest (Word: side scripts and stacked
     // limits). Inline formulas keep their limits at the side, as Word sets
-    // them in a line of text.
+    // them in a line of text, even with an explicit `undOvr` (WPS agrees:
+    // `strict-stage5c` line 4).
     let under_over = match nary.limit_location {
-        Some(location) => location == LimitLocation::UnderOver,
+        Some(location) => frame.display && location == LimitLocation::UnderOver,
         None if frame.display => {
             let settings = frame.ctx.document.settings.math_properties.as_ref();
             let character = nary.chr.unwrap_or('\u{222B}');
@@ -1679,7 +1753,8 @@ fn layout_nary(frame: &Frame<'_, '_>, nary: &NaryOperator) -> MathBox {
     let mut operator = nary_operator(
         frame,
         character,
-        nary.grow != Some(false),
+        // An absent `m:grow` is off (ISO/IEC 29500-1 §22.1.2.43, CT_OnOff).
+        nary.grow == Some(true),
         operand.size.height + operand.size.depth,
         limit_extent,
     );
@@ -1750,13 +1825,19 @@ fn nary_operator(
     let text = character.to_string();
     let plain = frame.text_size(&text, &run);
     let em = frame.em();
-    if !(grow && frame.display) {
+    if !frame.display {
         return frame.text(0.0, 0.0, &text, run);
     }
+    // A display operator has the display cut's size; only `m:grow` stretches
+    // it further over its operand and limits.
     let (display_height, aspect) = nary_display(character);
+    let stretch = if grow {
+        (operand_extent + 2.0 * NARY_GAP * em).max(limit_extent)
+    } else {
+        0.0
+    };
     let height = (plain.height + plain.depth)
-        .max(operand_extent + 2.0 * NARY_GAP * em)
-        .max(limit_extent)
+        .max(stretch)
         .max(display_height * em);
     if height <= plain.height + plain.depth {
         return frame.text(0.0, 0.0, &text, run);
@@ -1831,29 +1912,89 @@ fn layout_delimiter(frame: &Frame<'_, '_>, delimiter: &Delimiter) -> MathBox {
         Some(false) => (plain.height + plain.depth).max(MIN_DELIMITER_HEIGHT_PX),
         _ => (extent + 2.0 * DELIMITER_GAP * frame.em()).max(MIN_DELIMITER_HEIGHT_PX),
     };
-    let width = (height * DELIMITER_WIDTH).max(MIN_DELIMITER_PX);
-    let gap = DELIMITER_GAP * frame.em();
+    // Content no taller than one line keeps the font's own glyphs, as Word
+    // and WPS do; only taller content gets a stretched outline.
+    let plain_extent = plain.height + plain.depth;
+    let as_glyph = content.size.height <= plain.height * 1.05
+        && content.size.depth <= plain.depth * 1.05 + 0.5;
+    let glyph_width = |character: Option<char>| {
+        character.map_or(0.0, |character| {
+            frame
+                .text_size(&character.to_string(), &frame.math_run(MathStyle::Plain))
+                .width
+        })
+    };
+    let (height, width_of) = if as_glyph {
+        (plain_extent, None)
+    } else {
+        (
+            height,
+            Some((height * DELIMITER_WIDTH).max(MIN_DELIMITER_PX)),
+        )
+    };
+    let begin_width = width_of.unwrap_or_else(|| glyph_width(delimiter.begin));
+    let end_width = width_of.unwrap_or_else(|| glyph_width(delimiter.end));
+    let gap = if as_glyph {
+        0.0
+    } else {
+        DELIMITER_GAP * frame.em()
+    };
 
     // The delimiters are centred on the content's vertical extent.
-    let top = middle - height / 2.0;
+    let top = if as_glyph {
+        -plain.height
+    } else {
+        middle - height / 2.0
+    };
     let content_width = content.size.width;
     let mut out = MathBox::empty();
     if let Some(begin) = delimiter.begin {
-        if let Some(item) = delimiter_item(frame, begin, 0.0, top, width, height) {
+        let item = if as_glyph {
+            delimiter_glyph(frame, begin, 0.0)
+        } else {
+            delimiter_item(frame, begin, 0.0, top, begin_width, height)
+        };
+        if let Some(item) = item {
             out.items.push(item);
         }
     }
     if let Some(end) = delimiter.end {
-        let x = width + gap + content_width + gap;
-        if let Some(item) = delimiter_item(frame, end, x, top, width, height) {
+        let x = begin_width + gap + content_width + gap;
+        let item = if as_glyph {
+            delimiter_glyph(frame, end, x)
+        } else {
+            delimiter_item(frame, end, x, top, end_width, height)
+        };
+        if let Some(item) = item {
             out.items.push(item);
         }
     }
+    let width = begin_width;
     out.place(content, width + gap, 0.0);
-    out.size.width = (2.0 * (width + gap) + content_width).max(out.size.width);
+    out.size.width = (begin_width + end_width + 2.0 * gap + content_width).max(out.size.width);
     out.size.height = out.size.height.max(-top);
     out.size.depth = out.size.depth.max(top + height);
     out
+}
+
+/// Emits a delimiter as the plain glyph on the baseline.
+fn delimiter_glyph(frame: &Frame<'_, '_>, character: char, x: f64) -> Option<Item> {
+    let run = frame.math_run(MathStyle::Plain);
+    let text = character.to_string();
+    let size = frame.text_size(&text, &run);
+    frame.charge(Item::Text(TextItem {
+        x: crate::units::finite(x),
+        baseline: 0.0,
+        width: crate::units::finite(size.width),
+        text,
+        run,
+        size_px: frame.size_px,
+        advance: crate::layout::TextAdvanceKind::Shaped,
+        field: None,
+        compress_punctuation: false,
+        following_non_space: None,
+        plain_space_factor: 1.0,
+    }))
 }
 
 /// Emits one stretchy delimiter.
@@ -1915,16 +2056,18 @@ fn layout_limit(frame: &Frame<'_, '_>, limit: &MathLimit) -> MathBox {
         apply_control(frame, &mut script, control);
     }
     let gap = LIMIT_GAP * frame.em();
-    let mut out = MathBox::empty();
-    if limit.above {
-        out.append(script);
-        let dy = out.size.depth + gap + base.size.height;
-        out.place(base, 0.0, dy);
+    // The base keeps the baseline; the limit sits centred over or under it.
+    let width = base.size.width.max(script.size.width);
+    let base_x = (width - base.size.width) / 2.0;
+    let script_x = (width - script.size.width) / 2.0;
+    let mut out = MathBox::blank(Size::new(width, 0.0, 0.0));
+    let script_y = if limit.above {
+        -(base.size.height + gap + script.size.depth)
     } else {
-        out.append(base);
-        let dy = out.size.depth + gap + script.size.height;
-        out.place(script, 0.0, dy);
-    }
+        base.size.depth + gap + script.size.height
+    };
+    out.place(base, base_x, 0.0);
+    out.place(script, script_x, script_y);
     out
 }
 
@@ -2049,10 +2192,9 @@ impl Grid {
         let first_baseline = self.row_heights.first().copied().unwrap_or(0.0);
         out.size.width = widest.max(out.size.width);
         out.size.height = out.size.height.max(first_baseline);
-        if display {
-            out.size.depth = out.size.depth.max((top - first_baseline).max(0.0));
-            return out;
-        }
+        // Display grids are centred on the math axis as inline ones are (WPS:
+        // `strict-stage5c` page 2); a baseline on the first row made a
+        // surrounding `{` symmetric about the axis twice as tall as the rows.
         // No trailing row pitch: it is spacing *between* rows, not below them.
         let shift = match self.base.unwrap_or(MathVerticalAlign::Center) {
             MathVerticalAlign::Top | MathVerticalAlign::Inline => 0.0,
@@ -2152,6 +2294,7 @@ fn layout_matrix(frame: &Frame<'_, '_>, matrix: &Matrix) -> MathBox {
 }
 
 /// Lays out `m:eqArr`.
+#[allow(clippy::too_many_lines)]
 fn layout_equation_array(frame: &Frame<'_, '_>, array: &EquationArray) -> MathBox {
     let array_frame = Frame {
         equation_array: true,
@@ -2182,26 +2325,29 @@ fn layout_equation_array(frame: &Frame<'_, '_>, array: &EquationArray) -> MathBo
             boundaries.push(boxed.size.width);
             boundaries
                 .windows(2)
-                .map(|pair| {
-                    let width = pair[1] - pair[0];
+                .filter_map(|pair| {
+                    let &[start, end] = pair else {
+                        return None;
+                    };
+                    let width = end - start;
                     let mut items = crate::paint::graphics::transform_items(
                         boxed.items.clone(),
-                        [1.0, 0.0, 0.0, 1.0, -pair[0], 0.0],
+                        [1.0, 0.0, 0.0, 1.0, -start, 0.0],
                     );
                     if let Some(Item::Group(group)) = items.first_mut() {
                         group.clip = Some([
-                            pair[0],
+                            start,
                             -boxed.size.height,
                             width,
                             boxed.size.height + boxed.size.depth,
                         ]);
                     }
-                    MathBox {
+                    Some(MathBox {
                         inline_fraction: boxed.inline_fraction,
                         alignment_points: Vec::new(),
                         size: Size::new(width, boxed.size.height, boxed.size.depth),
                         items,
-                    }
+                    })
                 })
                 .collect()
         })
@@ -2356,25 +2502,19 @@ fn layout_group_character(frame: &Frame<'_, '_>, group: &GroupCharacter) -> Math
             let width = base.size.width.max(marker.size.width);
             let dx = (width - marker.size.width) / 2.0;
             out = MathBox::blank(Size::new(width, 0.0, 0.0));
-            if position == MathPosition::Top {
-                out.place(marker, dx, 0.0);
-                let dy = out.size.depth + gap + base.size.height;
-                out.place(base, 0.0, dy);
+            // The base keeps the text baseline and the character sits over or
+            // under it: Word writes `pos=top vertJc=bot` for an overbrace and
+            // `pos=bot vertJc=top` for an underbrace, and WPS draws both with
+            // the base on the line (`strict-stage5c` page 2, line 8).
+            let base_x = (width - base.size.width) / 2.0;
+            let marker_y = if position == MathPosition::Top {
+                -(base.size.height + gap + marker.size.depth)
             } else {
-                out.append(base);
-                let dy = out.size.depth + gap + marker.size.height;
-                out.place(marker, dx, dy);
-            }
-            out.size.width = width;
-            // The group character determines the baseline of the entire object.
-            // Absent vertJc means top; a present element without val means bot.
-            use strict_ooxml_wml::model::math::MathVerticalJc;
-            let baseline = match group.vertical_justification.unwrap_or(MathVerticalJc::Top) {
-                MathVerticalJc::Top => out.size.height,
-                MathVerticalJc::Bottom => -out.size.depth,
-                MathVerticalJc::Center => (out.size.height - out.size.depth) / 2.0,
+                base.size.depth + gap + marker.size.height
             };
-            out = out.rebased(baseline);
+            out.place(base, base_x, 0.0);
+            out.place(marker, dx, marker_y);
+            out.size.width = width;
         }
     }
     out
@@ -2409,9 +2549,7 @@ fn layout_border_box(frame: &Frame<'_, '_>, border: &BorderBox) -> MathBox {
     if border.shadow {
         out.items.insert(0, shadow_rectangle(frame, &out));
     }
-    if border.hide_edges.iter().any(|value| *value == Some(true))
-        || border.strikes.iter().any(|value| *value == Some(true))
-    {
+    if border.hide_edges.contains(&Some(true)) || border.strikes.contains(&Some(true)) {
         if let Some(index) = out
             .items
             .iter()
@@ -2419,8 +2557,8 @@ fn layout_border_box(frame: &Frame<'_, '_>, border: &BorderBox) -> MathBox {
         {
             if let Item::Rect(rect) = out.items.remove(index) {
                 let (left, top, right, bottom) = (rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
-                let center_x = (left + right) / 2.0;
-                let center_y = (top + bottom) / 2.0;
+                let center_x = f64::midpoint(left, right);
+                let center_y = f64::midpoint(top, bottom);
                 for (visible, x1, y1, x2, y2) in [
                     (border.hide_edges[0] != Some(true), left, top, right, top),
                     (

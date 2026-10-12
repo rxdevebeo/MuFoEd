@@ -134,11 +134,16 @@ fn texts(svg: &str) -> Vec<(f64, f64, String)> {
         .collect()
 }
 
-/// How many `<rect>`s are filled with `fill`.
-fn rects(svg: &str, fill: &str) -> usize {
+/// The renderer's placeholders: a graphic's grey outline (WQ-023) or a
+/// picture's grey box.
+fn placeholders(svg: &str) -> usize {
     let tree = roxmltree::Document::parse(svg).expect("svg");
     tree.descendants()
-        .filter(|node| node.has_tag_name("rect") && node.attribute("fill") == Some(fill))
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && (node.attribute("stroke") == Some("#bfbfbf")
+                    || node.attribute("fill") == Some("#f2f2f2"))
+        })
         .count()
 }
 
@@ -146,7 +151,7 @@ fn rects(svg: &str, fill: &str) -> usize {
 fn a_diagram_draws_its_cached_shapes_and_texts() {
     let pages = render(true);
     let svg = &pages[0].svg;
-    assert_eq!(rects(svg, "#f2f2f2"), 0, "no placeholder");
+    assert_eq!(placeholders(svg), 0, "no placeholder");
     let mut shapes = path_origins(svg, "#4472c4");
     shapes.sort_by(|a, b| a.0.total_cmp(&b.0));
     assert_eq!(shapes.len(), 3, "three filled shapes: {shapes:?}");
@@ -176,5 +181,5 @@ fn a_diagram_without_its_drawing_keeps_the_placeholder() {
     let pages = render(false);
     let svg = &pages[0].svg;
     assert!(path_origins(svg, "#4472c4").is_empty());
-    assert_eq!(rects(svg, "#f2f2f2"), 1, "the placeholder stays");
+    assert_eq!(placeholders(svg), 1, "the placeholder stays");
 }

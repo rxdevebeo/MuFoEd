@@ -1814,10 +1814,10 @@ fn parse_eq_array_properties(
                     )?);
                 }
                 "maxDist" => {
-                    *max_distance = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?
+                    *max_distance = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
                 }
                 "objDist" => {
-                    *object_distance = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?
+                    *object_distance = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
                 }
                 "rSpRule" => {
                     *row_spacing_rule = math_val(&attrs);
@@ -2265,6 +2265,7 @@ fn parse_border_box(
 }
 
 /// Parses the children of `m:borderBoxPr` (its start element has been consumed).
+#[allow(clippy::too_many_arguments)] // one out-slot per CT_BorderBoxPr child
 fn parse_border_box_properties(
     parser: &mut PartParser<'_>,
     hide_edges: &mut [Option<bool>; 4],
@@ -2285,8 +2286,10 @@ fn parse_border_box_properties(
                         "hideLeft" => 2,
                         _ => 3,
                     };
-                    hide_edges[index] =
-                        math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
+                    let value = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
+                    if let Some(slot) = hide_edges.get_mut(index) {
+                        *slot = value;
+                    }
                 }
                 "strikeH" | "strikeV" | "strikeBLTR" | "strikeTLBR" => {
                     let index = match name.local() {
@@ -2295,7 +2298,10 @@ fn parse_border_box_properties(
                         "strikeBLTR" => 2,
                         _ => 3,
                     };
-                    strikes[index] = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
+                    let value = math_leaf(parser, &attrs, |attrs| Some(math_on_off(attrs)))?;
+                    if let Some(slot) = strikes.get_mut(index) {
+                        *slot = value;
+                    }
                 }
                 "algn" => {
                     *alignment = Some(parse_enum(

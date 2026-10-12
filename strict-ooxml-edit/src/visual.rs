@@ -263,6 +263,7 @@ fn same_node(a: &TextPosition, b: &TextPosition) -> bool {
 }
 impl Editor<'_> {
     /// Places the current model using shared renderer metrics and pagination.
+    #[allow(clippy::too_many_lines)]
     pub fn visual_map(
         &self,
         revision: u64,
@@ -526,6 +527,7 @@ fn same_placement(a: &[PlacedPage], b: &[PlacedPage]) -> bool {
         })
 }
 
+#[allow(clippy::float_cmp)]
 fn same_items(a: &[Item], b: &[Item]) -> bool {
     a.len() == b.len()
         && a.iter().zip(b).all(|(a, b)| match (a, b) {

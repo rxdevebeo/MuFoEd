@@ -133,7 +133,7 @@ pub(crate) fn picture_items(
             .or_else(|| picture.name.clone())
             .map_or_else(String::new, |value| value.to_string())
     });
-    vec![Item::Image(ImageItem {
+    let image = Item::Image(ImageItem {
         x,
         y,
         w,
@@ -143,7 +143,54 @@ pub(crate) fn picture_items(
         alt,
         transform: xfrm_transform(picture.xfrm, x, y, w, h),
         crop: crate::paint::image::src_rect_crop(picture.src_rect),
-    })]
+    });
+    match picture
+        .markup
+        .blip_children
+        .as_deref()
+        .and_then(blip_washout)
+    {
+        Some(opacity) => vec![Item::Group(crate::layout::GroupItem {
+            matrix: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            items: vec![image],
+            bounds: [x, y, w, h],
+            clip: None,
+            clip_path: None,
+            clip_inverse: false,
+            opacity,
+        })],
+        None => vec![image],
+    }
+}
+
+/// The opacity that stands in for a picture's colour effects: a washed-out
+/// picture (`a:lum` with negative contrast or positive brightness, Word's
+/// watermark) or `a:alphaModFix`. Blending with the white page under it gives
+/// the light picture WPS draws (WQ-028 / doc 028's header logo).
+fn blip_washout(children: &str) -> Option<f64> {
+    let attribute = |element: &str, name: &str| -> Option<f64> {
+        let rest = children.get(children.find(&format!("<a:{element} "))?..)?;
+        let tag = rest.get(..rest.find('>')?)?;
+        let key = format!(" {name}=\"");
+        let value = tag.split_once(&key)?.1.split('"').next()?;
+        // Strict writes a percentage (`70%`), Transitional thousandths of one.
+        match value.strip_suffix('%') {
+            Some(percent) => percent.parse::<f64>().ok().map(|value| value / 100.0),
+            None => value.parse::<f64>().ok().map(|value| value / 100_000.0),
+        }
+    };
+    let mut opacity: f64 = 1.0;
+    let contrast = attribute("lum", "contrast").unwrap_or(0.0);
+    let bright = attribute("lum", "bright").unwrap_or(0.0);
+    if contrast < 0.0 {
+        opacity = opacity.min(1.0 + contrast);
+    } else if bright > 0.0 {
+        opacity = opacity.min(1.0 - bright);
+    }
+    if let Some(alpha) = attribute("alphaModFix", "amt") {
+        opacity *= alpha;
+    }
+    (opacity < 0.999).then_some(opacity.clamp(0.05, 1.0))
 }
 
 /// Builds the items of a shape (path + optional text box).
@@ -364,15 +411,15 @@ fn custom_text_box(
         }
     };
     let values: Option<Vec<_>> = rect.iter().map(|value| resolve(value)).collect();
-    let Some(values) = values else {
+    let Some(&[left, top, right, bottom]) = values.as_deref() else {
         ctx.warn("render.custom-text-rect: unresolved geometry guide in text rectangle".to_owned());
         return None;
     };
     Some((
-        x + values[0] * w / gw,
-        y + values[1] * h / gh,
-        ((values[2] - values[0]) * w / gw).max(1.0),
-        ((values[3] - values[1]) * h / gh).max(1.0),
+        x + left * w / gw,
+        y + top * h / gh,
+        ((right - left) * w / gw).max(1.0),
+        ((bottom - top) * h / gh).max(1.0),
     ))
 }
 
@@ -427,6 +474,7 @@ fn geometry_value(
 }
 
 /// DrawingML guide operators; angular values are in 1/60000 degree.
+#[allow(clippy::many_single_char_names)] // DrawingML w/h/x/y/matrix names
 fn geometry_formula(
     formula: &str,
     w: f64,
@@ -677,6 +725,7 @@ fn path_points(d: &str) -> Vec<(f64, f64)> {
 }
 
 /// Builds the items of a group by composing child coordinates.
+#[allow(clippy::many_single_char_names)] // DrawingML w/h/x/y/matrix names
 fn group_items(
     ctx: &LayoutContext<'_>,
     group: &GroupShape,
@@ -757,6 +806,7 @@ fn group_items(
 
 /// Retains an affine transform until painting, so glyphs and image crops are
 /// transformed together with their geometry in both backends.
+#[allow(clippy::many_single_char_names)] // DrawingML w/h/x/y/matrix names
 pub(crate) fn transform_items(items: Vec<Item>, matrix: [f64; 6]) -> Vec<Item> {
     if items.is_empty() {
         return items;
@@ -992,6 +1042,7 @@ fn graphic_size(ctx: &LayoutContext<'_>, graphic: &Graphic, w: f64, h: f64) -> (
 }
 
 /// Builds items for a text box's blocks inside the frame.
+#[allow(clippy::too_many_lines)]
 fn text_box_items(
     ctx: &LayoutContext<'_>,
     text: &TextBox,
@@ -1095,8 +1146,7 @@ fn text_box_items(
                 row.split_points
                     .iter()
                     .copied()
-                    .filter(|point| *point > start && *point <= start + layout_height)
-                    .next_back()
+                    .rfind(|point| *point > start && *point <= start + layout_height)
                     .or_else(|| {
                         row.split_points
                             .iter()
@@ -1140,11 +1190,16 @@ fn text_box_items(
         .iter()
         .map(|item| offset_item(item, horizontal_shift, shift))
         .collect();
+    let ellipsis = body.vert_overflow.as_deref() == Some("ellipsis");
+    if ellipsis && content_y + shift > layout_height + 0.5 {
+        items = ellipsize(ctx, items, layout_width, layout_height);
+    }
     if body.horz_overflow.as_deref() == Some("clip")
         || body.vert_overflow.as_deref() == Some("clip")
+        || ellipsis
     {
         let horizontal_clip = body.horz_overflow.as_deref() == Some("clip");
-        let vertical_clip = body.vert_overflow.as_deref() == Some("clip");
+        let vertical_clip = matches!(body.vert_overflow.as_deref(), Some("clip" | "ellipsis"));
         items = transform_items(items, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
         if let Some(Item::Group(group)) = items.first_mut() {
             let [bx, by, bw, bh] = group.bounds;
@@ -1352,16 +1407,69 @@ fn xfrm_transform(
     }
 }
 
-/// A generic placeholder rectangle.
+/// `bodyPr/@vertOverflow="ellipsis"`: text below the last line that fits the
+/// box is dropped and that line ends in "…" (ISO/IEC 29500-1 §21.1.2.1.1,
+/// ST_TextVertOverflowType). Text items are positioned in the box's own
+/// coordinates, `0..height`.
+fn ellipsize(ctx: &LayoutContext<'_>, items: Vec<Item>, width: f64, height: f64) -> Vec<Item> {
+    const DESCENT_EM: f64 = 0.25;
+    let fits =
+        |text: &crate::layout::TextItem| text.baseline + text.size_px * DESCENT_EM <= height + 0.5;
+    let last_baseline = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text(text) if fits(text) => Some(text.baseline),
+            _ => None,
+        })
+        .fold(f64::NEG_INFINITY, f64::max);
+    if !last_baseline.is_finite() {
+        return Vec::new();
+    }
+    let mut kept: Vec<Item> = items
+        .into_iter()
+        .filter(|item| match item {
+            Item::Text(text) => text.baseline <= last_baseline + 0.5,
+            other => crate::layout::table::item_vertical_bounds(ctx, other).0 < height,
+        })
+        .collect();
+    let last = kept
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| match item {
+            Item::Text(text) if (text.baseline - last_baseline).abs() <= 0.5 => {
+                Some((index, text.x + text.width))
+            }
+            _ => None,
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(index, _)| index);
+    if let Some(Item::Text(text)) = last.and_then(|index| kept.get_mut(index)) {
+        let mark = "\u{2026}";
+        let mark_width = ctx.measure(mark, &text.run);
+        let mut body = text.text.trim_end().to_owned();
+        while !body.is_empty() && text.x + ctx.measure(&body, &text.run) + mark_width > width {
+            body.pop();
+        }
+        body.push_str(mark);
+        text.width = ctx.measure(&body, &text.run);
+        text.text = body;
+        text.advance = crate::layout::TextAdvanceKind::Shaped;
+    }
+    kept
+}
+
+/// A generic placeholder rectangle: an outline only, so an object the
+/// renderer cannot draw (ink, an unknown graphic) never hides the text under
+/// or beside it (WQ-023).
 fn placeholder(x: f64, y: f64, w: f64, h: f64) -> Item {
     Item::Rect(RectItem {
         x,
         y,
         w: w.max(0.0),
         h: h.max(0.0),
-        fill: Some("#f2f2f2".to_owned()),
-        stroke: Some("#999999".to_owned()),
-        stroke_w: 1.0,
+        fill: None,
+        stroke: Some("#bfbfbf".to_owned()),
+        stroke_w: 0.75,
     })
 }
 
@@ -1575,6 +1683,7 @@ fn custom_paths(custom: &CustomGeometry, w: f64, h: f64) -> Vec<ShapePath> {
         .collect()
 }
 
+#[allow(clippy::many_single_char_names, clippy::too_many_lines)]
 fn geometry_path_d(
     custom: &CustomGeometry,
     path: &strict_ooxml_wml::model::drawing::GeometryPath,

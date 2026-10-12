@@ -33,6 +33,10 @@ unicode-segmentation = "1.13"
 unicode-bidi = "0.3.18"
 # Embedded language patterns for automatic, language-aware word hyphenation.
 hypher = "0.1.8"
+# TIFF media decoded to PNG: no browser shows TIFF in SVG and PDF cannot embed
+# it (WQ-017). Only the codecs Word writes; no WebP/zstd.
+tiff = { version = "0.11", default-features = false, features = ["deflate", "lzw", "jpeg"] }
+png.workspace = true
 
 [dev-dependencies]
 # The CC0 corpus by its lock file (`tests/corpus.rs`). Path only: see the testkit

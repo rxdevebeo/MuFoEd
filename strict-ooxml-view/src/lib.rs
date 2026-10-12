@@ -22,5 +22,5 @@ mod catalog;
 
 pub use catalog::{
     discover, failed, render, render_controlled, Cache, DocumentView, Entry, PipelineView,
-    Rendered, StageStatus, Summary, ViewIssue,
+    RenderSettings, Rendered, StageStatus, Summary, ViewIssue,
 };

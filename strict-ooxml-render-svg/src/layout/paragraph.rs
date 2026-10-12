@@ -40,8 +40,9 @@ enum Seg {
     PageBreak,
     /// A hard column break.
     ColumnBreak,
-    /// An inline image.
-    Image(ImageItem),
+    /// An inline image and its `wp:effectExtent` margins (left, top, right,
+    /// bottom px).
+    Image(ImageItem, [f64; 4]),
     /// An inline block object (shape/group), already rendered.
     Object(Vec<Item>, f64, f64),
     /// A floating (anchored) drawing.
@@ -68,8 +69,8 @@ enum Seg {
 /// Section grid applies to layout and intrinsic measurement alike. Direct
 /// run snapToGrid overrides are applied later by the run cascade.
 fn apply_character_grid(ctx: &LayoutContext<'_>, computed: &mut ComputedParagraph) {
-    computed.default_run.font_programs = std::sync::Arc::clone(&ctx.font_programs);
     use strict_ooxml_wml::model::values::DocGridType;
+    computed.default_run.font_programs = std::sync::Arc::clone(&ctx.font_programs);
     let section = ctx
         .field_env
         .get()
@@ -105,13 +106,13 @@ fn apply_character_grid(ctx: &LayoutContext<'_>, computed: &mut ComputedParagrap
     {
         // A paragraph without direct formatting selects the default style.
         let paragraph = Paragraph {
-            props: Default::default(),
+            props: strict_ooxml_wml::model::props::ParagraphProperties::default(),
             inlines: Vec::new(),
-            rsids: Default::default(),
+            rsids: strict_ooxml_wml::model::values::Rsids::default(),
             revision: None,
             para_id: None,
             text_id: None,
-            location: Default::default(),
+            location: strict_ooxml_core::error::SourceLocation::default(),
         };
         let _ = id;
         normal = compute_paragraph(ctx.document, &paragraph);
@@ -121,9 +122,18 @@ fn apply_character_grid(ctx: &LayoutContext<'_>, computed: &mut ComputedParagrap
     if !computed.snap_to_grid {
         computed.default_run.snap_to_grid = false;
     }
+    let default_run = &computed.default_run;
+    if let Some(mark_run) = computed.mark_run.as_deref_mut() {
+        mark_run.font_programs = std::sync::Arc::clone(&default_run.font_programs);
+        mark_run.grid_extra_pt = default_run.grid_extra_pt;
+        if !computed.snap_to_grid {
+            mark_run.snap_to_grid = false;
+        }
+    }
 }
 
 /// Intrinsic advances use the same flattening, scripts and objects as layout.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn intrinsic_widths(ctx: &LayoutContext<'_>, paragraph: &Paragraph) -> (f64, f64) {
     let mut computed = compute_paragraph(ctx.document, paragraph);
     apply_character_grid(ctx, &mut computed);
@@ -170,10 +180,11 @@ pub(crate) fn intrinsic_widths(ctx: &LayoutContext<'_>, paragraph: &Paragraph) -
                 }
                 word += ctx.measure(&token, &run);
             }
-            Seg::Image(image) => {
-                minimum = minimum.max(word).max(image.w);
+            Seg::Image(image, margins) => {
+                let width = image.w + margins[0] + margins[2];
+                minimum = minimum.max(word).max(width);
                 word = 0.0;
-                line += image.w;
+                line += width;
             }
             Seg::Object(_, width, _) => {
                 minimum = minimum.max(word).max(width);
@@ -338,7 +349,7 @@ pub(crate) fn layout_paragraph(
         }
         return flow;
     }
-    let available = if rotation.abs() == 180.0 {
+    let available = if is_half_turn(rotation) {
         content_width
     } else {
         crate::table_style::current_text_flow()
@@ -372,11 +383,6 @@ pub(crate) fn layout_paragraph(
                 items.extend(line.graphics);
                 y += height;
             }
-            Flow::Image(mut image) => {
-                image.y += y;
-                y += image.h;
-                items.push(Item::Image(image));
-            }
             Flow::Block {
                 items: block,
                 height,
@@ -406,7 +412,7 @@ pub(crate) fn layout_paragraph(
         Some(Item::Group(group)) => group.bounds,
         _ => [0.0; 4],
     };
-    if rotation.abs() == 180.0 {
+    if is_half_turn(rotation) {
         let items = crate::paint::graphics::transform_items(
             measured,
             [-1.0, 0.0, 0.0, -1.0, content_left + content_width, y],
@@ -430,6 +436,7 @@ pub(crate) fn layout_paragraph(
     flow
 }
 
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 fn layout_paragraph_horizontal(
     ctx: &LayoutContext<'_>,
     para: &Paragraph,
@@ -596,10 +603,14 @@ pub(crate) struct ParagraphNeighbors {
     pub joins_next: bool,
     /// The previous paragraph's space after, in pt, when joined.
     pub prev_after_pt: f64,
-    /// First block of a cell, header, footer or text box.
+    /// First block of the body, a cell, header, footer or text box.
     pub first_in_container: bool,
     /// Last block of a cell, header, footer or text box.
     pub last_in_container: bool,
+    /// This paragraph and the previous one are both list items.
+    pub prev_list_item: bool,
+    /// This paragraph and the next one are both list items.
+    pub next_list_item: bool,
 }
 
 /// Works out the neighbours of the paragraph at `blocks[index]`.
@@ -650,8 +661,14 @@ pub(crate) fn paragraph_neighbors(
         joins_prev,
         joins_next: joins(&next),
         prev_after_pt,
-        first_in_container: in_container && index == 0,
+        // The document body counts too: HTML spacing does not push the
+        // first line of the document down either (WPS, CC0/078).
+        first_in_container: index == 0,
         last_in_container: in_container && index + 1 == blocks.len(),
+        prev_list_item: current.numbering.is_some()
+            && prev.as_ref().is_some_and(|prev| prev.numbering.is_some()),
+        next_list_item: current.numbering.is_some()
+            && next.as_ref().is_some_and(|next| next.numbering.is_some()),
     }
 }
 
@@ -676,10 +693,12 @@ fn apply_neighbors(computed: &mut ComputedParagraph, neighbors: &ParagraphNeighb
     }
     // HTML spacing does not push the first line of a cell down, nor the
     // last one up.
-    if computed.before_autospacing && neighbors.first_in_container {
+    // Nor does it separate the items of a list, as `<li>` has no margins
+    // (WPS, CC0/098).
+    if computed.before_autospacing && (neighbors.first_in_container || neighbors.prev_list_item) {
         computed.space_before_pt = 0.0;
     }
-    if computed.after_autospacing && neighbors.last_in_container {
+    if computed.after_autospacing && (neighbors.last_in_container || neighbors.next_list_item) {
         computed.space_after_pt = 0.0;
     }
     let above = if neighbors.joins_prev {
@@ -879,6 +898,7 @@ impl FieldState {
 
 /// Recursively flattens inline content into segments.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 fn flatten_inlines(
     ctx: &LayoutContext<'_>,
     computed: &ComputedParagraph,
@@ -958,7 +978,7 @@ fn flatten_inlines(
                         field,
                     );
                 }
-                for segment in &mut out[first..] {
+                for segment in out.iter_mut().skip(first) {
                     let run = match segment {
                         Seg::Text(_, run)
                         | Seg::Math(_, run)
@@ -985,7 +1005,7 @@ fn flatten_inlines(
                         run.bidi_embeddings.insert(
                             0,
                             (
-                                dir as *const _ as usize,
+                                std::ptr::from_ref(dir) as usize,
                                 dir.val == strict_ooxml_wml::model::inline::DirectionalVal::Rtl,
                                 dir.kind == strict_ooxml_wml::model::inline::DirectionalKind::Bdo,
                             ),
@@ -1369,7 +1389,8 @@ fn flatten_drawing(ctx: &LayoutContext<'_>, drawing: &Drawing, out: &mut Vec<Seg
         DrawingKind::Anchor(anchor) => out.push(Seg::Anchor(Box::new(anchor.clone()))),
         DrawingKind::Inline(_) => {
             if let Some(image) = layout_inline_image(ctx, drawing, 0.0, 0.0) {
-                out.push(Seg::Image(image));
+                let margins = crate::paint::image::inline_effect_margins(ctx, drawing);
+                out.push(Seg::Image(image, margins));
             } else if let Some((items, width, height)) =
                 crate::paint::graphics::inline_items(ctx, drawing)
             {
@@ -1524,7 +1545,7 @@ fn build_lines(
                     }
                     y = next;
                 }
-                if y != original_y {
+                if (y - original_y).abs() > 1e-9 {
                     anchor.simple_pos = true;
                     anchor.simple_pos_point = Some((
                         (x / scale * 9525.0).round() as i64,
@@ -1640,7 +1661,7 @@ fn build_lines(
                 x = normal_x;
             }
             Seg::Tab => {
-                place_tab(
+                if let Some(stop) = place_tab(
                     ctx,
                     computed,
                     &mut current,
@@ -1649,21 +1670,29 @@ fn build_lines(
                     default_tab,
                     scale,
                     content_left,
-                );
-            }
-            Seg::Image(image) => {
-                // An empty line here is not a line the paragraph asked for. A
-                // picture that is the whole paragraph (a field result under a
-                // `w:sz="0"` mark) was pushed down by that line: the mark's size
-                // collapses to 1 px, which is 15 twips, and the picture followed
-                // it. Text that actually precedes the picture still ends its line.
-                if !current.is_empty() {
-                    sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
+                ) {
+                    // A right, centre or decimal stop past the right indent
+                    // is kept, as Word 2013+ does: the text it aligns may run
+                    // into the margin instead of wrapping.
+                    sink.right_edge = sink.right_edge.max(stop);
                 }
+            }
+            Seg::Image(image, [left, top, right, bottom]) => {
+                // A `wp:inline` picture is a character of its line: it sits on
+                // the baseline next to text and other pictures, wraps like a
+                // word and follows the paragraph's alignment (ISO/IEC 29500-1
+                // §20.4.2.8). The line takes the picture's height.
                 let mut image = image;
-                image.x = normal_x;
-                sink.flows.push(Flow::Image(image));
-                x = normal_x;
+                let (width, height) = (image.w + left + right, image.h + top + bottom);
+                if !computed.no_wrap && x + width > sink.right_edge + 1e-9 && !current.is_empty() {
+                    sink.emit(std::mem::replace(&mut current, LineBuilder::new()), false);
+                    x = normal_x;
+                }
+                image.x = x + left;
+                image.y = top - height;
+                current.graphics.push(Item::Image(image));
+                current.object_height = current.object_height.max(height);
+                x += width;
             }
             Seg::Object(items, width, height) => {
                 // An inline drawing sits in the text line with its bottom on the
@@ -1723,10 +1752,9 @@ fn build_lines(
             Seg::Text(text, run) => {
                 let mut chunks = vec![(text, run)];
                 while matches!(pending.front(), Some(Seg::Text(_, _))) {
-                    let Some(Seg::Text(text, run)) = pending.pop_front() else {
-                        unreachable!()
-                    };
-                    chunks.push((text, run));
+                    if let Some(Seg::Text(text, run)) = pending.pop_front() {
+                        chunks.push((text, run));
+                    }
                 }
                 let joined: String = chunks.iter().map(|(text, _)| text.as_str()).collect();
                 let tokens = tokenize(
@@ -1741,14 +1769,16 @@ fn build_lines(
                         .and_then(|next| next.chars().find(|ch| !ch.is_whitespace()));
                     let mut remaining = token.len();
                     let mut pieces = Vec::new();
-                    while remaining > 0 && chunk_index < chunks.len() {
-                        let (text, run) = &chunks[chunk_index];
+                    while remaining > 0 {
+                        let Some((text, run)) = chunks.get(chunk_index) else {
+                            break;
+                        };
                         let count = remaining.min(text.len() - chunk_offset);
-                        if count > 0 {
-                            pieces.push((
-                                text[chunk_offset..chunk_offset + count].to_owned(),
-                                run.clone(),
-                            ));
+                        if let Some(piece) = text
+                            .get(chunk_offset..chunk_offset + count)
+                            .filter(|_| count > 0)
+                        {
+                            pieces.push((piece.to_owned(), run.clone()));
                         }
                         chunk_offset += count;
                         remaining -= count;
@@ -1757,14 +1787,14 @@ fn build_lines(
                             chunk_offset = 0;
                         }
                     }
-                    if pieces.len() == 1 {
+                    if let [(text, run)] = pieces.as_slice() {
                         place_token(
                             &mut sink,
                             &mut current,
                             &mut x,
                             normal_x,
-                            &pieces[0].0,
-                            &pieces[0].1,
+                            text,
+                            run,
                             following,
                         );
                     } else if !pieces.is_empty() {
@@ -1809,7 +1839,9 @@ fn build_lines(
                     x2: x + width,
                     y2: -ctx.size_px(run.size_pt) * 0.3,
                     color: run.color.unwrap_or_else(|| "#000000".to_owned()),
-                    width: pt_to_px(0.5, scale),
+                    // WPS strokes the separator at 0.75 pt, one pixel at 96
+                    // dpi, as the built-in separator line is.
+                    width: pt_to_px(0.75, scale),
                     dashed: false,
                 }));
                 x += width;
@@ -2009,6 +2041,17 @@ pub(crate) fn formula_ink(ctx: &LayoutContext<'_>, items: &[Item]) -> (f64, f64)
     let mut below: f64 = 0.0;
     for item in items {
         let (top, bottom) = match item {
+            // A translated group (an inline formula placed on the line) is
+            // measured by its own ink: its `bounds` are the loose font boxes of
+            // its runs, which made every formula line ~5 px taller than WPS.
+            Item::Group(group)
+                if is_translation(group.matrix)
+                    && group.clip.is_none()
+                    && group.clip_path.is_none() =>
+            {
+                let (above, below) = formula_ink(ctx, &group.items);
+                (group.matrix[5] - above, group.matrix[5] + below)
+            }
             Item::Group(group) => (group.bounds[1], group.bounds[1] + group.bounds[3]),
             Item::Text(text) => {
                 let family = crate::style::chosen_family(&text.run, &text.text);
@@ -2108,12 +2151,40 @@ struct LineSink<'a, 'b> {
 }
 
 impl LineSink<'_, '_> {
+    /// The end of the free interval that holds all of `line`, when wrap
+    /// exclusions narrow it.
+    fn wrapped_right_edge(&self, line: &LineBuilder) -> Option<f64> {
+        if self.exclusions.is_empty() || line.items.is_empty() {
+            return None;
+        }
+        let left = line
+            .items
+            .iter()
+            .map(|item| item.x)
+            .fold(f64::INFINITY, f64::min);
+        let right = line
+            .items
+            .iter()
+            .map(|item| item.x + item.width)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let spans = free_spans(self, f64::NEG_INFINITY, provisional_line_height(self));
+        spans
+            .into_iter()
+            .find(|(start, end)| *start <= left + 0.5 && right <= *end + 0.5)
+            .map(|(_, end)| end)
+            .filter(|end| *end < self.right_edge - 0.5)
+    }
+
     fn emit(&mut self, line: LineBuilder, last: bool) {
+        // Beside a wrapped object the line ends where its free interval ends:
+        // justification and alignment work up to the object, not under it
+        // (WQ-012). A line whose text crosses the object keeps the column edge.
+        let right_edge = self.wrapped_right_edge(&line).unwrap_or(self.right_edge);
         let mut finished = finish_line(
             self.ctx,
             self.computed,
             line,
-            self.right_edge,
+            right_edge,
             self.grid_line_pitch,
             last,
         );
@@ -2318,10 +2389,12 @@ fn reserve(
 /// Free intervals of the current line, left to right.
 fn free_spans(sink: &LineSink<'_, '_>, left: f64, line_height: f64) -> Vec<(f64, f64)> {
     let mut spans = vec![(left, sink.right_edge)];
+    let mut narrowed = false;
     for exclusion in &sink.exclusions {
         if sink.line_y + line_height <= exclusion.top || sink.line_y >= exclusion.bottom {
             continue;
         }
+        narrowed = true;
         if let Some(contour) = &exclusion.contour {
             let occupied: Vec<(f64, f64)> = contour
                 .intervals(
@@ -2347,9 +2420,20 @@ fn free_spans(sink: &LineSink<'_, '_>, left: f64, line_height: f64) -> Vec<(f64,
             apply_side(&mut spans, exclusion);
         }
     }
-    spans.retain(|(start, end)| *end - *start > 0.5);
+    // Beside a wrapped object, a sliver of a few words' width is left empty:
+    // WPS (and Word) carry the text on below the object instead of breaking
+    // words into it (WQ-018: 27 and 35 pt gaps in doc 093).
+    let minimum = if narrowed {
+        crate::units::pt_to_px(MIN_WRAP_GAP_PT, sink.ctx.options.scale)
+    } else {
+        0.5
+    };
+    spans.retain(|(start, end)| *end - *start > minimum);
     spans
 }
+
+/// The narrowest interval beside a wrapped object that takes text, in pt.
+const MIN_WRAP_GAP_PT: f64 = 54.0;
 
 fn apply_side(spans: &mut Vec<(f64, f64)>, exclusion: &WrapExclusion) {
     match exclusion.side {
@@ -2406,6 +2490,35 @@ fn clip_start(spans: &mut Vec<(f64, f64)>, limit: f64) {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// The longest prefix of `token` ending in a hyphen between two letters that
+/// fits in `available` px, as `(cut, prefix)`. Before a digit a hyphen is a
+/// minus sign and offers no break.
+fn hard_hyphen_prefix(
+    sink: &LineSink<'_, '_>,
+    token: &str,
+    run: &ComputedRun,
+    available: f64,
+) -> Option<(usize, String)> {
+    let mut best = None;
+    let mut previous: Option<char> = None;
+    let mut chars = token.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        let breaks = matches!(ch, '-' | '\u{2010}')
+            && previous.is_some_and(char::is_alphabetic)
+            && chars.peek().is_some_and(|(_, next)| next.is_alphabetic());
+        if breaks {
+            let cut = index + ch.len_utf8();
+            let prefix = token.get(..cut)?;
+            if sink.ctx.measure(prefix, run) > available + 1e-9 {
+                break;
+            }
+            best = Some((cut, prefix.to_owned()));
+        }
+        previous = Some(ch);
+    }
+    best
+}
+
 fn place_token(
     sink: &mut LineSink<'_, '_>,
     current: &mut LineBuilder,
@@ -2432,8 +2545,10 @@ fn place_token(
             if *x + sink.ctx.measure(token, run) <= line_end + 1e-9 {
                 break;
             }
-            let Some((cut, displayed)) =
-                hyphenated_prefix(sink, current, token, run, line_end - *x)
+            // A hyphen already in the word is a break opportunity after it
+            // (UAX #14 class HY): "cross- / sections" (WQ-021).
+            let Some((cut, displayed)) = hard_hyphen_prefix(sink, token, run, line_end - *x)
+                .or_else(|| hyphenated_prefix(sink, current, token, run, line_end - *x))
             else {
                 break;
             };
@@ -2512,6 +2627,7 @@ fn place_token(
 
 /// A word can span multiple runs; line breaking uses its complete width and
 /// language while painting each substring with its authored formatting.
+#[allow(clippy::too_many_lines)]
 fn place_formatted_word(
     sink: &mut LineSink<'_, '_>,
     current: &mut LineBuilder,
@@ -2522,6 +2638,9 @@ fn place_formatted_word(
 ) {
     loop {
         let word: String = pieces.iter().map(|(text, _)| text.as_str()).collect();
+        let Some(first_run) = pieces.first().map(|(_, run)| run.clone()) else {
+            return;
+        };
         if word.is_empty() {
             return;
         }
@@ -2542,6 +2661,7 @@ fn place_formatted_word(
             });
             if settings.auto_hyphenation
                 && !settings.auto_hyphenation_off
+                && !sink.computed.suppress_auto_hyphens
                 && word.len() <= 4096
                 && (*x <= normal_x + 0.001 || end - *x > zone)
                 && !(settings.do_not_hyphenate_caps
@@ -2549,7 +2669,7 @@ fn place_formatted_word(
                         .chars()
                         .all(|ch| !ch.is_alphabetic() || ch.is_uppercase()))
             {
-                let language = &pieces[0].1.language;
+                let language = &first_run.language;
                 let tag = if word.chars().any(crate::style::is_complex_script) {
                     language.bidi.as_deref().or(language.val.as_deref())
                 } else {
@@ -2605,7 +2725,7 @@ fn place_formatted_word(
         }
         let mut remaining = cut;
         let mut tail = Vec::new();
-        let mut last_run = pieces[0].1.clone();
+        let mut last_run = first_run;
         for (text, run) in pieces {
             let count = remaining.min(text.len());
             remaining -= count;
@@ -2679,6 +2799,7 @@ fn hyphenated_prefix(
     let settings = &sink.ctx.document.settings;
     if !settings.auto_hyphenation
         || settings.auto_hyphenation_off
+        || sink.computed.suppress_auto_hyphens
         || available <= 0.0
         || token.len() > 4096
     {
@@ -2706,12 +2827,11 @@ fn hyphenated_prefix(
         run.language.val.as_deref()
     }
     .unwrap_or("en");
-    let code = tag.split(['-', '_']).next()?.as_bytes();
-    if code.len() != 2 {
+    let &[first, second] = tag.split(['-', '_']).next()?.as_bytes() else {
         return None;
-    }
+    };
     let language =
-        hypher::Lang::from_iso([code[0].to_ascii_lowercase(), code[1].to_ascii_lowercase()])?;
+        hypher::Lang::from_iso([first.to_ascii_lowercase(), second.to_ascii_lowercase()])?;
     let hyphen = if language.hyphenation_character().is_some() {
         "-"
     } else {
@@ -3047,8 +3167,19 @@ fn warn_line_overflow(ctx: &LayoutContext<'_>, line: &LineBuilder, right_edge: f
     }
 }
 
+/// One bidi-reorderable object of a line: text fragments and inline graphics
+/// that overlap horizontally move together.
+#[derive(Clone)]
+struct Unit {
+    left: f64,
+    right: f64,
+    texts: Vec<usize>,
+    graphics: Vec<usize>,
+}
+
 /// Order text fragments by Unicode embedding levels while preserving glyph
 /// order inside each already-shaped fragment.
+#[allow(clippy::too_many_lines)]
 fn reorder_bidi_line(ctx: &LayoutContext<'_>, line: &mut LineBuilder, rtl: bool) {
     if !rtl
         && !line
@@ -3076,7 +3207,7 @@ fn reorder_bidi_line(ctx: &LayoutContext<'_>, line: &mut LineBuilder, rtl: bool)
             logical.push('\u{202c}');
         }
         active_scopes.truncate(shared);
-        for scope in &item.run.bidi_embeddings[shared..] {
+        for scope in item.run.bidi_embeddings.iter().skip(shared) {
             logical.push(match (scope.1, scope.2) {
                 (true, true) => '\u{202e}',
                 (false, true) => '\u{202d}',
@@ -3122,7 +3253,7 @@ fn reorder_bidi_line(ctx: &LayoutContext<'_>, line: &mut LineBuilder, rtl: bool)
             if byte == item.text.len() || next != level {
                 if byte > begin {
                     let mut fragment = item.clone();
-                    fragment.text = item.text[begin..byte].to_owned();
+                    item.text[begin..byte].clone_into(&mut fragment.text);
                     fragment.x = x;
                     fragment.run.rtl = Some(level.is_rtl());
                     fragment.width = ctx.measure(&fragment.text, &fragment.run);
@@ -3137,13 +3268,6 @@ fn reorder_bidi_line(ctx: &LayoutContext<'_>, line: &mut LineBuilder, rtl: bool)
         }
     }
     line.items = fragments;
-    #[derive(Clone)]
-    struct Unit {
-        left: f64,
-        right: f64,
-        texts: Vec<usize>,
-        graphics: Vec<usize>,
-    }
     let mut units: Vec<_> = line
         .items
         .iter()
@@ -3194,8 +3318,12 @@ fn reorder_bidi_line(ctx: &LayoutContext<'_>, line: &mut LineBuilder, rtl: bool)
     let levels: Vec<_> = groups
         .iter()
         .map(|group| {
-            if let Some(index) = group.texts.first() {
-                prior_level = fragment_levels[*index];
+            if let Some(level) = group
+                .texts
+                .first()
+                .and_then(|index| fragment_levels.get(*index))
+            {
+                prior_level = *level;
             }
             prior_level
         })
@@ -3203,25 +3331,34 @@ fn reorder_bidi_line(ctx: &LayoutContext<'_>, line: &mut LineBuilder, rtl: bool)
     let order = unicode_bidi::BidiInfo::reorder_visual(&levels);
     let mut gaps: Vec<_> = groups
         .windows(2)
-        .map(|pair| (pair[1].left - pair[0].right).max(0.0))
+        .map(|pair| match pair {
+            [left, right] => (right.left - left.right).max(0.0),
+            _ => 0.0,
+        })
         .collect();
     gaps.push(0.0);
     let mut x = groups.first().map_or(0.0, |group| group.left);
     for index in order {
-        let group = &groups[index];
+        let Some(group) = groups.get(index) else {
+            continue;
+        };
         let dx = x - group.left;
         for index in &group.texts {
-            line.items[*index].x += dx;
+            if let Some(item) = line.items.get_mut(*index) {
+                item.x += dx;
+            }
         }
         for index in &group.graphics {
-            line.graphics[*index] =
-                crate::layout::table::offset_item(&line.graphics[*index], dx, 0.0);
+            if let Some(item) = line.graphics.get_mut(*index) {
+                *item = crate::layout::table::offset_item(item, dx, 0.0);
+            }
         }
-        x += group.right - group.left + gaps[index];
+        x += group.right - group.left + gaps.get(index).copied().unwrap_or(0.0);
     }
 }
 
 /// Finalizes a line: baseline, justification and alignment.
+#[allow(clippy::too_many_lines)]
 fn finish_line(
     ctx: &LayoutContext<'_>,
     computed: &ComputedParagraph,
@@ -3542,7 +3679,7 @@ fn resolve_line_metrics(
     item: Option<&TextItem>,
     grid_line_pitch: Option<f64>,
 ) -> (f64, f64) {
-    let run = item.map_or(&computed.default_run, |item| &item.run);
+    let run = item.map_or(computed.mark_run(), |item| &item.run);
     let grid_line_pitch = grid_line_pitch.filter(|_| computed.snap_to_grid && run.snap_to_grid);
     let family = crate::style::chosen_family(run, item.map_or("", |text| text.text.as_str()));
     let metrics = crate::font::embedded::run_metrics(run, &family, ctx.font);
@@ -3603,15 +3740,18 @@ fn resolve_line_metrics(
         LineSpacingRule::Auto => {
             let multiplier = computed.line_pt.map_or(1.0, |pt| pt / 12.0);
             let scaled = natural_height * multiplier.max(0.1);
-            // When the document declares a line grid, each line occupies the
-            // smallest whole number of grid units that fits the (possibly
-            // explicit) auto line height, as Word/WPS do even with single
-            // spacing (`w:line="240"`). The extra leading goes above the
-            // baseline so the block keeps its vertical position within the grid.
+            // When the document declares a line grid, a single line occupies
+            // the smallest whole number of grid units that fits its natural
+            // height, as Word/WPS do even with single spacing (`w:line="240"`).
+            // The multiplier then scales that snapped height: 1.5 lines on a
+            // 15.6 pt grid is 23.4 pt, not two units (WQ-024). The extra
+            // leading goes above the baseline so the block keeps its vertical
+            // position within the grid.
             let (height, extra) = match grid_line_pitch {
                 Some(pitch) if pitch > 0.0 => {
-                    let height = (scaled / pitch).ceil().max(1.0) * pitch;
-                    (height, height - scaled)
+                    let single = (natural_height / pitch).ceil().max(1.0) * pitch;
+                    let height = single * multiplier.max(0.1);
+                    (height, (height - scaled).max(0.0))
                 }
                 _ => (scaled, 0.0),
             };
@@ -3694,7 +3834,7 @@ fn following_ink(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
             | Seg::ClearingBreak(_)
             | Seg::PageBreak
             | Seg::ColumnBreak
-            | Seg::Image(_)
+            | Seg::Image(..)
             | Seg::MathParagraph(_) => break,
             Seg::Anchor(_)
             | Seg::FootnoteMarker(_, _)
@@ -3738,7 +3878,7 @@ fn place_tab(
     default_tab: i32,
     scale: f64,
     content_left: f64,
-) {
+) -> Option<f64> {
     let tab = resolve_tab(*x, computed, default_tab, scale, content_left);
     if matches!(tab.alignment, TabAlignment::Bar) {
         current.graphics.push(Item::Line(crate::layout::LineItem {
@@ -3750,7 +3890,7 @@ fn place_tab(
             width: 0.75,
             dashed: false,
         }));
-        return;
+        return None;
     }
     let ink = following_ink(ctx, pending);
     let text_start = match tab.alignment {
@@ -3767,6 +3907,7 @@ fn place_tab(
     } else if matches!(tab.alignment, TabAlignment::Start) {
         *x = text_start.max(*x);
     }
+    (!matches!(tab.alignment, TabAlignment::Start | TabAlignment::Clear)).then_some(tab.x)
 }
 
 /// Draws the leader in the gap. The marks are graphics, so they are not part
@@ -3824,4 +3965,15 @@ fn push_leader(current: &mut LineBuilder, from: f64, to: f64, leader: TabLeader)
             }
         }
     }
+}
+
+/// Whether an affine matrix only translates.
+fn is_translation(matrix: [f64; 6]) -> bool {
+    let [a, b, c, d, _, _] = matrix;
+    (a - 1.0).abs() < 1e-9 && b.abs() < 1e-9 && c.abs() < 1e-9 && (d - 1.0).abs() < 1e-9
+}
+
+/// Whether a rotation is a half turn, which keeps the block's width and height.
+pub(crate) fn is_half_turn(rotation: f64) -> bool {
+    (rotation.abs() - 180.0).abs() < 1e-9
 }

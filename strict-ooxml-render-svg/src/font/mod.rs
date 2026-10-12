@@ -69,13 +69,20 @@ pub fn shaped_cluster_offsets_px(
             previous = Some(ch);
         }
     }
-    let mut order: Vec<_> = (0..shaped.clusters.len()).collect();
-    order.sort_by(|&a, &b| shaped.clusters[a].x_em.total_cmp(&shaped.clusters[b].x_em));
+    let mut order: Vec<(usize, f64)> = shaped
+        .clusters
+        .iter()
+        .enumerate()
+        .map(|(index, cluster)| (index, cluster.x_em))
+        .collect();
+    order.sort_by(|a, b| a.1.total_cmp(&b.1));
     let mut offsets = vec![0.0; order.len()];
     let mut cursor = 0.0;
-    for index in order {
-        offsets[index] = cursor;
-        cursor += deltas[index];
+    for (index, _) in order {
+        if let Some(offset) = offsets.get_mut(index) {
+            *offset = cursor;
+        }
+        cursor += deltas.get(index).copied().unwrap_or(0.0);
     }
     offsets
 }

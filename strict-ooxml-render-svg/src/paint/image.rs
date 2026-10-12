@@ -52,19 +52,11 @@ pub(crate) fn layout_inline_image(
         return None;
     }
     let extent = extent.unwrap_or_default();
+    // `wp:effectExtent` is room for effects around the picture: it widens the
+    // space the line reserves (see `inline_effect_margins`), never the picture
+    // itself (ISO/IEC 29500-1 §20.4.2.6).
     let mut w = emu_to_px(extent.cx.value(), ctx.options.scale);
     let mut h = emu_to_px(extent.cy.value(), ctx.options.scale);
-    // AUD-50: `wp:effectExtent` expands the occupied block.
-    if let Some(effect) = &inline.effect_extent {
-        w += emu_to_px(
-            effect.left.value() + effect.right.value(),
-            ctx.options.scale,
-        );
-        h += emu_to_px(
-            effect.top.value() + effect.bottom.value(),
-            ctx.options.scale,
-        );
-    }
     if w <= 0.0 {
         w = DEFAULT_IMAGE_PX;
     }
@@ -88,6 +80,21 @@ pub(crate) fn layout_inline_image(
         alt,
         transform: None,
         crop: picture.and_then(|picture| src_rect_crop(picture.src_rect)),
+    })
+}
+
+/// `wp:effectExtent` of an inline drawing as `[left, top, right, bottom]` px:
+/// the margins the line reserves around the drawing for its effects (AUD-50).
+pub(crate) fn inline_effect_margins(
+    ctx: &LayoutContext<'_>,
+    drawing: &strict_ooxml_wml::model::Drawing,
+) -> [f64; 4] {
+    let strict_ooxml_wml::model::DrawingKind::Inline(inline) = &drawing.kind else {
+        return [0.0; 4];
+    };
+    inline.effect_extent.as_ref().map_or([0.0; 4], |effect| {
+        [effect.left, effect.top, effect.right, effect.bottom]
+            .map(|value| emu_to_px(value.value(), ctx.options.scale).max(0.0))
     })
 }
 
@@ -129,6 +136,17 @@ pub(crate) fn media_href(
                 .map_or(String::from("application/octet-stream"), |ct| {
                     ct.to_string()
                 });
+            // A metafile or TIFF that could not be rasterized is not embedded
+            // as is: no browser shows it inside SVG, so the picture would vanish
+            // without a word. It gets the placeholder and the warning the PDF
+            // backend gives (WQ-027).
+            if raster.is_none() && !viewer_can_show(&bytes, &content_type) {
+                ctx.warn(format!(
+                    "render.image.unsupported: placeholder: {} ({content_type} cannot be shown in SVG)",
+                    part.as_str()
+                ));
+                return None;
+            }
             let (bytes, content_type) = raster.as_deref().map_or_else(
                 || (bytes.as_slice(), content_type.as_str()),
                 |png| (png, "image/png"),
@@ -294,6 +312,23 @@ fn base64_digit(triple: u32, shift: u32) -> char {
         .get(((triple >> shift) & 0x3F) as usize)
         .copied()
         .map_or('=', char::from)
+}
+
+/// Whether an SVG viewer can draw these bytes as an `<image>`: the web image
+/// formats, by signature first and declared type second.
+fn viewer_can_show(bytes: &[u8], content_type: &str) -> bool {
+    let signature = bytes.starts_with(&[0x89, b'P', b'N', b'G'])
+        || bytes.starts_with(&[0xFF, 0xD8, 0xFF])
+        || bytes.starts_with(b"GIF8")
+        || bytes.starts_with(b"BM")
+        || (bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP".as_slice()))
+        || bytes.starts_with(b"<svg")
+        || bytes.starts_with(b"<?xml");
+    signature
+        || matches!(
+            content_type,
+            "image/png" | "image/jpeg" | "image/gif" | "image/bmp" | "image/webp" | "image/svg+xml"
+        )
 }
 
 #[cfg(test)]

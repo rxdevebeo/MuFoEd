@@ -84,6 +84,7 @@ fn justified_inline_formula_moves_with_the_spaces_before_it() {
     let body = "<w:p><w:pPr><w:jc w:val=\"both\"/></w:pPr><w:r><w:t xml:space=\"preserve\">before words </w:t></w:r><m:oMath><m:r><m:t>MARKER</m:t></m:r></m:oMath><w:r><w:t xml:space=\"preserve\"> after words </w:t></w:r><w:r><w:br/></w:r><w:r><w:t>tail</w:t></w:r></w:p>";
     let options = RenderOptions {
         wps_times_calibration: false,
+        cell_no_wrap: strict_ooxml_render_svg::CellNoWrap::Spec,
         ..RenderOptions::default()
     };
     let pages = render_with(body, &options);
@@ -158,10 +159,15 @@ fn long_inline_equation_wraps_at_operators_without_losing_terms() {
             "{:?}",
             page.warnings
         );
+        let mut offset = 0;
         for element in page.svg.split("<text ").skip(1) {
+            offset = page.svg[offset..]
+                .find("<text ")
+                .map_or(offset, |found| offset + found + 1);
             let (tag, rest) = element.split_once('>').expect("text");
             text.push_str(rest.split_once("</text>").expect("closing").0);
-            baselines.push(attribute(tag, "y").expect("baseline"));
+            let (_, dy) = group_offset(&page.svg, offset);
+            baselines.push(attribute(tag, "y").expect("baseline") + dy);
         }
     }
     assert_eq!(text, formula);
@@ -389,38 +395,40 @@ fn inline_reference_brackets_surround_the_number_above_its_baseline() {
 </m:dPr><m:e><m:r><m:t>{number}</m:t></m:r></m:e></m:d></m:oMath>\
 <w:r><w:tab/><w:t>Reference</w:t></w:r></w:p>"
         ));
-        let (_, baseline) = position(&svg, &format!(">{number}</text>")).expect("number");
-        let size = font_size_near(&svg, &format!(">{number}</text>")).expect("size");
-        for path in svg.split("<path ").skip(1) {
-            let transform = path
-                .split("transform=\"translate(")
-                .nth(1)
-                .expect("position");
-            let coordinates = transform.split(')').next().expect("coordinates");
-            let top: f64 = coordinates
-                .split_whitespace()
-                .nth(1)
-                .expect("y")
-                .parse()
-                .unwrap();
-            assert!(
-                baseline - top > 0.5 * size,
-                "bracket must start above the number, not below it: top={top}, baseline={baseline}"
-            );
-        }
-        assert_eq!(svg.matches("<path ").count(), 2);
+        // One-line content keeps the font's own brackets, on the number's
+        // baseline and around it, as Word and WPS draw them (WQ-030).
+        let (x, baseline) = position(&svg, &format!(">{number}</text>")).expect("number");
+        let (open_x, open_baseline) = position(&svg, ">[</text>").expect("[");
+        let (close_x, close_baseline) = position(&svg, ">]</text>").expect("]");
+        assert!(open_x < x && x < close_x, "{open_x} < {x} < {close_x}");
+        assert!((open_baseline - baseline).abs() < 0.5, "{svg}");
+        assert!((close_baseline - baseline).abs() < 0.5, "{svg}");
+        assert_eq!(svg.matches("<path ").count(), 0, "{svg}");
     }
 }
 
 #[test]
 fn a_delimiter_is_drawn_as_a_stretchy_vector() {
+    // A delimiter around content taller than a line (here a fraction) is a
+    // stretched outline.
+    let svg = render_body(
+        "<w:p><m:oMath><m:d><m:dPr><m:begChr m:val=\"(\"/><m:endChr m:val=\")\"/>\
+</m:dPr><m:e><m:f><m:num><m:r><m:t>a</m:t></m:r></m:num>\
+<m:den><m:r><m:t>b</m:t></m:r></m:den></m:f></m:e></m:d></m:oMath></w:p>",
+    );
+    assert!(
+        svg.matches("<path ").count() >= 2,
+        "both delimiters must be drawn: {svg}"
+    );
+    assert!(svg.contains(">a</text>"), "{svg}");
+    // Around one line of text the font's glyphs are used instead (WQ-030).
     let svg = render_body(
         "<w:p><m:oMath><m:d><m:dPr><m:begChr m:val=\"(\"/><m:endChr m:val=\")\"/>\
 </m:dPr><m:e><m:r><m:t>a</m:t></m:r></m:e></m:d></m:oMath></w:p>",
     );
     assert!(
-        svg.matches("<path ").count() >= 2,
-        "both delimiters must be drawn: {svg}"
+        svg.contains(">(</text>") && svg.contains(">)</text>"),
+        "{svg}"
     );
     assert!(svg.contains(">a</text>"), "{svg}");
 }
@@ -750,7 +758,63 @@ fn position(svg: &str, marker: &str) -> Option<(f64, f64)> {
     let index = svg.find(marker)?;
     let start = svg[..index].rfind("<text ")?;
     let tag = &svg[start..index];
-    Some((attribute(tag, "x")?, attribute(tag, "y")?))
+    let (dx, dy) = group_offset(svg, start);
+    Some((attribute(tag, "x")? + dx, attribute(tag, "y")? + dy))
+}
+
+/// The translation of the `<g>` elements still open at byte `index`: inline
+/// formulas are painted in a group placed by its `transform`.
+fn group_offset(svg: &str, index: usize) -> (f64, f64) {
+    let mut open: Vec<(f64, f64)> = Vec::new();
+    let mut cursor = 0;
+    while let Some(found) = svg[cursor..index].find("<g").map(|at| cursor + at) {
+        let close = svg[cursor..found].matches("</g>").count();
+        for _ in 0..close {
+            open.pop();
+        }
+        let end = found + svg[found..].find('>').unwrap_or(0);
+        let tag = &svg[found..end];
+        let shift = tag
+            .split_once("transform=\"")
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map_or((0.0, 0.0), |(transform, _)| translation(transform));
+        open.push(shift);
+        cursor = end;
+    }
+    for _ in 0..svg[cursor..index].matches("</g>").count() {
+        open.pop();
+    }
+    open.iter()
+        .fold((0.0, 0.0), |(x, y), (dx, dy)| (x + dx, y + dy))
+}
+
+/// The translation part of an SVG `matrix(...)` or `translate(...)`.
+fn translation(transform: &str) -> (f64, f64) {
+    let numbers = |body: &str| -> Vec<f64> {
+        body.split([' ', ','])
+            .filter_map(|value| value.parse().ok())
+            .collect()
+    };
+    if let Some(body) = transform
+        .strip_prefix("matrix(")
+        .and_then(|rest| rest.split_once(')'))
+    {
+        let values = numbers(body.0);
+        if let [_, _, _, _, e, f] = values[..] {
+            return (e, f);
+        }
+    }
+    if let Some(body) = transform
+        .strip_prefix("translate(")
+        .and_then(|rest| rest.split_once(')'))
+    {
+        let values = numbers(body.0);
+        return (
+            values.first().copied().unwrap_or(0.0),
+            values.get(1).copied().unwrap_or(0.0),
+        );
+    }
+    (0.0, 0.0)
 }
 
 /// Returns the `font-size` of the `<text>` element holding `marker`.
@@ -765,7 +829,7 @@ fn font_size_near(svg: &str, marker: &str) -> Option<f64> {
 fn line_y(svg: &str) -> Option<f64> {
     let start = svg.find("<line ")?;
     let end = start + svg[start..].find('>')? + 1;
-    attribute(&svg[start..end], "y1")
+    Some(attribute(&svg[start..end], "y1")? + group_offset(svg, start).1)
 }
 
 /// Reads a numeric attribute from an SVG tag.

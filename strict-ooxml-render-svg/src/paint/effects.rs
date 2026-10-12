@@ -13,6 +13,7 @@ struct Effect {
     sx: f64,
     sy: f64,
 }
+#[allow(clippy::too_many_lines)]
 fn read(ctx: &LayoutContext<'_>, markup: &str) -> Vec<Effect> {
     use strict_ooxml_core::{
         part::PartId,
@@ -67,8 +68,8 @@ fn read(ctx: &LayoutContext<'_>, markup: &str) -> Vec<Effect> {
                                 ctx.options.scale,
                             ),
                             angle: number("dir", 0.0) / 60000.0,
-                            sx: number("sx", 100000.0) / 100000.0,
-                            sy: number("sy", 100000.0) / 100000.0,
+                            sx: number("sx", 100_000.0) / 100_000.0,
+                            sy: number("sy", 100_000.0) / 100_000.0,
                         });
                     }
                     "blur" | "reflection" | "softEdge" | "fillOverlay" | "duotone" | "prstShdw" => {
@@ -98,7 +99,7 @@ fn read(ctx: &LayoutContext<'_>, markup: &str) -> Vec<Effect> {
                     }
                     "alpha" => {
                         if let Some(effect) = &mut active {
-                            effect.alpha = (number("val", 100000.0) / 100000.0).clamp(0.0, 1.0);
+                            effect.alpha = (number("val", 100_000.0) / 100_000.0).clamp(0.0, 1.0);
                         }
                     }
                     _ => {}
@@ -148,7 +149,7 @@ fn recolor(item: &mut Item, color: &str, glow: Option<f64>) {
             rect.stroke = None;
         }
         Item::Line(line) => {
-            line.color = color.to_owned();
+            color.clone_into(&mut line.color);
             if let Some(radius) = glow {
                 line.width += radius * 2.0;
             }

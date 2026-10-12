@@ -987,9 +987,10 @@ fn custom_geometry(xml: &mut XmlWriter, custom: &CustomGeometry) {
                         }
                     } else {
                         for point in values.chunks_exact(2) {
+                            let [x, y] = point else { continue };
                             xml.start("a:pt");
-                            xml.attr("x", point[0].as_ref());
-                            xml.attr("y", point[1].as_ref());
+                            xml.attr("x", x.as_ref());
+                            xml.attr("y", y.as_ref());
                             xml.end();
                         }
                     }

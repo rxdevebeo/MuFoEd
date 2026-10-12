@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use strict_ooxml_core::error::Result;
+use strict_ooxml_wml::model::values::TextDirection;
 
 use crate::error::RenderError;
 use crate::layout::exclusions::PageExclusion;
@@ -199,6 +200,7 @@ fn item_coords_finite(item: &Item) -> bool {
 }
 
 /// Lays out the document once, using `assumed` totals for NUMPAGES/SECTIONPAGES.
+#[allow(clippy::too_many_lines)]
 fn layout_once(
     ctx: &LayoutContext<'_>,
     assumed: &AssumedTotals,
@@ -321,7 +323,9 @@ fn layout_once(
     crate::layout::pageborders::apply(ctx, &mut layout.pages, sections)?;
     let mut fingerprint = LayoutFingerprint::new(&layout.pages, &regions);
     fingerprint.note_pages = ctx.note_numbers.reference_pages();
-    fingerprint.chapters = ctx.chapter_numbers.borrow().clone();
+    fingerprint
+        .chapters
+        .clone_from(&ctx.chapter_numbers.borrow());
     Ok((layout, fingerprint, has_fields))
 }
 
@@ -420,6 +424,8 @@ fn layout_blocks(
     let mut pending_after = 0.0f64;
     let mut index = 0;
     while let Some(block) = blocks.get(index) {
+        // A nested container laid out by the previous block raised it.
+        ctx.set_block_depth(depth);
         ctx.current_section.set(paginator.section_index);
         if paginator.selection_exhausted() {
             return Ok(());
@@ -493,6 +499,7 @@ fn layout_blocks(
 
 /// Lays out one body paragraph, registers wrap exclusions, returns `space_after`.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 fn place_body_paragraph(
     ctx: &LayoutContext<'_>,
     para: &strict_ooxml_wml::model::Paragraph,
@@ -555,7 +562,6 @@ fn place_body_paragraph(
             .iter()
             .map(|item| match item {
                 Flow::Line(line) => line.height,
-                Flow::Image(image) => image.h,
                 Flow::Block { height, .. } => *height,
                 Flow::TableRow(row) => row.height,
                 Flow::PageBreak | Flow::ColumnBreak => 0.0,
@@ -577,6 +583,22 @@ fn place_body_paragraph(
         None
     };
     if widow_break == Some(0) {
+        paginator.overflow_break()?;
+        if paginator.selection_exhausted() {
+            return Ok(0.0);
+        }
+    } else if !boundary_marker
+        && !paginator.at_column_top()
+        && anchor_passes_page_bottom(
+            ctx,
+            &flow.anchors,
+            paginator.cursor,
+            paginator.body_height(),
+        )
+    {
+        // An object placed from this paragraph that would end below the page
+        // takes the paragraph to the next page with it, as WPS lays it out
+        // (WQ-013: the figure was drawn past the sheet and lost).
         paginator.overflow_break()?;
         if paginator.selection_exhausted() {
             return Ok(0.0);
@@ -604,7 +626,40 @@ fn place_body_paragraph(
     Ok(flow.space_after + flow.border_after)
 }
 
+/// Whether an anchor positioned from its paragraph (or line) by an offset would
+/// end below the body when the paragraph starts `cursor` px into it.
+fn anchor_passes_page_bottom(
+    ctx: &LayoutContext<'_>,
+    anchors: &[strict_ooxml_wml::model::drawing::AnchorDrawing],
+    cursor: f64,
+    body_height: f64,
+) -> bool {
+    let scale = ctx.options.scale;
+    anchors.iter().any(|anchor| {
+        let Some(position) = anchor.position_v.as_ref() else {
+            return false;
+        };
+        if anchor.simple_pos
+            || position.align.is_some()
+            || !matches!(
+                position.relative_from.as_deref(),
+                Some("paragraph" | "line")
+            )
+        {
+            return false;
+        }
+        let offset = position
+            .offset
+            .map_or(0.0, |offset| crate::units::emu_to_px(offset.value(), scale));
+        let height = anchor.extent.map_or(0.0, |extent| {
+            crate::units::emu_to_px(extent.cy.value(), scale)
+        });
+        height > 0.0 && height < body_height && cursor + offset + height > body_height + 0.5
+    })
+}
+
 /// Lays a frame group out once and paints every child from the frame origin.
+#[allow(clippy::too_many_lines)]
 fn place_frame_group(
     ctx: &LayoutContext<'_>,
     blocks: &[Block],
@@ -757,6 +812,7 @@ fn place_framed_table(
 }
 
 /// Place a `tblpPr` table outside the body flow and register text clearance.
+#[allow(clippy::too_many_lines)]
 fn place_floating_table(
     ctx: &LayoutContext<'_>,
     table: &strict_ooxml_wml::model::Table,
@@ -869,8 +925,7 @@ fn place_floating_table(
                         row.split_points
                             .iter()
                             .copied()
-                            .filter(|point| *point > start + 0.001 && *point <= start + available)
-                            .next_back()
+                            .rfind(|point| *point > start + 0.001 && *point <= start + available)
                             .unwrap_or(start)
                     };
                     if end <= start + 0.001
@@ -1046,7 +1101,7 @@ fn append_endnotes(
         .find(|note| note.kind == strict_ooxml_wml::model::NoteKind::Separator)
         .or_else(|| ctx.document.endnotes.separator());
     if let Some(separator) = separator {
-        append_note_blocks(ctx, &separator.blocks, left, width, "", paginator, 1)?;
+        append_note_blocks(ctx, &separator.blocks, "", paginator, 1)?;
     } else {
         paginator.place(Flow::Block {
             items: vec![line],
@@ -1065,7 +1120,7 @@ fn append_endnotes(
             .endnote_number(id)
             .map(|(number, format)| format.format(number))
             .unwrap_or_default();
-        append_note_blocks(ctx, &note.blocks, left, width, &marker, paginator, 1)?;
+        append_note_blocks(ctx, &note.blocks, &marker, paginator, 1)?;
     }
     Ok(())
 }
@@ -1074,12 +1129,9 @@ fn append_endnotes(
 ///
 /// `depth` starts at 1: an endnote body is a block container of its own, and a
 /// table inside it nests from there rather than from the page.
-#[allow(clippy::too_many_arguments)]
 fn append_note_blocks(
     ctx: &LayoutContext<'_>,
     blocks: &[Block],
-    left: f64,
-    width: f64,
     marker: &str,
     paginator: &mut Paginator<'_>,
     depth: u32,
@@ -1095,6 +1147,7 @@ fn append_note_blocks(
     ctx.set_block_depth(depth);
     let grid = paginator.geometry.grid_line_pitch;
     for (index, block) in blocks.iter().enumerate() {
+        ctx.set_block_depth(depth);
         match block {
             Block::Paragraph(para) => {
                 let neighbors = paragraph_neighbors(ctx.document, blocks, index, true);
@@ -1145,7 +1198,7 @@ fn append_note_blocks(
                 }
             }
             Block::SdtBlock(sdt) => {
-                append_note_blocks(ctx, &sdt.blocks, left, width, marker, paginator, depth + 1)?;
+                append_note_blocks(ctx, &sdt.blocks, marker, paginator, depth + 1)?;
             }
             Block::AltChunk(_) | Block::Opaque(_) => {}
         }
@@ -1279,6 +1332,7 @@ fn width_key(width: f64) -> i64 {
 }
 
 impl<'a> Paginator<'a> {
+    #[allow(clippy::large_types_passed_by_value, clippy::too_many_lines)]
     fn new(
         ctx: &'a LayoutContext<'a>,
         geometry: Geometry,
@@ -1451,7 +1505,6 @@ impl<'a> Paginator<'a> {
             },
         );
         self.geometry = self.base_geometry;
-        use strict_ooxml_wml::model::values::TextDirection;
         let properties = self
             .ctx
             .document
@@ -1490,6 +1543,7 @@ impl<'a> Paginator<'a> {
     }
 
     /// Applies a section break before laying out the next section's body (AUD-74).
+    #[allow(clippy::large_types_passed_by_value, clippy::too_many_lines)]
     fn apply_section_break(
         &mut self,
         break_type: Option<SectionType>,
@@ -1853,7 +1907,7 @@ impl<'a> Paginator<'a> {
         for column in 0..count {
             let width = self.geometry.column_width(column);
             let mut height = 0.0;
-            let ids = self.column_notes[column].clone();
+            let ids = self.column_notes.get(column).cloned().unwrap_or_default();
             for id in ids {
                 let available = self.geometry.content_height()
                     - self.separator_height(column)
@@ -1864,7 +1918,9 @@ impl<'a> Paginator<'a> {
                     if !self.pending.contains(&id) {
                         self.pending.push(id);
                     }
-                    self.column_notes[column].retain(|note| *note != id);
+                    if let Some(notes) = self.column_notes.get_mut(column) {
+                        notes.retain(|note| *note != id);
+                    }
                     self.note_slices.remove(&id);
                     self.note_scales.remove(&id);
                     continue;
@@ -1888,7 +1944,9 @@ impl<'a> Paginator<'a> {
                     }
                 }
             }
-            self.column_notes_height[column] = height;
+            if let Some(slot) = self.column_notes_height.get_mut(column) {
+                *slot = height;
+            }
         }
     }
 
@@ -2511,25 +2569,6 @@ impl<'a> Paginator<'a> {
             }
             Flow::ColumnBreak => self.overflow_break(),
             Flow::Line(line) => self.place_line(line),
-            Flow::Image(image) => {
-                self.started = true;
-                if self.has_content_above() && self.cursor + image.h > self.body_height() {
-                    self.overflow_break()?;
-                    if self.selection_exhausted() {
-                        return Ok(());
-                    }
-                }
-                let start = self.begin_flow();
-                let mut image = image;
-                let height = image.h;
-                image.x += self.column_offset();
-                image.y += self.geometry.top + self.cursor;
-                self.cursor += height;
-                self.record_column_bottom();
-                self.push_item(Item::Image(image))?;
-                self.end_flow(start, self.current.len(), height, Vec::new());
-                Ok(())
-            }
             Flow::Block { items, height } => {
                 self.started = true;
                 if self.has_content_above() && self.cursor + height > self.body_height() {
@@ -2594,8 +2633,7 @@ impl<'a> Paginator<'a> {
                     .split_points
                     .iter()
                     .copied()
-                    .filter(|point| *point > start + 1e-9 && *point <= start + available)
-                    .next_back();
+                    .rfind(|point| *point > start + 1e-9 && *point <= start + available);
                 if let Some(end) = cut {
                     let fragment = crate::layout::table::row_fragment(row, start, end);
                     self.place_row_items(&fragment)?;
@@ -2826,11 +2864,14 @@ impl<'a> Paginator<'a> {
                         .get(&(id, width_key(self.column_width())))
                 })
                 .map_or(0.0, |(_, height)| *height)
-            - self.column_notes_height[column];
+            - self.column_notes_height.get(column).copied().unwrap_or(0.0);
         let Some((start, end)) = self.note_slice(id, self.column_width(), budget.max(1.0)) else {
             return false;
         };
-        if end - start <= budget || self.column_notes[column].is_empty() {
+        // A fragment that does not fit here moves to the next page, where the
+        // carried notes are laid out first (and an indivisible line that does
+        // not fit even an empty footnote area is scaled there).
+        if end - start <= budget {
             self.note_slices.insert(id, (start, end));
             let requested = width_key(self.column_width());
             let source_width = self
@@ -2849,8 +2890,12 @@ impl<'a> Paginator<'a> {
                 ));
             }
             self.note_scales.insert(id, factor);
-            self.column_notes[column].push(id);
-            self.column_notes_height[column] += (end - start) * factor;
+            if let Some(notes) = self.column_notes.get_mut(column) {
+                notes.push(id);
+            }
+            if let Some(height) = self.column_notes_height.get_mut(column) {
+                *height += (end - start) * factor;
+            }
             if self
                 .note_layout(id, self.column_width())
                 .is_some_and(|(_, height)| end < *height - 0.01)

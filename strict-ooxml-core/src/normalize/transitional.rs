@@ -3261,8 +3261,14 @@ mod tests {
         // makes this affordable at the byte seam — no relationship surgery, and the
         // pass-through carries the bytes.
         assert!(
-            text.contains(r#"<a:blip r:embed="rId7"/>"#),
+            text.contains(r#"<a:blip r:embed="rId7">"#),
             "the relationship id is reused unchanged: {text}"
+        );
+        // `blacklevel="22938f"` (0.35) is the brightness of a washed-out
+        // watermark: DrawingML `a:lum` doubles it.
+        assert!(
+            text.contains(r#"<a:lum bright="70001" contrast="0"/>"#),
+            "the washout travels as a:lum: {text}"
         );
         assert!(
             text.contains("http://purl.oclc.org/ooxml/drawingml/picture"),

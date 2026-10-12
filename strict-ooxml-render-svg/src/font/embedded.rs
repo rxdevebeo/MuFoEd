@@ -1,5 +1,9 @@
 //! Document font programs, owned by the placed text that uses them.
 use super::{FaceSource, FontMetrics};
+use skrifa::{
+    instance::{LocationRef, Size},
+    FontRef, MetadataProvider,
+};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use strict_ooxml_wml::model::{fonts::EmbedKind, Document};
@@ -13,6 +17,10 @@ pub struct FontProgram {
     pub bytes: Arc<[u8]>,
     /// Vertical metrics of this program.
     pub metrics: FontMetrics,
+    /// SHA-256 of [`Self::bytes`], computed once: shaping keys its caches by
+    /// it, and hashing a megabyte font per measured word made a document with
+    /// embedded fonts take a minute per page.
+    pub hash: [u8; 32],
 }
 impl FontProgram {
     /// Checks that a subset supplies every character in this text fragment.
@@ -47,6 +55,7 @@ pub struct FontPrograms {
     pub(crate) warnings: Vec<String>,
 }
 impl FontPrograms {
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn load(document: &Document, media: Option<&dyn crate::MediaSource>) -> Self {
         let mut result = Self::default();
         let Some(table) = &document.font_table else {
@@ -80,7 +89,7 @@ impl FontPrograms {
                     continue;
                 }
                 if let Some(key) = embedded.font_key.as_deref() {
-                    let hex: String = key.chars().filter(|ch| ch.is_ascii_hexdigit()).collect();
+                    let hex: String = key.chars().filter(char::is_ascii_hexdigit).collect();
                     if hex.len() != 32 {
                         result
                             .warnings
@@ -89,26 +98,26 @@ impl FontPrograms {
                     }
                     let mut guid = [0u8; 16];
                     let mut valid = true;
-                    for (index, byte) in guid.iter_mut().enumerate() {
-                        match u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16) {
-                            Ok(value) => *byte = value,
-                            Err(_) => {
-                                valid = false;
-                                break;
-                            }
+                    for (byte, pair) in guid.iter_mut().zip(hex.as_bytes().chunks_exact(2)) {
+                        if let Some(value) = std::str::from_utf8(pair)
+                            .ok()
+                            .and_then(|pair| u8::from_str_radix(pair, 16).ok())
+                        {
+                            *byte = value;
+                        } else {
+                            valid = false;
+                            break;
                         }
                     }
                     if !valid {
                         continue;
                     }
-                    for (index, byte) in bytes[..32].iter_mut().enumerate() {
-                        *byte ^= guid[15 - index % 16];
+                    // The key is applied with its bytes reversed, repeated over
+                    // the first 32 bytes of the part (ECMA-376 Part 1 §17.8.1).
+                    for (byte, key) in bytes.iter_mut().take(32).zip(guid.iter().rev().cycle()) {
+                        *byte ^= key;
                     }
                 }
-                use skrifa::{
-                    instance::{LocationRef, Size},
-                    FontRef, MetadataProvider,
-                };
                 let Ok(font) = FontRef::new(&bytes) else {
                     result
                         .warnings
@@ -120,14 +129,23 @@ impl FontPrograms {
                 if units <= 0.0 {
                     continue;
                 }
-                let metrics = FontMetrics {
+                let metrics = word_line_metrics(&font, units).unwrap_or(FontMetrics {
                     units_per_em: units,
                     ascender: f64::from(metrics.ascent) / units,
                     descender: f64::from(metrics.descent).abs() / units,
                     line_gap: f64::from(metrics.leading) / units,
                     width_scale: 1.0,
-                };
-                let family = format!("OOXML-{}", super::hash_face_bytes_hex(&bytes));
+                });
+                let hash = super::hash_face_bytes(&bytes);
+                let family = format!(
+                    "OOXML-{}",
+                    hash.iter()
+                        .fold(String::with_capacity(64), |mut hex, byte| {
+                            use std::fmt::Write as _;
+                            let _ = write!(hex, "{byte:02x}");
+                            hex
+                        })
+                );
                 let bold = matches!(kind, EmbedKind::Bold | EmbedKind::BoldItalic);
                 let italic = matches!(kind, EmbedKind::Italic | EmbedKind::BoldItalic);
                 total_bytes += bytes.len();
@@ -137,6 +155,7 @@ impl FontPrograms {
                         family,
                         bytes: bytes.into(),
                         metrics,
+                        hash,
                     }),
                 );
             }
@@ -179,6 +198,32 @@ pub fn run_metrics(
         |program| program.metrics,
     )
 }
+/// The vertical metrics Word lays a document font out with (GDI): the OS/2
+/// Windows ascent and descent, plus the external leading GDI derives from the
+/// `hhea` line gap. A subset whose `hhea` box is tighter than its Windows box
+/// (doc 091's embedded Helvetica: 1.0 em against 1.175) otherwise lays every
+/// line out too close, and the document loses a tenth of its pages.
+fn word_line_metrics(font: &FontRef<'_>, units: f64) -> Option<FontMetrics> {
+    use skrifa::raw::TableProvider;
+    let os2 = font.os2().ok()?;
+    let hhea = font.hhea().ok()?;
+    let win_ascent = f64::from(os2.us_win_ascent());
+    let win_descent = f64::from(os2.us_win_descent());
+    if win_ascent + win_descent <= 0.0 {
+        return None;
+    }
+    let hhea_height = f64::from(hhea.ascender().to_i16()) - f64::from(hhea.descender().to_i16());
+    let external =
+        (f64::from(hhea.line_gap().to_i16()) - (win_ascent + win_descent - hhea_height)).max(0.0);
+    Some(FontMetrics {
+        units_per_em: units,
+        ascender: win_ascent / units,
+        descender: win_descent / units,
+        line_gap: external / units,
+        width_scale: 1.0,
+    })
+}
+
 /// Effective scalar advance from the program used for shaping and paint.
 pub fn run_advance_em(
     run: &crate::style::ComputedRun,
@@ -190,4 +235,24 @@ pub fn run_advance_em(
         .for_resource(family)
         .and_then(|program| program.advance_em(ch))
         .unwrap_or_else(|| provider.advance_em(family, ch, run.bold, run.italic))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::word_line_metrics;
+    use skrifa::FontRef;
+
+    /// Carlito carries Calibri's metrics: Word's single line is 1.2207 em,
+    /// the Windows box with no external leading.
+    #[test]
+    fn a_document_font_takes_the_windows_line_box() {
+        let source = super::super::face_source("Calibri", false, false).expect("Carlito");
+        let font = FontRef::new(source.data).expect("font");
+        let metrics = word_line_metrics(&font, 2048.0).expect("metrics");
+        assert!(
+            (metrics.line_height_em() - 2500.0 / 2048.0).abs() < 0.002,
+            "{}",
+            metrics.line_height_em()
+        );
+    }
 }

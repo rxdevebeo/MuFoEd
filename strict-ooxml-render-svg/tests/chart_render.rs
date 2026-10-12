@@ -68,6 +68,20 @@ fn render_chart(chart: &str) -> Vec<Page> {
     render_with_media(&document, &RenderOptions::default(), Some(&package)).expect("render")
 }
 
+/// The renderer's placeholders: a graphic's grey outline (WQ-023) or a
+/// picture's grey box.
+fn placeholders(svg: &str) -> Vec<()> {
+    let tree = roxmltree::Document::parse(svg).expect("svg");
+    tree.descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && (node.attribute("stroke") == Some("#bfbfbf")
+                    || node.attribute("fill") == Some("#f2f2f2"))
+        })
+        .map(|_| ())
+        .collect()
+}
+
 /// `(x, y, width, height)` of every `<rect>` filled with `fill`.
 fn rects(svg: &str, fill: &str) -> Vec<(f64, f64, f64, f64)> {
     let tree = roxmltree::Document::parse(svg).expect("svg");
@@ -133,7 +147,7 @@ fn bars(svg: &str, fill: &str) -> Vec<(f64, f64, f64, f64)> {
 fn a_column_chart_draws_bars_in_proportion() {
     let pages = render_chart(&column_chart());
     let svg = &pages[0].svg;
-    assert!(rects(svg, "#f2f2f2").is_empty(), "no placeholder");
+    assert!(placeholders(svg).is_empty(), "no placeholder");
     let north = bars(svg, "#ff0000");
     assert_eq!(north.len(), 3, "{north:?}");
     let south = bars(svg, "#ed7d31");
@@ -196,7 +210,7 @@ fn line_area_and_scatter_charts_draw() {
         let chart = format!("<c:plotArea><c:{kind}>{series}</c:{kind}></c:plotArea>");
         let pages = render_chart(&chart);
         let svg = &pages[0].svg;
-        assert!(rects(svg, "#f2f2f2").is_empty(), "{kind}: no placeholder");
+        assert!(placeholders(svg).is_empty(), "{kind}: no placeholder");
         let tree = roxmltree::Document::parse(svg).expect("svg");
         let drawn = tree
             .descendants()

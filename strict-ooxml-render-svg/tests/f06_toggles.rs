@@ -129,8 +129,9 @@ fn f06_direct_italic_is_not_xor() {
     assert!(matched, "Hi was not placed");
 }
 
-/// A mark formats the default run once. A neighbour with the same `On` stays on;
-/// a neighbour with `Off` stays off.
+/// The mark's `w:pPr/w:rPr` formats the paragraph mark only (ISO/IEC 29500-1
+/// §17.3.1.29; WPS agrees, WQ-002): a run without its own `w:i` stays upright,
+/// a run with `On` is italic and one with `Off` stays off.
 #[test]
 fn f06_mark_does_not_flip_a_neighbouring_run() {
     let body = "\
@@ -142,12 +143,19 @@ fn f06_mark_does_not_flip_a_neighbouring_run() {
     let doc = package(body, "");
     let svg = svg_of(&doc);
     assert_eq!(painted(&svg, "Off").0, false, "{svg}");
-    assert_eq!(painted(&svg, "Inh").0, true, "{svg}");
+    assert_eq!(painted(&svg, "Inh").0, false, "{svg}");
     assert_eq!(painted(&svg, "On"), (true, false), "{svg}");
-    assert_eq!(painted(&svg, "Bold"), (true, true), "{svg}");
+    assert_eq!(painted(&svg, "Bold"), (false, true), "{svg}");
     assert!(!run_flags(&doc, 0).0);
-    assert!(run_flags(&doc, 1).0);
+    assert!(!run_flags(&doc, 1).0);
     assert!(run_flags(&doc, 2).0);
+    let Block::Paragraph(para) = &doc.body.blocks[0] else {
+        panic!("paragraph");
+    };
+    assert!(
+        compute_paragraph(&doc, para).mark_run().italic,
+        "the mark itself"
+    );
 }
 
 /// An empty paragraph mark does not invent italic, and one direct run does not
@@ -203,7 +211,8 @@ fn f06_character_style_xor_stops_at_direct_formatting() {
     assert_eq!(painted(&svg_of(&direct), "Keep").1, true);
 }
 
-/// Caps and vanish follow the same direct assignment, including the mark.
+/// Caps and vanish follow the same direct assignment. The mark's own caps and
+/// vanish format the mark, not the runs.
 #[test]
 fn f06_caps_and_vanish_assign_direct_values() {
     let body = "\
@@ -213,15 +222,17 @@ fn f06_caps_and_vanish_assign_direct_values() {
 <w:r><w:rPr><w:caps w:val=\"0\"/><w:vanish w:val=\"0\"/></w:rPr><w:t>ef</w:t></w:r></w:p>";
     let doc = package(body, "");
     assert!(run_flags(&doc, 0).2 && run_flags(&doc, 0).3);
-    assert!(run_flags(&doc, 1).2 && !run_flags(&doc, 1).3);
+    assert!(!run_flags(&doc, 1).2 && !run_flags(&doc, 1).3);
     assert!(!run_flags(&doc, 2).2 && !run_flags(&doc, 2).3);
     let svg = svg_of(&doc);
     assert!(!svg.contains(">ab<") && !svg.contains(">AB<"), "{svg}");
-    assert!(svg.contains(">CD<"), "{svg}");
+    assert!(svg.contains(">cd<"), "{svg}");
     assert!(svg.contains(">ef<"), "{svg}");
 }
 
-/// Latin and Cyrillic share a run's direct italic. `iCs` applies only with a CS face.
+/// Latin and Cyrillic share a run's direct italic. `iCs` formats complex-script
+/// text (or a run marked `w:cs`/`w:rtl`); naming a CS face does not make Latin
+/// text take it.
 #[test]
 fn f06_direct_italic_covers_latin_and_cyrillic_and_cs() {
     let body = "\
@@ -237,15 +248,15 @@ fn f06_direct_italic_covers_latin_and_cyrillic_and_cs() {
     assert_eq!(painted(&svg, "Привет").0, true, "{svg}");
     assert_eq!(
         painted(&svg, "Cs").0,
-        true,
-        "iCs assigns italic when a CS face is named: {svg}"
+        false,
+        "Latin text keeps `w:i` even when a CS face is named: {svg}"
     );
     assert_eq!(
         painted(&svg, "Lat").0,
         true,
         "iCs is ignored without a CS face or rtl: {svg}"
     );
-    assert!(run_flags(&doc, 2).0);
+    assert!(!run_flags(&doc, 2).0);
     assert!(run_flags(&doc, 3).0);
 }
 

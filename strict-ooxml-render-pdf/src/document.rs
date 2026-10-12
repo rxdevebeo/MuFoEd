@@ -21,7 +21,7 @@ use strict_ooxml_core::part::PartId;
 use strict_ooxml_render_svg::layout::{
     Item, PathItem, PathPaint, PlacedPage, TextAdvanceKind, TextItem,
 };
-use strict_ooxml_render_svg::{FontProvider, MediaSource, RenderOptions};
+use strict_ooxml_render_svg::{MediaSource, RenderOptions};
 
 use crate::font::{EmbeddedFont, FaceCollector, FaceKey};
 use crate::image::{encode_with_limit, Encoded};
@@ -133,7 +133,7 @@ pub fn render_with_source(
             images: BTreeMap::new(),
             paints: Vec::new(),
             alpha: 1.0,
-            alphas: Default::default(),
+            alphas: std::collections::BTreeSet::default(),
             report: &mut report,
         };
         writer.draw_page(page, options.background);
@@ -518,6 +518,7 @@ impl PageWriter<'_> {
         }
     }
 
+    #[allow(clippy::many_single_char_names)] // PDF `cm` operands a..f
     fn item(&mut self, item: &Item) {
         match item {
             Item::Group(group) => {

@@ -89,7 +89,7 @@ pub(crate) fn orient_body(ctx: &LayoutContext<'_>, pages: &mut [PlacedPage], sec
                 Some([0.0, 1.0, -1.0, 0.0, physical.width, 0.0])
             }
             Some(TextDirection::BtLr) => Some([0.0, -1.0, 1.0, 0.0, 0.0, physical.height]),
-            Some(TextDirection::TbLrV) => None,
+            // TbLrV keeps the physical page; only the glyphs rotate.
             _ => None,
         };
         let mut items = std::mem::take(&mut page.items);
@@ -103,13 +103,11 @@ pub(crate) fn orient_body(ctx: &LayoutContext<'_>, pages: &mut [PlacedPage], sec
             items
                 .into_iter()
                 .flat_map(|item| {
-                    let center = match &item {
-                        Item::Text(text) => text.baseline,
-                        _ => {
-                            let (top, bottom) =
-                                crate::layout::table::item_vertical_bounds(ctx, &item);
-                            (top + bottom) / 2.0
-                        }
+                    let center = if let Item::Text(text) = &item {
+                        text.baseline
+                    } else {
+                        let (top, bottom) = crate::layout::table::item_vertical_bounds(ctx, &item);
+                        f64::midpoint(top, bottom)
                     };
                     crate::paint::graphics::transform_items(
                         vec![item],
