@@ -406,3 +406,29 @@ relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverla
         .collect();
     assert!(inside.is_empty(), "lines inside the drawing: {inside:?}");
 }
+
+/// WQ-016 (065): a page table whose own wrap pushes its anchor to the next
+/// page must not leave its page laid out around a table that is not there.
+/// The float is then placed from its anchor alone, as before the preload.
+#[test]
+fn wq016_a_float_that_its_own_wrap_moves_is_not_preloaded_again() {
+    let row = "<w:tr><w:tc><w:tcPr><w:tcW w:w=\"4320\" w:type=\"dxa\"/></w:tcPr>\
+<w:p><w:r><w:t>Row</w:t></w:r></w:p></w:tc></w:tr>";
+    let body = format!(
+        "<w:p><w:r><w:t>Title</w:t></w:r></w:p>\
+<w:p><w:r><w:t>{LONG}</w:t></w:r></w:p><w:p><w:r><w:t>{LONG}</w:t></w:r></w:p>\
+<w:tbl><w:tblPr><w:tblpPr w:vertAnchor=\"page\" w:horzAnchor=\"margin\" w:tblpY=\"720\"/>\
+<w:tblW w:w=\"4320\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4320\"/></w:tblGrid>{}</w:tbl>\
+<w:p><w:r><w:t>After</w:t></w:r></w:p>{NARROW}",
+        row.repeat(18)
+    );
+    let first = pages(&body, &RenderOptions::default()).remove(0);
+    let title = texts(&first)
+        .into_iter()
+        .find(|(_, _, text)| text == "Title")
+        .map(|(_, y, _)| y);
+    assert!(
+        title.is_some_and(|y| y < 80.0),
+        "title {title:?}: the page was laid out around a table it does not hold"
+    );
+}

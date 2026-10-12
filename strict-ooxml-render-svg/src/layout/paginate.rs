@@ -110,6 +110,7 @@ pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
     };
     let mut previous: Option<LayoutFingerprint> = None;
     ctx.page_floats_preload.borrow_mut().clear();
+    ctx.page_floats_banned.borrow_mut().clear();
     let mut settled_fields: Option<Layout> = None;
     for _ in 0..MAX_LAYOUT_PASSES {
         let (layout, fingerprint, has_fields) = layout_once(ctx, &assumed)?;
@@ -118,8 +119,25 @@ pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
         // Text laid out before a page-positioned float only learns of it in
         // the next pass: another pass runs until the floats stay put.
         let recorded = ctx.page_floats_record.take();
-        let floats_settled = same_page_floats(&recorded, &ctx.page_floats_preload.borrow());
-        ctx.page_floats_preload.replace(recorded);
+        let next = {
+            let preload = ctx.page_floats_preload.borrow();
+            let mut banned = ctx.page_floats_banned.borrow_mut();
+            // A float put on a page ahead of its anchor that this pass placed
+            // on another page moved because of its own wrap: the text it
+            // pushed away carried its anchor along. Passes would swing it back
+            // and forth, so it is laid out from its anchor alone from now on.
+            for (float, _, _) in preload.iter() {
+                if float_pages(&preload, *float) != float_pages(&recorded, *float) {
+                    banned.insert(*float);
+                }
+            }
+            recorded
+                .into_iter()
+                .filter(|(float, _, _)| !banned.contains(float))
+                .collect::<Vec<_>>()
+        };
+        let floats_settled = same_page_floats(&next, &ctx.page_floats_preload.borrow());
+        ctx.page_floats_preload.replace(next);
         if fields_settled && floats_settled {
             let mut layout = layout;
             sanitize_finite_coords(&mut layout);
@@ -152,12 +170,10 @@ pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
 
 /// Whether two passes put the same page-positioned float areas on the same
 /// pages, to a thousandth of a pixel.
-fn same_page_floats(
-    a: &[(usize, crate::layout::exclusions::PageExclusion)],
-    b: &[(usize, crate::layout::exclusions::PageExclusion)],
-) -> bool {
-    let key = |(page, exclusion): &(usize, crate::layout::exclusions::PageExclusion)| {
+fn same_page_floats(a: &[crate::layout::PageFloat], b: &[crate::layout::PageFloat]) -> bool {
+    let key = |(float, page, exclusion): &crate::layout::PageFloat| {
         (
+            *float,
             *page,
             quantize_px(exclusion.left),
             quantize_px(exclusion.right),
@@ -170,6 +186,26 @@ fn same_page_floats(
     a.sort_unstable();
     b.sort_unstable();
     a == b
+}
+
+/// The pages one float's wrap areas are on.
+fn float_pages(floats: &[crate::layout::PageFloat], float: u32) -> Vec<usize> {
+    let mut pages: Vec<usize> = floats
+        .iter()
+        .filter(|(at, _, _)| *at == float)
+        .map(|(_, page, _)| *page)
+        .collect();
+    pages.sort_unstable();
+    pages.dedup();
+    pages
+}
+
+/// Numbers the next page float of this pass. Layout is sequential, so the
+/// same float gets the same number in every pass.
+fn next_page_float(ctx: &LayoutContext<'_>) -> u32 {
+    let float = ctx.page_floats_next.get();
+    ctx.page_floats_next.set(float.saturating_add(1));
+    float
 }
 
 /// Whether an anchored drawing is positioned from the page or its margins,
@@ -268,6 +304,7 @@ fn layout_once(
     ctx.note_numbers.begin_layout_pass();
     ctx.reset_frame_cursors();
     ctx.page_floats_record.borrow_mut().clear();
+    ctx.page_floats_next.set(0);
     let sections = &ctx.document.sections;
     let runs = section_runs(&ctx.document.body.blocks, sections.len());
     let first_props = sections.first().map(|section| &section.properties);
@@ -931,6 +968,7 @@ fn place_floating_table(
     // A table placed from the page or its margins wraps every line of its
     // page, including the ones before it in the document (WQ-016).
     let fixed_on_page = position.vert_anchor.as_deref() != Some("text");
+    let float = next_page_float(ctx);
     for _ in 0..=paginator.floating_tables.len() {
         let next = paginator
             .floating_tables
@@ -974,11 +1012,11 @@ fn place_floating_table(
             contour: None,
         };
         if fixed_on_page {
-            paginator
-                .ctx
-                .page_floats_record
-                .borrow_mut()
-                .push((paginator.pages.len(), exclusion.clone()));
+            paginator.ctx.page_floats_record.borrow_mut().push((
+                float,
+                paginator.pages.len(),
+                exclusion.clone(),
+            ));
         }
         paginator.wrap_exclusions.push(exclusion);
     };
@@ -1548,8 +1586,8 @@ impl<'a> Paginator<'a> {
                 .page_floats_preload
                 .borrow()
                 .iter()
-                .filter(|(at, _)| *at == page)
-                .map(|(_, exclusion)| exclusion.clone()),
+                .filter(|(_, at, _)| *at == page)
+                .map(|(_, _, exclusion)| exclusion.clone()),
         );
     }
 
@@ -1927,9 +1965,12 @@ impl<'a> Paginator<'a> {
                     // A drawing placed from the page or its margins wraps the
                     // lines above its anchor too (WQ-019).
                     if anchor_fixed_on_page(&anchor) {
-                        ctx.page_floats_record
-                            .borrow_mut()
-                            .push((host.page, exclusion.clone()));
+                        let float = next_page_float(ctx);
+                        ctx.page_floats_record.borrow_mut().push((
+                            float,
+                            host.page,
+                            exclusion.clone(),
+                        ));
                     }
                     self.wrap_exclusions.push(exclusion);
                     self.wrap_exclusions.len() - 1

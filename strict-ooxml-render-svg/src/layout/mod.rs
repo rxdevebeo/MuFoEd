@@ -793,6 +793,9 @@ pub(crate) fn body_geometry_for(
 /// Heading numbers per outline level (`Heading 1`..`Heading 9`) for one page.
 pub(crate) type ChapterNumbers = [Option<(u32, crate::notes::NumberFormat)>; 9];
 
+/// A page-positioned float's wrap area: `(float, page, area)`.
+pub(crate) type PageFloat = (u32, usize, crate::layout::exclusions::PageExclusion);
+
 /// Shared state for layout and media resolution.
 pub(crate) struct LayoutContext<'a> {
     /// The document being laid out.
@@ -865,13 +868,18 @@ pub(crate) struct LayoutContext<'a> {
     /// stopped. Cleared at the start of a layout pass and at each page break.
     pub(crate) frame_cursors:
         std::cell::RefCell<Vec<(strict_ooxml_wml::model::props::FrameProperties, f64)>>,
-    /// Wrap areas of page-positioned floats from the previous layout pass, by
-    /// page: put on their page before any of its text (WQ-016/WQ-019).
-    pub(crate) page_floats_preload:
-        std::cell::RefCell<Vec<(usize, crate::layout::exclusions::PageExclusion)>>,
-    /// Wrap areas of page-positioned floats placed in this pass, by page.
-    pub(crate) page_floats_record:
-        std::cell::RefCell<Vec<(usize, crate::layout::exclusions::PageExclusion)>>,
+    /// Wrap areas of page-positioned floats from the previous layout pass:
+    /// `(float, page, area)`, put on their page before any of its text
+    /// (WQ-016/WQ-019). A float is its order among the page floats a pass
+    /// places.
+    pub(crate) page_floats_preload: std::cell::RefCell<Vec<crate::layout::PageFloat>>,
+    /// Wrap areas of page-positioned floats placed in this pass.
+    pub(crate) page_floats_record: std::cell::RefCell<Vec<crate::layout::PageFloat>>,
+    /// Floats whose own preloaded wrap moved them to another page: they are
+    /// no longer put on a page ahead of their anchor.
+    pub(crate) page_floats_banned: std::cell::RefCell<std::collections::BTreeSet<u32>>,
+    /// The next page float's number in this pass.
+    pub(crate) page_floats_next: std::cell::Cell<u32>,
     /// Exact line height of the previous paragraph in the current frame, in px.
     ///
     /// Used to choose the 80% Exact grid after a taller Exact neighbour
