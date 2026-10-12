@@ -19,8 +19,8 @@ use crate::emfplus::{
   EmfPlusTranslateWorldTransformData,
 };
 use crate::wmf::{
-  WmfBrushStyle, WmfEscapeData, WmfMetafileRef, WmfPenLineStyle, WmfRecordData,
-  WmfTernaryRasterOperationCode,
+  WmfBrushStyle, WmfEnhancedMetafileAssembler, WmfEscapeData, WmfMetafileRef, WmfPenLineStyle,
+  WmfRecordData, WmfTernaryRasterOperationCode,
 };
 
 // record ids. The byte offsets below are the EMR_STRETCHDIBITS /
@@ -2581,9 +2581,16 @@ fn decode_wmf_as_raster(
 
   let metafile = WmfMetafileRef::from_bytes(data).map_err(|err| err.to_string())?;
   let mut state = WmfRenderState::new(&metafile, options)?;
+  // StrictLib patch: the embedded EMF of a WMF is split over several
+  // META_ESCAPE_ENHANCED_METAFILE records of up to 8 KiB; they are assembled
+  // before decoding, and a record that does not parse is skipped instead of
+  // failing the whole file (WQ-025).
+  let mut enhanced = WmfEnhancedMetafileAssembler::new();
 
   for record in metafile.records() {
-    let parsed = record.parse_data().map_err(|err| err.to_string())?;
+    let Ok(parsed) = record.parse_data() else {
+      continue;
+    };
     match parsed {
       WmfRecordData::Eof(_) => break,
       WmfRecordData::SaveDc => state.save_dc(),
@@ -2880,12 +2887,19 @@ fn decode_wmf_as_raster(
         }
       }
       WmfRecordData::Escape(value) => {
-        if let Ok(WmfEscapeData::EnhancedMetafile {
-          enhanced_metafile_data,
-          ..
-        }) = value.typed_data()
-          && let Some(raster) = decode_emf_as_raster(enhanced_metafile_data, options)?
-          && let Some(image) = decoded_raster_to_rgb(&raster)?
+        if !matches!(value.typed_data(), Ok(WmfEscapeData::EnhancedMetafile { .. })) {
+          continue;
+        }
+        let assembled = match enhanced.push(&value) {
+          Ok(assembled) => assembled,
+          Err(_) => {
+            enhanced = WmfEnhancedMetafileAssembler::new();
+            None
+          }
+        };
+        if let Some(emf) = assembled
+          && let Ok(Some(raster)) = decode_emf_as_raster(&emf.data, options)
+          && let Ok(Some(image)) = decoded_raster_to_rgb(&raster)
         {
           state.canvas.draw_rgb_image(
             state.canvas.window_org_x,

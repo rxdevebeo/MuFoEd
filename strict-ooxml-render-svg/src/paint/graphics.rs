@@ -1143,11 +1143,16 @@ fn text_box_items(
         .iter()
         .map(|item| offset_item(item, horizontal_shift, shift))
         .collect();
+    let ellipsis = body.vert_overflow.as_deref() == Some("ellipsis");
+    if ellipsis && content_y + shift > layout_height + 0.5 {
+        items = ellipsize(ctx, items, layout_width, layout_height);
+    }
     if body.horz_overflow.as_deref() == Some("clip")
         || body.vert_overflow.as_deref() == Some("clip")
+        || ellipsis
     {
         let horizontal_clip = body.horz_overflow.as_deref() == Some("clip");
-        let vertical_clip = body.vert_overflow.as_deref() == Some("clip");
+        let vertical_clip = matches!(body.vert_overflow.as_deref(), Some("clip" | "ellipsis"));
         items = transform_items(items, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
         if let Some(Item::Group(group)) = items.first_mut() {
             let [bx, by, bw, bh] = group.bounds;
@@ -1355,16 +1360,69 @@ fn xfrm_transform(
     }
 }
 
-/// A generic placeholder rectangle.
+/// `bodyPr/@vertOverflow="ellipsis"`: text below the last line that fits the
+/// box is dropped and that line ends in "…" (ISO/IEC 29500-1 §21.1.2.1.1,
+/// ST_TextVertOverflowType). Text items are positioned in the box's own
+/// coordinates, `0..height`.
+fn ellipsize(ctx: &LayoutContext<'_>, items: Vec<Item>, width: f64, height: f64) -> Vec<Item> {
+    const DESCENT_EM: f64 = 0.25;
+    let fits =
+        |text: &crate::layout::TextItem| text.baseline + text.size_px * DESCENT_EM <= height + 0.5;
+    let last_baseline = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text(text) if fits(text) => Some(text.baseline),
+            _ => None,
+        })
+        .fold(f64::NEG_INFINITY, f64::max);
+    if !last_baseline.is_finite() {
+        return Vec::new();
+    }
+    let mut kept: Vec<Item> = items
+        .into_iter()
+        .filter(|item| match item {
+            Item::Text(text) => text.baseline <= last_baseline + 0.5,
+            other => crate::layout::table::item_vertical_bounds(ctx, other).0 < height,
+        })
+        .collect();
+    let last = kept
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| match item {
+            Item::Text(text) if (text.baseline - last_baseline).abs() <= 0.5 => {
+                Some((index, text.x + text.width))
+            }
+            _ => None,
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(index, _)| index);
+    if let Some(Item::Text(text)) = last.and_then(|index| kept.get_mut(index)) {
+        let mark = "\u{2026}";
+        let mark_width = ctx.measure(mark, &text.run);
+        let mut body = text.text.trim_end().to_owned();
+        while !body.is_empty() && text.x + ctx.measure(&body, &text.run) + mark_width > width {
+            body.pop();
+        }
+        body.push_str(mark);
+        text.width = ctx.measure(&body, &text.run);
+        text.text = body;
+        text.advance = crate::layout::TextAdvanceKind::Shaped;
+    }
+    kept
+}
+
+/// A generic placeholder rectangle: an outline only, so an object the
+/// renderer cannot draw (ink, an unknown graphic) never hides the text under
+/// or beside it (WQ-023).
 fn placeholder(x: f64, y: f64, w: f64, h: f64) -> Item {
     Item::Rect(RectItem {
         x,
         y,
         w: w.max(0.0),
         h: h.max(0.0),
-        fill: Some("#f2f2f2".to_owned()),
-        stroke: Some("#999999".to_owned()),
-        stroke_w: 1.0,
+        fill: None,
+        stroke: Some("#bfbfbf".to_owned()),
+        stroke_w: 0.75,
     })
 }
 

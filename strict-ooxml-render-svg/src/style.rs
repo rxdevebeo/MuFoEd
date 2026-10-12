@@ -436,6 +436,11 @@ pub fn compute_paragraph(
     if let Some(defaults) = document.styles.defaults() {
         apply_paragraph_props(&mut computed, &defaults.paragraph, theme);
         apply_run_props(&mut computed.default_run, &defaults.run, theme);
+        // A `w:framePr` in `w:pPrDefault` would make every paragraph of the
+        // document a frame, all stacked at one position; WPS and Word lay such
+        // documents out as ordinary text (WQ-006: an exporter writes a
+        // degenerate `w=0 h=0 y=0` frame there).
+        computed.frame = None;
     }
 
     // A cell paragraph takes its table style (and the `w:tblStylePr`

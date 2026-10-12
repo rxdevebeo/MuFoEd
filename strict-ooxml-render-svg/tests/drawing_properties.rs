@@ -233,3 +233,56 @@ fn a_hidden_floating_object_is_not_drawn() {
     assert_eq!(paths(&shown).len(), 1);
     assert!(paths(&hidden).is_empty());
 }
+
+/// All text items of a page, groups included, with their translation applied.
+fn all_texts(items: &[Item], dx: f64, dy: f64, out: &mut Vec<(f64, f64, String)>) {
+    for item in items {
+        match item {
+            Item::Text(text) => out.push((text.x + dx, text.baseline + dy, text.text.clone())),
+            Item::Group(group) => all_texts(
+                &group.items,
+                dx + group.matrix[4],
+                dy + group.matrix[5],
+                out,
+            ),
+            _ => {}
+        }
+    }
+}
+
+/// `bodyPr/@vertOverflow="ellipsis"` (R4): the lines that do not fit are
+/// dropped and the last visible one ends in an ellipsis.
+#[test]
+fn vertical_overflow_ellipsis_ends_the_last_visible_line() {
+    let paragraphs = (1..=8)
+        .map(|index| format!("<w:p><w:r><w:t>Line{index} words</w:t></w:r></w:p>"))
+        .collect::<String>();
+    let shape = |overflow: &str| {
+        format!(
+            "<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"457200\"/></a:xfrm>\
+             <a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></wps:spPr>\
+             <wps:txbx><w:txbxContent>{paragraphs}</w:txbxContent></wps:txbx>\
+             <wps:bodyPr vertOverflow=\"{overflow}\"/></wps:wsp>"
+        )
+    };
+    let texts = |overflow: &str| {
+        let page = placed(shape_docx(&shape(overflow)));
+        let mut out = Vec::new();
+        all_texts(&page.items, 0.0, 0.0, &mut out);
+        out
+    };
+    let overflowing = texts("overflow");
+    assert!(overflowing
+        .iter()
+        .any(|(_, _, text)| text.contains("Line8")));
+    let ellipsis = texts("ellipsis");
+    assert!(
+        !ellipsis.iter().any(|(_, _, text)| text.contains("Line8")),
+        "{ellipsis:?}"
+    );
+    let last = ellipsis
+        .iter()
+        .max_by(|a, b| a.1.total_cmp(&b.1).then(a.0.total_cmp(&b.0)))
+        .expect("a visible line");
+    assert!(last.2.ends_with('\u{2026}'), "{ellipsis:?}");
+}

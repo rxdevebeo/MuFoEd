@@ -136,6 +136,17 @@ pub(crate) fn media_href(
                 .map_or(String::from("application/octet-stream"), |ct| {
                     ct.to_string()
                 });
+            // A metafile or TIFF that could not be rasterized is not embedded
+            // as is: no browser shows it inside SVG, so the picture would vanish
+            // without a word. It gets the placeholder and the warning the PDF
+            // backend gives (WQ-027).
+            if raster.is_none() && !viewer_can_show(&bytes, &content_type) {
+                ctx.warn(format!(
+                    "render.image.unsupported: placeholder: {} ({content_type} cannot be shown in SVG)",
+                    part.as_str()
+                ));
+                return None;
+            }
             let (bytes, content_type) = raster.as_deref().map_or_else(
                 || (bytes.as_slice(), content_type.as_str()),
                 |png| (png, "image/png"),
@@ -301,6 +312,23 @@ fn base64_digit(triple: u32, shift: u32) -> char {
         .get(((triple >> shift) & 0x3F) as usize)
         .copied()
         .map_or('=', char::from)
+}
+
+/// Whether an SVG viewer can draw these bytes as an `<image>`: the web image
+/// formats, by signature first and declared type second.
+fn viewer_can_show(bytes: &[u8], content_type: &str) -> bool {
+    let signature = bytes.starts_with(&[0x89, b'P', b'N', b'G'])
+        || bytes.starts_with(&[0xFF, 0xD8, 0xFF])
+        || bytes.starts_with(b"GIF8")
+        || bytes.starts_with(b"BM")
+        || (bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP".as_slice()))
+        || bytes.starts_with(b"<svg")
+        || bytes.starts_with(b"<?xml");
+    signature
+        || matches!(
+            content_type,
+            "image/png" | "image/jpeg" | "image/gif" | "image/bmp" | "image/webp" | "image/svg+xml"
+        )
 }
 
 #[cfg(test)]

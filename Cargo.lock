@@ -2490,6 +2490,7 @@ dependencies = [
  "strict-ooxml-fidelity",
  "strict-ooxml-testkit",
  "strict-ooxml-wml",
+ "tiff",
  "toml",
  "unicode-bidi",
  "unicode-segmentation",
@@ -2659,6 +2660,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "tiff"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b63feaf3343d35b6ca4d50483f94843803b0f51634937cc2ec519fc32232bc52"
+dependencies = [
+ "flate2",
+ "half",
+ "quick-error 2.0.1",
+ "weezl 0.1.12",
+ "zune-jpeg",
 ]
 
 [[package]]
