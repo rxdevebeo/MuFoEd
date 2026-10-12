@@ -4,9 +4,14 @@ use std::sync::Arc;
 use strict_ooxml_core::{error::SourceLocation, part::PartId};
 use strict_ooxml_wml::model::drawing::{
     BlipRef, DocPr, Drawing, DrawingKind, Extent, Graphic, InlineDrawing, MediaItem, MediaKind,
-    Picture,
+    Picture, SrcRect,
 };
 use strict_ooxml_wml::model::Emu;
+
+/// One twip in English Metric Units (`a:srcRect` and `wp:extent` share EMU).
+const EMU_PER_TWIP: i64 = 635;
+/// `a:srcRect` stores thousandths of a percent (`100000` = the whole edge).
+const SRCRECT_PER_UNIT: i64 = 100_000;
 
 #[derive(Default)]
 pub(super) struct PictureBuilder {
@@ -18,6 +23,10 @@ pub(super) struct PictureBuilder {
     pub height_goal: Option<i32>,
     pub scale_x: Option<i32>,
     pub scale_y: Option<i32>,
+    pub crop_top: Option<i32>,
+    pub crop_bottom: Option<i32>,
+    pub crop_left: Option<i32>,
+    pub crop_right: Option<i32>,
     nibble: Option<u8>,
 }
 impl PictureBuilder {
@@ -74,6 +83,7 @@ impl PictureBuilder {
         }
         Ok(())
     }
+    #[allow(clippy::too_many_lines)]
     pub(super) fn build(
         self,
         index: usize,
@@ -127,6 +137,38 @@ impl PictureBuilder {
             cx: dimension(self.width_goal, self.width, self.scale_x)?,
             cy: dimension(self.height_goal, self.height, self.scale_y)?,
         };
+        // `\piccrop{t,b,l,r}` crops the source by a number of twips along each
+        // edge; `a:srcRect` stores the same inset as thousandths of a percent of
+        // the displayed extent. An all-zero (or absent) crop is the common case
+        // and writes no `a:srcRect`, exactly like WPS.
+        let crop = |value: Option<i32>| value.filter(|v| *v != 0);
+        let src_rect = if self.crop_top.is_some_and(|v| v != 0)
+            || self.crop_bottom.is_some_and(|v| v != 0)
+            || self.crop_left.is_some_and(|v| v != 0)
+            || self.crop_right.is_some_and(|v| v != 0)
+        {
+            let edge = |value: Option<i32>, basis: Emu| -> Result<i32, RtfError> {
+                let twips = i64::from(value.unwrap_or(0));
+                let basis = basis.0.max(1);
+                let inset = twips
+                    .checked_mul(EMU_PER_TWIP)
+                    .and_then(|emu| emu.checked_mul(SRCRECT_PER_UNIT))
+                    .map(|scaled| scaled / basis)
+                    .ok_or(RtfError::Malformed {
+                        offset,
+                        reason: "picture crop overflow",
+                    })?;
+                Ok(i32::try_from(inset.clamp(0, SRCRECT_PER_UNIT)).unwrap_or(0))
+            };
+            Some(SrcRect {
+                left: edge(crop(self.crop_left), extent.cx)?,
+                top: edge(crop(self.crop_top), extent.cy)?,
+                right: edge(crop(self.crop_right), extent.cx)?,
+                bottom: edge(crop(self.crop_bottom), extent.cy)?,
+            })
+        } else {
+            None
+        };
         let part = PartId::new(format!("/word/media/rtf-image-{index}.{extension}"));
         let location = SourceLocation::unknown();
         let name = Arc::<str>::from(format!("RTF image {index}"));
@@ -158,7 +200,7 @@ impl PictureBuilder {
                         location: location.clone(),
                     }),
                     extent: Some(extent),
-                    src_rect: None,
+                    src_rect,
                     xfrm: None,
                 })),
                 location: location.clone(),

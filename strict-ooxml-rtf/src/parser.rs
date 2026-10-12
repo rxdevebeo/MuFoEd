@@ -2833,6 +2833,12 @@ impl Parser<'_> {
                     | "pgdsctbl"
                     | "wgrffmtfilter"
                     | "userprops"
+                    // `{\*\picprop ...}` carries Word 97 shape hints (name,
+                    // shape type, flips, stroke) for an image; the independent
+                    // WPS reference writes no picture properties back, and the
+                    // Strict picture has no non-visual slot for them, so the
+                    // group is Info rather than a Loss.
+                    | "picprop"
             ) {
                 Severity::Info
             } else {
@@ -2889,6 +2895,12 @@ impl Parser<'_> {
                 "pichgoal" => picture.height_goal = n,
                 "picscalex" => picture.scale_x = n,
                 "picscaley" => picture.scale_y = n,
+                // `\piccrop{t,b,l,r}` crops the source by twips; the quartet is
+                // carried into `a:srcRect` at build time.
+                "piccropt" => picture.crop_top = n,
+                "piccropb" => picture.crop_bottom = n,
+                "piccropl" => picture.crop_left = n,
+                "piccropr" => picture.crop_right = n,
                 "dibitmap" | "wbitmap" | "macpict" | "pmmetafile" => {
                     self.state.skip = true;
                     self.issue(span, Severity::Loss, format!("picture-format:{name}"))?;

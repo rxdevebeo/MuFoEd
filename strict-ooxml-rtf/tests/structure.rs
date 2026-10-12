@@ -196,6 +196,112 @@ fn metafile_payloads_and_extents_survive_package_roundtrip() {
     }
 }
 
+fn picture_src_rect(
+    document: &strict_ooxml_wml::model::Document,
+) -> Option<strict_ooxml_wml::model::drawing::SrcRect> {
+    let Block::Paragraph(paragraph) = &document.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let Inline::Run(run) = &paragraph.inlines[0] else {
+        panic!("run")
+    };
+    let RunContent::Drawing(drawing) = &run.content[0] else {
+        panic!("drawing")
+    };
+    let strict_ooxml_wml::model::drawing::DrawingKind::Inline(inline) = &drawing.kind else {
+        panic!("inline")
+    };
+    let strict_ooxml_wml::model::drawing::Graphic::Picture(picture) = inline.graphic.as_ref()
+    else {
+        panic!("picture")
+    };
+    picture.src_rect
+}
+
+/// Reopen through the writer, tolerating the writer's reserved `pic:cNvPr@id`
+/// notice (a picture built in code has no stored non-visual id).
+fn reopened_media(input: &[u8]) -> strict_ooxml_wml::model::Document {
+    let imported = import(input, &RtfOptions::default()).unwrap();
+    let mut media = strict_ooxml_write::package::MediaBag::new();
+    for (part, bytes) in imported.media {
+        media.insert(part, bytes);
+    }
+    let written =
+        strict_ooxml_write::write_package(&imported.document, Some(&media), &Default::default())
+            .unwrap();
+    assert!(
+        written
+            .report
+            .losses()
+            .iter()
+            .all(|loss| loss.feature_id == "pic:cNvPr@id"),
+        "{:?}",
+        written.report.losses()
+    );
+    let package =
+        strict_ooxml_core::opc::Package::open_reader(&written.bytes[..], &Default::default())
+            .unwrap();
+    strict_ooxml_wml::parse_document(&package, &Default::default()).unwrap()
+}
+
+#[test]
+fn picture_crop_maps_to_the_source_rectangle_and_shape_hints_are_info() {
+    use strict_ooxml_wml::model::drawing::SrcRect;
+    let png = [0x89u8, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    let mut source = format!(
+        "{{\\rtf1{{\\pict{{\\*\\picprop\\shplid1025}}\\pngblip\\picwgoal1440\\pichgoal720\\piccropt90\\piccropb90\\piccropl0\\piccropr0\\bin{} ",
+        png.len()
+    )
+    .into_bytes();
+    source.extend_from_slice(&png);
+    source.extend_from_slice(b"}}");
+    let imported = import(&source, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    assert!(
+        imported
+            .report
+            .issues
+            .iter()
+            .any(|i| i.feature == "destination:picprop"
+                && i.severity == strict_ooxml_rtf::Severity::Info),
+        "the shape-property group must be a named Info: {:?}",
+        imported.report.issues
+    );
+    // 90 twips of a 720-twip extent is 12500 thousandths of a percent.
+    let expected = Some(SrcRect {
+        left: 0,
+        top: 12_500,
+        right: 0,
+        bottom: 12_500,
+    });
+    assert_eq!(picture_src_rect(&imported.document), expected);
+    assert_eq!(picture_src_rect(&reopened_media(&source)), expected);
+}
+
+#[test]
+fn absent_picture_crop_writes_no_source_rectangle() {
+    let png = [0x89u8, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    let mut source = format!(
+        "{{\\rtf1{{\\pict\\pngblip\\picwgoal1440\\pichgoal720\\piccropt0\\piccropb0\\piccropl0\\piccropr0\\bin{} ",
+        png.len()
+    )
+    .into_bytes();
+    source.extend_from_slice(&png);
+    source.extend_from_slice(b"}}");
+    let imported = import(&source, &RtfOptions::default()).unwrap();
+    assert_eq!(
+        imported.report.loss_count, 0,
+        "{:?}",
+        imported.report.issues
+    );
+    assert_eq!(picture_src_rect(&imported.document), None);
+    assert_eq!(picture_src_rect(&reopened_media(&source)), None);
+}
+
 #[test]
 fn malformed_metafile_signatures_and_budget_overflow_are_rejected() {
     assert!(matches!(
