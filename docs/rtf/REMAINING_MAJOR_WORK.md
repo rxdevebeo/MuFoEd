@@ -196,6 +196,11 @@ RTF-импортированные WMF/EMF (в т.ч. OLE `\result`-превью
 PDF, и что bounds/бюджеты соблюдаются на hostile payload. Reference geometry и
 pixels обоих backend сверять на WMF/EMF-фикстурах.
 
+**Проверено (2026-10-12b).** `strict-ooxml-render-svg/tests/metafile_preview.rs`
+— 6 passed (upstream); `pdfimages -list target/rtf-import/rc09-final2/008.pdf`
+даёт 9 растровых изображений из WMF-превью OLE-объектов — путь
+RTF→DOCX(WMF media)→PDF(растр) работает end-to-end.
+
 **DoD.** оригинальные media bytes сохраняются; reference geometry и pixels
 совпадают в обоих backend; malformed lengths/overflow/handles/records/decode
 bombs отклоняются до allocation и не обходят бюджеты.

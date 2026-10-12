@@ -72,7 +72,7 @@ import losses **1 489 → 1 371 (−118)**; resource 100/100; `check` 100/100
 | RC05 / RC06 / RC08 columns+field | Done |
 | RC04 | resolver-probe исправлен; остаток 019/039 genuine; pixel blocked на faces |
 | RC03 | Blocked на bidi-oracle; render — upstream |
-| RC07 | **scope пересмотрен:** decoder — upstream `render-svg::metafile` (`emfsdk`), подключён к `paint/image.rs`; остаётся интеграционная проверка RTF WMF/EMF (в т.ч. OLE-превью 008) + RC10. Раньше числился «не начат» |
+| RC07 | **scope пересмотрен и проверен:** decoder — upstream `render-svg::metafile` (`emfsdk`), подключён к `paint/image.rs`; `metafile_preview.rs` 6/6 passed, `pdfimages` на 008.pdf даёт 9 растров из WMF-превью OLE. Остаётся интеграционная проверка границ на hostile payload + RC10 |
 | RC09 | InProgress: 1 489 → **1 371**. Остаток: comments/revisions/textboxes (в корпусе нет — нужны fixtures), language-sentinels, implicit `\s0`, хвост флагов |
 | RC10 / RC11 / RC12 | идёт с декодерами / Blocked (WPS-harness) / Planned |
 
