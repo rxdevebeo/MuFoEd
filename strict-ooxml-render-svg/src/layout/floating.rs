@@ -176,15 +176,7 @@ fn resolve_v(pos: Option<&Position>, geometry: &Geometry, host_y: f64, h: f64, s
         },
         |percent| span * f64::from(percent) / 100_000.0,
     );
-    let y = origin + offset;
-    // An object placed from its paragraph stays on the page: an anchor near
-    // the bottom with a large offset would otherwise be drawn past the sheet
-    // and lost (WQ-013). It moves up to end at the bottom margin.
-    if matches!(relative, Some("paragraph" | "line")) {
-        let limit = (geometry.height - geometry.bottom - h).max(geometry.top);
-        return y.min(limit);
-    }
-    y
+    origin + offset
 }
 
 /// Shared origin for both painting and text exclusions.

@@ -584,6 +584,22 @@ fn place_body_paragraph(
         if paginator.selection_exhausted() {
             return Ok(0.0);
         }
+    } else if !boundary_marker
+        && !paginator.at_column_top()
+        && anchor_passes_page_bottom(
+            ctx,
+            &flow.anchors,
+            paginator.cursor,
+            paginator.body_height(),
+        )
+    {
+        // An object placed from this paragraph that would end below the page
+        // takes the paragraph to the next page with it, as WPS lays it out
+        // (WQ-013: the figure was drawn past the sheet and lost).
+        paginator.overflow_break()?;
+        if paginator.selection_exhausted() {
+            return Ok(0.0);
+        }
     }
     // The paragraph's anchors hang off where its first flow lands, which an
     // overflow may have moved to another column or page.
@@ -605,6 +621,38 @@ fn place_body_paragraph(
     }
     paginator.place_anchors(ctx, flow.anchors, host.unwrap_or(expected));
     Ok(flow.space_after + flow.border_after)
+}
+
+/// Whether an anchor positioned from its paragraph (or line) by an offset would
+/// end below the body when the paragraph starts `cursor` px into it.
+fn anchor_passes_page_bottom(
+    ctx: &LayoutContext<'_>,
+    anchors: &[strict_ooxml_wml::model::drawing::AnchorDrawing],
+    cursor: f64,
+    body_height: f64,
+) -> bool {
+    let scale = ctx.options.scale;
+    anchors.iter().any(|anchor| {
+        let Some(position) = anchor.position_v.as_ref() else {
+            return false;
+        };
+        if anchor.simple_pos
+            || position.align.is_some()
+            || !matches!(
+                position.relative_from.as_deref(),
+                Some("paragraph" | "line")
+            )
+        {
+            return false;
+        }
+        let offset = position
+            .offset
+            .map_or(0.0, |offset| crate::units::emu_to_px(offset.value(), scale));
+        let height = anchor.extent.map_or(0.0, |extent| {
+            crate::units::emu_to_px(extent.cy.value(), scale)
+        });
+        height > 0.0 && height < body_height && cursor + offset + height > body_height + 0.5
+    })
 }
 
 /// Lays a frame group out once and paints every child from the frame origin.
