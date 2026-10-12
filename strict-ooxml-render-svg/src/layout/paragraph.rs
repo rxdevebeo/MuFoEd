@@ -2389,10 +2389,12 @@ fn reserve(
 /// Free intervals of the current line, left to right.
 fn free_spans(sink: &LineSink<'_, '_>, left: f64, line_height: f64) -> Vec<(f64, f64)> {
     let mut spans = vec![(left, sink.right_edge)];
+    let mut narrowed = false;
     for exclusion in &sink.exclusions {
         if sink.line_y + line_height <= exclusion.top || sink.line_y >= exclusion.bottom {
             continue;
         }
+        narrowed = true;
         if let Some(contour) = &exclusion.contour {
             let occupied: Vec<(f64, f64)> = contour
                 .intervals(
@@ -2418,9 +2420,20 @@ fn free_spans(sink: &LineSink<'_, '_>, left: f64, line_height: f64) -> Vec<(f64,
             apply_side(&mut spans, exclusion);
         }
     }
-    spans.retain(|(start, end)| *end - *start > 0.5);
+    // Beside a wrapped object, a sliver of a few words' width is left empty:
+    // WPS (and Word) carry the text on below the object instead of breaking
+    // words into it (WQ-018: 27 and 35 pt gaps in doc 093).
+    let minimum = if narrowed {
+        crate::units::pt_to_px(MIN_WRAP_GAP_PT, sink.ctx.options.scale)
+    } else {
+        0.5
+    };
+    spans.retain(|(start, end)| *end - *start > minimum);
     spans
 }
+
+/// The narrowest interval beside a wrapped object that takes text, in pt.
+const MIN_WRAP_GAP_PT: f64 = 54.0;
 
 fn apply_side(spans: &mut Vec<(f64, f64)>, exclusion: &WrapExclusion) {
     match exclusion.side {

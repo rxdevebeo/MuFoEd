@@ -227,3 +227,32 @@ fn wq006_a_default_frame_does_not_stack_the_paragraphs() {
     let found = baselines(&page);
     assert_eq!(found.len(), 2, "two lines, not one stack: {found:?}");
 }
+
+/// WQ-014: in a display formula, what follows `#` is the equation number,
+/// set at the right margin; the `#` itself is not drawn.
+#[test]
+fn wq014_the_equation_number_goes_to_the_right_margin() {
+    let body = format!(
+        "<w:p><m:oMathPara><m:oMath><m:eqArr><m:e><m:r><m:t>x=1#</m:t></m:r>\
+<m:d><m:e><m:r><m:t>S1</m:t></m:r></m:e></m:d></m:e></m:eqArr></m:oMath></m:oMathPara></w:p>{NARROW}"
+    );
+    let page = pages(&body, &RenderOptions::default()).remove(0);
+    let found = texts(&page);
+    assert!(
+        found.iter().all(|(_, _, text)| !text.contains('#')),
+        "{found:?}"
+    );
+    let number = found.iter().find(|item| item.2 == "S1").expect("number");
+    let formula = found
+        .iter()
+        .find(|item| item.2.contains('x'))
+        .expect("formula");
+    // The 3 in column ends at 336 px; the number ends there, the formula sits
+    // well left of it.
+    assert!(number.0 > 300.0, "{found:?}");
+    assert!(formula.0 + 40.0 < number.0, "{found:?}");
+    assert!(
+        (formula.1 - number.1).abs() < 0.5,
+        "one baseline: {found:?}"
+    );
+}

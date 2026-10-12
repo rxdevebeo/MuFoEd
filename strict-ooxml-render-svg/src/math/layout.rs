@@ -1022,6 +1022,7 @@ fn layout_soft_wrapped_nodes(
 /// `content_left`/`content_width` are the text column, so the returned items
 /// are already positioned in page coordinates relative to the block's top-left
 /// corner's x.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn layout_display(
     ctx: &LayoutContext<'_>,
     paragraph: &MathParagraph,
@@ -1061,8 +1062,30 @@ pub(crate) fn layout_display(
     let mut boxed = MathBox::empty();
     let mut line = MathBox::empty();
     let mut trailing_break = false;
-    for (expression_index, expression) in paragraph.equations.iter().enumerate() {
-        for (wrapped_index, next) in layout_wrapped_nodes(&frame, &expression.nodes, available)
+    // Word's equation number: everything after a `#` in the formula is set at
+    // the right margin, on the formula's baseline (WQ-014).
+    let mut number: Option<MathBox> = None;
+    let split: Vec<(Vec<MathNode>, Option<Vec<MathNode>>)> = paragraph
+        .equations
+        .iter()
+        .map(|expression| split_equation_number(&expression.nodes))
+        .collect();
+    let single = paragraph.equations.len() == 1;
+    for (expression_index, ((nodes, numbered), expression)) in
+        split.iter().zip(&paragraph.equations).enumerate()
+    {
+        if single {
+            if let Some(numbered) = numbered {
+                number = Some(layout_nodes(&frame, numbered));
+            }
+        }
+        // Several formulas in one paragraph keep their `#` as text.
+        let nodes = if single || numbered.is_none() {
+            nodes
+        } else {
+            &expression.nodes
+        };
+        for (wrapped_index, next) in layout_wrapped_nodes(&frame, nodes, available)
             .into_iter()
             .enumerate()
         {
@@ -1132,10 +1155,59 @@ pub(crate) fn layout_display(
             (available - boxed.size.width).max(0.0) / 2.0
         }
     };
-    boxed.shifted(
-        crate::units::finite(content_left) + left_margin + shift,
-        0.0,
-    )
+    let left = crate::units::finite(content_left) + left_margin;
+    let formula_right = left + shift + boxed.size.width;
+    let mut out = boxed.shifted(left + shift, 0.0);
+    if let Some(number) = number {
+        // At the right margin, or just after a formula that reaches it.
+        let x = (left + available - number.size.width).max(formula_right + frame.em());
+        out.place(number, x, 0.0);
+    }
+    out
+}
+
+/// Splits a formula at Word's equation-number marker: a `#` in a top-level run,
+/// or in the single row of a top-level equation array. Returns the formula
+/// without the marker and the number after it, or the nodes unchanged.
+fn split_equation_number(nodes: &[MathNode]) -> (Vec<MathNode>, Option<Vec<MathNode>>) {
+    fn split_list(nodes: &[MathNode]) -> Option<(Vec<MathNode>, Vec<MathNode>)> {
+        let index = nodes
+            .iter()
+            .position(|node| matches!(node, MathNode::Run(run) if run.text.contains('#')))?;
+        let MathNode::Run(run) = nodes.get(index)? else {
+            return None;
+        };
+        let (before, after) = run.text.split_once('#')?;
+        let mut head: Vec<MathNode> = nodes.get(..index)?.to_vec();
+        let mut tail: Vec<MathNode> = Vec::new();
+        if !before.is_empty() {
+            let mut part = run.clone();
+            before.clone_into(&mut part.text);
+            head.push(MathNode::Run(part));
+        }
+        if !after.is_empty() {
+            let mut part = run.clone();
+            after.clone_into(&mut part.text);
+            tail.push(MathNode::Run(part));
+        }
+        tail.extend(nodes.get(index + 1..)?.iter().cloned());
+        (!tail.is_empty()).then_some((head, tail))
+    }
+    if let Some((head, tail)) = split_list(nodes) {
+        return (head, Some(tail));
+    }
+    if let [MathNode::EquationArray(array)] = nodes {
+        if let [row] = array.rows.as_slice() {
+            if let Some((head, tail)) = split_list(&row.nodes) {
+                let mut array = array.clone();
+                if let Some(row) = array.rows.first_mut() {
+                    row.nodes = head;
+                }
+                return (vec![MathNode::EquationArray(array)], Some(tail));
+            }
+        }
+    }
+    (nodes.to_vec(), None)
 }
 
 pub(crate) fn use_display_defaults(ctx: &LayoutContext<'_>) -> bool {
