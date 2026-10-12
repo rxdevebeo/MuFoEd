@@ -256,3 +256,32 @@ fn wq014_the_equation_number_goes_to_the_right_margin() {
         "one baseline: {found:?}"
     );
 }
+
+/// WQ-009: every text box keeps its text, however many come before it. The
+/// layout depth used to stay raised after each box, and from the thirteenth
+/// on the nesting limit dropped the content silently.
+#[test]
+fn wq009_many_text_boxes_all_keep_their_text() {
+    let shape = |index: usize| {
+        format!(
+            "<w:r><w:drawing><wp:inline><wp:extent cx=\"914400\" cy=\"228600\"/>\
+<wp:docPr id=\"{index}\" name=\"box\"/><a:graphic>\
+<a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/wordprocessingShape\">\
+<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"914400\" cy=\"228600\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></wps:spPr>\
+<wps:txbx><w:txbxContent><w:p><w:r><w:t>Box{index}</w:t></w:r></w:p></w:txbxContent></wps:txbx>\
+<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>"
+        )
+    };
+    let body = (1..=16)
+        .map(|index| ["<w:p>".to_owned(), shape(index), "</w:p>".to_owned()].concat())
+        .collect::<String>();
+    let all: Vec<String> = pages(&body, &RenderOptions::default())
+        .iter()
+        .flat_map(texts)
+        .map(|(_, _, text)| text)
+        .collect();
+    for index in 1..=16 {
+        assert!(all.contains(&format!("Box{index}")), "Box{index}: {all:?}");
+    }
+}

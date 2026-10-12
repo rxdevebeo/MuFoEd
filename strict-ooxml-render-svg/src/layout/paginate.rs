@@ -424,6 +424,8 @@ fn layout_blocks(
     let mut pending_after = 0.0f64;
     let mut index = 0;
     while let Some(block) = blocks.get(index) {
+        // A nested container laid out by the previous block raised it.
+        ctx.set_block_depth(depth);
         ctx.current_section.set(paginator.section_index);
         if paginator.selection_exhausted() {
             return Ok(());
@@ -497,6 +499,7 @@ fn layout_blocks(
 
 /// Lays out one body paragraph, registers wrap exclusions, returns `space_after`.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
 fn place_body_paragraph(
     ctx: &LayoutContext<'_>,
     para: &strict_ooxml_wml::model::Paragraph,
@@ -1144,6 +1147,7 @@ fn append_note_blocks(
     ctx.set_block_depth(depth);
     let grid = paginator.geometry.grid_line_pitch;
     for (index, block) in blocks.iter().enumerate() {
+        ctx.set_block_depth(depth);
         match block {
             Block::Paragraph(para) => {
                 let neighbors = paragraph_neighbors(ctx.document, blocks, index, true);

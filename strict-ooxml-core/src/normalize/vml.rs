@@ -352,8 +352,11 @@ impl VmlStyle {
     /// not a watermark.
     fn relative_h(&self) -> &'static str {
         match self.horizontal_relative.as_deref() {
-            // VML's `text` is the column the anchor paragraph is set in.
-            Some("column" | "text") => "column",
+            // VML's `text` is the column the anchor paragraph is set in, and it
+            // is also what an absent `mso-position-horizontal-relative` means: a
+            // legend at `margin-left:28.8pt` sits inside its chart, not 28.8 pt
+            // from the sheet's edge (WQ-008).
+            None | Some("column" | "text") => "column",
             Some("character") => "character",
             Some("left-margin") => "leftMargin",
             Some("right-margin") => "rightMargin",
@@ -369,8 +372,8 @@ impl VmlStyle {
     /// `bottomMargin`, `insideMargin`, `outsideMargin`.
     fn relative_v(&self) -> &'static str {
         match self.vertical_relative.as_deref() {
-            // VML's `text` is the anchor paragraph.
-            Some("paragraph" | "text") => "paragraph",
+            // VML's `text` is the anchor paragraph, and the default.
+            None | Some("paragraph" | "text") => "paragraph",
             Some("line") => "line",
             Some("top-margin") => "topMargin",
             Some("bottom-margin") => "bottomMargin",

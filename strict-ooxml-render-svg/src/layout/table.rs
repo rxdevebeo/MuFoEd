@@ -1636,6 +1636,11 @@ pub(crate) fn layout_blocks_inline(
     if depth > ctx.options.limits.max_block_nesting {
         return;
     }
+    // The depth is the context's for the content laid out here, and goes back
+    // to the caller's afterwards: left raised, every later text box started
+    // one level deeper, and from the thirteenth on the nesting limit dropped
+    // its content without a word (WQ-009: doc 045's chart legends).
+    let previous_depth = ctx.block_depth();
     ctx.set_block_depth(depth);
     let mut exclusions = Vec::new();
     let mut index = 0;
@@ -1697,6 +1702,7 @@ pub(crate) fn layout_blocks_inline(
         }
         index += 1;
     }
+    ctx.set_block_depth(previous_depth);
 }
 
 /// Lays out one paragraph of a cell and appends its items at `*y`.
