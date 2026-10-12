@@ -43,7 +43,8 @@ struct FaceSpec {
     data: &'static [u8],
 }
 
-/// The bundled metric-compatible faces (Calibri/Cambria/Arial/Times/Courier).
+/// The bundled metric-compatible faces (Calibri/Cambria/Arial/Times/Courier),
+/// the math faces and the script faces.
 const FACE_SPECS: &[FaceSpec] = &[
     FaceSpec {
         family: "Carlito",
@@ -352,6 +353,82 @@ const FACE_SPECS: &[FaceSpec] = &[
             "../../assets/fonts/stix/strict-math/StrictMathDoubleStruck-BoldItalic.otf"
         ),
     },
+    // Script faces (WQ-004): the metric-compatible faces carry no Arabic or
+    // Tibetan, so text in those scripts takes its glyphs from these faces
+    // (see `family::script_fallback`). None has an italic; the upright face
+    // serves the italic request.
+    FaceSpec {
+        family: "Noto Naskh Arabic",
+        bold: false,
+        italic: false,
+        single: false,
+        weight: Some(400.0),
+        data: include_bytes!("../../assets/fonts/noto-naskh-arabic/NotoNaskhArabic[wght].ttf"),
+    },
+    FaceSpec {
+        family: "Noto Naskh Arabic",
+        bold: true,
+        italic: false,
+        single: false,
+        weight: Some(700.0),
+        data: include_bytes!("../../assets/fonts/noto-naskh-arabic/NotoNaskhArabic[wght].ttf"),
+    },
+    FaceSpec {
+        family: "Noto Naskh Arabic",
+        bold: false,
+        italic: true,
+        single: false,
+        weight: Some(400.0),
+        data: include_bytes!("../../assets/fonts/noto-naskh-arabic/NotoNaskhArabic[wght].ttf"),
+    },
+    FaceSpec {
+        family: "Noto Naskh Arabic",
+        bold: true,
+        italic: true,
+        single: false,
+        weight: Some(700.0),
+        data: include_bytes!("../../assets/fonts/noto-naskh-arabic/NotoNaskhArabic[wght].ttf"),
+    },
+    FaceSpec {
+        family: "Noto Sans Arabic",
+        bold: false,
+        italic: false,
+        single: false,
+        weight: Some(400.0),
+        data: include_bytes!("../../assets/fonts/noto-sans-arabic/NotoSansArabic[wdth,wght].ttf"),
+    },
+    FaceSpec {
+        family: "Noto Sans Arabic",
+        bold: true,
+        italic: false,
+        single: false,
+        weight: Some(700.0),
+        data: include_bytes!("../../assets/fonts/noto-sans-arabic/NotoSansArabic[wdth,wght].ttf"),
+    },
+    FaceSpec {
+        family: "Noto Sans Arabic",
+        bold: false,
+        italic: true,
+        single: false,
+        weight: Some(400.0),
+        data: include_bytes!("../../assets/fonts/noto-sans-arabic/NotoSansArabic[wdth,wght].ttf"),
+    },
+    FaceSpec {
+        family: "Noto Sans Arabic",
+        bold: true,
+        italic: true,
+        single: false,
+        weight: Some(700.0),
+        data: include_bytes!("../../assets/fonts/noto-sans-arabic/NotoSansArabic[wdth,wght].ttf"),
+    },
+    FaceSpec {
+        family: "Jomolhari",
+        bold: false,
+        italic: false,
+        single: true,
+        weight: None,
+        data: include_bytes!("../../assets/fonts/jomolhari/Jomolhari-Regular.ttf"),
+    },
 ];
 
 /// The default, platform-independent font provider.
@@ -400,6 +477,18 @@ pub fn face_source(family: &str, bold: bool, italic: bool) -> Option<FaceSource<
         weight: spec.weight,
         single: spec.single,
     })
+}
+
+/// Whether the bundled face for `family` has a real glyph for `ch`.
+///
+/// One provider is parsed for the process: font choice asks this for every
+/// script character it places.
+#[must_use]
+pub fn bundled_has_glyph(family: &str, ch: char) -> bool {
+    static PROVIDER: std::sync::OnceLock<BuiltinFontProvider> = std::sync::OnceLock::new();
+    PROVIDER
+        .get_or_init(BuiltinFontProvider::new)
+        .has_glyph(family, ch)
 }
 
 /// The families the bundle can serve, for a caller's diagnostics.

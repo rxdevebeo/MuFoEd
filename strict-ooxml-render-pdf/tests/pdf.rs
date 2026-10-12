@@ -762,3 +762,57 @@ fn run_decorations_are_drawn_in_the_pdf() {
         "the underline is red"
     );
 }
+
+/// WQ-004: Arabic and Tibetan take their glyphs from the bundled script faces.
+/// Before, the metric-compatible substitute had none, and every letter was
+/// reported as `pdf.font.no_glyph` and left out of the page.
+#[test]
+fn arabic_and_tibetan_embed_the_script_faces() {
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(
+            "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rFonts w:cs=\"Traditional Arabic\"/><w:rtl/></w:rPr>\
+             <w:t>بسم الله الرحمن الرحيم</w:t></w:r></w:p>\
+             <w:p><w:r><w:rPr><w:rFonts w:cs=\"Microsoft Himalaya\"/></w:rPr>\
+             <w:t>བཀྲ་ཤིས་བདེ་ལེགས།</w:t></w:r></w:p>",
+        )
+        .build();
+    let (pdf, svg, report) = to_pdf(&bytes);
+    assert!(
+        !report.to_string().contains("pdf.font.no_glyph"),
+        "{report}"
+    );
+    let document = lopdf::Document::load_mem(&pdf).expect("valid PDF");
+    let faces: Vec<String> = document
+        .objects
+        .values()
+        .filter_map(|object| object.as_dict().ok())
+        .filter_map(|dictionary| dictionary.get(b"BaseFont").ok())
+        .filter_map(|name| name.as_name().ok())
+        .map(|name| String::from_utf8_lossy(name).into_owned())
+        .collect();
+    for family in ["NotoNaskhArabic", "Jomolhari"] {
+        assert!(
+            faces.iter().any(|face| face.contains(family)),
+            "{family} not in {faces:?}"
+        );
+    }
+    // Noto Naskh draws a letter's dots as glyphs of their own; each such
+    // cluster carries its text as `ActualText`, so a reader gets the letter
+    // back and not one stray character per extra glyph.
+    let content = extracted_text(&pdf);
+    assert!(content.contains("/ActualText"), "no ActualText span");
+    assert_eq!(
+        content.matches("BDC").count(),
+        content.matches("EMC").count(),
+        "unbalanced marked content"
+    );
+    let page = &svg.first().expect("page").svg;
+    assert!(
+        page.contains("font-family: \"Noto Naskh Arabic\""),
+        "svg Arabic face"
+    );
+    assert!(
+        page.contains("font-family: \"Jomolhari\""),
+        "svg Tibetan face"
+    );
+}

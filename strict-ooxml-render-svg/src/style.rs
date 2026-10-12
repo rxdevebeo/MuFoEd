@@ -1020,6 +1020,36 @@ fn apply_fonts(computed: &mut ComputedRun, fonts: &Fonts, theme: Option<&Theme>)
 /// Cyrillic letters.
 #[must_use]
 pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
+    let base = requested_family(run, text);
+    if run.font_programs.for_resource(&base).is_none() {
+        let script = text.chars().find_map(|ch| {
+            crate::font::family::script_fallback(&base, ch)
+                .filter(|_| !crate::font::builtin::bundled_has_glyph(&base, ch))
+        });
+        if let Some(script) = script {
+            return script.to_owned();
+        }
+    }
+    base
+}
+
+/// Bundled family whose line box a script fallback face borrows.
+///
+/// The fallback draws complex-script text, so this is the run's complex-script
+/// request (or its ordinary one), resolved like [`chosen_family`] resolves it.
+#[must_use]
+pub fn script_line_family(run: &ComputedRun) -> &str {
+    let (requested, fallback) = match run.complex_family.as_deref() {
+        Some(family) => (family, run.complex_family_fallback.as_deref()),
+        None => (run.family.as_str(), run.family_fallback.as_deref()),
+    };
+    crate::font::family::known_family(requested)
+        .or(fallback)
+        .unwrap_or("Carlito")
+}
+
+/// The family `run` asks for `text`, before any script fallback.
+fn requested_family(run: &ComputedRun, text: &str) -> String {
     let (requested, fallback) = if run.complex_family.is_some() && script_is_complex_only(text) {
         (
             run.complex_family.as_deref().unwrap_or(&run.family),
@@ -1156,6 +1186,7 @@ pub(crate) fn is_complex_script(ch: char) -> bool {
             | '\u{0900}'..='\u{0DFF}'
             | '\u{0E00}'..='\u{0E7F}'
             | '\u{0E80}'..='\u{0EFF}'
+            | '\u{0F00}'..='\u{0FFF}'
             | '\u{1000}'..='\u{109F}'
             | '\u{1780}'..='\u{17FF}'
     )

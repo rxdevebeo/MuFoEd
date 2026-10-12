@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use pdf_writer::types::FontFlags;
-use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str};
+use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str, TextStr};
 use strict_ooxml_core::control;
 use strict_ooxml_core::error::{Result, StrictError};
 use strict_ooxml_core::part::PartId;
@@ -1042,6 +1042,18 @@ impl PageWriter<'_> {
             let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                 continue;
             };
+            // A cluster drawn with several glyphs (Noto Arabic draws a letter's
+            // dots apart from its body) labels only its first one in the
+            // `ToUnicode`; a reader turned the others into stray characters.
+            // `ActualText` replaces the whole sequence with the cluster's text.
+            let actual_text = !unicode.is_empty()
+                && glyphs.iter().filter(|glyph| glyph.glyph_id != 0).count() > 1;
+            if actual_text {
+                self.content
+                    .begin_marked_content_with_properties(Name(b"Span"))
+                    .properties()
+                    .actual_text(TextStr(unicode));
+            }
             for (index, glyph) in glyphs.iter().enumerate() {
                 if glyph.glyph_id == 0 {
                     if let Some(ch) = unicode.chars().next() {
@@ -1077,6 +1089,9 @@ impl PageWriter<'_> {
                 let bytes = cid.to_be_bytes();
                 self.content.show(Str(&bytes));
                 drew = true;
+            }
+            if actual_text {
+                self.content.end_marked_content();
             }
         }
         self.content.end_text();

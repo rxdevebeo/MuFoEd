@@ -31,11 +31,55 @@ pub fn known_family(family: &str) -> Option<&'static str> {
         "strict math fraktur" => "Strict Math Fraktur",
         "strict math doublestruck" => "Strict Math DoubleStruck",
         "stix two math" | "stix2 math" | "stixgeneral" => "STIX Two Math",
+        // The script faces answer to their own names, so a family chosen by
+        // [`script_fallback`] maps to itself on the next pass.
+        "noto naskh arabic" => "Noto Naskh Arabic",
+        "noto sans arabic" => "Noto Sans Arabic",
+        "jomolhari" => "Jomolhari",
         // An unknown CSS family is measured and delivered as Carlito, the bundled
         // Calibri-metric face. Leaving the request unchanged made layout use the
         // fallback model while the SVG named a face the viewer does not have.
         _ => return None,
     })
+}
+
+/// Bundled face that draws `ch` when the `base` face has no glyph for it.
+///
+/// The metric-compatible faces cover Latin, Greek, Cyrillic and Hebrew only;
+/// Word and WPS draw Arabic and Tibetan from a font that has them (WQ-004).
+/// Arabic next to a sans face (Arial, Tahoma via Arimo) takes the sans
+/// Arabic design, otherwise the Naskh one, which is the style of Times New
+/// Roman's and Traditional Arabic's Arabic. Urdu set in a Nastaliq family
+/// that is not installed comes out in Naskh too, as WPS draws it: a Nastaliq
+/// face needs a line box twice as tall, and the requested font's box is unknown.
+#[must_use]
+pub fn script_fallback(base: &str, ch: char) -> Option<&'static str> {
+    match ch {
+        '\u{0600}'..='\u{06FF}'
+        | '\u{0750}'..='\u{077F}'
+        | '\u{0870}'..='\u{08FF}'
+        | '\u{FB50}'..='\u{FDFF}'
+        | '\u{FE70}'..='\u{FEFF}' => Some(if base == "Arimo" {
+            "Noto Sans Arabic"
+        } else {
+            "Noto Naskh Arabic"
+        }),
+        '\u{0F00}'..='\u{0FFF}' => Some("Jomolhari"),
+        _ => None,
+    }
+}
+
+/// Whether `family` is a face [`script_fallback`] substitutes for glyphs only.
+///
+/// Such a face draws the text, but the line box stays that of the face the
+/// run asked for: WPS, lacking Traditional Arabic, sets Arabic in Times New
+/// Roman's line box, and the Naskh face's own box is almost twice as tall.
+#[must_use]
+pub fn is_script_fallback(family: &str) -> bool {
+    matches!(
+        family,
+        "Noto Naskh Arabic" | "Noto Sans Arabic" | "Jomolhari"
+    )
 }
 
 /// Horizontal advance scale for a mapped family versus WPS-embedded Times.
@@ -89,6 +133,23 @@ mod tests {
         assert_eq!(map_family("Liberation Serif"), "Tinos");
         assert_eq!(map_family("Liberation Mono"), "Cousine");
         assert_eq!(map_family("  liberation mono "), "Cousine");
+    }
+
+    #[test]
+    fn script_faces_cover_what_the_metric_faces_lack() {
+        use super::{is_script_fallback, script_fallback};
+        assert_eq!(script_fallback("Tinos", 'ب'), Some("Noto Naskh Arabic"));
+        assert_eq!(script_fallback("Carlito", 'ﻻ'), Some("Noto Naskh Arabic"));
+        assert_eq!(script_fallback("Arimo", 'ب'), Some("Noto Sans Arabic"));
+        assert_eq!(script_fallback("Carlito", 'ཀ'), Some("Jomolhari"));
+        assert_eq!(script_fallback("Carlito", 'a'), None);
+        assert_eq!(script_fallback("Tinos", 'א'), None);
+        assert!(is_script_fallback("Jomolhari"));
+        assert!(!is_script_fallback("Tinos"));
+        for family in ["Noto Naskh Arabic", "Noto Sans Arabic", "Jomolhari"] {
+            assert_eq!(map_family(family), family);
+        }
+        assert_eq!(super::known_family("Jameel Noori Nastaleeq"), None);
     }
 
     #[test]
