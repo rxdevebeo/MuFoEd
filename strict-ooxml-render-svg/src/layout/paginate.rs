@@ -104,6 +104,34 @@ pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
             .into_strict()
         },
     )?;
+    if let Some(layout) = layout_passes(ctx, true)? {
+        return Ok(layout);
+    }
+    let did_not_converge = || {
+        RenderError::DidNotConverge {
+            passes: u64::try_from(MAX_LAYOUT_PASSES).unwrap_or(8),
+        }
+        .into_strict()
+    };
+    if ctx.page_floats_preload.borrow().is_empty() && ctx.page_floats_banned.borrow().is_empty() {
+        // No float was ever put ahead: the page numbers alone did not settle.
+        return Err(did_not_converge());
+    }
+    // Floats that keep moving (their wrap pushes their own anchor to another
+    // page) are not worth an error: the layout runs again without preloading
+    // them, as it did before WQ-016.
+    ctx.warn(
+        "layout.floats.unsettled: page-positioned floats kept moving between layout passes; \
+         text before them is laid out without their wrap"
+            .to_owned(),
+    );
+    layout_passes(ctx, false)?.ok_or_else(did_not_converge)
+}
+
+/// Lays the document out until page numbers settle and, with `preload`, until
+/// the page-positioned floats put on their pages ahead of time stay put.
+/// `None` when that did not happen within [`MAX_LAYOUT_PASSES`].
+fn layout_passes(ctx: &LayoutContext<'_>, preload: bool) -> Result<Option<Layout>> {
     let mut assumed = AssumedTotals {
         pages: 1,
         section_pages: Vec::new(),
@@ -111,7 +139,6 @@ pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
     let mut previous: Option<LayoutFingerprint> = None;
     ctx.page_floats_preload.borrow_mut().clear();
     ctx.page_floats_banned.borrow_mut().clear();
-    let mut settled_fields: Option<Layout> = None;
     for _ in 0..MAX_LAYOUT_PASSES {
         let (layout, fingerprint, has_fields) = layout_once(ctx, &assumed)?;
         let fields_settled = previous.as_ref() == Some(&fingerprint)
@@ -119,53 +146,40 @@ pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
         // Text laid out before a page-positioned float only learns of it in
         // the next pass: another pass runs until the floats stay put.
         let recorded = ctx.page_floats_record.take();
-        let next = {
-            let preload = ctx.page_floats_preload.borrow();
-            let mut banned = ctx.page_floats_banned.borrow_mut();
-            // A float put on a page ahead of its anchor that this pass placed
-            // on another page moved because of its own wrap: the text it
-            // pushed away carried its anchor along. Passes would swing it back
-            // and forth, so it is laid out from its anchor alone from now on.
-            for (float, _, _) in preload.iter() {
-                if float_pages(&preload, *float) != float_pages(&recorded, *float) {
-                    banned.insert(*float);
+        let floats_settled = !preload || {
+            let next = {
+                let preload = ctx.page_floats_preload.borrow();
+                let mut banned = ctx.page_floats_banned.borrow_mut();
+                // A float put on a page ahead of its anchor that this pass
+                // placed on another page moved because of its own wrap: the
+                // text it pushed away carried its anchor along. Passes would
+                // swing it back and forth, so it is laid out from its anchor
+                // alone from now on.
+                for (float, _, _) in preload.iter() {
+                    if float_pages(&preload, *float) != float_pages(&recorded, *float) {
+                        banned.insert(*float);
+                    }
                 }
-            }
-            recorded
-                .into_iter()
-                .filter(|(float, _, _)| !banned.contains(float))
-                .collect::<Vec<_>>()
+                recorded
+                    .into_iter()
+                    .filter(|(float, _, _)| !banned.contains(float))
+                    .collect::<Vec<_>>()
+            };
+            let settled = same_page_floats(&next, &ctx.page_floats_preload.borrow());
+            ctx.page_floats_preload.replace(next);
+            settled
         };
-        let floats_settled = same_page_floats(&next, &ctx.page_floats_preload.borrow());
-        ctx.page_floats_preload.replace(next);
         if fields_settled && floats_settled {
             let mut layout = layout;
             sanitize_finite_coords(&mut layout);
-            return Ok(layout);
-        }
-        if fields_settled {
-            settled_fields = Some(layout);
+            return Ok(Some(layout));
         }
         assumed.pages = fingerprint.pages.max(1);
         assumed.section_pages.clone_from(&fingerprint.section_pages);
         ctx.note_numbers.update_page_numbers();
         previous = Some(fingerprint);
     }
-    // Floats that keep moving (their wrap pushes their own anchor to another
-    // page) are not worth an error: the last layout whose fields agree stands.
-    if let Some(mut layout) = settled_fields {
-        ctx.warn(
-            "layout.floats.unsettled: page-positioned floats still moved after the last \
-             layout pass; text may overlap them"
-                .to_owned(),
-        );
-        sanitize_finite_coords(&mut layout);
-        return Ok(layout);
-    }
-    Err(RenderError::DidNotConverge {
-        passes: u64::try_from(MAX_LAYOUT_PASSES).unwrap_or(8),
-    }
-    .into_strict())
+    Ok(None)
 }
 
 /// Whether two passes put the same page-positioned float areas on the same
