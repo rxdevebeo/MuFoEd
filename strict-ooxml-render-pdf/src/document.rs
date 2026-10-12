@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use pdf_writer::types::FontFlags;
-use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str, TextStr};
+use pdf_writer::{Content, Filter, Name, Pdf, Rect, Ref, Str};
 use strict_ooxml_core::control;
 use strict_ooxml_core::error::{Result, StrictError};
 use strict_ooxml_core::part::PartId;
@@ -24,6 +24,7 @@ use strict_ooxml_render_svg::layout::{
 use strict_ooxml_render_svg::{MediaSource, RenderOptions};
 
 use crate::font::{EmbeddedFont, FaceCollector, FaceKey};
+use crate::glyphs::GlyphForms;
 use crate::image::{encode_with_limit, Encoded};
 use crate::matrix::Matrix;
 use crate::path::{self, Segment};
@@ -63,6 +64,10 @@ struct PageWriter<'a> {
     alpha: f64,
     alphas: std::collections::BTreeSet<u8>,
     report: &'a mut PdfReport,
+    /// Glyph outlines of the whole document, shared by every page.
+    glyph_forms: &'a mut GlyphForms,
+    /// The outline forms this page draws.
+    glyph_names: std::collections::BTreeSet<String>,
 }
 
 /// The bundled faces' metrics, parsed once per process.
@@ -118,6 +123,7 @@ pub fn render_with_source(
 
     // Pass one: content streams and the images each page needs.
     let mut streams = Vec::with_capacity(pages.len());
+    let mut glyph_forms = GlyphForms::default();
     let _scope = options.control.as_ref().map(control::OpenControl::enter);
     control::stage(control::Stage::Painting, pages.len() as u64);
     for page in pages {
@@ -135,6 +141,8 @@ pub fn render_with_source(
             alpha: 1.0,
             alphas: std::collections::BTreeSet::default(),
             report: &mut report,
+            glyph_forms: &mut glyph_forms,
+            glyph_names: std::collections::BTreeSet::new(),
         };
         writer.draw_page(page, options.background);
         streams.push((
@@ -142,6 +150,7 @@ pub fn render_with_source(
             writer.images,
             writer.paints,
             writer.alphas,
+            writer.glyph_names,
         ));
     }
 
@@ -154,7 +163,7 @@ pub fn render_with_source(
     let mut builder = PdfBuilder::new();
     let mut image_refs: BTreeMap<PartId, (Ref, Option<Ref>)> = BTreeMap::new();
     let mut page_objects: Vec<PageObjects> = Vec::with_capacity(pages.len());
-    for (_, images, paints, _) in &streams {
+    for (_, images, paints, _, _) in &streams {
         let content_id = builder.allocate();
         let mut image_ids: BTreeMap<PartId, (Ref, Option<Ref>)> = BTreeMap::new();
         for part in images.keys() {
@@ -212,9 +221,17 @@ pub fn render_with_source(
     // the ToUnicode CMap, the Identity-H CMap, the CIDToGIDMap stream and the
     // Type0 wrapper.
     let font_ids: Vec<FontIds> = fonts.iter().map(|_| builder.allocate_seven()).collect();
+    let glyph_refs: BTreeMap<&str, Ref> = glyph_forms
+        .forms()
+        .iter()
+        .map(|form| (form.name.as_str(), builder.allocate()))
+        .collect();
 
     let mut alpha_ids = BTreeMap::new();
-    for alpha in streams.iter().flat_map(|(_, _, _, alphas)| alphas.iter()) {
+    for alpha in streams
+        .iter()
+        .flat_map(|(_, _, _, alphas, _)| alphas.iter())
+    {
         alpha_ids
             .entry(*alpha)
             .or_insert_with(|| builder.allocate());
@@ -235,6 +252,20 @@ pub fn render_with_source(
     for ((font, _), ids) in fonts.iter().zip(font_ids.iter()) {
         write_font(&mut pdf, *ids, font);
     }
+    for form in glyph_forms.forms() {
+        let Some(&id) = glyph_refs.get(form.name.as_str()) else {
+            continue;
+        };
+        let (data, compressed) = flate(&form.content);
+        let mut xobject = pdf.form_xobject(id, &data);
+        if compressed {
+            xobject.filter(Filter::FlateDecode);
+        }
+        let [left, bottom, right, top] = form.bbox;
+        xobject.bbox(Rect::new(left, bottom, right, top));
+        let unit = 1.0 / form.units_per_em;
+        xobject.matrix([unit, 0.0, 0.0, unit, 0.0, 0.0]);
+    }
     for objects in &page_objects {
         for (_, id, paint) in &objects.paints {
             crate::fills::write(&mut pdf, *id, paint);
@@ -242,7 +273,8 @@ pub fn render_with_source(
     }
     // Pass one pushed one stream per page and the loop above one set of ids per
     // stream, so the three line up.
-    for ((page, objects), (content, _, _, alphas)) in pages.iter().zip(&page_objects).zip(&streams)
+    for ((page, objects), (content, _, _, alphas, glyph_names)) in
+        pages.iter().zip(&page_objects).zip(&streams)
     {
         let width_pt = px_to_pt(page.width_px, scale) as f32;
         let height_pt = px_to_pt(page.height_px, scale) as f32;
@@ -297,6 +329,11 @@ pub fn render_with_source(
                         continue;
                     };
                     xobjects.pair(Name(name.as_bytes()), *id);
+                }
+                for name in glyph_names {
+                    if let Some(id) = glyph_refs.get(name.as_str()) {
+                        xobjects.pair(Name(name.as_bytes()), *id);
+                    }
                 }
             }
         }
@@ -458,8 +495,9 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
                     let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                         continue;
                     };
+                    let holder = crate::glyphs::holder(glyphs);
                     for (index, glyph) in glyphs.iter().enumerate() {
-                        let label = if index == 0 { unicode } else { "" };
+                        let label = if index == holder { unicode } else { "" };
                         collector.add_cluster(
                             &source,
                             text.run.bold,
@@ -1026,6 +1064,9 @@ impl PageWriter<'_> {
         if shaped.glyphs.is_empty() {
             return false;
         }
+        if !text.run.outline && crate::glyphs::needs_outlines(shaped) {
+            return self.show_outlined(text, font, name, shown, shaped);
+        }
         let (red, green, blue) = rgb(text.run.color.as_deref().unwrap_or("#000000"));
         let size = px_to_pt(text.size_px, self.scale) as f32;
         let mut drew = false;
@@ -1042,18 +1083,7 @@ impl PageWriter<'_> {
             let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                 continue;
             };
-            // A cluster drawn with several glyphs (Noto Arabic draws a letter's
-            // dots apart from its body) labels only its first one in the
-            // `ToUnicode`; a reader turned the others into stray characters.
-            // `ActualText` replaces the whole sequence with the cluster's text.
-            let actual_text = !unicode.is_empty()
-                && glyphs.iter().filter(|glyph| glyph.glyph_id != 0).count() > 1;
-            if actual_text {
-                self.content
-                    .begin_marked_content_with_properties(Name(b"Span"))
-                    .properties()
-                    .actual_text(TextStr(unicode));
-            }
+            let holder = crate::glyphs::holder(glyphs);
             for (index, glyph) in glyphs.iter().enumerate() {
                 if glyph.glyph_id == 0 {
                     if let Some(ch) = unicode.chars().next() {
@@ -1061,7 +1091,7 @@ impl PageWriter<'_> {
                     }
                     continue;
                 }
-                let label = if index == 0 { unicode } else { "" };
+                let label = if index == holder { unicode } else { "" };
                 let cid = font
                     .cluster_cids
                     .get(&(glyph.glyph_id, label.to_owned()))
@@ -1090,13 +1120,140 @@ impl PageWriter<'_> {
                 self.content.show(Str(&bytes));
                 drew = true;
             }
-            if actual_text {
-                self.content.end_marked_content();
-            }
         }
         self.content.end_text();
         drew
     }
+
+    /// Draws a shaped run whose glyphs a text layer cannot carry one per
+    /// character (`glyphs::needs_outlines`): the glyphs as outline forms, the
+    /// text as one invisible `TJ` on the baseline, one glyph per cluster.
+    fn show_outlined(
+        &mut self,
+        text: &TextItem,
+        font: &Arc<EmbeddedFont>,
+        name: &str,
+        shown: &str,
+        shaped: &strict_ooxml_render_svg::font::ShapedText,
+    ) -> bool {
+        let size_pt = px_to_pt(text.size_px, self.scale);
+        if size_pt <= 0.0 {
+            return false;
+        }
+        let scale_x = text.run.char_scale;
+        let offsets = strict_ooxml_render_svg::font::shaped_cluster_offsets_px(text, shown, shaped);
+        let mut placed: Vec<PlacedGlyph> = Vec::new();
+        for (cluster_index, cluster) in shaped.clusters.iter().enumerate() {
+            let unicode = shown
+                .get(cluster.byte_start..cluster.byte_end)
+                .unwrap_or("");
+            let cluster_extra = offsets.get(cluster_index).copied().unwrap_or(0.0);
+            let end = cluster.glyph_start.saturating_add(cluster.glyph_count);
+            let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
+                continue;
+            };
+            let holder = crate::glyphs::holder(glyphs);
+            for (index, glyph) in glyphs.iter().enumerate() {
+                if glyph.glyph_id == 0 {
+                    if let Some(ch) = unicode.chars().next() {
+                        self.report.record_missing_glyph(&text.run.family, ch);
+                    }
+                    continue;
+                }
+                let label = if index == holder { unicode } else { "" };
+                let Some(&cid) = font.cluster_cids.get(&(glyph.glyph_id, label.to_owned())) else {
+                    continue;
+                };
+                placed.push(PlacedGlyph {
+                    visual: cluster.glyph_start.saturating_add(index),
+                    cid,
+                    offset_px: glyph.x_em * text.size_px + cluster_extra,
+                    rise_px: glyph.y_offset_em * text.size_px,
+                    carries_text: !label.is_empty(),
+                });
+            }
+        }
+        if placed.is_empty() {
+            return false;
+        }
+        placed.sort_by_key(|glyph| glyph.visual);
+
+        let (red, green, blue) = rgb(text.run.color.as_deref().unwrap_or("#000000"));
+        self.content.set_fill_rgb(red, green, blue);
+        for glyph in &placed {
+            let Some(form) = self.glyph_forms.name(font, glyph.cid).map(str::to_owned) else {
+                continue;
+            };
+            let x = self.x(text.x + glyph.offset_px * scale_x);
+            let y = self.y(text.baseline - glyph.rise_px);
+            self.content.save_state();
+            self.content
+                .transform([(size_pt * scale_x) as f32, 0.0, 0.0, size_pt as f32, x, y]);
+            self.content.x_object(Name(form.as_bytes()));
+            self.content.restore_state();
+            self.glyph_names.insert(form);
+        }
+        self.text_layer(text, font, name, size_pt, &placed);
+        true
+    }
+
+    /// The invisible text of an outlined run: the glyphs that carry a
+    /// cluster's text, in visual order on the baseline. Pen offsets are in em
+    /// of the font size, before the text matrix applies the horizontal scale.
+    fn text_layer(
+        &mut self,
+        text: &TextItem,
+        font: &EmbeddedFont,
+        name: &str,
+        size_pt: f64,
+        placed: &[PlacedGlyph],
+    ) {
+        let scale_x = text.run.char_scale;
+        self.content.begin_text();
+        self.content
+            .set_text_rendering_mode(pdf_writer::types::TextRenderingMode::Invisible);
+        self.content.set_font(Name(name.as_bytes()), size_pt as f32);
+        self.content.set_text_matrix([
+            scale_x as f32,
+            0.0,
+            0.0,
+            1.0,
+            self.x(text.x),
+            self.y(text.baseline),
+        ]);
+        {
+            let mut shown_text = self.content.show_positioned();
+            let mut items = shown_text.items();
+            let mut pen = 0.0_f64;
+            for glyph in placed.iter().filter(|glyph| glyph.carries_text) {
+                let cid = glyph.cid;
+                let at = px_to_pt(glyph.offset_px, self.scale) / size_pt;
+                let gap = at - pen;
+                if gap.abs() > 1e-6 {
+                    items.adjust((-gap * 1000.0) as f32);
+                }
+                let bytes = cid.to_be_bytes();
+                items.show(Str(&bytes));
+                pen = at + f64::from(*font.widths.get(&cid).unwrap_or(&0)) / 1000.0;
+            }
+        }
+        self.content.end_text();
+        self.content
+            .set_text_rendering_mode(pdf_writer::types::TextRenderingMode::Fill);
+    }
+}
+
+/// One glyph of an outlined run, as `show_outlined` places it.
+struct PlacedGlyph {
+    /// Index in the run's visual glyph order.
+    visual: usize,
+    cid: u16,
+    /// Pen offset from the run's origin, in px before the horizontal scale.
+    offset_px: f64,
+    /// Offset above the baseline, in px.
+    rise_px: f64,
+    /// Whether this glyph carries its cluster's text in the text layer.
+    carries_text: bool,
 }
 
 /// Closes a path with the painting operators the flags ask for.

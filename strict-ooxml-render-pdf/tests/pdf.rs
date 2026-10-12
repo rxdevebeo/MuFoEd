@@ -796,16 +796,26 @@ fn arabic_and_tibetan_embed_the_script_faces() {
             "{family} not in {faces:?}"
         );
     }
-    // Noto Naskh draws a letter's dots as glyphs of their own; each such
-    // cluster carries its text as `ActualText`, so a reader gets the letter
-    // back and not one stray character per extra glyph.
+    // WQ-044: Noto Naskh draws a letter's dots as glyphs of their own, above
+    // or below the baseline. The run is painted as outline forms and its text
+    // is one invisible layer, so a reader does not break the words apart.
     let content = extracted_text(&pdf);
-    assert!(content.contains("/ActualText"), "no ActualText span");
-    assert_eq!(
-        content.matches("BDC").count(),
-        content.matches("EMC").count(),
-        "unbalanced marked content"
-    );
+    assert!(content.contains("3 Tr"), "no invisible text layer");
+    assert!(content.contains(" Do"), "no outline forms drawn");
+    assert!(!content.contains("BDC"), "no marked content is needed");
+    let forms = document
+        .objects
+        .values()
+        .filter_map(|object| object.as_stream().ok())
+        .filter(|stream| {
+            stream
+                .dict
+                .get(b"Subtype")
+                .and_then(lopdf::Object::as_name)
+                .is_ok_and(|name| name == b"Form")
+        })
+        .count();
+    assert!(forms > 0, "no glyph forms written");
     let page = &svg.first().expect("page").svg;
     assert!(
         page.contains("font-family: \"Noto Naskh Arabic\""),
