@@ -188,15 +188,23 @@ pub fn run_face_source<'a>(
 }
 
 /// Effective vertical metrics, including a document-supplied font.
+///
+/// A script fallback face keeps the line box of the face the run asked for
+/// ([`super::family::is_script_fallback`]).
 pub fn run_metrics(
     run: &crate::style::ComputedRun,
     family: &str,
     provider: &dyn super::FontProvider,
 ) -> FontMetrics {
-    run.font_programs.for_resource(family).map_or_else(
-        || provider.metrics(family, run.bold, run.italic),
-        |program| program.metrics,
-    )
+    if let Some(program) = run.font_programs.for_resource(family) {
+        return program.metrics;
+    }
+    let line_family = if super::family::is_script_fallback(family) {
+        crate::style::script_line_family(run)
+    } else {
+        family
+    };
+    provider.metrics(line_family, run.bold, run.italic)
 }
 /// The vertical metrics Word lays a document font out with (GDI): the OS/2
 /// Windows ascent and descent, plus the external leading GDI derives from the

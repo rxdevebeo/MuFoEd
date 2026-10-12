@@ -285,3 +285,61 @@ fn wq009_many_text_boxes_all_keep_their_text() {
         assert!(all.contains(&format!("Box{index}")), "Box{index}: {all:?}");
     }
 }
+
+/// WQ-004: Arabic and Tibetan are drawn by the bundled script faces, and the
+/// line keeps the box of the face the run asked for, as in WPS.
+#[test]
+fn wq004_script_text_takes_script_faces_and_keeps_the_line_box() {
+    let line = |text: &str| {
+        format!(
+            "<w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr><w:r><w:rPr><w:rFonts w:cs=\"Traditional Arabic\"/></w:rPr>\
+<w:t>{text}</w:t></w:r></w:p>"
+        )
+    };
+    let place = |first: &str| {
+        let body = format!("{}{}{NARROW}", line(first), line("x"));
+        pages(&body, &RenderOptions::default()).remove(0)
+    };
+    let arabic = place("بسم الله");
+    let latin = place("y");
+    let families: Vec<(String, String)> = arabic
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text(text) => Some((
+                text.text.clone(),
+                strict_ooxml_render_svg::style::chosen_family(&text.run, &text.text),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        families
+            .iter()
+            .any(|(text, family)| text.contains('ب') && family == "Noto Naskh Arabic"),
+        "{families:?}"
+    );
+    let gap = |page: &PlacedPage| {
+        let lines = baselines(page);
+        lines[1] - lines[0]
+    };
+    assert!(
+        (gap(&arabic) - gap(&latin)).abs() < 0.01,
+        "Arabic line {} against Latin {}",
+        gap(&arabic),
+        gap(&latin)
+    );
+
+    let tibetan = pages(
+        &format!(
+            "<w:p><w:r><w:rPr><w:rFonts w:cs=\"Microsoft Himalaya\"/></w:rPr><w:t>བཀྲ་ཤིས་བདེ་ལེགས།</w:t></w:r></w:p>{NARROW}"
+        ),
+        &RenderOptions::default(),
+    )
+    .remove(0);
+    assert!(tibetan.items.iter().any(|item| matches!(
+        item,
+        Item::Text(text)
+            if strict_ooxml_render_svg::style::chosen_family(&text.run, &text.text) == "Jomolhari"
+    )));
+}

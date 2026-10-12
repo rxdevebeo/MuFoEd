@@ -19,6 +19,10 @@ No font was modified; the OFL license text is included alongside each family.
 | Tinos | Times New Roman | SIL Open Font License 1.1 (`tinos/OFL.txt`) | `tinos/Tinos-{Regular,Bold,Italic,BoldItalic}.ttf` |
 | Cousine | Courier New | SIL Open Font License 1.1 (`cousine/OFL.txt`) | `cousine/Cousine-{Regular,Bold,Italic,BoldItalic}.ttf` |
 | STIX Two Math | Cambria Math | SIL Open Font License 1.1 (`stix/OFL.txt`) | `stix/STIXTwoMath-Regular.otf` |
+| Noto Naskh Arabic | — (Arabic glyphs for serif runs) | SIL Open Font License 1.1 (`noto-naskh-arabic/OFL.txt`) | `noto-naskh-arabic/NotoNaskhArabic[wght].ttf` (variable `wght` 400/700) |
+| Noto Sans Arabic | — (Arabic glyphs for sans runs) | SIL Open Font License 1.1 (`noto-sans-arabic/OFL.txt`) | `noto-sans-arabic/NotoSansArabic[wdth,wght].ttf` (variable `wght` 400/700, default `wdth`) |
+| Noto Nastaliq Urdu | Nastaliq families (Jameel Noori Nastaleeq, …) | SIL Open Font License 1.1 (`noto-nastaliq-urdu/OFL.txt`) | `noto-nastaliq-urdu/NotoNastaliqUrdu[wght].ttf` (variable `wght` 400/700) |
+| Jomolhari | — (Tibetan glyphs) | SIL Open Font License 1.1 (`jomolhari/OFL.txt`) | `jomolhari/Jomolhari-Regular.ttf` |
 
 ## Provenance
 
@@ -99,3 +103,17 @@ Rebuild with `xtool/corpus/build_math_style_fonts.py` (fontTools required).
 
 The font files keep their own licenses (above). The rest of the repository is
 MIT OR Apache-2.0.
+
+## Script faces
+
+The metric-compatible faces carry no Arabic or Tibetan, so documents in those
+scripts lost all their text (WQ-004 in `docs/WPS-QA-DISCREPANCIES.md`). These
+faces supply the glyphs only (`font::family::script_fallback`): the line box
+stays that of the face the run asked for, which is what WPS does when the
+requested Arabic font is missing. A Nastaliq family request maps to Noto
+Nastaliq Urdu directly and keeps that face's own, taller line box.
+
+Supplied by the project owner on 2026-10-12 (`testdata/fonts/`), unmodified
+Google Fonts releases (Noto: `github.com/notofonts/arabic`,
+`github.com/notofonts/nastaliq`; Jomolhari: Christopher J. Fynn). Not bundled
+from the same set: Amiri, Scheherazade New, Gulzar and Noto Serif Tibetan.

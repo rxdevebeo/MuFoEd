@@ -121,6 +121,7 @@ fn is_complex_script_char(ch: char) -> bool {
             | '\u{0D00}'..='\u{0D7F}' // Malayalam
             | '\u{0E00}'..='\u{0E7F}' // Thai
             | '\u{0E80}'..='\u{0EFF}' // Lao
+            | '\u{0F00}'..='\u{0FFF}' // Tibetan
             | '\u{1000}'..='\u{109F}' // Myanmar
             | '\u{1780}'..='\u{17FF}' // Khmer
             | '\u{FB50}'..='\u{FDFF}' // Arabic Presentation Forms-A
