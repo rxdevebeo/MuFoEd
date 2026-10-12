@@ -865,6 +865,13 @@ pub(crate) struct LayoutContext<'a> {
     /// stopped. Cleared at the start of a layout pass and at each page break.
     pub(crate) frame_cursors:
         std::cell::RefCell<Vec<(strict_ooxml_wml::model::props::FrameProperties, f64)>>,
+    /// Wrap areas of page-positioned floats from the previous layout pass, by
+    /// page: put on their page before any of its text (WQ-016/WQ-019).
+    pub(crate) page_floats_preload:
+        std::cell::RefCell<Vec<(usize, crate::layout::exclusions::PageExclusion)>>,
+    /// Wrap areas of page-positioned floats placed in this pass, by page.
+    pub(crate) page_floats_record:
+        std::cell::RefCell<Vec<(usize, crate::layout::exclusions::PageExclusion)>>,
     /// Exact line height of the previous paragraph in the current frame, in px.
     ///
     /// Used to choose the 80% Exact grid after a taller Exact neighbour
