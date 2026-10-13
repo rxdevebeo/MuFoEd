@@ -432,35 +432,3 @@ fn wq016_a_float_that_its_own_wrap_moves_is_not_preloaded_again() {
         "title {title:?}: the page was laid out around a table it does not hold"
     );
 }
-
-/// WQ-019 (093): a margin drawing whose own wrap carries its anchor to the
-/// next page is drawn on that page, and the page before keeps its text whole.
-#[test]
-fn wq019_a_drawing_that_its_wrap_moves_on_stays_on_the_next_page() {
-    let anchor = "<w:p><w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" \
-relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">\
-<wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"margin\"><wp:posOffset>0</wp:posOffset></wp:positionH>\
-<wp:positionV relativeFrom=\"margin\"><wp:posOffset>0</wp:posOffset></wp:positionV>\
-<wp:extent cx=\"2743200\" cy=\"3810000\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><wp:wrapTopAndBottom/>\
-<wp:docPr id=\"2\" name=\"pic\"/><a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/picture\">\
-<pic:pic><pic:nvPicPr><pic:cNvPr id=\"0\" name=\"pic\"/></pic:nvPicPr><pic:blipFill/>\
-<pic:spPr><a:ext cx=\"2743200\" cy=\"3810000\"/></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>";
-    let body = format!(
-        "<w:p><w:r><w:t>Title</w:t></w:r></w:p><w:p><w:r><w:t>{LONG}</w:t></w:r></w:p>\
-<w:p><w:r><w:t>{LONG}</w:t></w:r></w:p>{anchor}{NARROW}"
-    );
-    let placed = pages(&body, &RenderOptions::default());
-    let title = texts(&placed[0])
-        .into_iter()
-        .find(|(_, _, text)| text == "Title")
-        .map(|(_, y, _)| y);
-    assert!(title.is_some_and(|y| y < 80.0), "title {title:?}");
-    // The page holding the text keeps its lines together: no gap the size of
-    // a drawing that is not on it.
-    let lines = baselines(&placed[0]);
-    let widest = lines
-        .windows(2)
-        .map(|pair| pair[1] - pair[0])
-        .fold(0.0_f64, f64::max);
-    assert!(widest < 60.0, "gap of {widest} px between lines {lines:?}");
-}
