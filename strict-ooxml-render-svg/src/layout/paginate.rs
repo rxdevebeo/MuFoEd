@@ -139,6 +139,8 @@ fn layout_passes(ctx: &LayoutContext<'_>, preload: bool) -> Result<Option<Layout
     let mut previous: Option<LayoutFingerprint> = None;
     ctx.page_floats_preload.borrow_mut().clear();
     ctx.page_floats_banned.borrow_mut().clear();
+    ctx.page_floats_forward.borrow_mut().clear();
+    ctx.page_floats_moves.borrow_mut().clear();
     for _ in 0..MAX_LAYOUT_PASSES {
         let (layout, fingerprint, has_fields) = layout_once(ctx, &assumed)?;
         let fields_settled = previous.as_ref() == Some(&fingerprint)
@@ -147,24 +149,7 @@ fn layout_passes(ctx: &LayoutContext<'_>, preload: bool) -> Result<Option<Layout
         // the next pass: another pass runs until the floats stay put.
         let recorded = ctx.page_floats_record.take();
         let floats_settled = !preload || {
-            let next = {
-                let preload = ctx.page_floats_preload.borrow();
-                let mut banned = ctx.page_floats_banned.borrow_mut();
-                // A float put on a page ahead of its anchor that this pass
-                // placed on another page moved because of its own wrap: the
-                // text it pushed away carried its anchor along. Passes would
-                // swing it back and forth, so it is laid out from its anchor
-                // alone from now on.
-                for (float, _, _) in preload.iter() {
-                    if float_pages(&preload, *float) != float_pages(&recorded, *float) {
-                        banned.insert(*float);
-                    }
-                }
-                recorded
-                    .into_iter()
-                    .filter(|(float, _, _)| !banned.contains(float))
-                    .collect::<Vec<_>>()
-            };
+            let next = next_page_floats(ctx, recorded);
             let settled = same_page_floats(&next, &ctx.page_floats_preload.borrow());
             ctx.page_floats_preload.replace(next);
             settled
@@ -181,6 +166,86 @@ fn layout_passes(ctx: &LayoutContext<'_>, preload: bool) -> Result<Option<Layout
     }
     Ok(None)
 }
+
+/// The page floats the next pass puts ahead of time, given what this pass
+/// placed (`recorded`). Updates the pinned, moved and banned floats.
+fn next_page_floats(
+    ctx: &LayoutContext<'_>,
+    recorded: Vec<crate::layout::PageFloat>,
+) -> Vec<crate::layout::PageFloat> {
+    let preload = ctx.page_floats_preload.borrow();
+    let mut banned = ctx.page_floats_banned.borrow_mut();
+    let mut forward = ctx.page_floats_forward.borrow_mut();
+    let mut moves = ctx.page_floats_moves.borrow_mut();
+    // A float put on a page ahead of its anchor that this pass
+    // placed on a later page moved because a preloaded wrap
+    // pushed the text, and its anchor with it, along. Of the
+    // floats that left one page, the topmost was pushed by its
+    // own wrap - its wrap moved everything below it, the other
+    // anchors included (065: the reactions table at the top of
+    // page 1 took the glossary's anchor along). It stays on the
+    // later page from now on, as WPS places it there
+    // (WQ-016/WQ-019); without that, passes swing it back and
+    // forth. The others keep their page. One that moved back
+    // follows its anchor. A float that keeps moving, or a
+    // table split over pages, is laid out from its anchor
+    // alone.
+    let mut seen: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+    // (float, page it left, top of its wrap there)
+    let mut moved_on: Vec<(u32, usize, f64)> = Vec::new();
+    for (float, _, area) in preload.iter() {
+        if !seen.insert(*float) {
+            continue;
+        }
+        let before = float_pages(&preload, *float);
+        let now = float_pages(&recorded, *float);
+        if before == now {
+            continue;
+        }
+        let count = moves.entry(*float).or_insert(0);
+        *count += 1;
+        match (before.as_slice(), now.as_slice()) {
+            _ if *count > MAX_FLOAT_MOVES => {
+                banned.insert(*float);
+            }
+            ([from], [to]) if to > from => moved_on.push((*float, *from, area.top)),
+            ([from], [to]) if to < from => {
+                forward.remove(float);
+            }
+            _ => {
+                banned.insert(*float);
+            }
+        }
+    }
+    let mut kept: Vec<u32> = Vec::new();
+    for &(float, from, top) in &moved_on {
+        let topmost = moved_on
+            .iter()
+            .filter(|(_, page, _)| *page == from)
+            .all(|(other, _, other_top)| top.total_cmp(other_top).then(float.cmp(other)).is_le());
+        if topmost {
+            if let Some(&to) = float_pages(&recorded, float).first() {
+                forward.insert(float, to);
+            }
+        } else {
+            kept.push(float);
+        }
+    }
+    recorded
+        .into_iter()
+        .filter(|(float, _, _)| !banned.contains(float) && !kept.contains(float))
+        .chain(
+            preload
+                .iter()
+                .filter(|(float, _, _)| kept.contains(float))
+                .cloned(),
+        )
+        .collect::<Vec<_>>()
+}
+
+/// How often a page float may change page between passes before it is laid
+/// out from its anchor alone.
+const MAX_FLOAT_MOVES: u32 = 3;
 
 /// Whether two passes put the same page-positioned float areas on the same
 /// pages, to a thousandth of a pixel.
@@ -388,6 +453,8 @@ fn layout_once(
     }
     if !paginator.selection_exhausted() {
         append_endnotes(ctx, &mut paginator, None)?;
+        // A table held for a page the document no longer reaches ends it.
+        paginator.place_deferred_tables(true)?;
         paginator.flush_pending()?;
     }
     let mut has_fields = paginator.has_fields;
@@ -923,12 +990,47 @@ fn place_framed_table(
 }
 
 /// Place a `tblpPr` table outside the body flow and register text clearance.
-#[allow(clippy::too_many_lines)]
 fn place_floating_table(
     ctx: &LayoutContext<'_>,
     table: &strict_ooxml_wml::model::Table,
     paginator: &mut Paginator<'_>,
     depth: u32,
+) -> Result<()> {
+    if table.props.positioning.is_none() {
+        return Ok(());
+    }
+    let float = next_page_float(ctx);
+    // A table whose own wrap carried its anchor to a later page in an earlier
+    // pass is placed when that page begins (065: WPS sets it on page 2).
+    let forward = ctx.page_floats_forward.borrow().get(&float).copied();
+    if let Some(page) = forward.filter(|page| *page > paginator.pages.len()) {
+        paginator.deferred_tables.push(DeferredTable {
+            page,
+            float,
+            table: table.clone(),
+            depth,
+        });
+        return Ok(());
+    }
+    place_floating_table_as(ctx, table, paginator, depth, float)
+}
+
+/// A floating table held back for a later page.
+struct DeferredTable {
+    page: usize,
+    float: u32,
+    table: strict_ooxml_wml::model::Table,
+    depth: u32,
+}
+
+/// Places a floating table as page float number `float`.
+#[allow(clippy::too_many_lines)]
+fn place_floating_table_as(
+    ctx: &LayoutContext<'_>,
+    table: &strict_ooxml_wml::model::Table,
+    paginator: &mut Paginator<'_>,
+    depth: u32,
+    float: u32,
 ) -> Result<()> {
     let Some(position) = &table.props.positioning else {
         return Ok(());
@@ -982,7 +1084,6 @@ fn place_floating_table(
     // A table placed from the page or its margins wraps every line of its
     // page, including the ones before it in the document (WQ-016).
     let fixed_on_page = position.vert_anchor.as_deref() != Some("text");
-    let float = next_page_float(ctx);
     for _ in 0..=paginator.floating_tables.len() {
         let next = paginator
             .floating_tables
@@ -1409,6 +1510,8 @@ struct Paginator<'a> {
     region_runs: Vec<RegionRun>,
     /// Anchors hosted by a region run: `(anchor, run, wrap exclusion)`.
     region_anchors: Vec<(usize, usize, Option<usize>)>,
+    /// Floating tables held back for a later page.
+    deferred_tables: Vec<DeferredTable>,
     /// Multi-column areas finished so far, for `w:sep`.
     column_regions: Vec<crate::layout::ColumnRegion>,
     separator_cache: HashMap<(i32, i64), (Vec<Item>, f64)>,
@@ -1583,6 +1686,7 @@ impl<'a> Paginator<'a> {
             last_placed: None,
             region_runs: Vec::new(),
             region_anchors: Vec::new(),
+            deferred_tables: Vec::new(),
             column_regions: Vec::new(),
         };
         paginator.apply_page_regions();
@@ -1974,30 +2078,38 @@ impl<'a> Paginator<'a> {
         for anchor in anchors {
             let mut geometry = self.geometry;
             geometry.active_column = host.column;
-            let exclusion = if host.page == self.pages.len() {
-                page_exclusion(ctx, &anchor, &geometry, host.x, host.y).map(|exclusion| {
-                    // A drawing placed from the page or its margins wraps the
-                    // lines above its anchor too (WQ-019).
-                    if anchor_fixed_on_page(&anchor) {
-                        let float = next_page_float(ctx);
-                        ctx.page_floats_record.borrow_mut().push((
-                            float,
-                            host.page,
-                            exclusion.clone(),
-                        ));
-                    }
-                    self.wrap_exclusions.push(exclusion);
+            // A drawing placed from the page or its margins wraps the lines
+            // above its anchor too (WQ-019).
+            let float = anchor_fixed_on_page(&anchor).then(|| next_page_float(ctx));
+            // One whose wrap carried its anchor on in an earlier pass is drawn
+            // on that later page; its wrap there was preloaded.
+            let page = float
+                .and_then(|float| ctx.page_floats_forward.borrow().get(&float).copied())
+                .filter(|forward| *forward > host.page)
+                .unwrap_or(host.page);
+            let area = page_exclusion(ctx, &anchor, &geometry, host.x, host.y);
+            // Recorded even when the anchor's paragraph began on a page that
+            // is already closed (093): the next pass puts it there up front.
+            if let (Some(float), Some(area)) = (float, area.as_ref()) {
+                ctx.page_floats_record
+                    .borrow_mut()
+                    .push((float, page, area.clone()));
+            }
+            let exclusion = area
+                .filter(|_| host.page == self.pages.len() && page == host.page)
+                .map(|area| {
+                    self.wrap_exclusions.push(area);
                     self.wrap_exclusions.len() - 1
-                })
-            } else {
-                None
-            };
-            if let Some(run) = host.run.filter(|_| host.page == self.pages.len()) {
+                });
+            if let Some(run) = host
+                .run
+                .filter(|_| host.page == self.pages.len() && page == host.page)
+            {
                 self.region_anchors
                     .push((self.anchors.len(), run, exclusion));
             }
             self.anchors.push(PendingAnchor {
-                page: host.page,
+                page,
                 host_x: host.x,
                 host_y: host.y,
                 column: host.column,
@@ -2558,6 +2670,21 @@ impl<'a> Paginator<'a> {
         self.column_notes_height = vec![0.0; count];
         self.fit_note_columns();
         self.apply_page_regions();
+        self.place_deferred_tables(false)
+    }
+
+    /// Places the held-back floating tables due on the page now starting, or
+    /// all of them when the document has ended (`all`).
+    fn place_deferred_tables(&mut self, all: bool) -> Result<()> {
+        let page = self.pages.len();
+        let (due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.deferred_tables)
+            .into_iter()
+            .partition(|deferred| all || deferred.page <= page);
+        self.deferred_tables = later;
+        let ctx = self.ctx;
+        for deferred in due {
+            place_floating_table_as(ctx, &deferred.table, self, deferred.depth, deferred.float)?;
+        }
         Ok(())
     }
 
