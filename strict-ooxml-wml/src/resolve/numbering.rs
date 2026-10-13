@@ -34,6 +34,23 @@ pub(crate) fn resolve_numbering(document: &mut Document) {
     }
 }
 
+/// Records every `numStyleLink` redirect again, without support records.
+pub(crate) fn relink(document: &mut Document) {
+    let starts: Vec<AbstractNumId> = document
+        .numbering
+        .abstracts()
+        .filter(|abstract_num| abstract_num.num_style_link.is_some())
+        .map(|abstract_num| abstract_num.id)
+        .collect();
+    for start in starts {
+        if let LinkOutcome::Resolved(target) = follow_num_style_link(document, start) {
+            if target != start {
+                document.numbering.set_link_target(start, target);
+            }
+        }
+    }
+}
+
 /// Follows each `numStyleLink` to the abstract that carries the levels.
 fn resolve_num_style_links(document: &mut Document) {
     let starters: Vec<(

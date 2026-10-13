@@ -922,3 +922,55 @@ fn text_beside_a_tracked_run_is_editable_and_the_run_stays_whole() {
         .collect();
     assert_eq!(untracked, "KEEP ! tail", "{:?}", p.inlines);
 }
+
+/// Roadmap 3.7: formatting joins the pieces it makes equal to their
+/// neighbours, as typing does - bolding a word piece by piece leaves one run.
+#[test]
+fn formatting_next_to_equal_text_leaves_one_run() {
+    use strict_ooxml_edit::FormatPatch;
+    use strict_ooxml_wml::model::{Inline, TriState};
+    let mut d = doc("<w:p><w:r><w:t>abcdef</w:t></w:r></w:p>");
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    for (revision, range) in [(0, 0..2), (1, 2..4), (2, 4..6)] {
+        e.transact(
+            revision,
+            &[Edit::Format {
+                at: Address::body(0),
+                range,
+                patch: FormatPatch {
+                    bold: Some(TriState::On),
+                    ..Default::default()
+                },
+            }],
+        )
+        .unwrap();
+    }
+    let Block::Paragraph(p) = &e.document().body.blocks[0] else {
+        panic!("paragraph")
+    };
+    assert_eq!(p.inlines.len(), 1, "{:?}", p.inlines);
+    let Inline::Run(run) = &p.inlines[0] else {
+        panic!("run")
+    };
+    assert_eq!(run.props.bold, TriState::On);
+    // A run away from the range keeps its own boundary.
+    let mut d =
+        doc("<w:p><w:r><w:t>ab</w:t></w:r><w:r><w:t>cd</w:t></w:r><w:r><w:t>ef</w:t></w:r></w:p>");
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    e.transact(
+        0,
+        &[Edit::Format {
+            at: Address::body(0),
+            range: 4..6,
+            patch: FormatPatch {
+                italic: Some(TriState::On),
+                ..Default::default()
+            },
+        }],
+    )
+    .unwrap();
+    let Block::Paragraph(p) = &e.document().body.blocks[0] else {
+        panic!("paragraph")
+    };
+    assert_eq!(p.inlines.len(), 3, "{:?}", p.inlines);
+}

@@ -11,6 +11,15 @@ use strict_ooxml_core::opc::Package;
 use crate::model::Document;
 use crate::parse::ParseOptions;
 
+/// Recomputes what the resolve phase derives from the style and numbering
+/// definitions - `basedOn` chains and `numStyleLink` redirects - after they
+/// were edited. Nothing is recorded in the support model.
+pub fn refresh_definitions(document: &mut Document) {
+    document.styles.rechain();
+    document.numbering.clear_link_targets();
+    numbering::relink(document);
+}
+
 /// Resolves cross-references in a freshly parsed document.
 ///
 /// Fills style `basedOn` chains and numbering validation, and records any

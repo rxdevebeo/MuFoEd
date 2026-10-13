@@ -3,7 +3,7 @@ use crate::{EditError, FormatPatch};
 use std::ops::Range;
 use strict_ooxml_wml::model::{
     Block, CellProperties, Drawing, FrameProperties, GridCol, Inline, ParagraphProperties,
-    RunProperties, TableProperties, TableRow,
+    RunProperties, SectionProperties, TableProperties, TableRow,
 };
 
 use super::address::Address;
@@ -193,6 +193,81 @@ pub enum Edit {
         /// Row index.
         index: usize,
     },
+    /// Insert a footnote (or, with `endnote`, an endnote) holding `blocks`,
+    /// under the next free positive id, and a run with its reference mark at
+    /// top-level inline `index` of the paragraph at `at`, which must not be in
+    /// a note. The note's first paragraph starts with its number marker.
+    InsertNote {
+        /// Paragraph that gets the reference.
+        at: Address,
+        /// Top-level inline insertion index.
+        index: usize,
+        /// An endnote rather than a footnote.
+        endnote: bool,
+        /// The note's content; a final paragraph is added if it has none.
+        blocks: Vec<Block>,
+    },
+    /// Delete the normal footnote or endnote whose story `at` names. One that
+    /// a reference still names is refused: delete the reference (with
+    /// `DeleteInline`) in the same transaction. Deleting content never drops
+    /// a note on its own.
+    DeleteNote {
+        /// Any address in the note's story.
+        at: Address,
+    },
+    /// Set the properties of the section the top-level body paragraph at `at`
+    /// belongs to (or ends): page size and orientation, margins, columns,
+    /// header/footer references, page numbering. The section list and the
+    /// section's boundary paragraph change together.
+    SectionProperties {
+        /// A top-level body paragraph of the section.
+        at: Address,
+        /// Complete section properties.
+        properties: Box<SectionProperties>,
+    },
+    /// End a new section with the top-level body paragraph at `at`; the new
+    /// section takes the properties of the one it was split from.
+    InsertSectionBreak {
+        /// The paragraph that ends the new section.
+        at: Address,
+    },
+    /// Remove the section break the top-level body paragraph at `at` carries.
+    /// The merged section keeps the properties of the section before the
+    /// break, or with `keep_after` those of the section after it.
+    RemoveSectionBreak {
+        /// The paragraph carrying the break.
+        at: Address,
+        /// Keep the properties of the section after the break.
+        keep_after: bool,
+    },
+    /// Merge the cells covering `rows` × `columns` of the table's grid into
+    /// one. The top-left cell keeps its properties and receives every cell's
+    /// content in reading order; a cell that sticks out of the rectangle, or a
+    /// gap in it, refuses the merge.
+    MergeCells {
+        /// Target table.
+        at: Address,
+        /// Half-open row range.
+        rows: Range<usize>,
+        /// Half-open grid column range.
+        columns: Range<usize>,
+    },
+    /// Split the cell covering grid position (`row`, `column`) into
+    /// `columns` × `rows` cells (at most 63 each). Grid columns or rows are
+    /// added when the cell has fewer than the parts; the total width stays and
+    /// the top-left part keeps the content.
+    SplitCell {
+        /// Target table.
+        at: Address,
+        /// Row of a grid position inside the cell.
+        row: usize,
+        /// Grid column of a position inside the cell.
+        column: usize,
+        /// Rows to split into.
+        rows: usize,
+        /// Columns to split into.
+        columns: usize,
+    },
     /// Replace a drawing's modeled geometry/payload, keeping source bytes external.
     Drawing {
         /// Target paragraph.
@@ -232,12 +307,53 @@ pub enum Edit {
         /// Date recorded on the change (`w:date`, ISO 8601), if any.
         date: Option<String>,
     },
+    /// Split a paragraph as a tracked change, the way Word does with Track
+    /// Changes on: the left half ends with a new paragraph mark marked
+    /// inserted; the right half keeps the original mark.
+    TrackedSplit {
+        /// Target paragraph.
+        at: Address,
+        /// Scalar offset.
+        offset: usize,
+        /// Author recorded on the change (`w:author`).
+        author: String,
+        /// Date recorded on the change (`w:date`, ISO 8601), if any.
+        date: Option<String>,
+    },
+    /// Join a paragraph with the next one as a tracked change: its mark is
+    /// marked deleted, and accepting the change joins them. A mark that is
+    /// itself a tracked insertion goes at once, joining the paragraphs, as
+    /// Word takes back its own insertion; one already marked deleted stays.
+    TrackedJoin {
+        /// Left paragraph.
+        at: Address,
+        /// Author recorded on the change (`w:author`).
+        author: String,
+        /// Date recorded on the change (`w:date`, ISO 8601), if any.
+        date: Option<String>,
+    },
     /// Reject the paragraph's tracked changes: deleted and moved-out runs
     /// stay, inserted and moved-in runs go, and an inserted paragraph mark
     /// joins the paragraph with the next one.
     RejectRevisions {
         /// Target paragraph.
         at: Address,
+    },
+    /// Accept only the paragraph's tracked change with `w:id` `id` - its
+    /// runs and, when it is the mark's change, the mark - as
+    /// [`AcceptRevisions`](Self::AcceptRevisions) does for all of them.
+    AcceptRevision {
+        /// Target paragraph.
+        at: Address,
+        /// The change's `w:id`.
+        id: u32,
+    },
+    /// Reject only the paragraph's tracked change with `w:id` `id`.
+    RejectRevision {
+        /// Target paragraph.
+        at: Address,
+        /// The change's `w:id`.
+        id: u32,
     },
 }
 impl Edit {
@@ -261,11 +377,22 @@ impl Edit {
             | Self::Grid { at, .. }
             | Self::InsertRow { at, .. }
             | Self::DeleteRow { at, .. }
+            | Self::MergeCells { at, .. }
+            | Self::InsertNote { at, .. }
+            | Self::SectionProperties { at, .. }
+            | Self::InsertSectionBreak { at }
+            | Self::RemoveSectionBreak { at, .. }
+            | Self::DeleteNote { at }
+            | Self::SplitCell { at, .. }
             | Self::Drawing { at, .. }
             | Self::Identify { at }
             | Self::TrackedText { at, .. }
+            | Self::TrackedSplit { at, .. }
+            | Self::TrackedJoin { at, .. }
             | Self::AcceptRevisions { at }
-            | Self::RejectRevisions { at } => at,
+            | Self::RejectRevisions { at }
+            | Self::AcceptRevision { at, .. }
+            | Self::RejectRevision { at, .. } => at,
         }
     }
 }

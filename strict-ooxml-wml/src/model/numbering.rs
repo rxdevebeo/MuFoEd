@@ -124,7 +124,7 @@ pub struct Num {
 }
 
 /// All numbering definitions declared by `numbering.xml`.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NumberingTable {
     pic_bullets: Vec<PictureBullet>,
     abstracts: Vec<AbstractNum>,
@@ -186,6 +186,69 @@ impl NumberingTable {
         self.by_num.insert(num.num_id, index);
         self.nums.push(num);
         true
+    }
+
+    /// Replaces the abstract definition with the same id; returns `false`
+    /// (and changes nothing) when there is none.
+    pub fn replace_abstract(&mut self, abstract_num: AbstractNum) -> bool {
+        let Some(slot) = self
+            .by_abstract
+            .get(&abstract_num.id)
+            .and_then(|&i| self.abstracts.get_mut(i))
+        else {
+            return false;
+        };
+        *slot = abstract_num;
+        true
+    }
+
+    /// Removes an abstract definition, keeping the others in order.
+    pub fn remove_abstract(&mut self, id: AbstractNumId) -> Option<AbstractNum> {
+        let index = self.by_abstract.remove(&id)?;
+        if index >= self.abstracts.len() {
+            return None;
+        }
+        let removed = self.abstracts.remove(index);
+        for slot in self.by_abstract.values_mut() {
+            if *slot > index {
+                *slot -= 1;
+            }
+        }
+        Some(removed)
+    }
+
+    /// Replaces the numbering instance with the same id; returns `false` (and
+    /// changes nothing) when there is none.
+    pub fn replace_num(&mut self, num: Num) -> bool {
+        let Some(slot) = self
+            .by_num
+            .get(&num.num_id)
+            .and_then(|&i| self.nums.get_mut(i))
+        else {
+            return false;
+        };
+        *slot = num;
+        true
+    }
+
+    /// Removes a numbering instance, keeping the others in order.
+    pub fn remove_num(&mut self, id: NumId) -> Option<Num> {
+        let index = self.by_num.remove(&id)?;
+        if index >= self.nums.len() {
+            return None;
+        }
+        let removed = self.nums.remove(index);
+        for slot in self.by_num.values_mut() {
+            if *slot > index {
+                *slot -= 1;
+            }
+        }
+        Some(removed)
+    }
+
+    /// Forgets every `numStyleLink` redirect, before they are resolved again.
+    pub fn clear_link_targets(&mut self) {
+        self.link_targets.clear();
     }
 
     /// Records a successful `numStyleLink` redirect (resolve phase).

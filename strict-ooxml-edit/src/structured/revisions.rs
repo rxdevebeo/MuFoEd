@@ -9,18 +9,30 @@
 use crate::{EditError, Invariant};
 use strict_ooxml_wml::model::{Block, Inline, Paragraph, RevisionKind};
 
-/// Whether `paragraph` or any run in it carries a tracked change.
-pub(crate) fn has_revisions(paragraph: &Paragraph) -> bool {
-    paragraph.revision.is_some() || inlines_have_revisions(&paragraph.inlines)
+/// Whether `paragraph` or a run in it carries the tracked change `only`, or
+/// any one when `only` is `None`.
+pub(crate) fn has_revision(paragraph: &Paragraph, only: Option<u32>) -> bool {
+    paragraph
+        .revision
+        .as_ref()
+        .is_some_and(|revision| selected(revision.id, only))
+        || inlines_have_revisions(&paragraph.inlines, only)
 }
 
-fn inlines_have_revisions(items: &[Inline]) -> bool {
+fn selected(id: u32, only: Option<u32>) -> bool {
+    only.is_none_or(|only| only == id)
+}
+
+fn inlines_have_revisions(items: &[Inline], only: Option<u32>) -> bool {
     items.iter().any(|item| match item {
-        Inline::Run(run) => run.revision.is_some(),
-        Inline::Hyperlink(v) => inlines_have_revisions(&v.inlines),
-        Inline::SdtInline(v) => inlines_have_revisions(&v.inlines),
-        Inline::Directional(v) => inlines_have_revisions(&v.inlines),
-        Inline::Field(v) => inlines_have_revisions(&v.inlines),
+        Inline::Run(run) => run
+            .revision
+            .as_ref()
+            .is_some_and(|revision| selected(revision.id, only)),
+        Inline::Hyperlink(v) => inlines_have_revisions(&v.inlines, only),
+        Inline::SdtInline(v) => inlines_have_revisions(&v.inlines, only),
+        Inline::Directional(v) => inlines_have_revisions(&v.inlines, only),
+        Inline::Field(v) => inlines_have_revisions(&v.inlines, only),
         _ => false,
     })
 }
@@ -34,11 +46,17 @@ fn kept(kind: RevisionKind, accept: bool) -> bool {
     }
 }
 
-/// Resolves every tracked change of the runs in `items`, recursively through
-/// hyperlinks, inline SDTs, directional wrappers and simple fields.
-fn resolve_inlines(items: &mut Vec<Inline>, accept: bool) {
+/// Resolves the tracked changes of the runs in `items` - every one, or only
+/// `only` - recursively through hyperlinks, inline SDTs, directional wrappers
+/// and simple fields.
+fn resolve_inlines(items: &mut Vec<Inline>, accept: bool, only: Option<u32>) {
     items.retain_mut(|item| match item {
-        Inline::Run(run) => match run.revision.as_ref().map(|revision| revision.kind) {
+        Inline::Run(run) => match run
+            .revision
+            .as_ref()
+            .filter(|revision| selected(revision.id, only))
+            .map(|revision| revision.kind)
+        {
             None => true,
             Some(kind) => {
                 let keep = kept(kind, accept);
@@ -49,19 +67,19 @@ fn resolve_inlines(items: &mut Vec<Inline>, accept: bool) {
             }
         },
         Inline::Hyperlink(v) => {
-            resolve_inlines(&mut v.inlines, accept);
+            resolve_inlines(&mut v.inlines, accept, only);
             true
         }
         Inline::SdtInline(v) => {
-            resolve_inlines(&mut v.inlines, accept);
+            resolve_inlines(&mut v.inlines, accept, only);
             true
         }
         Inline::Directional(v) => {
-            resolve_inlines(&mut v.inlines, accept);
+            resolve_inlines(&mut v.inlines, accept, only);
             true
         }
         Inline::Field(v) => {
-            resolve_inlines(&mut v.inlines, accept);
+            resolve_inlines(&mut v.inlines, accept, only);
             true
         }
         _ => true,
@@ -75,15 +93,26 @@ fn resolve_inlines(items: &mut Vec<Inline>, accept: bool) {
 /// a paragraph; the last paragraph of a story or of a cell, or one followed by
 /// a table, keeps its mark - Word does not delete that mark either - and only
 /// loses the revision.
+///
+/// With `only`, just the tracked change with that `w:id` is resolved; the
+/// others stay as they are.
 pub(super) fn resolve(
     blocks: &mut Vec<Block>,
     index: usize,
     accept: bool,
+    only: Option<u32>,
 ) -> Result<(), EditError> {
     let Some(Block::Paragraph(paragraph)) = blocks.get_mut(index) else {
         return Err(EditError::InvalidParagraph);
     };
-    resolve_inlines(&mut paragraph.inlines, accept);
+    resolve_inlines(&mut paragraph.inlines, accept, only);
+    if !paragraph
+        .revision
+        .as_ref()
+        .is_some_and(|revision| selected(revision.id, only))
+    {
+        return Ok(());
+    }
     let Some(revision) = paragraph.revision.take() else {
         return Ok(());
     };

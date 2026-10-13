@@ -24,6 +24,8 @@ use strict_ooxml_wml::model::{
 
 mod structured;
 pub use structured::{Address, Container, Edit, EditFailure, Editor, Story};
+mod definitions;
+pub use definitions::{restarted, unused_abstract_num_id, unused_num_id, Definition};
 mod operations;
 pub use operations::{
     IdentityChange, MoveReport, OperationError, OperationLimits, Operations, ReplacePolicy,
@@ -224,6 +226,13 @@ pub enum Invariant {
     NoteReference,
     /// A picture names no media part, or a drawing extent is not positive.
     Drawing,
+    /// A style or numbering definition to create already has its id.
+    DefinitionExists,
+    /// A style or numbering definition to replace or delete is not there.
+    DefinitionMissing,
+    /// A style or numbering definition to delete is still used, or is the
+    /// default style of its kind.
+    DefinitionInUse,
 }
 impl std::fmt::Display for Invariant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -243,6 +252,9 @@ impl std::fmt::Display for Invariant {
             Self::Grid => "a non-positive grid column width",
             Self::NoteReference => "a note reference without its note",
             Self::Drawing => "a picture without its media or a drawing of non-positive size",
+            Self::DefinitionExists => "a definition id that is already taken",
+            Self::DefinitionMissing => "a definition that is not there",
+            Self::DefinitionInUse => "a definition still in use",
         })
     }
 }
@@ -670,6 +682,16 @@ fn format_text(
     }
     let mut offset = 0;
     let mut out = Vec::new();
+    // A piece that touches the range - inside it, or the first one after it -
+    // joins an equal neighbour, as `replace_text` does at its seams: bolding
+    // text next to bold text leaves one run, not one per command.
+    let push = |out: &mut Vec<Inline>, piece: Inline, from: usize, to: usize| {
+        if to > range.start && from <= range.end {
+            push_merged(out, piece);
+        } else {
+            out.push(piece);
+        }
+    };
     for (run, text) in runs {
         let len = text.chars().count();
         let end = offset + len;
@@ -677,18 +699,27 @@ fn format_text(
         let stop = range.end.min(end);
         let mut modified = run.clone();
         patch_properties(&mut modified.props, patch);
-        if start >= stop || modified.props == run.props {
+        if len == 0 {
             out.push(Inline::Run(run.clone()));
+        } else if start >= stop || modified.props == run.props {
+            push(&mut out, Inline::Run(run.clone()), offset, end);
         } else {
             if start > offset {
                 out.push(text_run(Some(run), slice(text, 0, start - offset)));
             }
-            out.push(text_run(
-                Some(&modified),
-                slice(text, start - offset, stop - offset),
-            ));
+            push(
+                &mut out,
+                text_run(Some(&modified), slice(text, start - offset, stop - offset)),
+                start,
+                stop,
+            );
             if stop < end {
-                out.push(text_run(Some(run), slice(text, stop - offset, len)));
+                push(
+                    &mut out,
+                    text_run(Some(run), slice(text, stop - offset, len)),
+                    stop,
+                    end,
+                );
             }
         }
         offset = end;

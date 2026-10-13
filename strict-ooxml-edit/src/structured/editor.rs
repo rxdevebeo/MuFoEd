@@ -1,6 +1,6 @@
 //! The editor: revisions, transactions and the undo/redo history.
 use crate::{BlockChange, ChangeSet, EditError, EditLimits};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use strict_ooxml_wml::model::{Block, Document, ParaId, Paragraph};
 
 use super::address::{addresses, mutate_story, read_paragraph, Address, Container, Story};
@@ -27,6 +27,16 @@ pub struct Editor<'a> {
     notes_settled: bool,
     /// The paragraph identities in the document, kept by every patch.
     ids: IdIndex,
+    /// Where each identified paragraph of one story is, as of one revision:
+    /// built by the first [`find`](Editor::find) after a change, so the next
+    /// ones do not walk the story again.
+    found: std::sync::Mutex<Option<FoundIndex>>,
+}
+/// The paragraphs of one story by identity (uppercased), at one revision.
+struct FoundIndex {
+    revision: u64,
+    story: Story,
+    addresses: HashMap<String, Address>,
 }
 /// A replaced range of one story's top-level blocks.
 #[derive(Clone)]
@@ -68,6 +78,7 @@ impl<'a> Editor<'a> {
             input_pipeline: strict_ooxml_core::pipeline::PipelineSummary::new(),
             notes_settled,
             ids,
+            found: std::sync::Mutex::new(None),
         })
     }
     /// Reads the current document.
@@ -113,16 +124,44 @@ impl<'a> Editor<'a> {
         addresses(self.document, story)
     }
     /// Finds an identified paragraph in a story, after structural changes.
+    ///
+    /// An identity no paragraph has is refused without a walk; otherwise the
+    /// story is walked once per revision and later lookups are a map access.
     pub fn find(&self, story: &Story, id: &ParaId) -> Result<Address, EditError> {
-        addresses(self.document, story)?
-            .into_iter()
-            .find(|a| {
-                read_paragraph(self.document, a).is_ok_and(|p| {
-                    p.para_id
-                        .as_ref()
-                        .is_some_and(|v| v.as_str().eq_ignore_ascii_case(id.as_str()))
-                })
-            })
+        let key = id.as_str().to_ascii_uppercase();
+        if !self.ids.contains(&key) {
+            return Err(EditError::InvalidParagraph);
+        }
+        let mut found = self
+            .found
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let current = found
+            .as_ref()
+            .is_some_and(|index| index.revision == self.revision && index.story == *story);
+        if !current {
+            let mut by_id = HashMap::new();
+            for address in addresses(self.document, story)? {
+                if let Some(para_id) = read_paragraph(self.document, &address)
+                    .ok()
+                    .and_then(|p| p.para_id.as_ref())
+                {
+                    // The first paragraph in reading order answers, as the
+                    // walk did before.
+                    by_id
+                        .entry(para_id.as_str().to_ascii_uppercase())
+                        .or_insert(address);
+                }
+            }
+            *found = Some(FoundIndex {
+                revision: self.revision,
+                story: story.clone(),
+                addresses: by_id,
+            });
+        }
+        found
+            .as_ref()
+            .and_then(|index| index.addresses.get(&key).cloned())
             .ok_or(EditError::InvalidParagraph)
     }
     /// Executes an atomic command batch.
@@ -140,7 +179,20 @@ impl<'a> Editor<'a> {
         commands: &[Edit],
     ) -> Result<ChangeSet, EditFailure> {
         self.check(revision).map_err(EditFailure::batch)?;
-        if !self.notes_settled {
+        // A note or section command changes a note table or the section list
+        // besides a story: the whole-document path keeps both in one history
+        // entry.
+        let document_level = commands.iter().any(|command| {
+            matches!(
+                command,
+                Edit::InsertNote { .. }
+                    | Edit::DeleteNote { .. }
+                    | Edit::SectionProperties { .. }
+                    | Edit::InsertSectionBreak { .. }
+                    | Edit::RemoveSectionBreak { .. }
+            )
+        });
+        if !self.notes_settled || document_level {
             return self.transact_whole(commands);
         }
         // Each command replaces a range of its story's top-level blocks; the
@@ -201,6 +253,28 @@ impl<'a> Editor<'a> {
         self.record(Change::Blocks(patches), bytes, next);
         Ok(self.changes(blocks))
     }
+    /// Changes style, numbering and default definitions as one transaction
+    /// (K02): applied to a copy of the document in order, then the derived
+    /// state (`basedOn` chains, `numStyleLink` redirects) is recomputed and the
+    /// model checked. A refusal anywhere leaves the document as it was; undo
+    /// restores definitions and the references they moved together. The
+    /// change set names every block of every story, since a definition can
+    /// change how any of them looks.
+    pub fn define(
+        &mut self,
+        revision: u64,
+        definitions: &[crate::Definition],
+    ) -> Result<ChangeSet, EditError> {
+        self.check(revision)?;
+        let mut candidate = self.document.clone();
+        for definition in definitions {
+            crate::definitions::apply(&mut candidate, definition)?;
+        }
+        strict_ooxml_wml::resolve::refresh_definitions(&mut candidate);
+        validate(&candidate, &self.limits.resource)?;
+        self.commit_whole(candidate)
+            .map_err(|failure| failure.error)
+    }
     /// The transaction on a copy of the whole document, with note references
     /// given notes of their own.
     fn transact_whole(&mut self, commands: &[Edit]) -> Result<ChangeSet, EditFailure> {
@@ -217,6 +291,13 @@ impl<'a> Editor<'a> {
         }
         split_shared_notes(&mut candidate).map_err(EditFailure::batch)?;
         validate(&candidate, &self.limits.resource).map_err(EditFailure::batch)?;
+        let change = self.commit_whole(candidate)?;
+        self.notes_settled = true;
+        Ok(change)
+    }
+    /// Makes a checked copy of the whole document the current one and keeps
+    /// both in history; a copy with the same content changes nothing.
+    fn commit_whole(&mut self, candidate: Document) -> Result<ChangeSet, EditFailure> {
         if same_content(self.document, &candidate) {
             return Ok(self.changes(Vec::new()));
         }
@@ -231,7 +312,6 @@ impl<'a> Editor<'a> {
         let before = std::mem::replace(&mut *self.document, candidate);
         let blocks = whole_story_changes(&before, self.document);
         self.ids = IdIndex::of(self.document);
-        self.notes_settled = true;
         self.record(
             Change::Whole {
                 before: Box::new(before),
@@ -380,9 +460,12 @@ fn region(command: &Edit) -> (usize, usize) {
     }
     match command {
         Edit::Insert { .. } => (at.block, at.block),
-        Edit::Join { .. } | Edit::AcceptRevisions { .. } | Edit::RejectRevisions { .. } => {
-            (at.block, at.block.saturating_add(2))
-        }
+        Edit::Join { .. }
+        | Edit::TrackedJoin { .. }
+        | Edit::AcceptRevisions { .. }
+        | Edit::RejectRevisions { .. }
+        | Edit::AcceptRevision { .. }
+        | Edit::RejectRevision { .. } => (at.block, at.block.saturating_add(2)),
         _ => (at.block, at.block.saturating_add(1)),
     }
 }
@@ -591,7 +674,9 @@ fn snapshot_size(document: &Document) -> usize {
     count.0
 }
 fn same_content(a: &Document, b: &Document) -> bool {
-    a.body == b.body
+    a.styles == b.styles
+        && a.numbering == b.numbering
+        && a.body == b.body
         && a.headers_footers == b.headers_footers
         && a.sections == b.sections
         && a.footnotes.iter().eq(b.footnotes.iter())

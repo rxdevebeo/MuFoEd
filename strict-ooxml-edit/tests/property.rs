@@ -141,6 +141,37 @@ fn resolve(editor: &Editor<'_>, step: &Step) -> Edit {
     }
 }
 
+/// Whether `find` answers every identified body paragraph with its first
+/// address in reading order - twice, the second time from its index.
+fn finds_every_identity(editor: &Editor<'_>) -> bool {
+    let Ok(addresses) = editor.paragraphs(&Story::Body) else {
+        return false;
+    };
+    for _ in 0..2 {
+        for address in &addresses {
+            let Some(id) = editor
+                .paragraph(address)
+                .ok()
+                .and_then(|p| p.para_id.clone())
+            else {
+                continue;
+            };
+            let Ok(found) = editor.find(&Story::Body, &id) else {
+                return false;
+            };
+            let same = editor
+                .paragraph(&found)
+                .ok()
+                .and_then(|p| p.para_id.as_ref())
+                .is_some_and(|other| other.as_str().eq_ignore_ascii_case(id.as_str()));
+            if !same {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// Whether every body block outside `change.blocks` is the block that stood
 /// in its place before, shifted by the changes in front of it.
 fn untouched_blocks_kept(before: &[Block], after: &[Block], change: &ChangeSet) -> bool {
@@ -187,6 +218,7 @@ proptest! {
             match editor.transact_detailed(revision, &edits) {
                 Ok(change) => {
                     prop_assert!(editor.validate().is_ok(), "accepted {edits:?} left an invalid model");
+                    prop_assert!(finds_every_identity(&editor), "find lost a paragraph after {edits:?}");
                     prop_assert!(
                         untouched_blocks_kept(&body, &editor.document().body.blocks, &change),
                         "{:?} misses a changed block", change.blocks
@@ -218,6 +250,7 @@ proptest! {
             }
         }
         prop_assert_eq!(snapshot(editor.document()), original.clone(), "undo all");
+        prop_assert!(finds_every_identity(&editor), "find lost a paragraph after undo");
         for _ in 0..accepted {
             let revision = editor.revision();
             prop_assert!(editor.redo(revision).is_ok());
