@@ -41,7 +41,7 @@ fn width(properties: &SectionProperties) -> Option<i32> {
         .page_size
         .as_ref()
         .and_then(|size| size.width)
-        .map(|w| w.value())
+        .map(Twips::value)
 }
 
 /// The section properties each body paragraph carries as a boundary.

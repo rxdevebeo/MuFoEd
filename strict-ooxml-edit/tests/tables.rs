@@ -7,7 +7,7 @@ use strict_ooxml_core::opc::{OpenOptions, Package};
 use strict_ooxml_edit::{Address, Edit, EditError, EditLimits, Editor};
 use strict_ooxml_testkit::DocxBuilder;
 use strict_ooxml_wml::model::{
-    Block, Document, Inline, RunContent, Table, TableCell, VerticalMerge, WidthKind,
+    Block, Document, Inline, RunContent, Table, TableCell, Twips, VerticalMerge, WidthKind,
 };
 use strict_ooxml_wml::{parse_document, ParseOptions};
 
@@ -29,11 +29,15 @@ fn cell(text: &str) -> String {
 
 /// A table with grid columns of `widths` twips and `rows` of cell XML.
 fn table(widths: &[i32], rows: &[String]) -> String {
-    let grid: String = widths
-        .iter()
-        .map(|w| format!("<w:gridCol w:w=\"{w}\"/>"))
-        .collect();
-    let rows: String = rows.iter().map(|r| format!("<w:tr>{r}</w:tr>")).collect();
+    use std::fmt::Write as _;
+    let mut grid = String::new();
+    for w in widths {
+        let _ = write!(grid, "<w:gridCol w:w=\"{w}\"/>");
+    }
+    let rows: String = rows.iter().fold(String::new(), |mut out, r| {
+        let _ = write!(out, "<w:tr>{r}</w:tr>");
+        out
+    });
     format!("<w:tbl><w:tblGrid>{grid}</w:tblGrid>{rows}</w:tbl>")
 }
 
@@ -89,7 +93,7 @@ fn widths(table: &Table) -> Vec<i32> {
     table
         .grid
         .iter()
-        .map(|g| g.width.map_or(0, |w| w.value()))
+        .map(|g| g.width.map_or(0, Twips::value))
         .collect()
 }
 
