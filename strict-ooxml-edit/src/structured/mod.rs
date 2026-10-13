@@ -6,6 +6,7 @@ mod editor;
 mod ids;
 mod notes;
 mod revisions;
+mod sections;
 mod tables;
 mod validate;
 

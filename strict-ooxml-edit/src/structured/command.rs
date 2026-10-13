@@ -3,7 +3,7 @@ use crate::{EditError, FormatPatch};
 use std::ops::Range;
 use strict_ooxml_wml::model::{
     Block, CellProperties, Drawing, FrameProperties, GridCol, Inline, ParagraphProperties,
-    RunProperties, TableProperties, TableRow,
+    RunProperties, SectionProperties, TableProperties, TableRow,
 };
 
 use super::address::Address;
@@ -215,6 +215,31 @@ pub enum Edit {
         /// Any address in the note's story.
         at: Address,
     },
+    /// Set the properties of the section the top-level body paragraph at `at`
+    /// belongs to (or ends): page size and orientation, margins, columns,
+    /// header/footer references, page numbering. The section list and the
+    /// section's boundary paragraph change together.
+    SectionProperties {
+        /// A top-level body paragraph of the section.
+        at: Address,
+        /// Complete section properties.
+        properties: Box<SectionProperties>,
+    },
+    /// End a new section with the top-level body paragraph at `at`; the new
+    /// section takes the properties of the one it was split from.
+    InsertSectionBreak {
+        /// The paragraph that ends the new section.
+        at: Address,
+    },
+    /// Remove the section break the top-level body paragraph at `at` carries.
+    /// The merged section keeps the properties of the section before the
+    /// break, or with `keep_after` those of the section after it.
+    RemoveSectionBreak {
+        /// The paragraph carrying the break.
+        at: Address,
+        /// Keep the properties of the section after the break.
+        keep_after: bool,
+    },
     /// Merge the cells covering `rows` × `columns` of the table's grid into
     /// one. The top-left cell keeps its properties and receives every cell's
     /// content in reading order; a cell that sticks out of the rectangle, or a
@@ -313,6 +338,9 @@ impl Edit {
             | Self::DeleteRow { at, .. }
             | Self::MergeCells { at, .. }
             | Self::InsertNote { at, .. }
+            | Self::SectionProperties { at, .. }
+            | Self::InsertSectionBreak { at }
+            | Self::RemoveSectionBreak { at, .. }
             | Self::DeleteNote { at }
             | Self::SplitCell { at, .. }
             | Self::Drawing { at, .. }

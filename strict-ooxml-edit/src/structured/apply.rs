@@ -82,6 +82,13 @@ pub(super) fn apply(
             ..
         } => return super::notes::insert_note(document, at, *index, *endnote, blocks, ids),
         Edit::DeleteNote { .. } => return super::notes::delete_note(document, at),
+        Edit::SectionProperties { properties, .. } => {
+            return super::sections::set_properties(document, at, properties);
+        }
+        Edit::InsertSectionBreak { .. } => return super::sections::insert_break(document, at),
+        Edit::RemoveSectionBreak { keep_after, .. } => {
+            return super::sections::remove_break(document, at, *keep_after);
+        }
         _ => {}
     }
     mutate_story(document, &at.story, |root| {
