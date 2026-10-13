@@ -87,6 +87,21 @@ impl NoteTable {
         self.notes.push(note);
     }
 
+    /// Removes a note, keeping the others in order.
+    pub fn remove(&mut self, id: i32) -> Option<Note> {
+        let index = self.by_id.remove(&id)?;
+        if index >= self.notes.len() {
+            return None;
+        }
+        let removed = self.notes.remove(index);
+        for slot in self.by_id.values_mut() {
+            if *slot > index {
+                *slot -= 1;
+            }
+        }
+        Some(removed)
+    }
+
     /// Returns a note by id.
     #[must_use]
     pub fn get(&self, id: i32) -> Option<&Note> {

@@ -365,13 +365,10 @@ fn inlines(items: &mut [Inline], f: &mut dyn FnMut(Site<'_>)) {
 
 fn drawing_boxes(drawing: &mut strict_ooxml_wml::model::Drawing, f: &mut dyn FnMut(Site<'_>)) {
     use strict_ooxml_wml::model::DrawingKind;
-    let graphic = match &mut drawing.kind {
-        DrawingKind::Inline(v) => v.graphic.as_mut(),
-        DrawingKind::Anchor(v) => v.graphic.as_mut(),
-        DrawingKind::Opaque(_) => None,
-    };
-    if let Some(graphic) = graphic {
-        graphic_boxes(graphic, f);
+    match &mut drawing.kind {
+        DrawingKind::Inline(v) => graphic_boxes(&mut v.graphic, f),
+        DrawingKind::Anchor(v) => graphic_boxes(&mut v.graphic, f),
+        DrawingKind::Opaque(_) => {}
     }
 }
 

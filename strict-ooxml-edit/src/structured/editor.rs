@@ -179,7 +179,12 @@ impl<'a> Editor<'a> {
         commands: &[Edit],
     ) -> Result<ChangeSet, EditFailure> {
         self.check(revision).map_err(EditFailure::batch)?;
-        if !self.notes_settled {
+        // A note command changes a note table besides a story: the
+        // whole-document path keeps both in one history entry.
+        let notes = commands
+            .iter()
+            .any(|command| matches!(command, Edit::InsertNote { .. } | Edit::DeleteNote { .. }));
+        if !self.notes_settled || notes {
             return self.transact_whole(commands);
         }
         // Each command replaces a range of its story's top-level blocks; the

@@ -14,7 +14,7 @@ use super::ids::{assign_id, fresh_ids, IdIndex};
 use super::revisions::resolve;
 use super::validate::contains_boundary;
 
-fn empty_paragraph() -> Paragraph {
+pub(super) fn empty_paragraph() -> Paragraph {
     Paragraph {
         props: ParagraphProperties::default(),
         inlines: vec![],
@@ -73,6 +73,17 @@ pub(super) fn apply(
     ids: &mut IdIndex,
 ) -> Result<(), EditError> {
     let at = edit.address();
+    // Note commands change the note tables as well as a story.
+    match edit {
+        Edit::InsertNote {
+            index,
+            endnote,
+            blocks,
+            ..
+        } => return super::notes::insert_note(document, at, *index, *endnote, blocks, ids),
+        Edit::DeleteNote { .. } => return super::notes::delete_note(document, at),
+        _ => {}
+    }
     mutate_story(document, &at.story, |root| {
         let blocks = descend_mut(root, &at.containers)?;
         match edit {

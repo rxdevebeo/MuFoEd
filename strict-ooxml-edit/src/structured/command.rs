@@ -193,6 +193,28 @@ pub enum Edit {
         /// Row index.
         index: usize,
     },
+    /// Insert a footnote (or, with `endnote`, an endnote) holding `blocks`,
+    /// under the next free positive id, and a run with its reference mark at
+    /// top-level inline `index` of the paragraph at `at`, which must not be in
+    /// a note. The note's first paragraph starts with its number marker.
+    InsertNote {
+        /// Paragraph that gets the reference.
+        at: Address,
+        /// Top-level inline insertion index.
+        index: usize,
+        /// An endnote rather than a footnote.
+        endnote: bool,
+        /// The note's content; a final paragraph is added if it has none.
+        blocks: Vec<Block>,
+    },
+    /// Delete the normal footnote or endnote whose story `at` names. One that
+    /// a reference still names is refused: delete the reference (with
+    /// `DeleteInline`) in the same transaction. Deleting content never drops
+    /// a note on its own.
+    DeleteNote {
+        /// Any address in the note's story.
+        at: Address,
+    },
     /// Merge the cells covering `rows` × `columns` of the table's grid into
     /// one. The top-left cell keeps its properties and receives every cell's
     /// content in reading order; a cell that sticks out of the rectangle, or a
@@ -290,6 +312,8 @@ impl Edit {
             | Self::InsertRow { at, .. }
             | Self::DeleteRow { at, .. }
             | Self::MergeCells { at, .. }
+            | Self::InsertNote { at, .. }
+            | Self::DeleteNote { at }
             | Self::SplitCell { at, .. }
             | Self::Drawing { at, .. }
             | Self::Identify { at }
