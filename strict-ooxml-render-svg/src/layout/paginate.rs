@@ -139,6 +139,8 @@ fn layout_passes(ctx: &LayoutContext<'_>, preload: bool) -> Result<Option<Layout
     let mut previous: Option<LayoutFingerprint> = None;
     ctx.page_floats_preload.borrow_mut().clear();
     ctx.page_floats_banned.borrow_mut().clear();
+    ctx.page_floats_forward.borrow_mut().clear();
+    ctx.page_floats_drawings.borrow_mut().clear();
     for _ in 0..MAX_LAYOUT_PASSES {
         let (layout, fingerprint, has_fields) = layout_once(ctx, &assumed)?;
         let fields_settled = previous.as_ref() == Some(&fingerprint)
@@ -150,14 +152,27 @@ fn layout_passes(ctx: &LayoutContext<'_>, preload: bool) -> Result<Option<Layout
             let next = {
                 let preload = ctx.page_floats_preload.borrow();
                 let mut banned = ctx.page_floats_banned.borrow_mut();
+                let mut forward = ctx.page_floats_forward.borrow_mut();
+                let drawings = ctx.page_floats_drawings.borrow();
                 // A float put on a page ahead of its anchor that this pass
                 // placed on another page moved because of its own wrap: the
                 // text it pushed away carried its anchor along. Passes would
-                // swing it back and forth, so it is laid out from its anchor
-                // alone from now on.
+                // swing it back and forth. A drawing that moved on stays on
+                // its new page, as WPS draws it there (WQ-019); a table is
+                // laid out from its anchor alone from now on.
                 for (float, _, _) in preload.iter() {
-                    if float_pages(&preload, *float) != float_pages(&recorded, *float) {
-                        banned.insert(*float);
+                    let before = float_pages(&preload, *float);
+                    let now = float_pages(&recorded, *float);
+                    if before == now {
+                        continue;
+                    }
+                    match (before.as_slice(), now.as_slice()) {
+                        ([from], [to]) if to > from && drawings.contains(float) => {
+                            forward.insert(*float, *to);
+                        }
+                        _ => {
+                            banned.insert(*float);
+                        }
                     }
                 }
                 recorded
@@ -1974,30 +1989,43 @@ impl<'a> Paginator<'a> {
         for anchor in anchors {
             let mut geometry = self.geometry;
             geometry.active_column = host.column;
+            // A drawing placed from the page or its margins wraps the lines
+            // above its anchor too (WQ-019).
+            let float = anchor_fixed_on_page(&anchor).then(|| {
+                let float = next_page_float(ctx);
+                ctx.page_floats_drawings.borrow_mut().insert(float);
+                float
+            });
+            // One whose wrap carried its anchor on in an earlier pass is drawn
+            // on that later page; its wrap there was preloaded.
+            let page = float
+                .and_then(|float| ctx.page_floats_forward.borrow().get(&float).copied())
+                .filter(|forward| *forward > host.page)
+                .unwrap_or(host.page);
             let exclusion = if host.page == self.pages.len() {
-                page_exclusion(ctx, &anchor, &geometry, host.x, host.y).map(|exclusion| {
-                    // A drawing placed from the page or its margins wraps the
-                    // lines above its anchor too (WQ-019).
-                    if anchor_fixed_on_page(&anchor) {
-                        let float = next_page_float(ctx);
-                        ctx.page_floats_record.borrow_mut().push((
-                            float,
-                            host.page,
-                            exclusion.clone(),
-                        ));
+                page_exclusion(ctx, &anchor, &geometry, host.x, host.y).and_then(|exclusion| {
+                    if let Some(float) = float {
+                        ctx.page_floats_record
+                            .borrow_mut()
+                            .push((float, page, exclusion.clone()));
                     }
-                    self.wrap_exclusions.push(exclusion);
-                    self.wrap_exclusions.len() - 1
+                    (page == host.page).then(|| {
+                        self.wrap_exclusions.push(exclusion);
+                        self.wrap_exclusions.len() - 1
+                    })
                 })
             } else {
                 None
             };
-            if let Some(run) = host.run.filter(|_| host.page == self.pages.len()) {
+            if let Some(run) = host
+                .run
+                .filter(|_| host.page == self.pages.len() && page == host.page)
+            {
                 self.region_anchors
                     .push((self.anchors.len(), run, exclusion));
             }
             self.anchors.push(PendingAnchor {
-                page: host.page,
+                page,
                 host_x: host.x,
                 host_y: host.y,
                 column: host.column,
