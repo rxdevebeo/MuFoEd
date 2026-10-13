@@ -343,3 +343,92 @@ fn wq004_script_text_takes_script_faces_and_keeps_the_line_box() {
             if strict_ooxml_render_svg::style::chosen_family(&text.run, &text.text) == "Jomolhari"
     )));
 }
+
+/// Baselines of the text items whose text is not `skip`.
+fn flow_baselines(page: &PlacedPage, skip: &str) -> Vec<f64> {
+    texts(page)
+        .into_iter()
+        .filter(|(_, _, text)| !text.trim().is_empty() && !text.contains(skip))
+        .map(|(_, y, _)| y)
+        .collect()
+}
+
+const LONG: &str = "Flow text that runs over several lines of the narrow column, word after \
+word, until it reaches well below the place where the floating object sits on the page.";
+
+/// WQ-016: a table placed from the page wraps the text that comes before it
+/// in the document, not only the text after it.
+#[test]
+fn wq016_text_before_a_page_table_flows_around_it() {
+    let body = format!(
+        "<w:p><w:r><w:t>{LONG}</w:t></w:r></w:p>\
+<w:tbl><w:tblPr><w:tblpPr w:vertAnchor=\"page\" w:horzAnchor=\"margin\" w:tblpY=\"1440\"/>\
+<w:tblW w:w=\"4320\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4320\"/></w:tblGrid>\
+<w:tr><w:tc><w:tcPr><w:tcW w:w=\"4320\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>\
+<w:p><w:r><w:t>After</w:t></w:r></w:p>{NARROW}"
+    );
+    let page = pages(&body, &RenderOptions::default()).remove(0);
+    let cell = texts(&page)
+        .into_iter()
+        .find(|(_, _, text)| text == "Cell")
+        .map(|(_, y, _)| y)
+        .expect("cell");
+    // 1440 twips = 96 px from the top of the page; the row ends a little
+    // below the cell's baseline.
+    let (top, bottom) = (96.0, cell + 4.0);
+    let inside: Vec<f64> = flow_baselines(&page, "Cell")
+        .into_iter()
+        .filter(|y| *y > top && *y < bottom + 10.0)
+        .collect();
+    assert!(
+        inside.is_empty(),
+        "lines inside the table {top}..{bottom}: {inside:?}"
+    );
+}
+
+/// WQ-019: a drawing placed from the margin wraps the lines above its anchor.
+#[test]
+fn wq019_text_before_a_margin_drawing_flows_around_it() {
+    let anchor = "<w:p><w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" \
+relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">\
+<wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"margin\"><wp:posOffset>0</wp:posOffset></wp:positionH>\
+<wp:positionV relativeFrom=\"margin\"><wp:posOffset>457200</wp:posOffset></wp:positionV>\
+<wp:extent cx=\"2743200\" cy=\"457200\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><wp:wrapTopAndBottom/>\
+<wp:docPr id=\"2\" name=\"pic\"/><a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/picture\">\
+<pic:pic><pic:nvPicPr><pic:cNvPr id=\"0\" name=\"pic\"/></pic:nvPicPr><pic:blipFill/>\
+<pic:spPr><a:ext cx=\"2743200\" cy=\"457200\"/></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>";
+    let body = format!("<w:p><w:r><w:t>{LONG}</w:t></w:r></w:p>{anchor}{NARROW}");
+    let page = pages(&body, &RenderOptions::default()).remove(0);
+    // Margin 48 px + 0.5 in offset: the drawing covers 96..144 px.
+    let inside: Vec<f64> = flow_baselines(&page, "\u{0}")
+        .into_iter()
+        .filter(|y| *y > 96.0 && *y < 144.0)
+        .collect();
+    assert!(inside.is_empty(), "lines inside the drawing: {inside:?}");
+}
+
+/// WQ-016 (065): a page table whose own wrap pushes its anchor to the next
+/// page must not leave its page laid out around a table that is not there.
+/// The float is then placed from its anchor alone, as before the preload.
+#[test]
+fn wq016_a_float_that_its_own_wrap_moves_is_not_preloaded_again() {
+    let row = "<w:tr><w:tc><w:tcPr><w:tcW w:w=\"4320\" w:type=\"dxa\"/></w:tcPr>\
+<w:p><w:r><w:t>Row</w:t></w:r></w:p></w:tc></w:tr>";
+    let body = format!(
+        "<w:p><w:r><w:t>Title</w:t></w:r></w:p>\
+<w:p><w:r><w:t>{LONG}</w:t></w:r></w:p><w:p><w:r><w:t>{LONG}</w:t></w:r></w:p>\
+<w:tbl><w:tblPr><w:tblpPr w:vertAnchor=\"page\" w:horzAnchor=\"margin\" w:tblpY=\"720\"/>\
+<w:tblW w:w=\"4320\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4320\"/></w:tblGrid>{}</w:tbl>\
+<w:p><w:r><w:t>After</w:t></w:r></w:p>{NARROW}",
+        row.repeat(18)
+    );
+    let first = pages(&body, &RenderOptions::default()).remove(0);
+    let title = texts(&first)
+        .into_iter()
+        .find(|(_, _, text)| text == "Title")
+        .map(|(_, y, _)| y);
+    assert!(
+        title.is_some_and(|y| y < 80.0),
+        "title {title:?}: the page was laid out around a table it does not hold"
+    );
+}

@@ -104,32 +104,141 @@ pub(crate) fn layout_document(ctx: &LayoutContext<'_>) -> Result<Layout> {
             .into_strict()
         },
     )?;
+    if let Some(layout) = layout_passes(ctx, true)? {
+        return Ok(layout);
+    }
+    let did_not_converge = || {
+        RenderError::DidNotConverge {
+            passes: u64::try_from(MAX_LAYOUT_PASSES).unwrap_or(8),
+        }
+        .into_strict()
+    };
+    if ctx.page_floats_preload.borrow().is_empty() && ctx.page_floats_banned.borrow().is_empty() {
+        // No float was ever put ahead: the page numbers alone did not settle.
+        return Err(did_not_converge());
+    }
+    // Floats that keep moving (their wrap pushes their own anchor to another
+    // page) are not worth an error: the layout runs again without preloading
+    // them, as it did before WQ-016.
+    ctx.warn(
+        "layout.floats.unsettled: page-positioned floats kept moving between layout passes; \
+         text before them is laid out without their wrap"
+            .to_owned(),
+    );
+    layout_passes(ctx, false)?.ok_or_else(did_not_converge)
+}
+
+/// Lays the document out until page numbers settle and, with `preload`, until
+/// the page-positioned floats put on their pages ahead of time stay put.
+/// `None` when that did not happen within [`MAX_LAYOUT_PASSES`].
+fn layout_passes(ctx: &LayoutContext<'_>, preload: bool) -> Result<Option<Layout>> {
     let mut assumed = AssumedTotals {
         pages: 1,
         section_pages: Vec::new(),
     };
     let mut previous: Option<LayoutFingerprint> = None;
+    ctx.page_floats_preload.borrow_mut().clear();
+    ctx.page_floats_banned.borrow_mut().clear();
     for _ in 0..MAX_LAYOUT_PASSES {
         let (layout, fingerprint, has_fields) = layout_once(ctx, &assumed)?;
-        if previous.as_ref() == Some(&fingerprint) {
+        let fields_settled = previous.as_ref() == Some(&fingerprint)
+            || (!has_fields && !ctx.note_numbers.has_page_restart());
+        // Text laid out before a page-positioned float only learns of it in
+        // the next pass: another pass runs until the floats stay put.
+        let recorded = ctx.page_floats_record.take();
+        let floats_settled = !preload || {
+            let next = {
+                let preload = ctx.page_floats_preload.borrow();
+                let mut banned = ctx.page_floats_banned.borrow_mut();
+                // A float put on a page ahead of its anchor that this pass
+                // placed on another page moved because of its own wrap: the
+                // text it pushed away carried its anchor along. Passes would
+                // swing it back and forth, so it is laid out from its anchor
+                // alone from now on.
+                for (float, _, _) in preload.iter() {
+                    if float_pages(&preload, *float) != float_pages(&recorded, *float) {
+                        banned.insert(*float);
+                    }
+                }
+                recorded
+                    .into_iter()
+                    .filter(|(float, _, _)| !banned.contains(float))
+                    .collect::<Vec<_>>()
+            };
+            let settled = same_page_floats(&next, &ctx.page_floats_preload.borrow());
+            ctx.page_floats_preload.replace(next);
+            settled
+        };
+        if fields_settled && floats_settled {
             let mut layout = layout;
             sanitize_finite_coords(&mut layout);
-            return Ok(layout);
-        }
-        if !has_fields && !ctx.note_numbers.has_page_restart() && previous.is_none() {
-            let mut layout = layout;
-            sanitize_finite_coords(&mut layout);
-            return Ok(layout);
+            return Ok(Some(layout));
         }
         assumed.pages = fingerprint.pages.max(1);
         assumed.section_pages.clone_from(&fingerprint.section_pages);
         ctx.note_numbers.update_page_numbers();
         previous = Some(fingerprint);
     }
-    Err(RenderError::DidNotConverge {
-        passes: u64::try_from(MAX_LAYOUT_PASSES).unwrap_or(8),
-    }
-    .into_strict())
+    Ok(None)
+}
+
+/// Whether two passes put the same page-positioned float areas on the same
+/// pages, to a thousandth of a pixel.
+fn same_page_floats(a: &[crate::layout::PageFloat], b: &[crate::layout::PageFloat]) -> bool {
+    let key = |(float, page, exclusion): &crate::layout::PageFloat| {
+        (
+            *float,
+            *page,
+            quantize_px(exclusion.left),
+            quantize_px(exclusion.right),
+            quantize_px(exclusion.top),
+            quantize_px(exclusion.bottom),
+        )
+    };
+    let mut a: Vec<_> = a.iter().map(key).collect();
+    let mut b: Vec<_> = b.iter().map(key).collect();
+    a.sort_unstable();
+    b.sort_unstable();
+    a == b
+}
+
+/// The pages one float's wrap areas are on.
+fn float_pages(floats: &[crate::layout::PageFloat], float: u32) -> Vec<usize> {
+    let mut pages: Vec<usize> = floats
+        .iter()
+        .filter(|(at, _, _)| *at == float)
+        .map(|(_, page, _)| *page)
+        .collect();
+    pages.sort_unstable();
+    pages.dedup();
+    pages
+}
+
+/// Numbers the next page float of this pass. Layout is sequential, so the
+/// same float gets the same number in every pass.
+fn next_page_float(ctx: &LayoutContext<'_>) -> u32 {
+    let float = ctx.page_floats_next.get();
+    ctx.page_floats_next.set(float.saturating_add(1));
+    float
+}
+
+/// Whether an anchored drawing is positioned from the page or its margins,
+/// so that its place on the page does not depend on the text around it.
+fn anchor_fixed_on_page(anchor: &strict_ooxml_wml::model::drawing::AnchorDrawing) -> bool {
+    anchor.simple_pos
+        || anchor.position_v.as_ref().is_some_and(|position| {
+            matches!(
+                position.relative_from.as_deref(),
+                Some(
+                    "page"
+                        | "margin"
+                        | "topMargin"
+                        | "bottomMargin"
+                        | "insideMargin"
+                        | "outsideMargin"
+                )
+            )
+        })
 }
 
 /// Drops paint items with non-finite coordinates and records a warning (AUD-71).
@@ -208,6 +317,8 @@ fn layout_once(
     ctx.render_items.set(0);
     ctx.note_numbers.begin_layout_pass();
     ctx.reset_frame_cursors();
+    ctx.page_floats_record.borrow_mut().clear();
+    ctx.page_floats_next.set(0);
     let sections = &ctx.document.sections;
     let runs = section_runs(&ctx.document.body.blocks, sections.len());
     let first_props = sections.first().map(|section| &section.properties);
@@ -868,6 +979,10 @@ fn place_floating_table(
         ctx.options.scale,
     );
     let allow_overlap = table.props.allow_overlap.unwrap_or(true);
+    // A table placed from the page or its margins wraps every line of its
+    // page, including the ones before it in the document (WQ-016).
+    let fixed_on_page = position.vert_anchor.as_deref() != Some("text");
+    let float = next_page_float(ctx);
     for _ in 0..=paginator.floating_tables.len() {
         let next = paginator
             .floating_tables
@@ -902,14 +1017,22 @@ fn place_floating_table(
         paginator
             .floating_tables
             .push(([x, top, width, bottom - top], allow_overlap));
-        paginator.wrap_exclusions.push(PageExclusion {
+        let exclusion = PageExclusion {
             left: x - distance(position.left_from_text),
             right: x + width + distance(position.right_from_text),
             top: top - distance(position.top_from_text),
             bottom: bottom + distance(position.bottom_from_text),
             side: WrapSide::Both,
             contour: None,
-        });
+        };
+        if fixed_on_page {
+            paginator.ctx.page_floats_record.borrow_mut().push((
+                float,
+                paginator.pages.len(),
+                exclusion.clone(),
+            ));
+        }
+        paginator.wrap_exclusions.push(exclusion);
     };
     for flow in flows {
         match flow {
@@ -1463,7 +1586,23 @@ impl<'a> Paginator<'a> {
             column_regions: Vec::new(),
         };
         paginator.apply_page_regions();
+        paginator.preload_page_floats();
         paginator
+    }
+
+    /// Puts the previous pass's page-positioned floats of the page now
+    /// starting into its wrap areas, so text before them in the document
+    /// flows around them (WQ-016/WQ-019).
+    fn preload_page_floats(&mut self) {
+        let page = self.pages.len();
+        self.wrap_exclusions.extend(
+            self.ctx
+                .page_floats_preload
+                .borrow()
+                .iter()
+                .filter(|(_, at, _)| *at == page)
+                .map(|(_, _, exclusion)| exclusion.clone()),
+        );
     }
 
     /// Measures the active first/even/default header/footer and grows body insets.
@@ -1837,6 +1976,16 @@ impl<'a> Paginator<'a> {
             geometry.active_column = host.column;
             let exclusion = if host.page == self.pages.len() {
                 page_exclusion(ctx, &anchor, &geometry, host.x, host.y).map(|exclusion| {
+                    // A drawing placed from the page or its margins wraps the
+                    // lines above its anchor too (WQ-019).
+                    if anchor_fixed_on_page(&anchor) {
+                        let float = next_page_float(ctx);
+                        ctx.page_floats_record.borrow_mut().push((
+                            float,
+                            host.page,
+                            exclusion.clone(),
+                        ));
+                    }
                     self.wrap_exclusions.push(exclusion);
                     self.wrap_exclusions.len() - 1
                 })
@@ -2395,6 +2544,7 @@ impl<'a> Paginator<'a> {
         self.started = true;
         self.current = Vec::new();
         self.wrap_exclusions.clear();
+        self.preload_page_floats();
         self.frame_boxes.clear();
         self.floating_tables.clear();
         // Notes carried over continue at the foot of the first column.
