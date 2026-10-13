@@ -996,7 +996,6 @@ fn place_framed_table(
 }
 
 /// Place a `tblpPr` table outside the body flow and register text clearance.
-#[allow(clippy::too_many_lines)]
 fn place_floating_table(
     ctx: &LayoutContext<'_>,
     table: &strict_ooxml_wml::model::Table,
@@ -1031,6 +1030,7 @@ struct DeferredTable {
 }
 
 /// Places a floating table as page float number `float`.
+#[allow(clippy::too_many_lines)]
 fn place_floating_table_as(
     ctx: &LayoutContext<'_>,
     table: &strict_ooxml_wml::model::Table,
