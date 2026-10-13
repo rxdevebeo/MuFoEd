@@ -495,9 +495,8 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
                     let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                         continue;
                     };
-                    let holder = crate::glyphs::holder(glyphs);
-                    for (index, glyph) in glyphs.iter().enumerate() {
-                        let label = if index == holder { unicode } else { "" };
+                    let labels = crate::glyphs::cluster_labels(glyphs, unicode);
+                    for (glyph, label) in glyphs.iter().zip(&labels) {
                         collector.add_cluster(
                             &source,
                             text.run.bold,
@@ -1083,7 +1082,7 @@ impl PageWriter<'_> {
             let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                 continue;
             };
-            let holder = crate::glyphs::holder(glyphs);
+            let labels = crate::glyphs::cluster_labels(glyphs, unicode);
             for (index, glyph) in glyphs.iter().enumerate() {
                 if glyph.glyph_id == 0 {
                     if let Some(ch) = unicode.chars().next() {
@@ -1091,7 +1090,7 @@ impl PageWriter<'_> {
                     }
                     continue;
                 }
-                let label = if index == holder { unicode } else { "" };
+                let label = labels.get(index).map_or("", String::as_str);
                 let cid = font
                     .cluster_cids
                     .get(&(glyph.glyph_id, label.to_owned()))
@@ -1152,7 +1151,7 @@ impl PageWriter<'_> {
             let Some(glyphs) = shaped.glyphs.get(cluster.glyph_start..end) else {
                 continue;
             };
-            let holder = crate::glyphs::holder(glyphs);
+            let labels = crate::glyphs::cluster_labels(glyphs, unicode);
             for (index, glyph) in glyphs.iter().enumerate() {
                 if glyph.glyph_id == 0 {
                     if let Some(ch) = unicode.chars().next() {
@@ -1160,16 +1159,18 @@ impl PageWriter<'_> {
                     }
                     continue;
                 }
-                let label = if index == holder { unicode } else { "" };
+                let label = labels.get(index).map_or("", String::as_str);
                 let Some(&cid) = font.cluster_cids.get(&(glyph.glyph_id, label.to_owned())) else {
                     continue;
                 };
                 placed.push(PlacedGlyph {
                     visual: cluster.glyph_start.saturating_add(index),
+                    logical: cluster.byte_start,
                     cid,
                     offset_px: glyph.x_em * text.size_px + cluster_extra,
                     rise_px: glyph.y_offset_em * text.size_px,
                     carries_text: !label.is_empty(),
+                    spacing: glyph.x_advance_em.abs() > 1e-9,
                 });
             }
         }
@@ -1227,7 +1228,7 @@ impl PageWriter<'_> {
             let mut pen = 0.0_f64;
             for glyph in placed.iter().filter(|glyph| glyph.carries_text) {
                 let cid = glyph.cid;
-                let at = px_to_pt(glyph.offset_px, self.scale) / size_pt;
+                let at = px_to_pt(mark_offset_px(glyph, placed), self.scale) / size_pt;
                 let gap = at - pen;
                 if gap.abs() > 1e-6 {
                     items.adjust((-gap * 1000.0) as f32);
@@ -1243,17 +1244,38 @@ impl PageWriter<'_> {
     }
 }
 
+/// Where the text layer puts a glyph: a mark (no advance) at the start of
+/// its letter — its own cluster's letter when the shaper merged the two,
+/// otherwise the logically previous spacing glyph that carries text.
+///
+/// At its drawn place, over the middle of the letter, it left a gap that
+/// pdfium read as a space inside the word (`مَ نْ`).
+fn mark_offset_px(glyph: &PlacedGlyph, placed: &[PlacedGlyph]) -> f64 {
+    if glyph.spacing {
+        return glyph.offset_px;
+    }
+    placed
+        .iter()
+        .filter(|base| base.carries_text && base.spacing && base.logical <= glyph.logical)
+        .max_by_key(|base| base.logical)
+        .map_or(glyph.offset_px, |base| base.offset_px)
+}
+
 /// One glyph of an outlined run, as `show_outlined` places it.
 struct PlacedGlyph {
     /// Index in the run's visual glyph order.
     visual: usize,
+    /// Byte offset of its cluster in the run's text (logical order).
+    logical: usize,
     cid: u16,
     /// Pen offset from the run's origin, in px before the horizontal scale.
     offset_px: f64,
     /// Offset above the baseline, in px.
     rise_px: f64,
-    /// Whether this glyph carries its cluster's text in the text layer.
+    /// Whether this glyph carries text in the text layer.
     carries_text: bool,
+    /// Whether the glyph advances the pen (a mark does not).
+    spacing: bool,
 }
 
 /// Closes a path with the painting operators the flags ask for.

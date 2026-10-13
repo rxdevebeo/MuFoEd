@@ -30,6 +30,8 @@ png = "0.18"
 # Deflates the streams: `pdf-writer` records a `/Filter` but does not apply it,
 # so a stream that claims `FlateDecode` must already carry deflated bytes.
 miniz_oxide.workspace = true
+# Bidi classes: a non-spacing mark is placed on its base in the text layer.
+unicode-bidi = "0.3.18"
 
 [dev-dependencies]
 # Independent PDF reader used only as an oracle by the tests (SC-5/SC-7): it
