@@ -284,7 +284,7 @@ pub(super) fn merge_cells(
         if to >= row.cells.len() || from > to {
             return Err(EditError::InvalidModel(Invariant::TableTopology));
         }
-        row.cells.splice(from..=to, std::iter::once(cell));
+        drop(row.cells.splice(from..=to, std::iter::once(cell)));
     }
     Ok(())
 }
@@ -396,7 +396,7 @@ pub(super) fn split_cell(
         if slot.index >= row.cells.len() {
             return Err(EditError::InvalidModel(Invariant::TableTopology));
         }
-        row.cells.splice(slot.index..=slot.index, cells);
+        drop(row.cells.splice(slot.index..=slot.index, cells));
     }
     Ok(())
 }
@@ -509,7 +509,7 @@ fn widen_grid(
             }
             None => vec![GridCol { width: None }; columns],
         };
-        table.grid.splice(range, widths);
+        drop(table.grid.splice(range, widths));
     } else if !table.grid.is_empty() && range.end > total_columns {
         return Err(EditError::InvalidModel(Invariant::Grid));
     }

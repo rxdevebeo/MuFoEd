@@ -319,13 +319,17 @@ fn count_blocks(blocks: &[Block], id: u32, endnote: bool, count: &mut usize) {
 fn count_inlines(items: &[Inline], id: u32, endnote: bool, count: &mut usize) {
     for item in items {
         match item {
-            Inline::FootnoteRef(found) if !endnote && *found == id => *count += 1,
-            Inline::EndnoteRef(found) if endnote && *found == id => *count += 1,
+            Inline::FootnoteRef(found) => *count += usize::from(!endnote && *found == id),
+            Inline::EndnoteRef(found) => *count += usize::from(endnote && *found == id),
             Inline::Run(run) => {
                 for content in &run.content {
                     match content {
-                        RunContent::FootnoteRef(found) if !endnote && *found == id => *count += 1,
-                        RunContent::EndnoteRef(found) if endnote && *found == id => *count += 1,
+                        RunContent::FootnoteRef(found) => {
+                            *count += usize::from(!endnote && *found == id);
+                        }
+                        RunContent::EndnoteRef(found) => {
+                            *count += usize::from(endnote && *found == id);
+                        }
                         RunContent::Drawing(d) => count_drawing(d, id, endnote, count),
                         _ => {}
                     }

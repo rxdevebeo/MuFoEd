@@ -58,7 +58,7 @@ pub use props::{
 };
 pub use revision::{Revision, RevisionKind};
 pub use settings::{DocumentZoom, Settings, ThemeFontLang, Zoom};
-pub use styles::{Style, StyleTable};
+pub use styles::{DocDefaults, Style, StyleTable};
 pub use support::{FeatureUse, SupportModel, SupportStatus, SUPPORT_OVERFLOW_ID};
 pub use theme::{FontSet, Theme, ThemeColors, ThemeFonts, ThemeRunFonts, ThemeTypeface};
 pub use values::{
