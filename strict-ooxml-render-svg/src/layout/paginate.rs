@@ -166,15 +166,26 @@ fn layout_passes(ctx: &LayoutContext<'_>, preload: bool) -> Result<Option<Layout
                     let mut forward = ctx.page_floats_forward.borrow_mut();
                     let mut moves = ctx.page_floats_moves.borrow_mut();
                     // A float put on a page ahead of its anchor that this pass
-                    // placed on a later page moved because of its own wrap or
-                    // an earlier float's: the text pushed away carried its
-                    // anchor along. It stays on that later page from now on,
-                    // as WPS places it there (WQ-016/WQ-019); without that,
-                    // passes swing it back and forth. One that moved back
+                    // placed on a later page moved because a preloaded wrap
+                    // pushed the text, and its anchor with it, along. Of the
+                    // floats that left one page, the topmost was pushed by its
+                    // own wrap - its wrap moved everything below it, the other
+                    // anchors included (065: the reactions table at the top of
+                    // page 1 took the glossary's anchor along). It stays on the
+                    // later page from now on, as WPS places it there
+                    // (WQ-016/WQ-019); without that, passes swing it back and
+                    // forth. The others keep their page. One that moved back
                     // follows its anchor. A float that keeps moving, or a
                     // table split over pages, is laid out from its anchor
                     // alone.
-                    for (float, _, _) in preload.iter() {
+                    let mut seen: std::collections::BTreeSet<u32> =
+                        std::collections::BTreeSet::new();
+                    // (float, page it left, top of its wrap there)
+                    let mut moved_on: Vec<(u32, usize, f64)> = Vec::new();
+                    for (float, _, area) in preload.iter() {
+                        if !seen.insert(*float) {
+                            continue;
+                        }
                         let before = float_pages(&preload, *float);
                         let now = float_pages(&recorded, *float);
                         if before == now {
@@ -186,9 +197,7 @@ fn layout_passes(ctx: &LayoutContext<'_>, preload: bool) -> Result<Option<Layout
                             _ if *count > MAX_FLOAT_MOVES => {
                                 banned.insert(*float);
                             }
-                            ([from], [to]) if to > from => {
-                                forward.insert(*float, *to);
-                            }
+                            ([from], [to]) if to > from => moved_on.push((*float, *from, area.top)),
                             ([from], [to]) if to < from => {
                                 forward.remove(float);
                             }
@@ -197,9 +206,30 @@ fn layout_passes(ctx: &LayoutContext<'_>, preload: bool) -> Result<Option<Layout
                             }
                         }
                     }
+                    let mut kept: Vec<u32> = Vec::new();
+                    for &(float, from, top) in &moved_on {
+                        let topmost = moved_on.iter().filter(|(_, page, _)| *page == from).all(
+                            |(other, _, other_top)| {
+                                top.total_cmp(other_top).then(float.cmp(other)).is_le()
+                            },
+                        );
+                        if topmost {
+                            if let Some(&to) = float_pages(&recorded, float).first() {
+                                forward.insert(float, to);
+                            }
+                        } else {
+                            kept.push(float);
+                        }
+                    }
                     recorded
                         .into_iter()
-                        .filter(|(float, _, _)| !banned.contains(float))
+                        .filter(|(float, _, _)| !banned.contains(float) && !kept.contains(float))
+                        .chain(
+                            preload
+                                .iter()
+                                .filter(|(float, _, _)| kept.contains(float))
+                                .cloned(),
+                        )
                         .collect::<Vec<_>>()
                 };
                 let settled = same_page_floats(&next, &ctx.page_floats_preload.borrow());
