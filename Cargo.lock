@@ -2469,6 +2469,7 @@ dependencies = [
  "strict-ooxml-testkit",
  "strict-ooxml-wml",
  "subsetter",
+ "unicode-bidi",
 ]
 
 [[package]]

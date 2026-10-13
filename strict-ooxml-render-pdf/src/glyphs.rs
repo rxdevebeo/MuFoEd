@@ -55,6 +55,47 @@ pub(crate) fn holder(glyphs: &[ShapedGlyph]) -> usize {
     best
 }
 
+/// The text each glyph of a cluster carries in the text layer; empty for a
+/// glyph that carries none.
+///
+/// The holder carries the cluster's text. When the shaper merged a vowel mark
+/// into its letter's cluster (`ئِ`) and drew the mark as a glyph of its own,
+/// the mark goes on that glyph: pdfium put the merged label's mark before its
+/// letter.
+#[must_use]
+pub(crate) fn cluster_labels(glyphs: &[ShapedGlyph], unicode: &str) -> Vec<String> {
+    let mut labels = vec![String::new(); glyphs.len()];
+    let holder = holder(glyphs);
+    let (marks, base): (Vec<char>, Vec<char>) = unicode.chars().partition(|ch| is_mark(*ch));
+    let spare: Vec<usize> = glyphs
+        .iter()
+        .enumerate()
+        .filter(|(index, glyph)| {
+            *index != holder && glyph.glyph_id != 0 && glyph.x_advance_em.abs() <= 1e-9
+        })
+        .map(|(index, _)| index)
+        .collect();
+    if !marks.is_empty() && !base.is_empty() && spare.len() >= marks.len() {
+        if let Some(label) = labels.get_mut(holder) {
+            *label = base.into_iter().collect();
+        }
+        for (mark, index) in marks.into_iter().zip(spare) {
+            if let Some(label) = labels.get_mut(index) {
+                *label = mark.to_string();
+            }
+        }
+    } else if let Some(label) = labels.get_mut(holder) {
+        *label = unicode.to_owned();
+    }
+    labels
+}
+
+/// Whether a reader attaches `ch` to the character before it (bidi class NSM).
+#[must_use]
+pub(crate) fn is_mark(ch: char) -> bool {
+    unicode_bidi::bidi_class(ch) == unicode_bidi::BidiClass::NSM
+}
+
 /// One glyph outline, written as a form XObject in font units.
 pub(crate) struct GlyphForm {
     /// Resource name the content streams use.
@@ -218,6 +259,25 @@ mod tests {
         assert_eq!(holder(&[glyph(5, 0.0, 0.4)]), 0);
         // A missing glyph never holds the text.
         assert_eq!(holder(&[glyph(0, 0.5, 0.0), glyph(4, 0.2, 0.0)]), 1);
+    }
+
+    /// `ئِ`: the shaper merged the kasra into the letter's cluster and drew
+    /// it as a glyph of its own; the label is split between the two.
+    #[test]
+    fn a_merged_mark_goes_on_its_own_glyph() {
+        let glyphs = [
+            glyph(3, 0.0, -0.06),
+            glyph(4, 0.0, -0.3),
+            glyph(5, 0.275, 0.0),
+        ];
+        let labels = super::cluster_labels(&glyphs, "\u{0626}\u{0650}");
+        assert_eq!(labels, ["\u{0650}", "", "\u{0626}"]);
+        // A cluster without a spare glyph keeps its text together.
+        let labels = super::cluster_labels(&[glyph(5, 0.275, 0.0)], "\u{0626}\u{0650}");
+        assert_eq!(labels, ["\u{0626}\u{0650}"]);
+        // A ligature of two letters is not split.
+        let labels = super::cluster_labels(&[glyph(6, 0.4, 0.0)], "\u{0644}\u{0627}");
+        assert_eq!(labels, ["\u{0644}\u{0627}"]);
     }
 
     #[test]
