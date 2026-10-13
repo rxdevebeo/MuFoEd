@@ -856,3 +856,99 @@ fn a_single_change_command_leaves_the_other_runs_of_its_paragraph() {
     e.undo(change.revision).unwrap();
     assert_eq!(e.document().body, before);
 }
+
+#[test]
+fn a_tracked_split_inserts_a_mark_that_accepting_keeps_and_rejecting_joins() {
+    for (accept, expected) in [(true, vec!["abc", "def"]), (false, vec!["abcdef"])] {
+        let mut d = doc("<w:p><w:r><w:t>abcdef</w:t></w:r></w:p>");
+        let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+        e.transact(
+            0,
+            &[strict_ooxml_edit::Edit::TrackedSplit {
+                at: Address::body(0),
+                offset: 3,
+                author: "Reviewer".into(),
+                date: None,
+            }],
+        )
+        .unwrap();
+        assert_eq!(text(e.document()), ["abc", "def"]);
+        let left = e.document().body.blocks[0].as_paragraph().unwrap();
+        let mark = left.revision.as_ref().expect("tracked mark");
+        assert_eq!(mark.kind, strict_ooxml_wml::model::RevisionKind::Insert);
+        assert_eq!(mark.author.as_deref(), Some("Reviewer"));
+        assert!(e.document().body.blocks[1]
+            .as_paragraph()
+            .unwrap()
+            .revision
+            .is_none());
+        let mut o = Operations::new(&mut e, OperationLimits::default());
+        if accept {
+            o.accept_all(1).unwrap();
+        } else {
+            o.reject_all(1).unwrap();
+        }
+        assert_eq!(text(e.document()), expected);
+        assert!(no_revisions(e.document()));
+    }
+}
+
+#[test]
+fn a_tracked_join_deletes_the_mark_and_accepting_joins() {
+    for (accept, expected) in [(true, vec!["onetwo"]), (false, vec!["one", "two"])] {
+        let mut d = doc("<w:p><w:r><w:t>one</w:t></w:r></w:p><w:p><w:r><w:t>two</w:t></w:r></w:p>");
+        let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+        e.transact(
+            0,
+            &[strict_ooxml_edit::Edit::TrackedJoin {
+                at: Address::body(0),
+                author: "Reviewer".into(),
+                date: None,
+            }],
+        )
+        .unwrap();
+        assert_eq!(text(e.document()), ["one", "two"], "nothing joins yet");
+        let mark = e.document().body.blocks[0]
+            .as_paragraph()
+            .unwrap()
+            .revision
+            .clone()
+            .expect("tracked mark");
+        assert_eq!(mark.kind, strict_ooxml_wml::model::RevisionKind::Delete);
+        let mut o = Operations::new(&mut e, OperationLimits::default());
+        if accept {
+            o.accept_all(1).unwrap();
+        } else {
+            o.reject_all(1).unwrap();
+        }
+        assert_eq!(text(e.document()), expected);
+    }
+}
+
+#[test]
+fn joining_over_an_inserted_mark_takes_it_back_at_once() {
+    let mut d = doc("<w:p><w:r><w:t>abcdef</w:t></w:r></w:p>");
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let tracked = |edit| [edit];
+    e.transact(
+        0,
+        &tracked(strict_ooxml_edit::Edit::TrackedSplit {
+            at: Address::body(0),
+            offset: 3,
+            author: "Reviewer".into(),
+            date: None,
+        }),
+    )
+    .unwrap();
+    e.transact(
+        1,
+        &tracked(strict_ooxml_edit::Edit::TrackedJoin {
+            at: Address::body(0),
+            author: "Reviewer".into(),
+            date: None,
+        }),
+    )
+    .unwrap();
+    assert_eq!(text(e.document()), ["abcdef"]);
+    assert!(no_revisions(e.document()));
+}

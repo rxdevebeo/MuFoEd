@@ -82,6 +82,33 @@ pub(super) fn apply(
             ..
         } => return super::notes::insert_note(document, at, *index, *endnote, blocks, ids),
         Edit::DeleteNote { .. } => return super::notes::delete_note(document, at),
+        Edit::TrackedSplit {
+            offset,
+            author,
+            date,
+            ..
+        } => {
+            apply(
+                document,
+                &Edit::Split {
+                    at: at.clone(),
+                    offset: *offset,
+                },
+                limits,
+                ids,
+            )?;
+            let revision = Revision {
+                kind: RevisionKind::Insert,
+                id: ids.next_revision(),
+                author: Some(author.as_str().into()),
+                date: date.as_deref().map(Into::into),
+            };
+            return mutate_story(document, &at.story, |root| {
+                let left = paragraph_mut(descend_mut(root, &at.containers)?, at.block)?;
+                left.revision = Some(revision);
+                Ok(())
+            });
+        }
         Edit::SectionProperties { properties, .. } => {
             return super::sections::set_properties(document, at, properties);
         }
@@ -315,6 +342,34 @@ pub(super) fn apply(
                     }
                 };
                 crate::replace_text_with(p, &runs, range, text, &marks);
+            }
+            Edit::TrackedJoin { author, date, .. } => {
+                let left = paragraph_mut(blocks, at.block)?;
+                if left.props.section.is_some() {
+                    return Err(EditError::InvalidModel(Invariant::SectionBoundary));
+                }
+                match left.revision.as_ref().map(|r| (r.kind, r.id)) {
+                    // Taking back an inserted mark joins at once.
+                    Some((RevisionKind::Insert, id)) => {
+                        if !matches!(blocks.get(at.block + 1), Some(Block::Paragraph(_))) {
+                            return Err(EditError::InvalidParagraph);
+                        }
+                        resolve(blocks, at.block, false, Some(id))?;
+                    }
+                    Some(_) => {}
+                    None => {
+                        if !matches!(blocks.get(at.block + 1), Some(Block::Paragraph(_))) {
+                            return Err(EditError::InvalidParagraph);
+                        }
+                        let left = paragraph_mut(blocks, at.block)?;
+                        left.revision = Some(Revision {
+                            kind: RevisionKind::Delete,
+                            id: ids.next_revision(),
+                            author: Some(author.as_str().into()),
+                            date: date.as_deref().map(Into::into),
+                        });
+                    }
+                }
             }
             Edit::AcceptRevisions { .. } => resolve(blocks, at.block, true, None)?,
             Edit::RejectRevisions { .. } => resolve(blocks, at.block, false, None)?,

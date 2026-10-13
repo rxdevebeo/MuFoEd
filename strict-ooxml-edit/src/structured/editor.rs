@@ -461,6 +461,7 @@ fn region(command: &Edit) -> (usize, usize) {
     match command {
         Edit::Insert { .. } => (at.block, at.block),
         Edit::Join { .. }
+        | Edit::TrackedJoin { .. }
         | Edit::AcceptRevisions { .. }
         | Edit::RejectRevisions { .. }
         | Edit::AcceptRevision { .. }

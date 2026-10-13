@@ -307,6 +307,31 @@ pub enum Edit {
         /// Date recorded on the change (`w:date`, ISO 8601), if any.
         date: Option<String>,
     },
+    /// Split a paragraph as a tracked change, the way Word does with Track
+    /// Changes on: the left half ends with a new paragraph mark marked
+    /// inserted; the right half keeps the original mark.
+    TrackedSplit {
+        /// Target paragraph.
+        at: Address,
+        /// Scalar offset.
+        offset: usize,
+        /// Author recorded on the change (`w:author`).
+        author: String,
+        /// Date recorded on the change (`w:date`, ISO 8601), if any.
+        date: Option<String>,
+    },
+    /// Join a paragraph with the next one as a tracked change: its mark is
+    /// marked deleted, and accepting the change joins them. A mark that is
+    /// itself a tracked insertion goes at once, joining the paragraphs, as
+    /// Word takes back its own insertion; one already marked deleted stays.
+    TrackedJoin {
+        /// Left paragraph.
+        at: Address,
+        /// Author recorded on the change (`w:author`).
+        author: String,
+        /// Date recorded on the change (`w:date`, ISO 8601), if any.
+        date: Option<String>,
+    },
     /// Reject the paragraph's tracked changes: deleted and moved-out runs
     /// stay, inserted and moved-in runs go, and an inserted paragraph mark
     /// joins the paragraph with the next one.
@@ -362,6 +387,8 @@ impl Edit {
             | Self::Drawing { at, .. }
             | Self::Identify { at }
             | Self::TrackedText { at, .. }
+            | Self::TrackedSplit { at, .. }
+            | Self::TrackedJoin { at, .. }
             | Self::AcceptRevisions { at }
             | Self::RejectRevisions { at }
             | Self::AcceptRevision { at, .. }
