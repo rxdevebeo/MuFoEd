@@ -6,13 +6,7 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
-ignore = [
-    # `ttf-parser` is unmaintained (2026-10-11) and has no maintained release
-    # to move to. It arrives only through the vendored `emfsdk` (directly and
-    # via `fontdb`) to read the faces EMF/WMF text records name; the renderer
-    # itself parses fonts with `skrifa`. Revisit when emfsdk moves to skrifa.
-    { id = "RUSTSEC-2026-0192", reason = "unmaintained ttf-parser, only via vendored emfsdk/fontdb; no maintained release" },
-]
+ignore = []
 
 [licenses]
 version = 2
