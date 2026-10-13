@@ -6,6 +6,7 @@ mod editor;
 mod ids;
 mod notes;
 mod revisions;
+mod tables;
 mod validate;
 
 pub use address::{Address, Container, Story};

@@ -335,6 +335,16 @@ pub(super) fn apply(
                         }
                         t.rows.remove(*index);
                     }
+                    Edit::MergeCells { rows, columns, .. } => {
+                        super::tables::merge_cells(t, rows, columns)?;
+                    }
+                    Edit::SplitCell {
+                        row,
+                        column,
+                        rows,
+                        columns,
+                        ..
+                    } => super::tables::split_cell(t, *row, *column, *rows, *columns)?,
                     // The outer arm admits only the variants matched above.
                     _ => return Err(EditError::UnsupportedContent(Unsupported::Target)),
                 }

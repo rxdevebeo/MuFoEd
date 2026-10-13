@@ -193,6 +193,34 @@ pub enum Edit {
         /// Row index.
         index: usize,
     },
+    /// Merge the cells covering `rows` × `columns` of the table's grid into
+    /// one. The top-left cell keeps its properties and receives every cell's
+    /// content in reading order; a cell that sticks out of the rectangle, or a
+    /// gap in it, refuses the merge.
+    MergeCells {
+        /// Target table.
+        at: Address,
+        /// Half-open row range.
+        rows: Range<usize>,
+        /// Half-open grid column range.
+        columns: Range<usize>,
+    },
+    /// Split the cell covering grid position (`row`, `column`) into
+    /// `columns` × `rows` cells (at most 63 each). Grid columns or rows are
+    /// added when the cell has fewer than the parts; the total width stays and
+    /// the top-left part keeps the content.
+    SplitCell {
+        /// Target table.
+        at: Address,
+        /// Row of a grid position inside the cell.
+        row: usize,
+        /// Grid column of a position inside the cell.
+        column: usize,
+        /// Rows to split into.
+        rows: usize,
+        /// Columns to split into.
+        columns: usize,
+    },
     /// Replace a drawing's modeled geometry/payload, keeping source bytes external.
     Drawing {
         /// Target paragraph.
@@ -261,6 +289,8 @@ impl Edit {
             | Self::Grid { at, .. }
             | Self::InsertRow { at, .. }
             | Self::DeleteRow { at, .. }
+            | Self::MergeCells { at, .. }
+            | Self::SplitCell { at, .. }
             | Self::Drawing { at, .. }
             | Self::Identify { at }
             | Self::TrackedText { at, .. }
