@@ -878,11 +878,11 @@ pub(crate) struct LayoutContext<'a> {
     /// Floats whose own preloaded wrap moved them to another page: they are
     /// no longer put on a page ahead of their anchor.
     pub(crate) page_floats_banned: std::cell::RefCell<std::collections::BTreeSet<u32>>,
-    /// Drawings whose own preloaded wrap carried their anchor to a later
-    /// page: drawn on that page from then on, as WPS does (WQ-019).
+    /// Floats whose own preloaded wrap carried their anchor to a later page:
+    /// placed on that page from then on, as WPS does (WQ-016/WQ-019).
     pub(crate) page_floats_forward: std::cell::RefCell<std::collections::BTreeMap<u32, usize>>,
-    /// Which page floats are drawings (the rest are tables).
-    pub(crate) page_floats_drawings: std::cell::RefCell<std::collections::BTreeSet<u32>>,
+    /// How often each float changed page between passes.
+    pub(crate) page_floats_moves: std::cell::RefCell<std::collections::BTreeMap<u32, u32>>,
     /// The next page float's number in this pass.
     pub(crate) page_floats_next: std::cell::Cell<u32>,
     /// Exact line height of the previous paragraph in the current frame, in px.
