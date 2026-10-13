@@ -10,11 +10,16 @@
 
 | # | Задача | Коммит | Состояние |
 |---|---|---|---|
-| 1 | Дорожная карта 3.7: склейка ранов в `format_text`, `find` по индексу на ревизию, README «Cost of operations» | `a365bf4` | гейт |
-| 2 | K09: `Edit::MergeCells`, `Edit::SplitCell` по логической сетке таблицы | `1d8e74e` | гейт |
-| 3 | K02: `Editor::define(&[Definition])` — стили, нумерация, docDefaults | `365e5f1` | гейт |
-| 4 | K03: `Edit::InsertNote`, `Edit::DeleteNote` | `a2698a8` | гейт |
-| 5 | K04 (секции): `Edit::SectionProperties`, `InsertSectionBreak`, `RemoveSectionBreak` | `d784092` | гейт |
+| 1 | Дорожная карта 3.7: склейка ранов в `format_text`, `find` по индексу на ревизию, README «Cost of operations» | `a365bf4` | влито |
+| 2 | K09: `Edit::MergeCells`, `Edit::SplitCell` по логической сетке таблицы | `1d8e74e` | влито |
+| 3 | K02: `Editor::define(&[Definition])` — стили, нумерация, docDefaults | `365e5f1` | влито |
+| 4 | K03: `Edit::InsertNote`, `Edit::DeleteNote` | `a2698a8` | влито |
+| 5 | K04 (секции): `Edit::SectionProperties`, `InsertSectionBreak`, `RemoveSectionBreak` | `d784092` | влито |
+| 6 | K07: `AcceptRevision`/`RejectRevision` по id, `TrackedSplit`/`TrackedJoin`; `apply_list`/`remove_list` | см. `master` `2eacbbf` | влито |
+| 7 | K12-lite: `diff(before, after, mode)` — типизированный список изменений | `a90c70d` | гейт |
+
+Гейты: тесты 2052/0 на `2720378`; fmt+clippy на `dec0f4d` — зелёные.
+Всё до п. 6 влито в `master` `2eacbbf` (no-ff).
 
 Отложено: 086_Oberon (CC0_DOCX) после `fix/float-sticky` — нужен прогон
 wps-qa; колонтитулы K04 — нужны новые части пакета (overlay K05).
@@ -40,3 +45,13 @@ wps-qa; колонтитулы K04 — нужны новые части паке
   неиспользуемых сносок нет.
 - **K04.** Секции хранятся дважды (список + граница-абзац); команды меняют
   оба. Колонтитулы не трогаются.
+- **K07.** Принятие/отклонение одной правки по `w:id`, а не всего абзаца.
+  Разрыв/склейка абзаца в режиме отслеживания помечают знак абзаца
+  (`Paragraph.revision`), отклонение склейки восстанавливает разрыв.
+- **K12-lite.** `diff` выравнивает блоки каждой истории LCS: пары — по
+  `paraId`, блоки без id — только по канонической равенству (без
+  угадываний). Id без пары по LCS на обеих сторонах → `Moved`. Режим
+  `Semantic` игнорирует rsid, id, границы ранов с одинаковыми свойствами и
+  `xml:space`. Отдельно сравниваются стили, абстрактные/конкретные номера,
+  docDefaults, секции и истории сносок. Предел — 16M клеток LCS
+  (`LimitExceeded`). Отчёт о правке (`EditReport`) не делался.
