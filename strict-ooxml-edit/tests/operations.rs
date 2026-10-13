@@ -786,3 +786,73 @@ fn tracked_text_keeps_the_old_text_deleted_and_extends_its_own_insertion() {
     o.reject_all(5).unwrap();
     assert_eq!(text(e.document()), ["hello world"]);
 }
+
+/// The `w:id`s of the tracked changes left in the body, marks included.
+fn change_ids(d: &Document) -> Vec<u32> {
+    let mut ids: Vec<u32> = d
+        .body
+        .blocks
+        .iter()
+        .filter_map(|b| b.as_paragraph())
+        .flat_map(|p| {
+            p.revision
+                .iter()
+                .map(|r| r.id)
+                .chain(p.inlines.iter().filter_map(|i| match i {
+                    strict_ooxml_wml::model::Inline::Run(r) => r.revision.as_ref().map(|r| r.id),
+                    _ => None,
+                }))
+        })
+        .collect();
+    ids.sort_unstable();
+    ids
+}
+
+#[test]
+fn one_change_is_accepted_or_rejected_by_its_id_and_the_others_stay() {
+    // The insertion alone: its text stays untracked, the deletion and the
+    // deleted mark are still there.
+    let mut d = doc(TRACKED);
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    o.accept_change(0, 1).unwrap();
+    assert_eq!(text(e.document()), ["keep newold", "joined", " next"]);
+    assert_eq!(change_ids(e.document()), [2, 3]);
+
+    // The deleted mark alone joins its paragraph with the next one.
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    o.accept_change(1, 3).unwrap();
+    assert_eq!(text(e.document()), ["keep newold", "joined next"]);
+    assert_eq!(change_ids(e.document()), [2]);
+
+    // Rejecting the deletion keeps its text, untracked.
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    o.reject_change(2, 2).unwrap();
+    assert_eq!(text(e.document()), ["keep newold", "joined next"]);
+    assert!(no_revisions(e.document()));
+
+    // An id no change has changes nothing.
+    let mut o = Operations::new(&mut e, OperationLimits::default());
+    let change = o.accept_change(3, 99).unwrap();
+    assert!(!change.invalidate_layout);
+}
+
+#[test]
+fn a_single_change_command_leaves_the_other_runs_of_its_paragraph() {
+    let mut d = doc(TRACKED);
+    let before = d.body.clone();
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let change = e
+        .transact(
+            0,
+            &[strict_ooxml_edit::Edit::RejectRevision {
+                at: Address::body(0),
+                id: 1,
+            }],
+        )
+        .unwrap();
+    assert_eq!(text(e.document()), ["keep old", "joined", " next"]);
+    assert_eq!(change_ids(e.document()), [2, 3]);
+    e.undo(change.revision).unwrap();
+    assert_eq!(e.document().body, before);
+}

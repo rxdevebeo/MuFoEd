@@ -314,6 +314,22 @@ pub enum Edit {
         /// Target paragraph.
         at: Address,
     },
+    /// Accept only the paragraph's tracked change with `w:id` `id` - its
+    /// runs and, when it is the mark's change, the mark - as
+    /// [`AcceptRevisions`](Self::AcceptRevisions) does for all of them.
+    AcceptRevision {
+        /// Target paragraph.
+        at: Address,
+        /// The change's `w:id`.
+        id: u32,
+    },
+    /// Reject only the paragraph's tracked change with `w:id` `id`.
+    RejectRevision {
+        /// Target paragraph.
+        at: Address,
+        /// The change's `w:id`.
+        id: u32,
+    },
 }
 impl Edit {
     /// The block the command targets.
@@ -347,7 +363,9 @@ impl Edit {
             | Self::Identify { at }
             | Self::TrackedText { at, .. }
             | Self::AcceptRevisions { at }
-            | Self::RejectRevisions { at } => at,
+            | Self::RejectRevisions { at }
+            | Self::AcceptRevision { at, .. }
+            | Self::RejectRevision { at, .. } => at,
         }
     }
 }

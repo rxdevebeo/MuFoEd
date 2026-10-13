@@ -316,8 +316,10 @@ pub(super) fn apply(
                 };
                 crate::replace_text_with(p, &runs, range, text, &marks);
             }
-            Edit::AcceptRevisions { .. } => resolve(blocks, at.block, true)?,
-            Edit::RejectRevisions { .. } => resolve(blocks, at.block, false)?,
+            Edit::AcceptRevisions { .. } => resolve(blocks, at.block, true, None)?,
+            Edit::RejectRevisions { .. } => resolve(blocks, at.block, false, None)?,
+            Edit::AcceptRevision { id, .. } => resolve(blocks, at.block, true, Some(*id))?,
+            Edit::RejectRevision { id, .. } => resolve(blocks, at.block, false, Some(*id))?,
             _ => {
                 let Some(Block::Table(t)) = blocks.get_mut(at.block) else {
                     return Err(EditError::InvalidParagraph);
