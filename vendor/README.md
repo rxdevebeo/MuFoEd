@@ -60,6 +60,7 @@ against the upstream release.
 | The run's LOGFONT picks the face (family, weight, italic); a glyph the face lacks comes from a fallback chain; system fonts are scanned once per process | One sans-serif face for everything; a single missing glyph sent the whole run to the 5x7 bitmap font; every metafile rescanned the system fonts |
 | The Symbol face's codes are mapped to Unicode (Adobe Symbol encoding; `U+F020..U+F0FF` in UTF-16 runs); other single-byte runs are decoded in their LOGFONT charset (Windows-125x) | `0xCE` drew `Î` instead of `∈` |
 | Glyphs are filled with anti-aliased coverage (4 sub-scanlines, exact span overlap) | One sample at each pixel centre dropped a stroke thinner than a pixel - a minus sign - unless it crossed that centre |
+| Faces are read with `skrifa` 0.44 and found with `fontdb` 0.24 instead of `ttf-parser` 0.25 / `fontdb` 0.23 | `ttf-parser` is unmaintained (RUSTSEC-2026-0192); `fontdb` 0.24 and the rest of the workspace already parse fonts with `skrifa` |
 
 Known gaps: `MT Extra` codes (accent dots and the like) are drawn as their
 Latin-1 characters; glyphs come from the system fonts, not the bundled ones, so

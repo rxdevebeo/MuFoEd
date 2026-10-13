@@ -19,8 +19,8 @@ encoding_rs = { workspace = true }
 fontdb = { workspace = true, optional = true }
 image = { workspace = true, optional = true }
 thiserror = { workspace = true }
-ttf-parser = { workspace = true, optional = true }
+skrifa = { version = "0.44.0", optional = true }
 
 [features]
 default = []
-render = ["dep:fontdb", "dep:image", "dep:ttf-parser"]
+render = ["dep:fontdb", "dep:image", "dep:skrifa"]

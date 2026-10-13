@@ -1,7 +1,12 @@
 use image::codecs::png::PngEncoder;
 use image::{ColorType, ImageEncoder};
 use thiserror::Error;
-use ttf_parser::{Face, OutlineBuilder};
+// StrictLib patch: fonts are read with `skrifa` (the maintained fontations
+// parser); `ttf-parser` is unmaintained (RUSTSEC-2026-0192).
+use skrifa::instance::{LocationRef, Size};
+use skrifa::outline::{DrawSettings, OutlinePen};
+use skrifa::raw::TableProvider;
+use skrifa::{FontRef, MetadataProvider};
 
 use crate::bitmap::{
   BitmapCompression, DeviceIndependentBitmap, DibColorTable, DibColorUsage, DibHeader,
@@ -955,24 +960,34 @@ fn primary_face(font: &TextFont) -> Option<std::sync::Arc<LoadedFace>> {
 
 /// A glyph of `ch` from the run's face or the first fallback that has it,
 /// with its outline (em units) and advance (em units of its own face).
-fn find_glyph(primary: &Face<'_>, ch: char, font: &TextFont) -> Option<(Vec<Vec<(f32, f32)>>, f32, f32)> {
-  fn outline(face: &Face<'_>, ch: char) -> Option<(Vec<Vec<(f32, f32)>>, f32, f32)> {
-    let glyph_id = face.glyph_index(ch)?;
+fn find_glyph(primary: &FontRef<'_>, ch: char, font: &TextFont) -> Option<(Vec<Vec<(f32, f32)>>, f32, f32)> {
+  fn outline(face: &FontRef<'_>, ch: char) -> Option<(Vec<Vec<(f32, f32)>>, f32, f32)> {
+    let glyph_id = face.charmap().map(ch)?;
     let mut builder = GlyphOutlineCollector::default();
     // A glyph without an outline (a space) still has an advance.
-    let _ = face.outline_glyph(glyph_id, &mut builder);
+    if let Some(glyph) = face.outline_glyphs().get(glyph_id) {
+      let _ = glyph.draw(DrawSettings::unhinted(Size::unscaled(), LocationRef::default()), &mut builder);
+    }
     builder.finish_current();
-    let advance = f32::from(face.glyph_hor_advance(glyph_id).unwrap_or(0));
-    Some((builder.contours, advance, f32::from(face.units_per_em())))
+    let advance = face
+      .glyph_metrics(Size::unscaled(), LocationRef::default())
+      .advance_width(glyph_id)
+      .unwrap_or(0.0);
+    Some((builder.contours, advance, units_per_em(face)))
   }
   if let Some(found) = outline(primary, ch) {
     return Some(found);
   }
   FALLBACK_FAMILIES.iter().find_map(|name| {
     let loaded = load_face(name, font.weight, font.italic)?;
-    let face = Face::parse(&loaded.data, loaded.index).ok()?;
+    let face = FontRef::from_index(&loaded.data, loaded.index).ok()?;
     outline(&face, ch)
   })
+}
+
+/// Font units per em, `0` when the face has no readable `head`.
+fn units_per_em(face: &FontRef<'_>) -> f32 {
+  face.head().map_or(0.0, |head| f32::from(head.units_per_em()))
 }
 
 #[derive(Clone, Debug)]
@@ -1002,17 +1017,21 @@ impl RenderFontCache {
     dx: &[f32],
   ) -> Option<(Vec<RenderedGlyph>, f32)> {
     let loaded = primary_face(font)?;
-    let face = Face::parse(&loaded.data, loaded.index).ok()?;
-    let units_per_em = f32::from(face.units_per_em());
+    let face = FontRef::from_index(&loaded.data, loaded.index).ok()?;
+    let units_per_em = units_per_em(&face);
     if units_per_em <= 0.0 {
       return None;
     }
     let (ascent, descent) = face
-      .tables()
-      .os2
-      .map(|os2| (f32::from(os2.windows_ascender()), f32::from(os2.windows_descender()).abs()))
+      .os2()
+      .ok()
+      .map(|os2| (f32::from(os2.us_win_ascent()), f32::from(os2.us_win_descent())))
       .filter(|(ascent, descent)| ascent + descent > 0.0)
-      .unwrap_or((f32::from(face.ascender()), f32::from(face.descender()).abs()));
+      .or_else(|| {
+        let hhea = face.hhea().ok()?;
+        Some((f32::from(hhea.ascender().to_i16()), f32::from(hhea.descender().to_i16()).abs()))
+      })
+      .unwrap_or((units_per_em * 0.8, units_per_em * 0.2));
     let em = if height < 0.0 {
       -height
     } else {
@@ -1093,7 +1112,7 @@ impl GlyphOutlineCollector {
   }
 }
 
-impl OutlineBuilder for GlyphOutlineCollector {
+impl OutlinePen for GlyphOutlineCollector {
   fn move_to(&mut self, x: f32, y: f32) {
     self.finish_current();
     self.current_pos = (x, y);
