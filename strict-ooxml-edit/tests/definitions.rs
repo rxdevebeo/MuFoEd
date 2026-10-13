@@ -66,7 +66,7 @@ fn paragraph_styles(document: &Document) -> Vec<Option<String>> {
         for block in blocks {
             match block {
                 Block::Paragraph(p) => {
-                    out.push(p.props.style.as_ref().map(|s| s.as_str().to_owned()))
+                    out.push(p.props.style.as_ref().map(|s| s.as_str().to_owned()));
                 }
                 Block::Table(t) => {
                     for row in &t.rows {
