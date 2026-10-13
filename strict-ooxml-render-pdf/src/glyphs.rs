@@ -85,7 +85,7 @@ pub(crate) fn cluster_labels(glyphs: &[ShapedGlyph], unicode: &str) -> Vec<Strin
             }
         }
     } else if let Some(label) = labels.get_mut(holder) {
-        *label = unicode.to_owned();
+        unicode.clone_into(label);
     }
     labels
 }
