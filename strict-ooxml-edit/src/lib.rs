@@ -24,6 +24,8 @@ use strict_ooxml_wml::model::{
 
 mod structured;
 pub use structured::{Address, Container, Edit, EditFailure, Editor, Story};
+mod definitions;
+pub use definitions::{restarted, unused_abstract_num_id, unused_num_id, Definition};
 mod operations;
 pub use operations::{
     IdentityChange, MoveReport, OperationError, OperationLimits, Operations, ReplacePolicy,
@@ -224,6 +226,13 @@ pub enum Invariant {
     NoteReference,
     /// A picture names no media part, or a drawing extent is not positive.
     Drawing,
+    /// A style or numbering definition to create already has its id.
+    DefinitionExists,
+    /// A style or numbering definition to replace or delete is not there.
+    DefinitionMissing,
+    /// A style or numbering definition to delete is still used, or is the
+    /// default style of its kind.
+    DefinitionInUse,
 }
 impl std::fmt::Display for Invariant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -243,6 +252,9 @@ impl std::fmt::Display for Invariant {
             Self::Grid => "a non-positive grid column width",
             Self::NoteReference => "a note reference without its note",
             Self::Drawing => "a picture without its media or a drawing of non-positive size",
+            Self::DefinitionExists => "a definition id that is already taken",
+            Self::DefinitionMissing => "a definition that is not there",
+            Self::DefinitionInUse => "a definition still in use",
         })
     }
 }

@@ -240,6 +240,28 @@ impl<'a> Editor<'a> {
         self.record(Change::Blocks(patches), bytes, next);
         Ok(self.changes(blocks))
     }
+    /// Changes style, numbering and default definitions as one transaction
+    /// (K02): applied to a copy of the document in order, then the derived
+    /// state (`basedOn` chains, `numStyleLink` redirects) is recomputed and the
+    /// model checked. A refusal anywhere leaves the document as it was; undo
+    /// restores definitions and the references they moved together. The
+    /// change set names every block of every story, since a definition can
+    /// change how any of them looks.
+    pub fn define(
+        &mut self,
+        revision: u64,
+        definitions: &[crate::Definition],
+    ) -> Result<ChangeSet, EditError> {
+        self.check(revision)?;
+        let mut candidate = self.document.clone();
+        for definition in definitions {
+            crate::definitions::apply(&mut candidate, definition)?;
+        }
+        strict_ooxml_wml::resolve::refresh_definitions(&mut candidate);
+        validate(&candidate, &self.limits.resource)?;
+        self.commit_whole(candidate)
+            .map_err(|failure| failure.error)
+    }
     /// The transaction on a copy of the whole document, with note references
     /// given notes of their own.
     fn transact_whole(&mut self, commands: &[Edit]) -> Result<ChangeSet, EditFailure> {
@@ -256,6 +278,13 @@ impl<'a> Editor<'a> {
         }
         split_shared_notes(&mut candidate).map_err(EditFailure::batch)?;
         validate(&candidate, &self.limits.resource).map_err(EditFailure::batch)?;
+        let change = self.commit_whole(candidate)?;
+        self.notes_settled = true;
+        Ok(change)
+    }
+    /// Makes a checked copy of the whole document the current one and keeps
+    /// both in history; a copy with the same content changes nothing.
+    fn commit_whole(&mut self, candidate: Document) -> Result<ChangeSet, EditFailure> {
         if same_content(self.document, &candidate) {
             return Ok(self.changes(Vec::new()));
         }
@@ -270,7 +299,6 @@ impl<'a> Editor<'a> {
         let before = std::mem::replace(&mut *self.document, candidate);
         let blocks = whole_story_changes(&before, self.document);
         self.ids = IdIndex::of(self.document);
-        self.notes_settled = true;
         self.record(
             Change::Whole {
                 before: Box::new(before),
@@ -630,7 +658,9 @@ fn snapshot_size(document: &Document) -> usize {
     count.0
 }
 fn same_content(a: &Document, b: &Document) -> bool {
-    a.body == b.body
+    a.styles == b.styles
+        && a.numbering == b.numbering
+        && a.body == b.body
         && a.headers_footers == b.headers_footers
         && a.sections == b.sections
         && a.footnotes.iter().eq(b.footnotes.iter())

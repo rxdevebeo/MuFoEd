@@ -85,6 +85,9 @@ pub struct Style {
     pub location: SourceLocation,
 }
 
+/// The longest `basedOn` chain followed before a cycle is assumed.
+pub const MAX_CHAIN: usize = 64;
+
 /// Document-wide default properties (`w:docDefaults`).
 ///
 /// ISO/IEC 29500-1 §17.7.1: `w:docDefaults` is the root of the style cascade —
@@ -98,7 +101,7 @@ pub struct DocDefaults {
 }
 
 /// All styles declared by `styles.xml`.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StyleTable {
     styles: Vec<Style>,
     by_id: HashMap<StyleId, usize>,
@@ -147,6 +150,54 @@ impl StyleTable {
         let index = self.styles.len();
         self.by_id.insert(style.id.clone(), index);
         self.styles.push(style);
+    }
+
+    /// Removes a style, keeping the others in declaration order.
+    pub fn remove(&mut self, id: &StyleId) -> Option<Style> {
+        let index = self.by_id.remove(id)?;
+        if index >= self.styles.len() {
+            return None;
+        }
+        let style = self.styles.remove(index);
+        for slot in self.by_id.values_mut() {
+            if *slot > index {
+                *slot -= 1;
+            }
+        }
+        Some(style)
+    }
+
+    /// Recomputes every style's `basedOn` chain (nearest ancestor first);
+    /// returns the ids whose chain runs into a cycle, where the chain stops.
+    pub fn rechain(&mut self) -> Vec<StyleId> {
+        let mut cycles = Vec::new();
+        let ids: Vec<StyleId> = self.ids().cloned().collect();
+        for id in ids {
+            let (chain, cycle) = self.chain_of(&id);
+            if let Some(style) = self.get_mut(&id) {
+                style.based_on_chain = chain;
+            }
+            if cycle {
+                cycles.push(id);
+            }
+        }
+        cycles
+    }
+
+    /// The `basedOn` ancestors of `id`, nearest first, and whether they run
+    /// into a cycle (or past [`MAX_CHAIN`] links), where the walk stops.
+    #[must_use]
+    pub fn chain_of(&self, id: &StyleId) -> (Vec<StyleId>, bool) {
+        let mut chain = Vec::new();
+        let mut current = self.get(id).and_then(|style| style.based_on.clone());
+        while let Some(parent) = current {
+            if &parent == id || chain.contains(&parent) || chain.len() >= MAX_CHAIN {
+                return (chain, true);
+            }
+            current = self.get(&parent).and_then(|style| style.based_on.clone());
+            chain.push(parent);
+        }
+        (chain, false)
     }
 
     /// Returns a style by id.
