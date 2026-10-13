@@ -11,14 +11,14 @@
 |---|---|---|
 | K00 context/identity/evidence | частично | есть: атомарные патч-транзакции, `EditFailure { command, address, error }`, `ChangeSet.blocks`, `IdIndex`; нет: `EditContext`, ресурсная дельта, session `NodeId`, журнал |
 | K01 общий validator | частично | есть: `validate`/`validate_patch` в edit, типизированный `Invariant`, лимиты документа; нет: `validate_document` в WML, remove/replace в таблицах стилей/нумерации/сносок/медиа |
-| K02 стили/списки | не начато | |
-| K03 сноски | не начато | есть только `split_shared_notes` (копия ссылки получает свою сноску) |
-| K04 секции/колонтитулы | не начато | есть только защита границ (`Invariant::SectionBoundary`) |
+| K02 стили/списки | сделано (2026-10-14) | `Editor::define(&[Definition])`: Create/Replace/DeleteStyle (in-use → отказ или `replace_with`, дети по `basedOn` — к родителю), SetDocDefaults, Create/Replace/Delete AbstractNum/Num, `restarted`, `unused_num_id`; пересчёт цепочек `refresh_definitions`. Нет: Apply/RemoveList как отдельных команд (это `Edit::ParagraphProperties` с `numPr`) |
+| K03 сноски | сделано (2026-10-14) | `Edit::InsertNote` (следующий положительный id, знак номера, ссылка-ран), `Edit::DeleteNote` (in-use → отказ; ссылка удаляется `DeleteInline` в той же транзакции); `split_shared_notes` как был |
+| K04 секции/колонтитулы | частично (2026-10-14) | есть: `Edit::SectionProperties`, `InsertSectionBreak`, `RemoveSectionBreak { keep_after }`; нет: создание/прикрепление частей колонтитулов (нужен overlay K05) |
 | K05 новые изображения | не начато | `Edit::Drawing` меняет геометрию, байты — из исходного `Source` |
 | K06 rich split/join, move | не начато | `move_block` только внутри контейнера |
 | K07 accept/reject, трекинг | частично | есть: `AcceptRevisions`/`RejectRevisions`, `Operations::accept_all`/`reject_all`, `TrackedText`; нет: выбор по id/диапазону, парность move, трекинг знака абзаца, `rPrChange`/`pPrChange` в модели |
 | K08 поля/TOC | не начато | есть защита `Unsupported::FieldResult` |
-| K09 merge/split cells | не начато | |
+| K09 merge/split cells | сделано (2026-10-14) | `Edit::MergeCells { rows, columns }`, `Edit::SplitCell { row, column, rows, columns }` по логической сетке; тесты `tests/tables.rs` |
 | K10 импорт/слияние | не начато | |
 | K11 repair | не начато | |
 | K12 diff/EditReport/CLI | не начато | |
