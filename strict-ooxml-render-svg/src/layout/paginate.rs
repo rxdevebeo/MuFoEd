@@ -141,37 +141,19 @@ fn layout_passes(ctx: &LayoutContext<'_>, preload: bool) -> Result<Option<Layout
     ctx.page_floats_banned.borrow_mut().clear();
     ctx.page_floats_forward.borrow_mut().clear();
     ctx.page_floats_moves.borrow_mut().clear();
-    let debug = std::env::var_os("STRICT_OOXML_DEBUG_FLOATS").is_some();
-    for pass in 0..MAX_LAYOUT_PASSES {
+    for _ in 0..MAX_LAYOUT_PASSES {
         let (layout, fingerprint, has_fields) = layout_once(ctx, &assumed)?;
         let fields_settled = previous.as_ref() == Some(&fingerprint)
             || (!has_fields && !ctx.note_numbers.has_page_restart());
         // Text laid out before a page-positioned float only learns of it in
         // the next pass: another pass runs until the floats stay put.
         let recorded = ctx.page_floats_record.take();
-        if debug {
-            debug_floats(
-                pass,
-                preload,
-                &layout,
-                &ctx.page_floats_preload.borrow(),
-                &recorded,
-            );
-        }
-        let floats_settled = !preload
-            || {
-                let next = next_page_floats(ctx, recorded);
-                let settled = same_page_floats(&next, &ctx.page_floats_preload.borrow());
-                if debug {
-                    eprintln!(
-                    "floats pass {pass}: settled={settled} fields={fields_settled} banned={:?} forward={:?}",
-                    ctx.page_floats_banned.borrow(),
-                    ctx.page_floats_forward.borrow()
-                );
-                }
-                ctx.page_floats_preload.replace(next);
-                settled
-            };
+        let floats_settled = !preload || {
+            let next = next_page_floats(ctx, recorded);
+            let settled = same_page_floats(&next, &ctx.page_floats_preload.borrow());
+            ctx.page_floats_preload.replace(next);
+            settled
+        };
         if fields_settled && floats_settled {
             let mut layout = layout;
             sanitize_finite_coords(&mut layout);
@@ -283,29 +265,6 @@ fn same_page_floats(a: &[crate::layout::PageFloat], b: &[crate::layout::PageFloa
     a.sort_unstable();
     b.sort_unstable();
     a == b
-}
-
-/// Prints one pass's page floats (`STRICT_OOXML_DEBUG_FLOATS`): what was put
-/// on each page ahead of time and where each float was placed.
-fn debug_floats(
-    pass: usize,
-    preload_on: bool,
-    layout: &Layout,
-    preload: &[crate::layout::PageFloat],
-    recorded: &[crate::layout::PageFloat],
-) {
-    eprintln!(
-        "floats pass {pass} (preload {preload_on}): {} pages",
-        layout.pages.len()
-    );
-    for (label, floats) in [("preload", preload), ("placed", recorded)] {
-        for (float, page, area) in floats {
-            eprintln!(
-                "  {label} float {float} page {page} x {:.1}..{:.1} y {:.1}..{:.1}",
-                area.left, area.right, area.top, area.bottom
-            );
-        }
-    }
 }
 
 /// The pages one float's wrap areas are on.
@@ -2128,15 +2087,6 @@ impl<'a> Paginator<'a> {
                 .and_then(|float| ctx.page_floats_forward.borrow().get(&float).copied())
                 .filter(|forward| *forward > host.page)
                 .unwrap_or(host.page);
-            if std::env::var_os("STRICT_OOXML_DEBUG_FLOATS").is_some() {
-                eprintln!(
-                    "  anchor float {float:?} host page {} (current {}) y {:.1} -> page {page} wrap {:?}",
-                    host.page,
-                    self.pages.len(),
-                    host.y,
-                    anchor.wrap
-                );
-            }
             let area = page_exclusion(ctx, &anchor, &geometry, host.x, host.y);
             // Recorded even when the anchor's paragraph began on a page that
             // is already closed (093): the next pass puts it there up front.
