@@ -347,3 +347,69 @@ fn document_defaults_are_set_and_undone() {
     e.undo(change.revision).expect("undo");
     assert_eq!(e.document().styles.defaults(), None);
 }
+
+#[test]
+fn lists_are_applied_and_removed_as_one_transaction() {
+    use strict_ooxml_edit::{Address, Edit, OperationLimits, Operations};
+    use strict_ooxml_wml::model::NumPr;
+    let mut d = document();
+    let mut e = Editor::new(&mut d, EditLimits::default()).expect("editor");
+    let numbering = |document: &Document, block: usize| -> Option<NumPr> {
+        match document.body.blocks.get(block) {
+            Some(Block::Paragraph(p)) => p.props.numbering,
+            _ => None,
+        }
+    };
+    // The second paragraph joins list 2 at level 1.
+    Operations::new(&mut e, OperationLimits::default())
+        .apply_list(0, &[Address::body(1)], NumId(2), Ilvl(1))
+        .expect("apply");
+    assert_eq!(
+        numbering(e.document(), 1),
+        Some(NumPr {
+            num_id: Some(NumId(2)),
+            ilvl: Some(Ilvl(1)),
+        })
+    );
+    // A list that does not exist is refused.
+    assert!(Operations::new(&mut e, OperationLimits::default())
+        .apply_list(1, &[Address::body(1)], NumId(9), Ilvl(0))
+        .is_err());
+    // A paragraph listed directly loses its numPr...
+    Operations::new(&mut e, OperationLimits::default())
+        .remove_list(1, &[Address::body(0), Address::body(1)])
+        .expect("remove");
+    assert_eq!(numbering(e.document(), 0), None);
+    assert_eq!(numbering(e.document(), 1), None);
+    // ...one whose style lists it gets numId 0, "no list".
+    let mut listed = style_like(e.document(), "Normal", "Listed");
+    listed.paragraph.numbering = Some(NumPr {
+        num_id: Some(NumId(1)),
+        ilvl: Some(Ilvl(0)),
+    });
+    e.define(2, &[Definition::CreateStyle(Box::new(listed))])
+        .expect("listed style");
+    let mut properties = match e.document().body.blocks.first() {
+        Some(Block::Paragraph(p)) => p.props.clone(),
+        _ => panic!("paragraph"),
+    };
+    properties.style = Some(id("Listed"));
+    e.transact(
+        3,
+        &[Edit::ParagraphProperties {
+            at: Address::body(0),
+            properties: Box::new(properties),
+        }],
+    )
+    .expect("use the listed style");
+    Operations::new(&mut e, OperationLimits::default())
+        .remove_list(4, &[Address::body(0)])
+        .expect("remove");
+    assert_eq!(
+        numbering(e.document(), 0),
+        Some(NumPr {
+            num_id: Some(NumId(0)),
+            ilvl: None,
+        })
+    );
+}

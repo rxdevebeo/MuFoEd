@@ -184,6 +184,67 @@ impl<'session, 'document> Operations<'session, 'document> {
             Err(EditError::StaleRevision.into())
         }
     }
+    /// Puts the paragraphs at `paragraphs` in list instance `num` at level
+    /// `ilvl`, as one transaction (K02 Apply list). The instance must exist.
+    pub fn apply_list(
+        &mut self,
+        revision: u64,
+        paragraphs: &[Address],
+        num: strict_ooxml_wml::model::NumId,
+        ilvl: strict_ooxml_wml::model::Ilvl,
+    ) -> Result<ChangeSet, OperationError> {
+        self.check(revision)?;
+        if self.editor.document().numbering.num(num).is_none() || num.0 == 0 {
+            return Err(EditError::InvalidModel(crate::Invariant::Numbering).into());
+        }
+        self.list_commands(revision, paragraphs, |_| {
+            Some(strict_ooxml_wml::model::NumPr {
+                num_id: Some(num),
+                ilvl: Some(ilvl),
+            })
+        })
+    }
+    /// Takes the paragraphs at `paragraphs` out of any list, as one
+    /// transaction (K02 Remove list). A paragraph whose style puts it in a
+    /// list gets `w:numId` 0 - "no list" - as Word writes it; the others lose
+    /// their direct `w:numPr`.
+    pub fn remove_list(
+        &mut self,
+        revision: u64,
+        paragraphs: &[Address],
+    ) -> Result<ChangeSet, OperationError> {
+        self.check(revision)?;
+        self.list_commands(revision, paragraphs, |listed_by_style| {
+            listed_by_style.then_some(strict_ooxml_wml::model::NumPr {
+                num_id: Some(strict_ooxml_wml::model::NumId(0)),
+                ilvl: None,
+            })
+        })
+    }
+    /// One `ParagraphProperties` command per paragraph, its `w:numPr` set to
+    /// what `numbering` gives for whether its style chain carries a list.
+    fn list_commands(
+        &mut self,
+        revision: u64,
+        paragraphs: &[Address],
+        numbering: impl Fn(bool) -> Option<strict_ooxml_wml::model::NumPr>,
+    ) -> Result<ChangeSet, OperationError> {
+        if paragraphs.len() > self.limits.commands {
+            return Err(OperationError::LimitExceeded);
+        }
+        let document = self.editor.document();
+        let mut commands = Vec::with_capacity(paragraphs.len());
+        for at in paragraphs {
+            let paragraph = self.editor.paragraph(at)?;
+            let mut properties = paragraph.props.clone();
+            properties.numbering = numbering(style_numbered(document, properties.style.as_ref()));
+            commands.push(crate::Edit::ParagraphProperties {
+                at: at.clone(),
+                properties: Box::new(properties),
+            });
+        }
+        Ok(self.editor.transact(revision, &commands)?)
+    }
     /// Accepts every tracked change in every story as one transaction.
     pub fn accept_all(&mut self, revision: u64) -> Result<ChangeSet, OperationError> {
         self.resolve_all(revision, true)
@@ -898,4 +959,21 @@ fn identity_changes(
         .zip(after)
         .map(|(before, after)| IdentityChange { before, after })
         .collect()
+}
+
+/// Whether paragraph style `style` (or the default paragraph style), or one
+/// it is based on, puts its paragraphs in a list.
+fn style_numbered(document: &strict_ooxml_wml::model::Document, style: Option<&StyleId>) -> bool {
+    let id = style.or_else(|| {
+        document
+            .styles
+            .default_for(strict_ooxml_wml::model::StyleType::Paragraph)
+    });
+    let Some(style) = id.and_then(|id| document.styles.get(id)) else {
+        return false;
+    };
+    std::iter::once(&style.id)
+        .chain(style.based_on_chain.iter())
+        .filter_map(|id| document.styles.get(id))
+        .any(|s| s.paragraph.numbering.is_some())
 }
