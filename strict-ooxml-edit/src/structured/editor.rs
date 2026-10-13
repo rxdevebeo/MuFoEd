@@ -1,6 +1,6 @@
 //! The editor: revisions, transactions and the undo/redo history.
 use crate::{BlockChange, ChangeSet, EditError, EditLimits};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use strict_ooxml_wml::model::{Block, Document, ParaId, Paragraph};
 
 use super::address::{addresses, mutate_story, read_paragraph, Address, Container, Story};
@@ -27,6 +27,16 @@ pub struct Editor<'a> {
     notes_settled: bool,
     /// The paragraph identities in the document, kept by every patch.
     ids: IdIndex,
+    /// Where each identified paragraph of one story is, as of one revision:
+    /// built by the first [`find`](Editor::find) after a change, so the next
+    /// ones do not walk the story again.
+    found: std::sync::Mutex<Option<FoundIndex>>,
+}
+/// The paragraphs of one story by identity (uppercased), at one revision.
+struct FoundIndex {
+    revision: u64,
+    story: Story,
+    addresses: HashMap<String, Address>,
 }
 /// A replaced range of one story's top-level blocks.
 #[derive(Clone)]
@@ -68,6 +78,7 @@ impl<'a> Editor<'a> {
             input_pipeline: strict_ooxml_core::pipeline::PipelineSummary::new(),
             notes_settled,
             ids,
+            found: std::sync::Mutex::new(None),
         })
     }
     /// Reads the current document.
@@ -113,16 +124,44 @@ impl<'a> Editor<'a> {
         addresses(self.document, story)
     }
     /// Finds an identified paragraph in a story, after structural changes.
+    ///
+    /// An identity no paragraph has is refused without a walk; otherwise the
+    /// story is walked once per revision and later lookups are a map access.
     pub fn find(&self, story: &Story, id: &ParaId) -> Result<Address, EditError> {
-        addresses(self.document, story)?
-            .into_iter()
-            .find(|a| {
-                read_paragraph(self.document, a).is_ok_and(|p| {
-                    p.para_id
-                        .as_ref()
-                        .is_some_and(|v| v.as_str().eq_ignore_ascii_case(id.as_str()))
-                })
-            })
+        let key = id.as_str().to_ascii_uppercase();
+        if !self.ids.contains(&key) {
+            return Err(EditError::InvalidParagraph);
+        }
+        let mut found = self
+            .found
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let current = found
+            .as_ref()
+            .is_some_and(|index| index.revision == self.revision && index.story == *story);
+        if !current {
+            let mut by_id = HashMap::new();
+            for address in addresses(self.document, story)? {
+                if let Some(para_id) = read_paragraph(self.document, &address)
+                    .ok()
+                    .and_then(|p| p.para_id.as_ref())
+                {
+                    // The first paragraph in reading order answers, as the
+                    // walk did before.
+                    by_id
+                        .entry(para_id.as_str().to_ascii_uppercase())
+                        .or_insert(address);
+                }
+            }
+            *found = Some(FoundIndex {
+                revision: self.revision,
+                story: story.clone(),
+                addresses: by_id,
+            });
+        }
+        found
+            .as_ref()
+            .and_then(|index| index.addresses.get(&key).cloned())
             .ok_or(EditError::InvalidParagraph)
     }
     /// Executes an atomic command batch.

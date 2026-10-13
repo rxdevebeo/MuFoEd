@@ -670,6 +670,16 @@ fn format_text(
     }
     let mut offset = 0;
     let mut out = Vec::new();
+    // A piece that touches the range - inside it, or the first one after it -
+    // joins an equal neighbour, as `replace_text` does at its seams: bolding
+    // text next to bold text leaves one run, not one per command.
+    let push = |out: &mut Vec<Inline>, piece: Inline, from: usize, to: usize| {
+        if to > range.start && from <= range.end {
+            push_merged(out, piece);
+        } else {
+            out.push(piece);
+        }
+    };
     for (run, text) in runs {
         let len = text.chars().count();
         let end = offset + len;
@@ -677,18 +687,27 @@ fn format_text(
         let stop = range.end.min(end);
         let mut modified = run.clone();
         patch_properties(&mut modified.props, patch);
-        if start >= stop || modified.props == run.props {
+        if len == 0 {
             out.push(Inline::Run(run.clone()));
+        } else if start >= stop || modified.props == run.props {
+            push(&mut out, Inline::Run(run.clone()), offset, end);
         } else {
             if start > offset {
                 out.push(text_run(Some(run), slice(text, 0, start - offset)));
             }
-            out.push(text_run(
-                Some(&modified),
-                slice(text, start - offset, stop - offset),
-            ));
+            push(
+                &mut out,
+                text_run(Some(&modified), slice(text, start - offset, stop - offset)),
+                start,
+                stop,
+            );
             if stop < end {
-                out.push(text_run(Some(run), slice(text, stop - offset, len)));
+                push(
+                    &mut out,
+                    text_run(Some(run), slice(text, stop - offset, len)),
+                    stop,
+                    end,
+                );
             }
         }
         offset = end;

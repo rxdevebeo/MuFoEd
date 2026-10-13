@@ -34,6 +34,29 @@ Features (both enabled by default):
   are explicit. Rebuild maps after revision/render-option changes.
 
 Without default features the core has no writer/renderer runtime dependency.
+
+## Cost of operations
+
+A transaction replaces a range of top-level blocks of one story and keeps only
+those blocks in history (before/after), not copies of the document. A command
+that touches one paragraph or table checks only the replaced blocks; a batch is
+checked as a whole. Measured with `cargo bench -p strict-ooxml-edit --bench
+editing` (release, host) - details in
+[EDITING_ROADMAP_2026-10-08.md](../docs/EDITING_ROADMAP_2026-10-08.md):
+
+| Scenario | 100 paragraphs | 1 000 | 10 000 |
+|---|---|---|---|
+| 20 single-character insertions | 0.26 ms | 0.29 ms | 0.41 ms |
+| 10 formatting commands | — | 0.39 ms | 0.53 ms |
+| 5 Split/Join pairs | — | 1.1 ms | 18 ms |
+| 20 undo + 20 redo | 0.029 ms | — | 0.15 ms |
+
+Split/Join still grow with the document: inserting or removing a top-level
+block shifts every block after it, and a paragraph block is stored by value.
+`find` walks a story once per revision; further lookups until the next change
+are a map access, and an identity no paragraph has is refused without a walk.
+Typing and formatting join the run they touch with equal neighbours, so a
+paragraph does not collect a run per keystroke.
 The original `EditSession`/`Command` API is deprecated: it is now a thin wrapper that forwards to `Editor` with `Edit::Text`/`Edit::Format` on `Address::body`. `Editor::transact_detailed` reports which command of a batch failed and at which address.
 `Operations` composes the public kernel commands for literal/metadata search,
 atomic replace-all and block/row moves within a container. Search works across
