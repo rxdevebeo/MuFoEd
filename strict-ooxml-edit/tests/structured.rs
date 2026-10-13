@@ -226,7 +226,7 @@ fn stable_identity_survives_insertions_and_sdt_addresses_work() {
 }
 #[test]
 fn a_deleted_paragraph_never_lends_its_identity_to_a_new_one() {
-    let body = format!("{}{}", paragraph(), paragraph());
+    let body = format!("{}{}{}<w:sectPr/>", paragraph(), paragraph(), paragraph());
     let fresh = doc(paragraph()).body.blocks.remove(0);
     // Once per path: patches, and the whole document (a section break).
     for whole in [false, true] {
@@ -256,7 +256,7 @@ fn a_deleted_paragraph_never_lends_its_identity_to_a_new_one() {
         ];
         if whole {
             commands.push(Edit::InsertSectionBreak {
-                at: Address::body(1),
+                at: Address::body(0),
             });
         }
         e.transact(1, &commands).unwrap();

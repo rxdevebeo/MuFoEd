@@ -97,6 +97,15 @@ impl IdIndex {
         self.next_revision = self.next_revision.max(other.next_revision);
         self
     }
+    /// The high-water paragraph id, for [`lower_to`](Self::lower_to).
+    pub(super) fn high_water(&self) -> u32 {
+        self.next_para
+    }
+    /// Gives back the paragraph ids minted since `high_water` was read: their
+    /// transaction was not kept.
+    pub(super) fn lower_to(&mut self, high_water: u32) {
+        self.next_para = high_water;
+    }
     /// Counts the identities under `blocks`.
     pub(super) fn add(&mut self, blocks: &[Block]) {
         collect(blocks, &mut |id| {

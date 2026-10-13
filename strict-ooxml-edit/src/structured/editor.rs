@@ -179,6 +179,18 @@ impl<'a> Editor<'a> {
         commands: &[Edit],
     ) -> Result<ChangeSet, EditFailure> {
         self.check(revision).map_err(EditFailure::batch)?;
+        // The ids a transaction minted stay spent only if it is kept, so that
+        // both paths hand out the same ids for the same history.
+        let (revision, high_water) = (self.revision, self.ids.high_water());
+        let result = self.transact_checked(commands);
+        if self.revision == revision {
+            self.ids.lower_to(high_water);
+        }
+        result
+    }
+    /// [`transact_detailed`](Self::transact_detailed) once the revision is
+    /// checked.
+    fn transact_checked(&mut self, commands: &[Edit]) -> Result<ChangeSet, EditFailure> {
         // A note or section command changes a note table or the section list
         // besides a story: the whole-document path keeps both in one history
         // entry.
@@ -293,10 +305,13 @@ impl<'a> Editor<'a> {
                 error,
             })?;
         }
-        self.ids = std::mem::take(&mut self.ids).above(&minted);
         split_shared_notes(&mut candidate).map_err(EditFailure::batch)?;
         validate(&candidate, &self.limits.resource).map_err(EditFailure::batch)?;
+        let revision = self.revision;
         let change = self.commit_whole(candidate)?;
+        if self.revision != revision {
+            self.ids = std::mem::take(&mut self.ids).above(&minted);
+        }
         self.notes_settled = true;
         Ok(change)
     }
