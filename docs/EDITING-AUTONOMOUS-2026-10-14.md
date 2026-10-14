@@ -16,10 +16,14 @@
 | 4 | K03: `Edit::InsertNote`, `Edit::DeleteNote` | `a2698a8` | влито |
 | 5 | K04 (секции): `Edit::SectionProperties`, `InsertSectionBreak`, `RemoveSectionBreak` | `d784092` | влито |
 | 6 | K07: `AcceptRevision`/`RejectRevision` по id, `TrackedSplit`/`TrackedJoin`; `apply_list`/`remove_list` | см. `master` `2eacbbf` | влито |
-| 7 | K12-lite: `diff(before, after, mode)` — типизированный список изменений | `a90c70d` | гейт |
+| 7 | K12-lite: `diff(before, after, mode)` — типизированный список изменений | `a90c70d` | влито |
+| 8 | Исправление: paraId удалённого абзаца не переиспользуется в сессии | `6da844e`, `d27a077` | влито |
 
 Гейты: тесты 2052/0 на `2720378`; fmt+clippy на `dec0f4d` — зелёные.
-Всё до п. 6 влито в `master` `2eacbbf` (no-ff).
+Всё до п. 6 влито в `master` `2eacbbf` (no-ff); полный гейт `2eacbbf` зелёный.
+Пп. 7–8: гейт `d27a077` (fmt, clippy, test, doc) зелёный.
+Флаки: `strict-ooxml-view` `http::tests::a_rebound_host_is_answered_421_without_reaching_the_handler`
+однажды упал с ConnectionReset (10054) на Windows; к правкам не относится.
 
 Отложено: 086_Oberon (CC0_DOCX) после `fix/float-sticky` — нужен прогон
 wps-qa; колонтитулы K04 — нужны новые части пакета (overlay K05).
@@ -55,3 +59,9 @@ wps-qa; колонтитулы K04 — нужны новые части паке
   `xml:space`. Отдельно сравниваются стили, абстрактные/конкретные номера,
   docDefaults, секции и истории сносок. Предел — 16M клеток LCS
   (`LimitExceeded`). Отчёт о правке (`EditReport`) не делался.
+- **Идентичности абзацев.** Новый paraId выдаётся от верхней отметки
+  сессии, а не наименьшего свободного: иначе `Delete`+`Insert` в одной
+  транзакции отдавали новому абзацу id удалённого, и `find`/`diff` путали
+  их. Отметка переживает пересборку индекса (путь «весь документ», undo,
+  redo) и откатывается, если транзакция не записана в историю, — оба пути
+  выдают одинаковые id (property-тест).
