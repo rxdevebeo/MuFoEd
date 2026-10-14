@@ -63,6 +63,7 @@ macro_rules! eprintln {
 }
 
 mod djvu;
+mod fonts;
 mod rtf;
 
 use std::fmt::Write as _;
@@ -152,10 +153,13 @@ fn print_usage() {
     eprintln!(
         "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|import-rtf|write|normalize> <file> \
          [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
-         [--no-floating] [--no-math] [--wps-times] [--cell-nowrap=spec|always] [--transitional]"
+         [--no-floating] [--no-math] [--wps-times] [--cell-nowrap=spec|always] [--transitional] \
+         [--fonts <manifest.json>] [--strict-fonts]"
     );
     eprintln!();
     eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
+    eprintln!("  --fonts         render/to-pdf: also use the fonts a strictlib.font-assets.v1 manifest pins");
+    eprintln!("  --strict-fonts  render/to-pdf: refuse to render when a font the document names is unavailable");
     eprintln!("  normalize       open a Transitional package and print the Loss Report");
     eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
     eprintln!("  from-djvu       import DjVu to Strict DOCX --out <file.docx> [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr]");
@@ -441,6 +445,7 @@ struct RenderArgs {
     math: bool,
     wps_times: bool,
     cell_no_wrap: CellNoWrap,
+    fonts: fonts::FontArgs,
 }
 
 impl RenderArgs {
@@ -453,8 +458,13 @@ impl RenderArgs {
         let mut math = true;
         let mut wps_times = false;
         let mut cell_no_wrap = CellNoWrap::default();
+        let mut fonts = fonts::FontArgs::default();
         let mut index = 0;
         while index < args.len() {
+            if fonts.take(args, &mut index)? {
+                index += 1;
+                continue;
+            }
             match args[index].as_str() {
                 "--no-floating" => floating = false,
                 "--no-math" => math = false,
@@ -507,6 +517,7 @@ impl RenderArgs {
             math,
             wps_times,
             cell_no_wrap,
+            fonts,
         })
     }
 }
@@ -554,11 +565,19 @@ fn run_to_pdf(args: &[String]) -> ExitCode {
             return ExitCode::from(EXIT_ERROR);
         }
     };
+    let render_options = match parsed
+        .fonts
+        .apply(RenderOptions::default().cell_no_wrap(parsed.cell_no_wrap))
+    {
+        Ok(render_options) => render_options,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
     let (options, normalizer) = open_options(parsed.transitional);
     let code = match StrictDocument::open_path(&parsed.file, &options) {
-        Ok(document) => match document
-            .render_pdf(&RenderOptions::default().cell_no_wrap(parsed.cell_no_wrap))
-        {
+        Ok(document) => match document.render_pdf(&render_options) {
             Ok(output) => {
                 if !output.report.is_clean() {
                     eprintln!("warning: the render is not lossless");
@@ -627,6 +646,7 @@ struct WriteArgs {
     transitional: bool,
     report_out: Option<String>,
     cell_no_wrap: CellNoWrap,
+    fonts: fonts::FontArgs,
 }
 
 impl WriteArgs {
@@ -636,8 +656,13 @@ impl WriteArgs {
         let mut transitional = false;
         let mut report_out = None;
         let mut cell_no_wrap = CellNoWrap::default();
+        let mut fonts = fonts::FontArgs::default();
         let mut index = 0;
         while index < args.len() {
+            if fonts.take(args, &mut index)? {
+                index += 1;
+                continue;
+            }
             match args[index].as_str() {
                 "--transitional" => transitional = true,
                 flag if flag.starts_with("--cell-nowrap=") => {
@@ -673,6 +698,7 @@ impl WriteArgs {
             transitional,
             report_out,
             cell_no_wrap,
+            fonts,
         })
     }
 }
@@ -829,6 +855,12 @@ fn run_write(args: &[String]) -> ExitCode {
             return ExitCode::from(EXIT_ERROR);
         }
     };
+    if parsed.fonts.is_set() {
+        eprintln!(
+            "error: 'write' renders nothing; --fonts and --strict-fonts apply to render and to-pdf"
+        );
+        return ExitCode::from(EXIT_ERROR);
+    }
     let (options, normalizer) = open_options(parsed.transitional);
     let package = match Package::open_path(&parsed.file, &options) {
         Ok(package) => package,
@@ -923,6 +955,13 @@ fn render_parsed(document: &StrictDocument, parsed: &RenderArgs) -> ExitCode {
     render_options = render_options.math(parsed.math);
     render_options = render_options.wps_times_calibration(parsed.wps_times);
     render_options = render_options.cell_no_wrap(parsed.cell_no_wrap);
+    render_options = match parsed.fonts.apply(render_options) {
+        Ok(render_options) => render_options,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
     let rendered = match document.render_svg(&render_options) {
         Ok(rendered) => rendered,
         Err(error) => {

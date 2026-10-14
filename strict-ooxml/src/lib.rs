@@ -151,8 +151,11 @@ pub use strict_ooxml_render_pdf::{
     PdfOutput, PdfReport,
 };
 #[cfg(feature = "svg")]
+pub use strict_ooxml_render_svg::font::{FontAsset, FontAssetError, FontAssetLimits, FontAssets};
+#[cfg(feature = "svg")]
 pub use strict_ooxml_render_svg::{
-    CellNoWrap, MediaMode, Page, PageSelection, RenderError, RenderOptions, WrapCoordinates,
+    CellNoWrap, FontPolicy, MediaMode, Page, PageSelection, RenderError, RenderOptions,
+    WrapCoordinates,
 };
 #[cfg(feature = "report")]
 pub use strict_ooxml_report::{
