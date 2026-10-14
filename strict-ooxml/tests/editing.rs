@@ -106,48 +106,48 @@ fn facade_compound_operations_save_and_reopen() {
     assert_eq!(found.hits.len(), 2);
     assert_eq!(found.hits[0].paragraph, Address::body(1));
 }
+fn rich_point(inline: &[usize], content: usize, offset: usize) -> strict_ooxml::edit::InlinePoint {
+    strict_ooxml::edit::InlinePoint {
+        inline: inline.to_vec(),
+        content,
+        offset,
+    }
+}
+/// Text with `*` around bold runs, `<...>` around hyperlinks and `→` for
+/// a tab.
+fn rich_shape(inlines: &[strict_ooxml::model::Inline], out: &mut String) {
+    for inline in inlines {
+        match inline {
+            strict_ooxml::model::Inline::Run(run) => {
+                let bold = run.props.bold == strict_ooxml::model::TriState::On;
+                if bold {
+                    out.push('*');
+                }
+                for content in &run.content {
+                    match content {
+                        strict_ooxml::model::RunContent::Text(node) => out.push_str(&node.text),
+                        strict_ooxml::model::RunContent::Tab => out.push('→'),
+                        _ => out.push('·'),
+                    }
+                }
+                if bold {
+                    out.push('*');
+                }
+            }
+            strict_ooxml::model::Inline::Hyperlink(link) => {
+                out.push('<');
+                rich_shape(&link.inlines, out);
+                out.push('>');
+            }
+            _ => out.push('·'),
+        }
+    }
+}
 #[test]
 fn rich_split_format_and_replace_save_and_reopen() {
-    use strict_ooxml::edit::{FormatPatch, InlinePoint};
-    use strict_ooxml::model::{Block, Inline, RunContent, TriState};
+    use strict_ooxml::edit::FormatPatch;
+    use strict_ooxml::model::{Block, Inline, TriState};
     use strict_ooxml_testkit::docx::Rel;
-    fn point(inline: &[usize], content: usize, offset: usize) -> InlinePoint {
-        InlinePoint {
-            inline: inline.to_vec(),
-            content,
-            offset,
-        }
-    }
-    /// Text with `*` around bold runs, `<...>` around hyperlinks and `→` for
-    /// a tab.
-    fn shape(inlines: &[Inline], out: &mut String) {
-        for inline in inlines {
-            match inline {
-                Inline::Run(run) => {
-                    let bold = run.props.bold == TriState::On;
-                    if bold {
-                        out.push('*');
-                    }
-                    for content in &run.content {
-                        match content {
-                            RunContent::Text(node) => out.push_str(&node.text),
-                            RunContent::Tab => out.push('→'),
-                            _ => out.push('·'),
-                        }
-                    }
-                    if bold {
-                        out.push('*');
-                    }
-                }
-                Inline::Hyperlink(link) => {
-                    out.push('<');
-                    shape(&link.inlines, out);
-                    out.push('>');
-                }
-                _ => out.push('·'),
-            }
-        }
-    }
     let builder = DocxBuilder::strict();
     let mut link = Rel::new(
         "rIdLink",
@@ -173,8 +173,8 @@ fn rich_split_format_and_replace_save_and_reopen() {
                     // Bold from "s|ee " to "→e|nd".
                     Edit::FormatAt {
                         at: Address::body(0),
-                        from: point(&[0], 0, 1),
-                        to: point(&[2], 1, 1),
+                        from: rich_point(&[0], 0, 1),
+                        to: rich_point(&[2], 1, 1),
                         patch: FormatPatch {
                             bold: Some(TriState::On),
                             ..FormatPatch::default()
@@ -183,13 +183,13 @@ fn rich_split_format_and_replace_save_and_reopen() {
                     // Enter in the link: "this| link".
                     Edit::SplitAt {
                         at: Address::body(0),
-                        point: point(&[2, 0], 0, 4),
+                        point: rich_point(&[2, 0], 0, 4),
                     },
                     // " link" becomes " page".
                     Edit::ReplaceAt {
                         at: Address::body(1),
-                        from: point(&[0, 0], 0, 1),
-                        to: point(&[0, 0], 0, 5),
+                        from: rich_point(&[0, 0], 0, 1),
+                        to: rich_point(&[0, 0], 0, 5),
                         text: "page".into(),
                     },
                 ],
@@ -208,7 +208,7 @@ fn rich_split_format_and_replace_save_and_reopen() {
             continue;
         };
         let mut text = String::new();
-        shape(&p.inlines, &mut text);
+        rich_shape(&p.inlines, &mut text);
         texts.push(text);
         for inline in &p.inlines {
             if let Inline::Hyperlink(link) = inline {
