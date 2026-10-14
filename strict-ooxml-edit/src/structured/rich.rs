@@ -215,16 +215,16 @@ fn place(trail: &[usize], point: &InlinePoint, len: usize) -> (usize, usize) {
     }
 }
 
-/// The pieces the run at `trail` becomes, or `None` when it stays as it is.
+/// The pieces the run at `location` becomes, or `None` when it stays as it is.
 fn format_run(
     run: &Run,
-    trail: &[usize],
+    location: &[usize],
     from: &InlinePoint,
     to: &InlinePoint,
     patch: &FormatPatch,
 ) -> Result<Option<Vec<Inline>>, EditError> {
     let len = run.content.len();
-    let (start, end) = (place(trail, from, len), place(trail, to, len));
+    let (start, end) = (place(location, from, len), place(location, to, len));
     if start >= end {
         return Ok(None);
     }
