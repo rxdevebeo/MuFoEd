@@ -1061,7 +1061,9 @@ impl PageWriter<'_> {
         if shaped.glyphs.is_empty() {
             return false;
         }
-        if !text.run.outline && crate::glyphs::needs_outlines(shaped) {
+        if !text.run.outline
+            && (crate::glyphs::needs_outlines(shaped) || crate::glyphs::right_to_left(shown))
+        {
             return self.show_outlined(text, font, name, shown, shaped);
         }
         let (red, green, blue) = rgb(text.run.color.as_deref().unwrap_or("#000000"));

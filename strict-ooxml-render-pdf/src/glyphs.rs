@@ -33,6 +33,29 @@ pub(crate) fn needs_outlines(shaped: &ShapedText) -> bool {
             .any(|glyph| glyph.y_offset_em.abs() > 1e-9)
 }
 
+/// Whether `text` holds a right-to-left letter (Hebrew, Arabic, Syriac,
+/// Thaana, N'Ko, Samaritan, Mandaic and their presentation forms).
+///
+/// Such a run goes through the outlined path too, even with one glyph per
+/// cluster: drawn glyph by glyph, each with its own text matrix, a reader
+/// orders the letters by their geometry, and a face whose final forms reach
+/// past their advance (Windows Arial's Urdu: يعني read as يعين) comes back
+/// with letters swapped. One invisible `TJ` on the baseline reads back as
+/// written.
+#[must_use]
+pub(crate) fn right_to_left(text: &str) -> bool {
+    text.chars().any(|ch| {
+        matches!(
+            ch,
+            '\u{0590}'..='\u{08FF}'
+                | '\u{FB1D}'..='\u{FDFF}'
+                | '\u{FE70}'..='\u{FEFF}'
+                | '\u{10800}'..='\u{10FFF}'
+                | '\u{1E800}'..='\u{1EFFF}'
+        )
+    })
+}
+
 /// The glyph of a cluster that carries the cluster's text: on the baseline if
 /// any is, and the widest of those (the letter's body, not its dots).
 ///
