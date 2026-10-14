@@ -297,7 +297,7 @@ fn delete_num(
 }
 
 /// Where content names a definition.
-enum Site<'a> {
+pub(crate) enum Site<'a> {
     Paragraph(&'a mut ParagraphProperties),
     Run(&'a mut RunProperties),
     Table(&'a mut TableProperties),
@@ -319,6 +319,11 @@ fn each_site(document: &mut Document, f: &mut dyn FnMut(Site<'_>)) {
             }
         }
     }
+}
+
+/// [`each_site`] for some blocks only.
+pub(crate) fn each_block_site(items: &mut [Block], f: &mut dyn FnMut(Site<'_>)) {
+    blocks(items, f);
 }
 
 fn blocks(items: &mut [Block], f: &mut dyn FnMut(Site<'_>)) {
