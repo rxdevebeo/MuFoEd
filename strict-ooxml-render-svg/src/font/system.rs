@@ -335,7 +335,7 @@ fn family_names(name: &[u8]) -> Vec<String> {
             _ => None,
         };
         if let Some(text) = text.map(|text| text.trim().to_owned()) {
-            if !text.is_empty() && !names.iter().any(|known| *known == text) {
+            if !text.is_empty() && !names.contains(&text) {
                 names.push(text);
             }
         }

@@ -2,7 +2,7 @@
 //!
 //! The bundled faces keep output identical on every machine; a caller who has
 //! the fonts a document names (licensed files, or the fonts installed on the
-//! machine, [`FontAssets::from_system`]) passes them here. They enter the same
+//! machine, `font::system`, feature `system-fonts`) passes them here. They enter the same
 //! [`FontPrograms`](super::embedded::FontPrograms) a document's own embedded
 //! fonts enter, so layout measures, and SVG and PDF draw and embed, the same
 //! bytes. A font the document embeds wins over a caller's one of the same
