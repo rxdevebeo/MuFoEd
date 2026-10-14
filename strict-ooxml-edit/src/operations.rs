@@ -112,7 +112,7 @@ pub enum OperationError {
     LimitExceeded,
     /// A strict replacement encountered protected content.
     ProtectedContent,
-    /// Move endpoints are in different containers.
+    /// Move endpoints are in different stories.
     UnsupportedMove,
 }
 impl std::fmt::Display for OperationError {
@@ -146,7 +146,8 @@ pub struct ReplaceReport {
     /// Kernel transaction result.
     pub change: ChangeSet,
 }
-/// Paragraph identity changes produced by existing insertion commands.
+/// A paragraph's identity before and after an operation: a block move keeps
+/// it, a row move gives the copied paragraphs new ones.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IdentityChange {
     /// Identity before movement; imported paragraphs may have none.
@@ -438,7 +439,10 @@ impl<'session, 'document> Operations<'session, 'document> {
             change,
         })
     }
-    /// Moves a block within the same container, using an original insertion boundary.
+    /// Moves a block to an insertion boundary of the same story - within its
+    /// container or into another one (a cell, a block SDT, a text box) -
+    /// keeping its paragraph identities ([`crate::Edit::Move`]). Both
+    /// addresses are read in the story as it is before the move.
     pub fn move_block(
         &mut self,
         revision: u64,
@@ -446,49 +450,25 @@ impl<'session, 'document> Operations<'session, 'document> {
         before: &Address,
     ) -> Result<MoveReport, OperationError> {
         self.check(revision)?;
-        if source.story != before.story || source.containers != before.containers {
+        if source.story != before.story {
             return Err(OperationError::UnsupportedMove);
         }
-        let blocks = blocks_at(self.editor.document(), source)?;
-        let block = blocks
-            .get(source.block)
-            .ok_or(EditError::InvalidParagraph)?
-            .clone();
-        if before.block > blocks.len() {
-            return Err(EditError::InvalidParagraph.into());
-        }
-        let old = block_ids(std::slice::from_ref(&block));
-        let index = if before.block > source.block {
-            before.block - 1
-        } else {
-            before.block
-        };
-        let mut destination = source.clone();
-        destination.block = index;
-        let change = if index == source.block {
-            self.editor.transact(revision, &[])?
-        } else {
-            if self.limits.commands < 2 {
-                return Err(OperationError::LimitExceeded);
-            }
-            // Keep source IDs occupied while Insert allocates fresh identities.
-            let mut delete = source.clone();
-            if before.block <= source.block {
-                delete.block += 1;
-            }
-            self.editor.transact(
-                revision,
-                &[
-                    crate::Edit::Insert {
-                        at: before.clone(),
-                        block: Box::new(block),
-                    },
-                    crate::Edit::Delete { at: delete },
-                ],
-            )?
-        };
+        let old = block_ids(std::slice::from_ref(
+            blocks_at(self.editor.document(), source)?
+                .get(source.block)
+                .ok_or(EditError::InvalidParagraph)?,
+        ));
+        let destination = crate::structured::after_removal(source, before)
+            .ok_or(EditError::UnsupportedContent(crate::Unsupported::Target))?;
+        let change = self.editor.transact(
+            revision,
+            &[crate::Edit::Move {
+                at: source.clone(),
+                to: before.clone(),
+            }],
+        )?;
         let block = blocks_at(self.editor.document(), &destination)?
-            .get(index)
+            .get(destination.block)
             .ok_or(EditError::InvalidParagraph)?;
         let new = block_ids(std::slice::from_ref(block));
         Ok(MoveReport {

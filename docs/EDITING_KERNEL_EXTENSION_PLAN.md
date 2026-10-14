@@ -15,7 +15,7 @@
 | K03 сноски | сделано (2026-10-14) | `Edit::InsertNote` (следующий положительный id, знак номера, ссылка-ран), `Edit::DeleteNote` (in-use → отказ; ссылка удаляется `DeleteInline` в той же транзакции); `split_shared_notes` как был |
 | K04 секции/колонтитулы | частично (2026-10-14) | есть: `Edit::SectionProperties`, `InsertSectionBreak`, `RemoveSectionBreak { keep_after }`; нет: создание/прикрепление частей колонтитулов (нужен overlay K05) |
 | K05 новые изображения | не начато | `Edit::Drawing` меняет геометрию, байты — из исходного `Source` |
-| K06 rich split/join, move | частично (2026-10-14) | есть: `Edit::Move` — блок между контейнерами одной истории (тело, ячейка, SDT, текстовое поле) с сохранением paraId; `Edit::SplitAt` — разрез в точке дерева inline (гиперссылки/bidi продолжаются справа; поле, inline SDT, отслеживаемый ран — отказ); `Edit::FormatAt` — формат между двумя `InlinePoint` без дробления обёрток; `Edit::ReplaceAt` — удаление/ввод поверх диапазона (метки закладок и комментариев остаются; поля, ссылки на сноски/комментарии, отслеживаемые раны, opaque — отказ); `Join` любых абзацев; нет: фрагменты/CopyNodes, перенос между историями; `Operations::move_block` по-прежнему выдаёт новые id |
+| K06 rich split/join, move | частично (2026-10-14) | есть: `Edit::Move` — блок между контейнерами одной истории (тело, ячейка, SDT, текстовое поле) с сохранением paraId; `Edit::SplitAt` — разрез в точке дерева inline (гиперссылки/bidi продолжаются справа; поле, inline SDT, отслеживаемый ран — отказ); `Edit::FormatAt` — формат между двумя `InlinePoint` без дробления обёрток; `Edit::ReplaceAt` — удаление/ввод поверх диапазона (метки закладок и комментариев остаются; поля, ссылки на сноски/комментарии, отслеживаемые раны, opaque — отказ); `Join` любых абзацев; нет: фрагменты/CopyNodes, перенос между историями. `Operations::move_block` работает через `Edit::Move` (решение владельца 2026-10-14) |
 | K07 accept/reject, трекинг | частично | есть: `AcceptRevisions`/`RejectRevisions`, `Operations::accept_all`/`reject_all`, `TrackedText`; нет: выбор по id/диапазону, парность move, трекинг знака абзаца, `rPrChange`/`pPrChange` в модели |
 | K08 поля/TOC | не начато | есть защита `Unsupported::FieldResult` |
 | K09 merge/split cells | сделано (2026-10-14) | `Edit::MergeCells { rows, columns }`, `Edit::SplitCell { row, column, rows, columns }` по логической сетке; тесты `tests/tables.rs` |
@@ -95,6 +95,8 @@ EditReport — отдельный JSON документ, schema_version 1.0, edi
 Минимальное ядро не зависит от writer/renderer. Overlay содержит neutral bytes/relationship metadata, реализация Source подключается save feature. fields feature использует общий layout для paginated fields; text/metadata fields доступны headless. visual обслуживает interaction. Новые runtime dependencies минимальному ядру не добавляются; для отдельного feature новая зависимость требует ADR/lock/license gate.
 
 Operations::move_block сохраняет прежний copy/delete контракт с новыми ParaId. Новый MoveNodes явно сохраняет NodeId; замена поведения существующего API не допускается.
+
+**Изменено 2026-10-14 (решение владельца):** `Operations::move_block` переведён на `Edit::Move` — id перемещённых абзацев сохраняются (`IdentityChange { before == after }`), перенос между контейнерами одной истории разрешён; `UnsupportedMove` — только для разных историй.
 
 ## 4. Очереди реализации
 
