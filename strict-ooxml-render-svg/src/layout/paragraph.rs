@@ -2580,18 +2580,7 @@ fn place_token(
     let width = sink
         .ctx
         .measure_with_next_factor(token, run, following, plain);
-    // Spaces after a word hang past the margin, as in Word: a word breaks
-    // only when its letters do not fit, and spaces alone never open a line
-    // (a paragraph ending in five spaces gained an empty line).
-    let ink = token.trim_end_matches(' ');
-    let fit = if ink.len() == token.len() {
-        width
-    } else if ink.is_empty() {
-        0.0
-    } else {
-        sink.ctx
-            .measure_with_next_factor(ink, run, following, plain)
-    };
+    let (ink, fit) = ink_fit(sink, token, run, following, plain, width);
     if sink.computed.no_wrap {
         // A cell's noWrap retains authored hard breaks and lets the whole
         // word advance beyond the cell when its fixed width is insufficient.
@@ -2641,6 +2630,34 @@ fn place_token(
     *x += width;
 }
 
+/// The letters of `token` and the width that must fit on the line. Spaces
+/// after a word hang past the margin, as in Word: a word breaks only when its
+/// letters do not fit, and spaces alone never open a line (a paragraph ending
+/// in five spaces gained an empty line). The Clio audit calibration
+/// (`wps_times_calibration`) was fitted with the spaces counted and keeps them.
+fn ink_fit<'t>(
+    sink: &LineSink<'_, '_>,
+    token: &'t str,
+    run: &ComputedRun,
+    following: Option<char>,
+    plain: f64,
+    width: f64,
+) -> (&'t str, f64) {
+    if sink.ctx.options.wps_times_calibration {
+        return (token, width);
+    }
+    let ink = token.trim_end_matches(' ');
+    let fit = if ink.len() == token.len() {
+        width
+    } else if ink.is_empty() {
+        0.0
+    } else {
+        sink.ctx
+            .measure_with_next_factor(ink, run, following, plain)
+    };
+    (ink, fit)
+}
+
 /// A word can span multiple runs; line breaking uses its complete width and
 /// language while painting each substring with its authored formatting.
 #[allow(clippy::too_many_lines)]
@@ -2664,9 +2681,10 @@ fn place_formatted_word(
             .iter()
             .map(|(text, run)| sink.ctx.measure(text, run))
             .sum();
-        // Its trailing spaces hang past the margin (see `place_token`).
+        // Its trailing spaces hang past the margin (see `ink_fit`).
         let hanging = pieces
             .last()
+            .filter(|_| !sink.ctx.options.wps_times_calibration)
             .filter(|(text, _)| text.ends_with(' '))
             .map_or(0.0, |(text, run)| {
                 sink.ctx.measure(text, run) - sink.ctx.measure(text.trim_end_matches(' '), run)
@@ -3416,7 +3434,7 @@ fn finish_line(
     // neither part of the width a justified line fills nor a gap it widens,
     // so the last letter meets the margin (WPS and Word lines end on it; ours
     // stopped a space short).
-    let last_item = (!computed.bidi)
+    let last_item = (!computed.bidi && !ctx.options.wps_times_calibration)
         .then(|| {
             line.items
                 .iter()
