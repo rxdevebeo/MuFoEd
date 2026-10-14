@@ -31,10 +31,6 @@ PROFILES = {
     "Candara Light": ("Carlito", []),
     "Corbel": ("Carlito", []),
     "Corbel Light": ("Carlito", []),
-    # Caladea is sold as Cambria-compatible, but the installed Cambria's
-    # digits are tabular (0.554 em against Caladea's 0.36-0.52) and 57 of the
-    # 95 ASCII advances differ: WPS set Cambria words 4% wider than Caladea.
-    "Cambria": ("Caladea", []),
     "Constantia": ("Caladea", []),
     "Palatino Linotype": ("Tinos", ["palatino", "book antiqua"]),
     "Sylfaen": ("Tinos", []),

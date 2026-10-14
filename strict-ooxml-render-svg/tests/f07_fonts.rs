@@ -72,12 +72,12 @@ fn f07_cs_font_does_not_override_cyrillic() {
 <w:p><w:r><w:rPr><w:rFonts w:ascii=\"Cambria\" w:hAnsi=\"Cambria\" w:cs=\"Segoe UI\"/></w:rPr>\
 <w:t>Hello Привет</w:t></w:r></w:p>";
     let svg = svg_of(body);
-    assert!(svg.contains("font-family=\"Caladea for Cambria\""), "{svg}");
+    assert!(svg.contains("font-family=\"Caladea\""), "{svg}");
     assert!(
         !svg.contains("font-family=\"Carlito\"") && !svg.contains("Selawik"),
         "Segoe UI must not become the run face: {svg}"
     );
-    assert!(svg.contains("@font-face") && svg.contains("font-family: \"Caladea for Cambria\""));
+    assert!(svg.contains("@font-face") && svg.contains("font-family: \"Caladea\""));
 }
 
 /// An unknown family is measured and delivered as the same bundled face.
