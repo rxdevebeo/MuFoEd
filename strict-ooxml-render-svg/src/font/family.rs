@@ -314,6 +314,16 @@ mod tests {
     }
 
     #[test]
+    fn georgia_and_segoe_ui_keep_their_own_line_box() {
+        use crate::font::FontProvider as _;
+        let provider = crate::font::builtin::BuiltinFontProvider::new();
+        let georgia = provider.metrics("Georgia", false, false);
+        assert!((georgia.line_height_em() - 2327.0 / 2048.0).abs() < 1e-9);
+        let segoe = provider.metrics("Segoe UI", true, false);
+        assert!((segoe.line_height_em() - 2724.0 / 2048.0).abs() < 1e-9);
+    }
+
+    #[test]
     fn latin_only_faces_take_cyrillic_and_greek_from_tinos_and_arimo() {
         use super::script_fallback;
         use crate::font::builtin::bundled_has_glyph;
