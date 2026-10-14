@@ -457,7 +457,9 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
                 continue;
             };
             let shown = strict_ooxml_render_svg::font::present_text(&text.run.family, &text.text);
-            let family = strict_ooxml_render_svg::style::chosen_family(&text.run, &shown);
+            // The face that draws: a font program its licence keeps out of a
+            // subset is drawn with its bundled face (`paint_family`).
+            let family = strict_ooxml_render_svg::style::paint_family(&text.run, &shown, false);
             let Some(source) =
                 strict_ooxml_render_svg::font::embedded::run_face_source(&text.run, &family)
             else {
@@ -918,7 +920,7 @@ impl PageWriter<'_> {
         // the layout used decides which embedded face a run refers to, and it is
         // cloned out before anything is drawn: `fonts` is an immutable borrow of
         // `self` and the content stream is a mutable one.
-        let mapped = strict_ooxml_render_svg::style::chosen_family(&text.run, &text.text);
+        let mapped = strict_ooxml_render_svg::style::paint_family(&text.run, &text.text, false);
         let found = self
             .fonts
             .iter()

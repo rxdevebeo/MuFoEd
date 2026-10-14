@@ -21,6 +21,49 @@ pub struct FontProgram {
     /// it, and hashing a megabyte font per measured word made a document with
     /// embedded fonts take a minute per page.
     pub hash: [u8; 32],
+    /// What the font's `OS/2.fsType` lets an output carry of it.
+    pub embedding: Embedding,
+}
+
+/// What a font's licence flags (`OS/2.fsType`) let an output carry of it.
+/// Measuring with the font is no embedding; layout uses it whatever this says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Embedding {
+    /// Installable, editable or preview & print: subsets and whole programs.
+    Allowed,
+    /// No subsetting (`0x0100`): only the whole program.
+    WholeProgram,
+    /// Restricted licence (`0x0002` alone) or bitmap only (`0x0200`): no
+    /// outlines in the output.
+    Forbidden,
+}
+
+impl Embedding {
+    /// From `OS/2.fsType`.
+    #[must_use]
+    pub fn from_fs_type(fs_type: u16) -> Self {
+        let usage = fs_type & 0x000E;
+        // Version 0-2 fonts may set several usage bits; the least restrictive
+        // applies (OpenType OS/2 fsType).
+        if (usage & 0x0002 != 0 && usage & 0x000C == 0) || fs_type & 0x0200 != 0 {
+            Self::Forbidden
+        } else if fs_type & 0x0100 != 0 {
+            Self::WholeProgram
+        } else {
+            Self::Allowed
+        }
+    }
+
+    /// Whether an output that embeds the whole program (`true`, SVG) or a
+    /// subset (`false`, PDF) may carry the font.
+    #[must_use]
+    pub fn allows(self, whole_program: bool) -> bool {
+        match self {
+            Self::Allowed => true,
+            Self::WholeProgram => whole_program,
+            Self::Forbidden => false,
+        }
+    }
 }
 impl FontProgram {
     /// A program from a single font's bytes, named `<prefix>-<sha256>` so
@@ -40,6 +83,12 @@ impl FontProgram {
             line_gap: f64::from(raw.leading) / units,
             width_scale: 1.0,
         });
+        let embedding = {
+            use skrifa::raw::TableProvider as _;
+            font.os2().map_or(Embedding::Allowed, |os2| {
+                Embedding::from_fs_type(os2.fs_type())
+            })
+        };
         let hash = super::hash_face_bytes(&bytes);
         let family = format!(
             "{prefix}-{}",
@@ -55,6 +104,7 @@ impl FontProgram {
             bytes: bytes.into(),
             metrics,
             hash,
+            embedding,
         })
     }
     /// Checks that a subset supplies every character in this text fragment.

@@ -131,7 +131,7 @@ fn font_faces(page: &PlacedPage) -> String {
         let Item::Text(text) = item else {
             continue;
         };
-        let family = crate::style::chosen_family(&text.run, &text.text);
+        let family = crate::style::paint_family(&text.run, &text.text, true);
         let key = (family, text.run.bold, text.run.italic);
         if !keys
             .iter()

@@ -468,7 +468,9 @@ fn check_font_policy(options: &RenderOptions, warnings: &[String]) -> Result<()>
         return Ok(());
     }
     match warnings.iter().find(|warning| {
-        warning.starts_with("font.substitution") || warning.starts_with("font.embedded.")
+        warning.starts_with("font.substitution")
+            || warning.starts_with("font.embedded.")
+            || warning.starts_with("font.embedding.")
     }) {
         Some(warning) => Err(RenderError::FontUnavailable(warning.clone()).into_strict()),
         None => Ok(()),

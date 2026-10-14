@@ -151,3 +151,82 @@ fn a_face_is_taken_out_of_a_collection() {
         Err(FontAssetError::Invalid("Test Sans".to_owned()))
     );
 }
+
+/// Arimo with its `OS/2.fsType` set to `fs_type`.
+fn arimo_with_fs_type(family: &str, fs_type: u16) -> FontAsset {
+    let mut font = face_source("Arial", false, false)
+        .expect("bundled Arimo")
+        .data
+        .to_vec();
+    let tables = usize::from(u16::from_be_bytes([font[4], font[5]]));
+    let os2 = (0..tables)
+        .map(|table| 12 + 16 * table)
+        .find(|at| &font[*at..*at + 4] == b"OS/2")
+        .map(|at| u32::from_be_bytes([font[at + 8], font[at + 9], font[at + 10], font[at + 11]]))
+        .and_then(|offset| usize::try_from(offset).ok())
+        .expect("an OS/2 table");
+    font[os2 + 8..os2 + 10].copy_from_slice(&fs_type.to_be_bytes());
+    FontAsset::new(family, false, false, font)
+}
+
+#[test]
+fn licence_flags_decide_what_an_output_may_carry() {
+    use strict_ooxml_render_svg::font::embedded::Embedding;
+    assert_eq!(Embedding::from_fs_type(0x0000), Embedding::Allowed);
+    assert_eq!(Embedding::from_fs_type(0x0004), Embedding::Allowed);
+    assert_eq!(Embedding::from_fs_type(0x0008), Embedding::Allowed);
+    assert_eq!(Embedding::from_fs_type(0x0002), Embedding::Forbidden);
+    // A version 0-2 font may set several usage bits; the least restrictive holds.
+    assert_eq!(Embedding::from_fs_type(0x0006), Embedding::Allowed);
+    assert_eq!(Embedding::from_fs_type(0x0208), Embedding::Forbidden);
+    assert_eq!(Embedding::from_fs_type(0x0108), Embedding::WholeProgram);
+    assert!(Embedding::WholeProgram.allows(true));
+    assert!(!Embedding::WholeProgram.allows(false));
+}
+
+#[test]
+fn a_restricted_font_is_measured_but_not_carried() {
+    let assets = FontAssets::new(
+        vec![arimo_with_fs_type("Test Sans", 0x0002)],
+        FontAssetLimits::default(),
+    )
+    .expect("a restricted font is still a font");
+    let options = RenderOptions::default().font_assets(Arc::new(assets));
+    let pages = render(&options).expect("render");
+    assert!(
+        pages[0]
+            .warnings
+            .iter()
+            .any(|warning| warning.starts_with("font.embedding.restricted")),
+        "{:?}",
+        pages[0].warnings
+    );
+    assert!(
+        !pages[0].svg.contains("ASSET-"),
+        "its bytes stay out of the SVG"
+    );
+    assert!(pages[0].svg.contains("font-family=\"Carlito\""));
+    let error = render(&options.font_policy(FontPolicy::Reject)).expect_err("strict");
+    assert!(
+        error.to_string().contains("font.embedding.restricted"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_no_subset_font_goes_whole_into_svg() {
+    let assets = FontAssets::new(
+        vec![arimo_with_fs_type("Test Sans", 0x0100)],
+        FontAssetLimits::default(),
+    )
+    .expect("assets");
+    let pages = render(&RenderOptions::default().font_assets(Arc::new(assets))).expect("render");
+    assert!(
+        pages[0].svg.contains("ASSET-"),
+        "SVG embeds the whole program"
+    );
+    assert!(pages[0]
+        .warnings
+        .iter()
+        .any(|warning| warning.starts_with("font.embedding.no-subset")));
+}
