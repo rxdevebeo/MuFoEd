@@ -287,6 +287,43 @@ impl<'a> Editor<'a> {
         self.commit_whole(candidate)
             .map_err(|failure| failure.error)
     }
+    /// Inserts `blocks` of another document `source` before `at`, bringing
+    /// over the styles and lists they use (K10): a style id the target has
+    /// is the target's style; a list comes over as a new list instance;
+    /// bookmarks whose names the target uses are dropped and section breaks
+    /// are dropped. Content tied to the source package (images, hyperlinks by
+    /// relationship), note and comment references and opaque markup are
+    /// refused with [`Unsupported::Import`](crate::Unsupported::Import). One
+    /// transaction; undo takes the blocks and the definitions back together.
+    pub fn import(
+        &mut self,
+        revision: u64,
+        at: &Address,
+        source: &Document,
+        blocks: &[Block],
+    ) -> Result<ChangeSet, EditError> {
+        self.check(revision)?;
+        let mut candidate = self.document.clone();
+        let mut ids = IdIndex::of(&candidate).above(&self.ids);
+        let blocks =
+            crate::import::bring(&mut candidate, source, blocks, &mut || ids.next_revision())?;
+        for (offset, block) in blocks.into_iter().enumerate() {
+            let mut place = at.clone();
+            place.block = place.block.saturating_add(offset);
+            let insert = Edit::Insert {
+                at: place,
+                block: Box::new(block),
+            };
+            apply(&mut candidate, &insert, self.limits, &mut ids)?;
+        }
+        validate(&candidate, &self.limits.resource)?;
+        let before = self.revision;
+        let change = self.commit_whole(candidate)?;
+        if self.revision != before {
+            self.ids = std::mem::take(&mut self.ids).above(&ids);
+        }
+        Ok(change)
+    }
     /// The transaction on a copy of the whole document, with note references
     /// given notes of their own.
     fn transact_whole(&mut self, commands: &[Edit]) -> Result<ChangeSet, EditFailure> {

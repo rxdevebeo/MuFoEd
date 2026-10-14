@@ -25,6 +25,7 @@ use strict_ooxml_wml::model::{
 mod structured;
 pub use structured::{Address, Container, Edit, EditFailure, Editor, InlinePoint, Story};
 mod definitions;
+mod import;
 pub use definitions::{restarted, unused_abstract_num_id, unused_num_id, Definition};
 mod diff;
 pub use diff::{diff, DiffChange, DiffItem, DiffMode, DocumentDiff};
@@ -183,6 +184,12 @@ pub enum Unsupported {
     /// An inline content control, which two paragraphs cannot each hold half
     /// of: it has one identity.
     Indivisible,
+    /// Content an import cannot carry over yet: something tied to a part of
+    /// its own package (an image, a hyperlink by relationship, a picture
+    /// bullet), a note or comment reference, opaque markup, a list defined
+    /// through a numbering style, or a style id the target uses for another
+    /// kind of style.
+    Import,
 }
 impl std::fmt::Display for Unsupported {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -194,6 +201,7 @@ impl std::fmt::Display for Unsupported {
             Self::Target => "a target of another kind than the command needs",
             Self::FieldResult => "a cached field result",
             Self::Indivisible => "an inline content control that cannot be divided",
+            Self::Import => "content an import cannot carry over",
         })
     }
 }
