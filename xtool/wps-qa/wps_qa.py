@@ -384,7 +384,7 @@ def cmd_report(args) -> int:
     import report
 
     label = resolve_label(args)
-    path = report.build(args.store, args.data_root, label, args.baseline, args.corpus)
+    path = report.build(args.store, args.data_root, label, args.baseline, args.corpus, args.limit)
     print(f"report[{label}]: {path}", flush=True)
     return 0
 

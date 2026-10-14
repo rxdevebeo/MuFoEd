@@ -100,11 +100,15 @@ def _mean(xs):
     return round(statistics.fmean(xs), 3) if xs else None
 
 
-def build(store: Path, data_root: Path, label: str, baseline: str | None, corpora: list[str] | None) -> Path:
+def build(store: Path, data_root: Path, label: str, baseline: str | None, corpora: list[str] | None, limit: int = 0) -> Path:
     out_dir = store / "cmp" / label
-    rows = [_row(d, store, label) for d in common.iter_docs(data_root, corpora)]
+    # The same documents the other steps took: the first `limit` of them.
+    docs = list(common.iter_docs(data_root, corpora))
+    if limit:
+        docs = docs[:limit]
+    rows = [_row(d, store, label) for d in docs]
     if baseline:
-        base = {r["ident"]: r for r in (_row(d, store, baseline) for d in common.iter_docs(data_root, corpora))}
+        base = {r["ident"]: r for r in (_row(d, store, baseline) for d in docs)}
         for r in rows:
             b = base.get(r["ident"], {})
             if isinstance(r.get("score"), (int, float)) and isinstance(b.get("score"), (int, float)):
