@@ -962,3 +962,60 @@ fn arabic_and_tibetan_embed_the_script_faces() {
         "svg Tibetan face"
     );
 }
+
+/// A caller-supplied font is subset into the PDF; one whose licence allows no
+/// embedding is drawn with the bundled face instead (RTF RC02).
+#[test]
+fn supplied_fonts_embed_unless_their_licence_forbids_it() {
+    use std::sync::Arc;
+    use strict_ooxml_render_svg::font::{face_source, FontAsset, FontAssetLimits, FontAssets};
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body("<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Test Sans\" w:hAnsi=\"Test Sans\"/></w:rPr><w:t>Supplied</w:t></w:r></w:p>")
+        .build();
+    let package = open(&bytes);
+    let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+    let base_fonts = |fs_type: u16| {
+        let mut font = face_source("Arial", false, false)
+            .expect("Arimo")
+            .data
+            .to_vec();
+        let tables = usize::from(u16::from_be_bytes([font[4], font[5]]));
+        let os2 = (0..tables)
+            .map(|table| 12 + 16 * table)
+            .find(|at| &font[*at..*at + 4] == b"OS/2")
+            .map(|at| {
+                u32::from_be_bytes([font[at + 8], font[at + 9], font[at + 10], font[at + 11]])
+            })
+            .and_then(|offset| usize::try_from(offset).ok())
+            .expect("OS/2");
+        font[os2 + 8..os2 + 10].copy_from_slice(&fs_type.to_be_bytes());
+        let assets = FontAssets::new(
+            vec![FontAsset::new("Test Sans", false, false, font)],
+            FontAssetLimits::default(),
+        )
+        .expect("assets");
+        let options = RenderOptions::default().font_assets(Arc::new(assets));
+        let pages = place_pages(&document, &options, Some(&package)).expect("place");
+        let output = render_with_source(&pages, &options, Some(&package)).expect("render");
+        let pdf = lopdf::Document::load_mem(&output.bytes).expect("PDF");
+        pdf.objects
+            .values()
+            .filter_map(|object| object.as_dict().ok())
+            .filter_map(|dictionary| dictionary.get(b"BaseFont").ok())
+            .filter_map(|name| name.as_name().ok())
+            .map(|name| String::from_utf8_lossy(name).into_owned())
+            .collect::<Vec<_>>()
+    };
+    assert!(base_fonts(0x0008)
+        .iter()
+        .any(|name| name.contains("ASSET-")));
+    let restricted = base_fonts(0x0002);
+    assert!(
+        !restricted.iter().any(|name| name.contains("ASSET-")),
+        "{restricted:?}"
+    );
+    assert!(
+        restricted.iter().any(|name| name.contains("Carlito")),
+        "{restricted:?}"
+    );
+}

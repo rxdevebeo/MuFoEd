@@ -21,8 +21,92 @@ pub struct FontProgram {
     /// it, and hashing a megabyte font per measured word made a document with
     /// embedded fonts take a minute per page.
     pub hash: [u8; 32],
+    /// What the font's `OS/2.fsType` lets an output carry of it.
+    pub embedding: Embedding,
+}
+
+/// What a font's licence flags (`OS/2.fsType`) let an output carry of it.
+/// Measuring with the font is no embedding; layout uses it whatever this says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Embedding {
+    /// Installable, editable or preview & print: subsets and whole programs.
+    Allowed,
+    /// No subsetting (`0x0100`): only the whole program.
+    WholeProgram,
+    /// Restricted licence (`0x0002` alone) or bitmap only (`0x0200`): no
+    /// outlines in the output.
+    Forbidden,
+}
+
+impl Embedding {
+    /// From `OS/2.fsType`.
+    #[must_use]
+    pub fn from_fs_type(fs_type: u16) -> Self {
+        let usage = fs_type & 0x000E;
+        // Version 0-2 fonts may set several usage bits; the least restrictive
+        // applies (OpenType OS/2 fsType).
+        if (usage & 0x0002 != 0 && usage & 0x000C == 0) || fs_type & 0x0200 != 0 {
+            Self::Forbidden
+        } else if fs_type & 0x0100 != 0 {
+            Self::WholeProgram
+        } else {
+            Self::Allowed
+        }
+    }
+
+    /// Whether an output that embeds the whole program (`true`, SVG) or a
+    /// subset (`false`, PDF) may carry the font.
+    #[must_use]
+    pub fn allows(self, whole_program: bool) -> bool {
+        match self {
+            Self::Allowed => true,
+            Self::WholeProgram => whole_program,
+            Self::Forbidden => false,
+        }
+    }
 }
 impl FontProgram {
+    /// A program from a single font's bytes, named `<prefix>-<sha256>` so
+    /// that no two programs share a resource family; `None` when the bytes are
+    /// no usable font.
+    pub(crate) fn from_bytes(bytes: Vec<u8>, prefix: &str) -> Option<Self> {
+        let font = FontRef::new(&bytes).ok()?;
+        let raw = font.metrics(Size::unscaled(), LocationRef::default());
+        let units = f64::from(raw.units_per_em);
+        if units <= 0.0 {
+            return None;
+        }
+        let metrics = word_line_metrics(&font, units).unwrap_or(FontMetrics {
+            units_per_em: units,
+            ascender: f64::from(raw.ascent) / units,
+            descender: f64::from(raw.descent).abs() / units,
+            line_gap: f64::from(raw.leading) / units,
+            width_scale: 1.0,
+        });
+        let embedding = {
+            use skrifa::raw::TableProvider as _;
+            font.os2().map_or(Embedding::Allowed, |os2| {
+                Embedding::from_fs_type(os2.fs_type())
+            })
+        };
+        let hash = super::hash_face_bytes(&bytes);
+        let family = format!(
+            "{prefix}-{}",
+            hash.iter()
+                .fold(String::with_capacity(64), |mut hex, byte| {
+                    use std::fmt::Write as _;
+                    let _ = write!(hex, "{byte:02x}");
+                    hex
+                })
+        );
+        Some(Self {
+            family,
+            bytes: bytes.into(),
+            metrics,
+            hash,
+            embedding,
+        })
+    }
     /// Checks that a subset supplies every character in this text fragment.
     pub fn supports(&self, text: &str) -> bool {
         use skrifa::{FontRef, MetadataProvider};
@@ -47,7 +131,7 @@ impl FontProgram {
     }
 }
 #[derive(Clone, Debug, Default, PartialEq)]
-/// Programs indexed by requested family and exact style.
+/// Programs indexed by requested family (lower-cased) and exact style.
 pub struct FontPrograms {
     /// Family/style registry.
     pub faces: BTreeMap<(String, bool, bool), Arc<FontProgram>>,
@@ -55,8 +139,26 @@ pub struct FontPrograms {
     pub(crate) warnings: Vec<String>,
 }
 impl FontPrograms {
+    /// The document's embedded fonts, then the caller's `assets` for every
+    /// family and style the document does not embed.
+    pub(crate) fn load(
+        document: &Document,
+        media: Option<&dyn crate::MediaSource>,
+        assets: Option<&super::assets::FontAssets>,
+    ) -> Self {
+        let mut result = Self::load_embedded(document, media);
+        if let Some(assets) = assets {
+            for (key, program) in assets.programs() {
+                result
+                    .faces
+                    .entry(key.clone())
+                    .or_insert_with(|| Arc::clone(program));
+            }
+        }
+        result
+    }
     #[allow(clippy::too_many_lines)]
-    pub(crate) fn load(document: &Document, media: Option<&dyn crate::MediaSource>) -> Self {
+    fn load_embedded(document: &Document, media: Option<&dyn crate::MediaSource>) -> Self {
         let mut result = Self::default();
         let Some(table) = &document.font_table else {
             return result;
@@ -118,53 +220,28 @@ impl FontPrograms {
                         *byte ^= key;
                     }
                 }
-                let Ok(font) = FontRef::new(&bytes) else {
+                let size = bytes.len();
+                let Some(program) = FontProgram::from_bytes(bytes, "OOXML") else {
                     result
                         .warnings
                         .push(format!("font.embedded.invalid: {}", embedded.part));
                     continue;
                 };
-                let metrics = font.metrics(Size::unscaled(), LocationRef::default());
-                let units = f64::from(metrics.units_per_em);
-                if units <= 0.0 {
-                    continue;
-                }
-                let metrics = word_line_metrics(&font, units).unwrap_or(FontMetrics {
-                    units_per_em: units,
-                    ascender: f64::from(metrics.ascent) / units,
-                    descender: f64::from(metrics.descent).abs() / units,
-                    line_gap: f64::from(metrics.leading) / units,
-                    width_scale: 1.0,
-                });
-                let hash = super::hash_face_bytes(&bytes);
-                let family = format!(
-                    "OOXML-{}",
-                    hash.iter()
-                        .fold(String::with_capacity(64), |mut hex, byte| {
-                            use std::fmt::Write as _;
-                            let _ = write!(hex, "{byte:02x}");
-                            hex
-                        })
-                );
                 let bold = matches!(kind, EmbedKind::Bold | EmbedKind::BoldItalic);
                 let italic = matches!(kind, EmbedKind::Italic | EmbedKind::BoldItalic);
-                total_bytes += bytes.len();
+                total_bytes += size;
                 result.faces.insert(
-                    (entry.name.to_string(), bold, italic),
-                    Arc::new(FontProgram {
-                        family,
-                        bytes: bytes.into(),
-                        metrics,
-                        hash,
-                    }),
+                    (entry.name.trim().to_lowercase(), bold, italic),
+                    Arc::new(program),
                 );
             }
         }
         result
     }
-    /// Looks up an exact embedded face request.
+    /// Looks up an exact face request (family case-insensitive).
     pub fn for_request(&self, family: &str, bold: bool, italic: bool) -> Option<&Arc<FontProgram>> {
-        self.faces.get(&(family.to_owned(), bold, italic))
+        self.faces
+            .get(&(family.trim().to_lowercase(), bold, italic))
     }
     /// Looks up its stable resource name.
     pub fn for_resource(&self, family: &str) -> Option<&Arc<FontProgram>> {

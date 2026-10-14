@@ -5,6 +5,7 @@
 //! provider is the bundled deterministic [`BuiltinFontProvider`]. A system-font
 //! provider is explicitly outside the Stage-4 acceptance criteria.
 
+pub mod assets;
 pub mod builtin;
 pub mod embedded;
 pub mod face;
@@ -12,9 +13,12 @@ pub mod family;
 pub mod metrics;
 pub mod shape;
 mod symbol;
+#[cfg(feature = "system-fonts")]
+pub mod system;
 
 pub use symbol::present_text;
 
+pub use assets::{FontAsset, FontAssetError, FontAssetLimits, FontAssets};
 pub use builtin::{bundled_families, face_source, BuiltinFontProvider, FaceSource};
 pub use face::{hash_face_bytes, hash_face_bytes_hex, resolve_face, FaceId, ResolvedFace};
 pub use family::{map_family, substitute_width_scale};

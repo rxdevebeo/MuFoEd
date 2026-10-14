@@ -169,6 +169,18 @@ pub enum WrapCoordinates {
     Office21600,
 }
 
+/// What a font the document names, and neither the document nor the caller
+/// supplies, does.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FontPolicy {
+    /// It is measured and drawn with a metric-compatible bundled face, and a
+    /// `font.substitution` warning names it (the default).
+    #[default]
+    Substitute,
+    /// The rendering is refused: output must use exactly the fonts named.
+    Reject,
+}
+
 /// Options controlling rendering.
 #[derive(Clone, Debug)]
 pub struct RenderOptions {
@@ -183,6 +195,13 @@ pub struct RenderOptions {
     pub media: MediaMode,
     /// Font provider kind.
     pub font_provider: FontProviderKind,
+    /// Fonts the caller supplies ([`font::FontAssets`]): measured, drawn and
+    /// embedded like a document's own embedded fonts, for the families and
+    /// styles the document does not embed. Default none: the bundled faces.
+    pub font_assets: Option<std::sync::Arc<font::FontAssets>>,
+    /// What a font the document names and nothing supplies does. Default
+    /// [`FontPolicy::Substitute`].
+    pub font_policy: FontPolicy,
     /// Page selection.
     pub pages: PageSelection,
     /// Draw a white page background.
@@ -232,6 +251,8 @@ impl Default for RenderOptions {
             scale: 96.0,
             media: MediaMode::EmbedDataUri,
             font_provider: FontProviderKind::Builtin,
+            font_assets: None,
+            font_policy: FontPolicy::Substitute,
             pages: PageSelection::All,
             background: true,
             floating: true,
@@ -273,6 +294,20 @@ impl RenderOptions {
     #[must_use]
     pub fn control(mut self, control: strict_ooxml_core::control::OpenControl) -> Self {
         self.control = Some(control);
+        self
+    }
+
+    /// Supplies fonts ([`Self::font_assets`]).
+    #[must_use]
+    pub fn font_assets(mut self, assets: std::sync::Arc<font::FontAssets>) -> Self {
+        self.font_assets = Some(assets);
+        self
+    }
+
+    /// Sets [`Self::font_policy`].
+    #[must_use]
+    pub fn font_policy(mut self, policy: FontPolicy) -> Self {
+        self.font_policy = policy;
         self
     }
 
@@ -388,7 +423,11 @@ pub fn place_pages(
         font: provider.as_ref(),
         media,
         media_mode: options.media,
-        font_programs: std::sync::Arc::new(font::embedded::FontPrograms::load(document, media)),
+        font_programs: std::sync::Arc::new(font::embedded::FontPrograms::load(
+            document,
+            media,
+            options.font_assets.as_deref(),
+        )),
         note_numbers: notes::NoteNumbering::build(document),
         numbering: numbering::NumberingMarkers::build(document),
         block_depth: std::cell::Cell::new(0),
@@ -411,13 +450,31 @@ pub fn place_pages(
         region_heights: std::cell::RefCell::new(std::collections::HashMap::new()),
         metric_advances: std::cell::Cell::new(false),
     };
-    Ok(layout::paginate::layout_document(&context)?
+    let laid_out = layout::paginate::layout_document(&context)?;
+    check_font_policy(options, &laid_out.warnings)?;
+    Ok(laid_out
         .pages
         .into_iter()
         .enumerate()
         .filter(|(index, _)| options.pages.contains(index + 1))
         .map(|(_, page)| page)
         .collect())
+}
+
+/// Refuses the layout under [`FontPolicy::Reject`] when a font was
+/// substituted or a document font could not be used.
+fn check_font_policy(options: &RenderOptions, warnings: &[String]) -> Result<()> {
+    if options.font_policy != FontPolicy::Reject {
+        return Ok(());
+    }
+    match warnings.iter().find(|warning| {
+        warning.starts_with("font.substitution")
+            || warning.starts_with("font.embedded.")
+            || warning.starts_with("font.embedding.")
+    }) {
+        Some(warning) => Err(RenderError::FontUnavailable(warning.clone()).into_strict()),
+        None => Ok(()),
+    }
 }
 
 /// Renders a document without a media source.
@@ -450,7 +507,11 @@ pub fn render_with_media(
         font: provider.as_ref(),
         media,
         media_mode: options.media,
-        font_programs: std::sync::Arc::new(font::embedded::FontPrograms::load(document, media)),
+        font_programs: std::sync::Arc::new(font::embedded::FontPrograms::load(
+            document,
+            media,
+            options.font_assets.as_deref(),
+        )),
         note_numbers: notes::NoteNumbering::build(document),
         numbering: numbering::NumberingMarkers::build(document),
         block_depth: std::cell::Cell::new(0),
@@ -474,6 +535,7 @@ pub fn render_with_media(
         metric_advances: std::cell::Cell::new(false),
     };
     let laid_out = layout::paginate::layout_document(&context)?;
+    check_font_policy(options, &laid_out.warnings)?;
     let layout_warnings = laid_out.warnings.clone();
 
     let mut pages: Vec<Page> = Vec::new();

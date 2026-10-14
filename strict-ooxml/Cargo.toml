@@ -18,6 +18,9 @@ default = ["report", "svg"]
 # Stage 4: enables `strict-ooxml-render-svg` and the render methods on
 # `StrictDocument` (TZ §5.4).
 svg = ["dep:strict-ooxml-render-svg"]
+# The machine's installed fonts as caller-supplied fonts
+# (`strict_ooxml::system_fonts`); off by default for deterministic output.
+system-fonts = ["svg", "strict-ooxml-render-svg/system-fonts"]
 # Stage 3: enables `strict-ooxml-report` and the report methods on
 # `StrictDocument` (TZ §5.4).
 report = ["dep:strict-ooxml-report"]

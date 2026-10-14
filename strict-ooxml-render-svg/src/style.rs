@@ -1033,6 +1033,28 @@ pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
     base
 }
 
+/// The face that draws `text`: the one layout measured it with, unless that is
+/// a font program whose licence keeps it out of this output - a subset
+/// (`whole_program` false, PDF) or the whole program (`true`, SVG). Then the
+/// bundled face the request maps to draws the glyphs, at the positions the
+/// measured face gave them.
+#[must_use]
+pub fn paint_family(run: &ComputedRun, text: &str, whole_program: bool) -> String {
+    let family = chosen_family(run, text);
+    match run.font_programs.for_resource(&family) {
+        Some(program) if !program.embedding.allows(whole_program) => {
+            let base = requested_bundled_family(run, text);
+            text.chars()
+                .find_map(|ch| {
+                    crate::font::family::script_fallback(&base, ch)
+                        .filter(|_| !crate::font::builtin::bundled_has_glyph(&base, ch))
+                })
+                .map_or(base, str::to_owned)
+        }
+        _ => family,
+    }
+}
+
 /// Bundled family whose line box a script fallback face borrows.
 ///
 /// The fallback draws complex-script text, so this is the run's complex-script
@@ -1050,6 +1072,15 @@ pub fn script_line_family(run: &ComputedRun) -> &str {
 
 /// The family `run` asks for `text`, before any script fallback.
 fn requested_family(run: &ComputedRun, text: &str) -> String {
+    requested(run, text, true)
+}
+
+/// The bundled family `run`'s request maps to, document and caller fonts aside.
+fn requested_bundled_family(run: &ComputedRun, text: &str) -> String {
+    requested(run, text, false)
+}
+
+fn requested(run: &ComputedRun, text: &str, programs: bool) -> String {
     let (requested, fallback) = if run.complex_family.is_some() && script_is_complex_only(text) {
         (
             run.complex_family.as_deref().unwrap_or(&run.family),
@@ -1066,6 +1097,7 @@ fn requested_family(run: &ComputedRun, text: &str) -> String {
     if let Some(program) = run
         .font_programs
         .for_request(requested, run.bold, run.italic)
+        .filter(|_| programs)
     {
         if program.supports(text) {
             return program.family.clone();

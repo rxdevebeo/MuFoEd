@@ -226,7 +226,7 @@ def _import_rtf(doc: Doc, cli: Path, docx: Path, timeout: int, meta: dict) -> bo
     return True
 
 
-def render_one(doc: Doc, cli: Path, out_dir: Path, timeout: int) -> dict:
+def render_one(doc: Doc, cli: Path, out_dir: Path, timeout: int, extra_args: tuple[str, ...] = ()) -> dict:
     pdf = out_dir / doc.corpus / f"{doc.key}.pdf"
     meta_path = pdf.with_suffix(".json")
     pdf.parent.mkdir(parents=True, exist_ok=True)
@@ -245,7 +245,7 @@ def render_one(doc: Doc, cli: Path, out_dir: Path, timeout: int) -> dict:
         extra = []
         ready = _import_rtf(doc, cli, source, timeout, meta)
     if ready:
-        code, stderr = _run_cli([str(cli), "to-pdf", str(source), *extra, "--out", str(tmp_pdf)], timeout)
+        code, stderr = _run_cli([str(cli), "to-pdf", str(source), *extra, *extra_args, "--out", str(tmp_pdf)], timeout)
         meta["exit"] = code
         meta["stderr_tail"] = common.tail(stderr, 12)
         # Exit 1 = rendered with reported losses; the PDF exists and counts.
@@ -274,7 +274,13 @@ def cmd_render(args) -> int:
     out_dir = args.store / "ours" / label
     write_json(
         out_dir / "build.json",
-        {"label": label, "cli": str(cli), "cli_sha256": sha256_file(cli) if cli.is_file() else None, "when": time.strftime("%Y-%m-%dT%H:%M:%S")},
+        {
+            "label": label,
+            "cli": str(cli),
+            "cli_sha256": sha256_file(cli) if cli.is_file() else None,
+            "to_pdf_args": list(args.to_pdf_arg or ()),
+            "when": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        },
     )
     docs = list(common.iter_docs(args.data_root, args.corpus))
     if args.limit:
@@ -288,7 +294,8 @@ def cmd_render(args) -> int:
     print(f"render[{label}]: {len(docs)} documents, {len(todo)} to render", flush=True)
     counts: dict[str, int] = {}
     with cf.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        futures = {pool.submit(render_one, d, cli, out_dir, args.timeout): d for d in todo}
+        extra_args = tuple(args.to_pdf_arg or ())
+        futures = {pool.submit(render_one, d, cli, out_dir, args.timeout, extra_args): d for d in todo}
         for n, fut in enumerate(cf.as_completed(futures), 1):
             meta = fut.result()
             counts[meta["status"]] = counts.get(meta["status"], 0) + 1
@@ -422,6 +429,11 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--timeout", type=int, default=240 if name in ("capture", "run") else 300, help="seconds per document")
         p.add_argument("--retry-failed", action="store_true", help="capture: retry documents WPS failed on before")
         p.add_argument("--baseline", help="report: label of an earlier render to diff against")
+        p.add_argument(
+            "--to-pdf-arg",
+            action="append",
+            help="render: an extra argument for `to-pdf` (repeatable; e.g. --to-pdf-arg=--system-fonts)",
+        )
     args = parser.parse_args(argv)
     args.store = args.store.resolve()
     return args.fn(args)

@@ -1028,6 +1028,18 @@ impl LayoutContext<'_> {
         {
             self.warn(format!("font.substitution: unavailable family {requested:?}; using {family:?}, metrics may differ"));
         }
+        if let Some(program) = run.font_programs.for_resource(&family) {
+            use crate::font::embedded::Embedding;
+            match program.embedding {
+                Embedding::Allowed => {}
+                Embedding::WholeProgram => self.warn(format!(
+                    "font.embedding.no-subset: {requested:?} allows no subset; PDF draws it with a bundled face at its own positions"
+                )),
+                Embedding::Forbidden => self.warn(format!(
+                    "font.embedding.restricted: {requested:?} allows no embedding; it is measured, and drawn with a bundled face"
+                )),
+            }
+        }
         let complex = crate::font::needs_complex_script(&shown);
         let non_space = shown.chars().filter(|ch| !ch.is_whitespace()).count() as f64;
         let extra = crate::style::spacing_px(run, size_px) * non_space;
