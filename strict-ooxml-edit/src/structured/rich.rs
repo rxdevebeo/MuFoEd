@@ -144,8 +144,8 @@ pub(super) fn format(
     for point in [from, to] {
         check_point(&paragraph.inlines, &point.inline, point, graphemes)?;
     }
-    let mut path = Vec::new();
-    format_inlines(&mut paragraph.inlines, &mut path, from, to, patch)
+    let mut trail = Vec::new();
+    format_inlines(&mut paragraph.inlines, &mut trail, from, to, patch)
 }
 
 /// Whether `point` names a run and a place in it.
@@ -174,30 +174,30 @@ fn check_point(
 /// points stay valid for the ones not yet visited.
 fn format_inlines(
     inlines: &mut Vec<Inline>,
-    path: &mut Vec<usize>,
+    trail: &mut Vec<usize>,
     from: &InlinePoint,
     to: &InlinePoint,
     patch: &FormatPatch,
 ) -> Result<(), EditError> {
     for index in (0..inlines.len()).rev() {
-        path.push(index);
+        trail.push(index);
         let pieces = match inlines.get_mut(index) {
-            Some(Inline::Run(run)) => format_run(run, path, from, to, patch),
+            Some(Inline::Run(run)) => format_run(run, trail, from, to, patch),
             Some(Inline::Hyperlink(v)) => {
-                format_inlines(&mut v.inlines, path, from, to, patch).map(|()| None)
+                format_inlines(&mut v.inlines, trail, from, to, patch).map(|()| None)
             }
             Some(Inline::SdtInline(v)) => {
-                format_inlines(&mut v.inlines, path, from, to, patch).map(|()| None)
+                format_inlines(&mut v.inlines, trail, from, to, patch).map(|()| None)
             }
             Some(Inline::Directional(v)) => {
-                format_inlines(&mut v.inlines, path, from, to, patch).map(|()| None)
+                format_inlines(&mut v.inlines, trail, from, to, patch).map(|()| None)
             }
             Some(Inline::Field(v)) => {
-                format_inlines(&mut v.inlines, path, from, to, patch).map(|()| None)
+                format_inlines(&mut v.inlines, trail, from, to, patch).map(|()| None)
             }
             _ => Ok(None),
         };
-        path.pop();
+        trail.pop();
         if let Some(pieces) = pieces? {
             drop(inlines.splice(index..=index, pieces));
         }
@@ -205,26 +205,26 @@ fn format_inlines(
     Ok(())
 }
 
-/// Where `point` falls in the run at `path` with `len` content items: its
+/// Where `point` falls in the run at `trail` with `len` content items: its
 /// start when the point is before the run, its end when after.
-fn place(path: &[usize], point: &InlinePoint, len: usize) -> (usize, usize) {
-    match point.inline.as_slice().cmp(path) {
+fn place(trail: &[usize], point: &InlinePoint, len: usize) -> (usize, usize) {
+    match point.inline.as_slice().cmp(trail) {
         std::cmp::Ordering::Less => (0, 0),
         std::cmp::Ordering::Equal => (point.content, point.offset),
         std::cmp::Ordering::Greater => (len, 0),
     }
 }
 
-/// The pieces the run at `path` becomes, or `None` when it stays as it is.
+/// The pieces the run at `trail` becomes, or `None` when it stays as it is.
 fn format_run(
     run: &Run,
-    path: &[usize],
+    trail: &[usize],
     from: &InlinePoint,
     to: &InlinePoint,
     patch: &FormatPatch,
 ) -> Result<Option<Vec<Inline>>, EditError> {
     let len = run.content.len();
-    let (start, end) = (place(path, from, len), place(path, to, len));
+    let (start, end) = (place(trail, from, len), place(trail, to, len));
     if start >= end {
         return Ok(None);
     }
