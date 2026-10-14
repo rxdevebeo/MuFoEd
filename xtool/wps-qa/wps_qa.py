@@ -268,6 +268,27 @@ def render_one(doc: Doc, cli: Path, out_dir: Path, timeout: int, extra_args: tup
     return meta
 
 
+def _host_fonts(store: Path) -> None:
+    """The fonts of the machine the references come from (`host_fonts.py`):
+    once per store, again when the font directory changes. Numbers only; a
+    failure here never stops a render."""
+    try:
+        import host_fonts
+
+        dirs = host_fonts.font_dirs()
+        stamp = [int(d.stat().st_mtime) for d in dirs]
+        path = store / "host-fonts.json"
+        current = read_json(path) or {}
+        if current.get("stamp") == stamp:
+            return
+        data = host_fonts.inventory(dirs)
+        data["stamp"] = stamp
+        write_json(path, data)
+        print(f"host fonts: {len(data['faces'])} faces -> {path}", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"host fonts: skipped ({type(exc).__name__}: {exc})", flush=True)
+
+
 def cmd_render(args) -> int:
     label = resolve_label(args)
     cli = Path(args.cli)
@@ -282,6 +303,7 @@ def cmd_render(args) -> int:
             "when": time.strftime("%Y-%m-%dT%H:%M:%S"),
         },
     )
+    _host_fonts(args.store)
     docs = list(common.iter_docs(args.data_root, args.corpus))
     if args.limit:
         docs = docs[: args.limit]
