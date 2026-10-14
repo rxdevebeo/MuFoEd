@@ -197,6 +197,7 @@ impl FaceCollector {
     /// # Errors
     ///
     /// Returns a [`FontError`] when the face cannot be parsed or subsetted.
+    #[allow(clippy::too_many_lines)] // Subset, metrics, widths and both CID maps of one face.
     pub fn build(&self, key: &FaceKey, source: &FaceSource<'_>) -> Result<EmbeddedFont, FontError> {
         let used: Vec<UsedGlyph> = self
             .faces
@@ -603,7 +604,7 @@ mod tests {
         let mut collector = FaceCollector::new();
         collector.add(&source, false, false, 'A');
         let key = FaceKey {
-            family: source.family,
+            family: source.family.to_owned(),
             bold: false,
             italic: false,
         };
