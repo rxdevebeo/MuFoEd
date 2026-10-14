@@ -72,10 +72,10 @@ fn point(inline: &[usize], content: usize, offset: usize) -> InlinePoint {
     }
 }
 
-fn split(inline: Vec<usize>, content: usize, offset: usize) -> Edit {
+fn split(inline: &[usize], content: usize, offset: usize) -> Edit {
     Edit::SplitAt {
         at: Address::body(0),
-        point: point(&inline, content, offset),
+        point: point(inline, content, offset),
     }
 }
 
@@ -88,7 +88,7 @@ fn a_split_inside_a_hyperlink_continues_it_in_the_next_paragraph() {
     let mut d = doc(LINKED);
     let original = d.clone();
     let mut e = Editor::new(&mut d, EditLimits::default()).expect("editor");
-    e.transact(0, &[split(vec![1, 0], 0, 4)]).expect("split");
+    e.transact(0, &[split(&[1, 0], 0, 4)]).expect("split");
     assert_eq!(paragraphs(&e), ["see <this>", "< link>→end"]);
     let anchors: Vec<_> = e
         .document()
@@ -142,7 +142,7 @@ fn points_at_the_edges_of_runs_and_around_a_tab() {
         let mut d = doc(LINKED);
         let mut e = Editor::new(&mut d, EditLimits::default()).expect("editor");
         let (inline, content, offset) = point;
-        e.transact(0, &[split(inline, content, offset)])
+        e.transact(0, &[split(&inline, content, offset)])
             .expect("split");
         assert_eq!(paragraphs(&e), expected);
         assert!(e.validate().is_ok());
@@ -153,13 +153,13 @@ fn points_at_the_edges_of_runs_and_around_a_tab() {
 fn points_that_cannot_be_split_are_refused() {
     let cases = [
         // Into a tab.
-        (LINKED, split(vec![2], 0, 1), EditError::InvalidRange),
+        (LINKED, split(&[2], 0, 1), EditError::InvalidRange),
         // Past the text.
-        (LINKED, split(vec![0], 0, 5), EditError::InvalidRange),
+        (LINKED, split(&[0], 0, 5), EditError::InvalidRange),
         // A path that does not end at a run.
         (
             LINKED,
-            split(vec![1], 0, 0),
+            split(&[1], 0, 0),
             EditError::UnsupportedContent(Unsupported::Target),
         ),
         // The result of a complex field.
@@ -168,25 +168,25 @@ fn points_that_cannot_be_split_are_refused() {
              <w:r><w:instrText>PAGE</w:instrText></w:r>\
              <w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>\
              <w:r><w:t>12</w:t></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r></w:p>",
-            split(vec![3], 0, 1),
+            split(&[3], 0, 1),
             EditError::UnsupportedContent(Unsupported::FieldResult),
         ),
         // A simple field.
         (
             "<w:p><w:fldSimple w:instr=\"PAGE\"><w:r><w:t>12</w:t></w:r></w:fldSimple></w:p>",
-            split(vec![0, 0], 0, 1),
+            split(&[0, 0], 0, 1),
             EditError::UnsupportedContent(Unsupported::FieldResult),
         ),
         // An inline content control.
         (
             "<w:p><w:sdt><w:sdtContent><w:r><w:t>ab</w:t></w:r></w:sdtContent></w:sdt></w:p>",
-            split(vec![0, 0], 0, 1),
+            split(&[0, 0], 0, 1),
             EditError::UnsupportedContent(Unsupported::Indivisible),
         ),
         // Inside a tracked insertion.
         (
             "<w:p><w:ins w:id=\"1\" w:author=\"a\"><w:r><w:t>ab</w:t></w:r></w:ins></w:p>",
-            split(vec![0], 0, 1),
+            split(&[0], 0, 1),
             EditError::UnsupportedContent(Unsupported::TrackedChange),
         ),
     ];
@@ -208,14 +208,14 @@ fn a_complex_field_ended_before_the_point_and_tracked_run_edges_split() {
                  <w:r><w:t>after</w:t></w:r></w:p>";
     let mut d = doc(field);
     let mut e = Editor::new(&mut d, EditLimits::default()).expect("editor");
-    e.transact(0, &[split(vec![5], 0, 2)])
+    e.transact(0, &[split(&[5], 0, 2)])
         .expect("after the field");
     assert_eq!(paragraphs(&e), ["···12·af", "ter"]);
     let tracked = "<w:p><w:ins w:id=\"1\" w:author=\"a\"><w:r><w:t>ab</w:t></w:r></w:ins></w:p>";
     for (offset, expected) in [(0, ["", "ab"]), (2, ["ab", ""])] {
         let mut d = doc(tracked);
         let mut e = Editor::new(&mut d, EditLimits::default()).expect("editor");
-        e.transact(0, &[split(vec![0], 0, offset)])
+        e.transact(0, &[split(&[0], 0, offset)])
             .expect("edge of a tracked run");
         assert_eq!(paragraphs(&e), expected);
     }
