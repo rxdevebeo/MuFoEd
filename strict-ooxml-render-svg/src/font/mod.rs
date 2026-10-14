@@ -19,6 +19,17 @@ pub mod system;
 
 pub use symbol::present_text;
 
+/// The advance `family` measures `ch` at when it is a metric profile
+/// (`profiles`): the face drawing it is narrower or wider, and a PDF records
+/// this width so its glyphs sit where layout put them without gaps a text
+/// extractor reads as spaces ("1 . Cover" for Cambria's tabular digits).
+#[must_use]
+pub fn profile_advance_em(family: &str, bold: bool, italic: bool, ch: char) -> Option<f64> {
+    profiles::for_family(family)?
+        .face(bold, italic)?
+        .advance_em(ch)
+}
+
 pub use assets::{FontAsset, FontAssetError, FontAssetLimits, FontAssets, ScriptFallback};
 pub use builtin::{bundled_families, face_source, BuiltinFontProvider, FaceSource};
 pub use face::{hash_face_bytes, hash_face_bytes_hex, resolve_face, FaceId, ResolvedFace};
