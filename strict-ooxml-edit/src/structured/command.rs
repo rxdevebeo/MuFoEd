@@ -106,6 +106,23 @@ pub enum Edit {
         /// Properties to set or clear.
         patch: FormatPatch,
     },
+    /// Replace what lies between two points of a paragraph's inline tree with
+    /// plain text, whatever else the paragraph holds (K06): the text goes into
+    /// the run at `from` with its properties. Tabs, breaks, drawings and other
+    /// inlines between the points go; bookmark and comment range marks stay;
+    /// runs and wrappers left empty go. A range over field characters, a note
+    /// or comment reference, a tracked run or opaque markup is refused, and so
+    /// is a point inside a field.
+    ReplaceAt {
+        /// Target paragraph.
+        at: Address,
+        /// Start of the range.
+        from: InlinePoint,
+        /// End of the range, not before `from`.
+        to: InlinePoint,
+        /// Replacement text, without control characters.
+        text: String,
+    },
     /// Join a paragraph with its immediate successor, whatever their inlines
     /// hold.
     Join {
@@ -416,6 +433,7 @@ impl Edit {
             | Self::Join { at }
             | Self::SplitAt { at, .. }
             | Self::FormatAt { at, .. }
+            | Self::ReplaceAt { at, .. }
             | Self::Insert { at, .. }
             | Self::Delete { at }
             | Self::Move { at, .. }

@@ -382,3 +382,134 @@ fn a_bad_range_is_refused() {
         .expect("up to the tracked run");
     assert_eq!(first(&e), "a*b*cd");
 }
+
+fn replace(from: InlinePoint, to: InlinePoint, text: &str) -> Edit {
+    Edit::ReplaceAt {
+        at: Address::body(0),
+        from,
+        to,
+        text: text.into(),
+    }
+}
+
+#[test]
+fn a_selection_across_a_link_and_a_tab_is_typed_over() {
+    let mut d = doc(LINKED);
+    let original = d.clone();
+    let mut e = Editor::new(&mut d, EditLimits::default()).expect("editor");
+    // From "se|e " to "→e|nd": the emptied link goes.
+    e.transact(0, &[replace(point(&[0], 0, 2), point(&[2], 1, 1), "X")])
+        .expect("replace");
+    assert_eq!(paragraphs(&e), ["seXnd"]);
+    assert!(e.validate().is_ok());
+    e.undo(1).expect("undo");
+    assert_eq!(e.document().body, original.body);
+    // Within the link: delete a word, then type in it.
+    e.transact(
+        2,
+        &[replace(point(&[1, 0], 0, 0), point(&[1, 0], 0, 5), "")],
+    )
+    .expect("delete");
+    assert_eq!(paragraphs(&e), ["see <link>→end"]);
+    e.transact(
+        3,
+        &[replace(point(&[1, 0], 0, 4), point(&[1, 0], 0, 4), "!")],
+    )
+    .expect("type");
+    assert_eq!(paragraphs(&e), ["see <link!>→end"]);
+}
+
+#[test]
+fn range_marks_stay_and_emptied_runs_go() {
+    let mut d = doc(
+        "<w:p><w:r><w:t>ab</w:t></w:r><w:bookmarkStart w:id=\"1\" w:name=\"m\"/>\
+         <w:r><w:t>cd</w:t></w:r><w:bookmarkEnd w:id=\"1\"/><w:r><w:t>ef</w:t></w:r></w:p>",
+    );
+    let mut e = Editor::new(&mut d, EditLimits::default()).expect("editor");
+    e.transact(0, &[replace(point(&[0], 0, 1), point(&[4], 0, 1), "")])
+        .expect("delete");
+    assert_eq!(paragraphs(&e), ["a··f"]);
+    let Some(Block::Paragraph(p)) = e.document().body.blocks.first() else {
+        panic!("paragraph");
+    };
+    assert!(matches!(
+        p.inlines.as_slice(),
+        [
+            Inline::Run(_),
+            Inline::BookmarkStart(_),
+            Inline::BookmarkEnd(_),
+            Inline::Run(_)
+        ]
+    ));
+    assert!(e.validate().is_ok());
+}
+
+#[test]
+fn a_replacement_that_would_break_something_is_refused() {
+    let field = "<w:p><w:r><w:t>x</w:t></w:r><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r>\
+                 <w:r><w:instrText>PAGE</w:instrText></w:r>\
+                 <w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>\
+                 <w:r><w:t>12</w:t></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r>\
+                 <w:r><w:t>after</w:t></w:r></w:p>";
+    let tracked = "<w:p><w:r><w:t>ab</w:t></w:r>\
+                   <w:ins w:id=\"1\" w:author=\"a\"><w:r><w:t>cd</w:t></w:r></w:ins></w:p>";
+    let cases = [
+        // Typing into a field result.
+        (
+            field,
+            replace(point(&[4], 0, 1), point(&[4], 0, 1), "3"),
+            EditError::UnsupportedContent(Unsupported::FieldResult),
+        ),
+        // Deleting a whole field with the text around it.
+        (
+            field,
+            replace(point(&[0], 0, 0), point(&[6], 0, 1), ""),
+            EditError::UnsupportedContent(Unsupported::FieldResult),
+        ),
+        // Into a tracked insertion.
+        (
+            tracked,
+            replace(point(&[0], 0, 1), point(&[1], 0, 1), ""),
+            EditError::UnsupportedContent(Unsupported::TrackedChange),
+        ),
+        // A control character.
+        (
+            LINKED,
+            replace(point(&[0], 0, 0), point(&[0], 0, 0), "a\nb"),
+            EditError::InvalidText,
+        ),
+        // Backwards.
+        (
+            LINKED,
+            replace(point(&[2], 0, 0), point(&[0], 0, 0), ""),
+            EditError::InvalidRange,
+        ),
+    ];
+    for (body, command, error) in cases {
+        let mut d = doc(body);
+        let original = d.clone();
+        let mut e = Editor::new(&mut d, EditLimits::default()).expect("editor");
+        assert_eq!(e.transact(0, &[command]), Err(error), "{body}");
+        assert_eq!(e.document().body, original.body);
+    }
+    // Text after the field is free to change.
+    let mut d = doc(field);
+    let mut e = Editor::new(&mut d, EditLimits::default()).expect("editor");
+    e.transact(0, &[replace(point(&[6], 0, 0), point(&[6], 0, 5), "later")])
+        .expect("after the field");
+    assert_eq!(paragraphs(&e), ["x···12·later"]);
+    // The size limit holds for growth.
+    let mut d = doc(LINKED);
+    let mut e = Editor::new(
+        &mut d,
+        EditLimits {
+            paragraph_scalars: 16,
+            ..EditLimits::default()
+        },
+    )
+    .expect("editor");
+    assert_eq!(
+        e.transact(0, &[replace(point(&[0], 0, 0), point(&[0], 0, 0), "abc")]),
+        Err(EditError::LimitExceeded)
+    );
+}
