@@ -117,6 +117,12 @@ const KNOWN_CORPORA: &[KnownCorpus] = &[
         path: "testdata/CC0",
         transitional: true,
     },
+    KnownCorpus {
+        id: "cc0-rtf",
+        label: "CC0 RTF",
+        path: "testdata/CC0_RTF",
+        transitional: false,
+    },
 ];
 
 fn main() -> ExitCode {
@@ -166,6 +172,7 @@ fn main() -> ExitCode {
             scale: config.scale,
             cell_no_wrap: config.cell_no_wrap,
         },
+        rtf: config.rtf,
     });
 
     let listener = match std::net::TcpListener::bind(("127.0.0.1", config.port)) {
@@ -216,6 +223,8 @@ struct State {
     corpora: Vec<Corpus>,
     /// Rendered pages, one cache per corpus so equal file names do not collide.
     caches: Mutex<BTreeMap<String, Cache>>,
+    /// Explicit RTF compatibility policies, ignored for DOCX entries.
+    rtf: worker::RtfFlags,
     /// Output scale (px per inch) and `w:noWrap` handling.
     ///
     /// The scale is a DPI, not a multiplier: the renderer converts twips by
@@ -242,6 +251,7 @@ impl State {
             entry,
             corpus.transitional,
             self.settings,
+            self.rtf,
             RENDER_TIMEOUT,
         ));
         self.caches
@@ -305,9 +315,10 @@ fn render_bounded(
     entry: &Entry,
     transitional: bool,
     settings: RenderSettings,
+    rtf: worker::RtfFlags,
     timeout: Duration,
 ) -> DocumentView {
-    worker::run(entry, transitional, settings, timeout)
+    worker::run(entry, transitional, settings, rtf, timeout)
 }
 
 #[cfg(test)]
@@ -611,6 +622,8 @@ fn query_value(query: &str, key: &str) -> Option<String> {
 struct Config {
     /// Directories given on the command line, in order.
     dirs: Vec<PathBuf>,
+    /// Explicit RTF compatibility policies.
+    rtf: worker::RtfFlags,
     /// Port to bind.
     port: u16,
     /// Whether to normalize every corpus, including Strict.
@@ -626,6 +639,7 @@ impl Config {
     fn parse(args: &[String]) -> Option<Self> {
         let mut config = Self {
             dirs: Vec::new(),
+            rtf: worker::RtfFlags::default(),
             port: 8181,
             transitional: false,
             scale: 96.0,
@@ -664,6 +678,18 @@ impl Config {
                         return None;
                     };
                     config.cell_no_wrap = mode;
+                }
+                "--wps-text" => {
+                    config.rtf.wps_text = true;
+                }
+                "--allow-unsigned-unicode" => {
+                    config.rtf.allow_unsigned_unicode = true;
+                }
+                "--drop-nul" => {
+                    config.rtf.drop_nul = true;
+                }
+                "--reject-unsupported" => {
+                    config.rtf.reject_unsupported = true;
                 }
                 "--help" | "-h" => {
                     print_usage();
@@ -779,8 +805,10 @@ fn print_usage() {
         "usage: strict-ooxml-view [DIR...] [--port N] [--scale N] [--transitional] [--cell-nowrap=spec|always]"
     );
     println!();
-    println!("  DIR...            directories of .docx files");
+    println!("  DIR...            directories of .docx/.rtf files");
     println!("                    (default: every known corpus that contains documents)");
+    println!("  --wps-text --allow-unsigned-unicode --drop-nul --reject-unsupported");
+    println!("                    explicit RTF compatibility policies");
     println!("  --port N          port to bind on 127.0.0.1 (default 8181)");
     println!("  --scale N         output DPI (default 96; 144 doubles the page size)");
     println!("  --cell-nowrap=M   w:noWrap cells: spec (default, as ISO 29500) or always");
@@ -875,6 +903,7 @@ mod tests {
         assert!(ids.contains(&"strict"));
         assert!(ids.contains(&"docx"));
         assert!(ids.contains(&"cc0-docx"));
+        assert!(ids.contains(&"cc0-rtf"));
         assert!(ids.contains(&"cc0-docx-math"));
         assert!(KNOWN_CORPORA
             .iter()
@@ -972,6 +1001,7 @@ mod tests {
             &entry,
             false,
             strict_ooxml_view::RenderSettings::new(96.0),
+            worker::RtfFlags::default(),
             Duration::from_secs(30),
         );
         assert_eq!(view.name, "missing.docx");
