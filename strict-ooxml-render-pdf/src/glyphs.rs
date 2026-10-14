@@ -56,6 +56,23 @@ pub(crate) fn right_to_left(text: &str) -> bool {
     })
 }
 
+/// The letters of a ligature `label` the text layer writes one by one: a
+/// label of more than one character, all right-to-left (marks included).
+///
+/// A reader turns a right-to-left line around character by character, and a
+/// two-letter `ToUnicode` entry with it: Windows Arial's Urdu `نی` ligature
+/// read back as `ین`. Written letter by letter, in visual order, it reads as
+/// written.
+#[must_use]
+pub(crate) fn rtl_ligature(label: &str) -> Option<Vec<char>> {
+    let letters: Vec<char> = label.chars().collect();
+    (letters.len() > 1
+        && letters
+            .iter()
+            .all(|ch| is_mark(*ch) || right_to_left(ch.encode_utf8(&mut [0; 4]))))
+    .then_some(letters)
+}
+
 /// The glyph of a cluster that carries the cluster's text: on the baseline if
 /// any is, and the widest of those (the letter's body, not its dots).
 ///
