@@ -84,6 +84,13 @@ check("raster identical ssim 1", metrics.page_raster_metrics(page, page)["ssim"]
 shares = {"SegoePrint": 0.5, "SegoePrint-Bold": 0.2, "ArialMT": 0.3}
 check("fallback share sums the fallback styles", metrics.fallback_share(shares) == 0.7)
 check("no fallback face, no share", metrics.fallback_share({"ArialMT": 1.0}) == 0.0)
+# A face the document does not name is a substitution, unless it is a
+# standard alias or a face of another script.
+families = {"YuGothicUI-Regular": "Yu Gothic UI", "ArialMT": "Arial", "SimSun": "SimSun"}
+named = {"Agency FB", "Helvetica"}
+check("unnamed face is a substitution", metrics.fallback_share({"YuGothicUI-Regular": 0.7, "ArialMT": 0.3}, named, families) == 0.7)
+check("aliases and script faces are not", metrics.fallback_share({"ArialMT": 0.6, "SimSun": 0.4}, named, families) == 0.0)
+check("a named face is not", metrics.fallback_share({"ArialMT": 1.0}, {"Arial"}, families) == 0.0)
 check("raster blank candidate low", metrics.page_raster_metrics(page, np.ones_like(page))["row_corr"] == 0.0)
 check("diff image shape", metrics.diff_image(page, page).shape == (100, 80 * 3 + 12, 3))
 

@@ -397,6 +397,24 @@ def _geometry(ref_words: list[Word], our_words: list[Word], pairs: list[tuple[in
 # even Cousine). Such a reference shows the host's substitution, not the
 # document, and its score is reported apart.
 WPS_FALLBACK_FONTS = ("SegoePrint",)
+# Faces WPS draws although the document does not name them, and rightly:
+# the standard aliases (Helvetica -> Arial, an RTF run without a font ->
+# Times New Roman), symbols, math, and the system faces of other scripts.
+# Any other face the document does not name is a substitution for a family
+# the host lacks (Agency FB -> Yu Gothic UI, Blackadder ITC -> Gabriola).
+LEGIT_UNNAMED = frozenset(
+    "".join(ch for ch in name.lower() if ch.isalnum())
+    for name in (
+        "Times New Roman", "Arial", "Courier New", "Symbol", "Wingdings", "Webdings", "Marlett",
+        "Segoe UI Symbol", "Segoe UI Emoji", "Segoe UI Historic", "Cambria Math", "Sans Serif Collection",
+        "SimSun", "NSimSun", "SimSun-ExtB", "SimSun-ExtG", "MS Gothic", "MS PGothic", "MS UI Gothic",
+        "Yu Gothic", "Malgun Gothic", "Microsoft YaHei", "Microsoft YaHei UI", "Microsoft JhengHei",
+        "Microsoft JhengHei UI", "PMingLiU-ExtB", "MingLiU-ExtB", "MingLiU_HKSCS-ExtB", "MingLiU_MSCS-ExtB",
+        "Nirmala UI", "Nirmala Text", "Ebrima", "Gadugi", "Leelawadee UI", "Myanmar Text", "Javanese Text",
+        "Mongolian Baiti", "Microsoft Himalaya", "Microsoft Yi Baiti", "Microsoft Tai Le",
+        "Microsoft New Tai Lue", "Microsoft PhagsPa", "Sylfaen",
+    )
+)
 FALLBACK_SHARE = 0.10
 
 
@@ -427,8 +445,91 @@ def font_shares(path: str) -> dict[str, float]:
     return {name: round(n / total, 4) for name, n in counts.most_common()} if total else {}
 
 
-def fallback_share(shares: dict[str, float]) -> float:
-    return round(sum(v for k, v in shares.items() if k.startswith(WPS_FALLBACK_FONTS)), 4)
+def fallback_share(shares: dict[str, float], named: set[str] | None = None, families: dict[str, str] | None = None) -> float:
+    """Share of the reference drawn in a face the document did not ask for.
+
+    Segoe Print always counts (WPS's face for any missing family). With the
+    document's `named` families (`named_families`), so does every face whose
+    family the document never names: WPS also set Agency FB in Yu Gothic UI
+    and Blackadder ITC in Gabriola. `families` maps a PostScript name to its
+    family (the host inventory); without it the name's stem is compared."""
+    total = 0.0
+    folded = {_fold(n) for n in named or ()}
+    folded.discard("")
+    for font, share in shares.items():
+        if font.startswith(WPS_FALLBACK_FONTS):
+            total += share
+        elif folded and not _is_named(font, folded, families or {}) and not _is_legit(font, families or {}):
+            total += share
+    return round(total, 4)
+
+
+def _is_legit(postscript: str, families: dict[str, str]) -> bool:
+    family = families.get(postscript)
+    if family is not None:
+        return _fold(family) in LEGIT_UNNAMED
+    stem = _fold(postscript.split("-")[0])
+    return any(stem.startswith(name) for name in LEGIT_UNNAMED if len(name) >= 5)
+
+
+def _fold(name: str) -> str:
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
+
+def _is_named(postscript: str, folded: set[str], families: dict[str, str]) -> bool:
+    family = families.get(postscript)
+    if family is not None:
+        return _fold(family) in folded
+    stem = _fold(postscript.split("-")[0])
+    for suffix in ("psmt", "mt", "ps"):
+        if stem.endswith(suffix) and len(stem) > len(suffix) + 3:
+            stem = stem[: -len(suffix)]
+            break
+    return any(stem == n or (len(n) >= 4 and (stem.startswith(n) or n.startswith(stem))) for n in folded)
+
+
+def named_families(path: str) -> set[str]:
+    """Every font family a DOCX or RTF names: its font table, run fonts and
+    theme fonts (`fallback_share`)."""
+    import re
+    import zipfile
+
+    names: set[str] = set()
+    if path.lower().endswith(".rtf"):
+        with open(path, "rb") as f:
+            text = f.read().decode("latin-1")
+        start = text.find("{\\fonttbl")
+        if start >= 0:
+            depth, end = 0, start
+            for end in range(start, min(len(text), start + 200_000)):
+                depth += {"{": 1, "}": -1}.get(text[end], 0)
+                if depth == 0:
+                    break
+            table = text[start:end]
+            for entry in re.findall(r"\\f\d+[^;]*;", table):
+                entry = re.sub(r"\{\\\*\\panose [^}]*\}", "", entry)
+                for alt in re.findall(r"\{\\\*\\falt ([^}]*)\}", entry):
+                    names.add(alt.strip())
+                entry = re.sub(r"\{\\\*\\falt [^}]*\}", "", entry)
+                entry = re.sub(r"\\[a-z]+-?\d* ?", "", entry)
+                names.add(entry.strip(" {};"))
+        return {n for n in names if n}
+    try:
+        z = zipfile.ZipFile(path)
+    except (OSError, zipfile.BadZipFile):
+        return names
+    for part in z.namelist():
+        if not (part.startswith("word/") and part.endswith(".xml")) and not part.startswith("word/theme/"):
+            continue
+        try:
+            xml = z.read(part).decode("utf-8", "ignore")
+        except (KeyError, OSError, zipfile.BadZipFile):
+            continue
+        names.update(re.findall(r'<w:font w:name="([^"]+)"', xml))
+        names.update(re.findall(r'<w:altName w:val="([^"]+)"', xml))
+        names.update(re.findall(r'w:(?:ascii|hAnsi|eastAsia|cs)="([^"]+)"', xml))
+        names.update(re.findall(r'typeface="([^"]+)"', xml))
+    return {n.strip() for n in names if n.strip()}
 
 
 def compare(ref: PdfFacts, ours: PdfFacts, with_raster: bool = True) -> dict:
