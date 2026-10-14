@@ -4,6 +4,7 @@ mod apply;
 mod command;
 mod editor;
 mod ids;
+mod moves;
 mod notes;
 mod revisions;
 mod sections;

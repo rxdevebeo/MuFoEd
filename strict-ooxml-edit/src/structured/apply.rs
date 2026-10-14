@@ -113,6 +113,7 @@ pub(super) fn apply(
             return super::sections::set_properties(document, at, properties);
         }
         Edit::InsertSectionBreak { .. } => return super::sections::insert_break(document, at),
+        Edit::Move { to, .. } => return super::moves::move_block(document, at, to),
         Edit::RemoveSectionBreak { keep_after, .. } => {
             return super::sections::remove_break(document, at, *keep_after);
         }

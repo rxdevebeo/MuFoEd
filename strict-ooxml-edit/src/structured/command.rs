@@ -82,6 +82,16 @@ pub enum Edit {
         /// Target block.
         at: Address,
     },
+    /// Move a block to an insertion point of the same story - into or out of
+    /// a cell, a block SDT or a text box - keeping its paragraph identities
+    /// (K06). Both addresses are read in the story as it is before the move;
+    /// a section boundary paragraph does not move.
+    Move {
+        /// Block to move.
+        at: Address,
+        /// Insertion point, as for [`Edit::Insert`].
+        to: Address,
+    },
     /// Replace plain paragraph text using scalar offsets.
     Text {
         /// Target paragraph.
@@ -364,6 +374,7 @@ impl Edit {
             | Self::Join { at }
             | Self::Insert { at, .. }
             | Self::Delete { at }
+            | Self::Move { at, .. }
             | Self::Text { at, .. }
             | Self::Format { at, .. }
             | Self::ParagraphProperties { at, .. }
