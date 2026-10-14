@@ -600,6 +600,7 @@ mod tests {
         let identity = String::from_utf8(super::identity_h_cmap()).expect("utf-8");
         assert!(identity.contains("begincidrange"), "{identity}");
         for count in [0_u16, 1, 100, 101, 201] {
+            font.cluster_unicode.clear();
             font.to_unicode = (0..count).map(|cid| (cid, 'A')).collect();
             let cmap = String::from_utf8(super::to_unicode_cmap(&font)).expect("utf-8");
             let counts: Vec<usize> = cmap

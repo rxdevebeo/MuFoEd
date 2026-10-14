@@ -222,7 +222,11 @@ fn custom_mark_follows_is_partial_not_silent() {
     );
     let document = parse_parts(&parts).expect("parse");
     assert_eq!(
-        document.support.get("w:footnoteReference").unwrap().status,
+        document
+            .support
+            .get("w:footnoteReference@customMarkFollows")
+            .unwrap()
+            .status,
         SupportStatus::Partial
     );
     let paragraph = document.body.blocks[0].as_paragraph().unwrap();

@@ -209,11 +209,23 @@ mod tests {
         assert_eq!(script_fallback("Arimo", 'ب'), Some("Noto Sans Arabic"));
         assert_eq!(script_fallback("Carlito", 'ཀ'), Some("Jomolhari"));
         assert_eq!(script_fallback("Carlito", 'a'), None);
-        assert_eq!(script_fallback("Tinos", 'א'), None);
+        // Hebrew: offered for any face, taken only where the face lacks it
+        // (`chosen_family` checks the glyph): Carlito and Caladea, not Tinos.
+        assert_eq!(script_fallback("Carlito", 'א'), Some("Arimo Hebrew"));
+        assert_eq!(script_fallback("Caladea", 'א'), Some("Tinos Hebrew"));
+        assert!(crate::font::builtin::bundled_has_glyph("Tinos", 'א'));
+        assert!(!crate::font::builtin::bundled_has_glyph("Carlito", 'א'));
         assert!(is_script_fallback("Jomolhari"));
         assert!(!is_script_fallback("Tinos"));
-        for family in ["Noto Naskh Arabic", "Noto Sans Arabic", "Jomolhari"] {
+        for family in [
+            "Noto Naskh Arabic",
+            "Noto Sans Arabic",
+            "Jomolhari",
+            "Arimo Hebrew",
+            "Tinos Hebrew",
+        ] {
             assert_eq!(map_family(family), family);
+            assert!(is_script_fallback(family));
         }
         assert_eq!(super::known_family("Jameel Noori Nastaleeq"), None);
     }

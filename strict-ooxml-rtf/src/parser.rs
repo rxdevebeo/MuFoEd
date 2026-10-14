@@ -5317,16 +5317,12 @@ fn font_codepage(font: &Font, document: i32) -> Option<i32> {
             // Font-encoded glyphs use w:sym, never an ANSI decoder.
             2 => Some(-2),
             77 => Some(10000),
-            128 => Some(932),
-            129 => Some(949),
-            134 => Some(936),
-            136 => Some(950),
-            // The Mac CJK charsets (Shift_JIS, Hangul, GB2312, Big5 for the
-            // Mac) are read with the Windows code page of the same encoding.
-            78 => Some(932),
-            79 => Some(949),
-            80 => Some(936),
-            81 => Some(950),
+            // The Mac CJK charsets (78-81: Shift_JIS, Hangul, GB2312, Big5 for
+            // the Mac) are read with the Windows code page of the same encoding.
+            128 | 78 => Some(932),
+            129 | 79 => Some(949),
+            134 | 80 => Some(936),
+            136 | 81 => Some(950),
             161 => Some(1253),
             162 => Some(1254),
             163 => Some(1258),
