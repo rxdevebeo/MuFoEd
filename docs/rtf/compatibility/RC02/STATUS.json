@@ -1,0 +1,212 @@
+{
+  "card": "RC02",
+  "status": "InProgress",
+  "updated": "2026-10-08",
+  "scope": "cluster ActualText, extraction decision, reviewed script profile and bounded CLI font assets",
+  "base_commit": "fe7da50",
+  "implemented": [
+    "shared bytes lifetime",
+    "font program/face index/variation identity",
+    "font/index/axis/range validation",
+    "bundled mapping provenance",
+    "resource identity in shaping caches",
+    "PDF bundled source via cached resolver",
+    "bounded immutable manifest registry",
+    "hash/permission/OS2 admission gates",
+    "deterministic exact family/style lookup",
+    "owned resource metrics and scalar coverage",
+    "owned resource shaping via shared harfrust/cluster pipeline",
+    "missing glyph shaping status",
+    "optional RenderOptions registry",
+    "original script-font request before substitution",
+    "placed run retains immutable registry",
+    "SVG exact bytes and escaped variation settings",
+    "SVG resource-derived safe CSS names",
+    "SVG optical/synthetic instance changes disabled",
+    "explicit SVG collection rejection",
+    "PDF owned resource collector",
+    "PDF resource/index/all-coordinate subsetting",
+    "registered PDF/SVG spacing and compression origins",
+    "ReportAndContinue/Reject original-request font diagnostics",
+    "bounded detail reports with truncation-independent failure counts",
+    "strict placement and backend failure checks",
+    "explicit bundled-only diagnostics opt-in",
+    "SVG TTC continuation omission and strict refusal",
+    "PDF embedding failure reports",
+    "renamed pinned OFL CJK SC and Devanagari test subsets",
+    "independent native HarfBuzz geometry oracle",
+    "strict positive CJK SVG/PDF/RTF witness",
+    "logical UTF-16 ActualText for complete multi-glyph clusters",
+    "bounded CLI font asset configuration (--fonts manifest)",
+    "reviewed font/script support profile (profile.md)"
+  ],
+  "remaining": [
+    "full complex-script placement and visual acceptance",
+    "full corpus visual acceptance"
+  ],
+  "blocked": [
+    {
+      "item": "full corpus visual acceptance (pagination/pixel)",
+      "contract": "thresholds met for every page (not a missing tool)",
+      "reason": "The harness now runs: poppler 26.09.0 was provisioned under target/rtf-import/poppler and the WPS references are in the sibling worktree. Fresh measurement on the merged HEAD: import 100/100 text Pass, pagination 62/100 Pass, pixels 3/100 documents and 6/423 pages Pass. Acceptance stays open because 97 pixel failures are a shaping/metrics gap (RC03/RC04), not a font-resolution defect."
+    },
+    {
+      "item": "full complex-script placement and visual acceptance",
+      "contract": "independent cluster/geometry oracle and rasterized references for complex scripts",
+      "reason": "RC03 shaping and RC04 metrics own the remaining glyph placement; the Devanagari witness is deliberately degraded (font.script.degraded)."
+    }
+  ],
+  "checks": {
+    "merged_head_visual": {
+      "status": "Measured",
+      "cli_sha256": "3e40d368e194c808d5a61767fce7b14c93fd9cec7605d7a88f96e37636f31890",
+      "oracle_sha256": "b2fc52852686cfa9f83e53f73c291e854f73570d31a410104b39ce1c04690256",
+      "import": "100/100 text Pass",
+      "pagination": "62 Pass, 38 Fail",
+      "pixels": "3 documents Pass / 97 Fail; 6 pages Pass / 417 Fail",
+      "comparator_sha256": "399d0af501ec525a4446e877f195deb90820f153660e86b12d7e8983f6ff1c14",
+      "receipts": [
+        "target/rtf-import/RC02-merge-corpus/results.json",
+        "target/rtf-import/RC02-merge-visual/results.json",
+        "target/rtf-import/RC02-merge-pixels/results.json"
+      ]
+    },
+    "full_svg_pdf_public_api": {
+      "status": "PassWithBaselineExclusion",
+      "passed": 436,
+      "groups": 53,
+      "excluded_test": "maps_regular_postscript_names_to_the_same_bundled_faces",
+      "log": "target/rtf-import/RC02-actualtext-full-tests.log"
+    },
+    "clippy_msrv": {
+      "status": "PassWithBaselineSuppressions",
+      "log": "target/rtf-import/RC02-registry-clippy.log"
+    },
+    "corpus_xsd_opc_pixels": "See renderer checks; pixel measurement carried forward by exact PDF identity, not rerasterized",
+    "registry_owned_consumer_tests": {
+      "status": "Pass",
+      "passed": 6,
+      "log": "target/rtf-import/RC02-registry-tests.log"
+    },
+    "renderer_svg_final": {
+      "status": "Pass",
+      "passed": 10,
+      "log": "target/rtf-import/RC02-render-assets-svg-final.log"
+    },
+    "renderer_clippy": {
+      "status": "PassWithBaselineSuppressionsAndWarnings",
+      "log": "target/rtf-import/RC02-render-assets-clippy-final.log"
+    },
+    "renderer_corpus": {
+      "status": "Pass",
+      "documents": 100,
+      "text": 100,
+      "integrity": 100,
+      "resource": 100,
+      "same_docx_hashes_as_eastasia_face": 100,
+      "receipt": "target/rtf-import/RC02-render-assets-corpus-current/results.json"
+    },
+    "renderer_xsd_opc": {
+      "status": "Pass",
+      "documents": 100,
+      "violations": 0,
+      "logs": [
+        "target/rtf-import/RC02-render-assets-xsd-current.log",
+        "target/rtf-import/RC02-render-assets-opc-current.log"
+      ]
+    },
+    "renderer_pagination": {
+      "status": "Measured",
+      "pass": 62,
+      "fail": 38,
+      "same_pdf_hashes_as_eastasia_face": 100,
+      "receipt": "target/rtf-import/RC02-render-assets-visual-verified/results.json"
+    },
+    "renderer_pixels": {
+      "status": "HistoricalMeasurementCarriedForwardByExactPdfIdentity",
+      "pass_documents": 3,
+      "fail_documents": 97,
+      "pass_pages": 6,
+      "fail_pages": 417,
+      "receipt": "target/rtf-import/RC02-render-assets-pixel-equivalence.json"
+    },
+    "formatting": {
+      "rustfmt_changed_files": "Pass",
+      "git_diff_check": "Pass"
+    },
+    "policy_clippy": {
+      "status": "PassWithBaselineSuppressionsAndWarnings",
+      "log": "target/rtf-import/RC02-font-policy-clippy-final.log"
+    },
+    "policy_corpus": {
+      "status": "Pass",
+      "documents": 100,
+      "text": 100,
+      "integrity": 100,
+      "resource": 100,
+      "receipt": "target/rtf-import/RC02-font-policy-corpus/results.json"
+    },
+    "script_witnesses": {
+      "cjk": "PassNarrowCoverageStrictSvgPdfRtfUnicode",
+      "devanagari": "GeometryAndEmbeddingPassDegradedExtraction",
+      "manifest": "strict-ooxml-render-svg/fonts/witnesses/manifest.json"
+    },
+    "policy_xsd_opc": {
+      "status": "Pass",
+      "documents": 100,
+      "violations": 0,
+      "logs": [
+        "target/rtf-import/RC02-font-policy-xsd.log",
+        "target/rtf-import/RC02-font-policy-opc.log"
+      ]
+    },
+    "policy_pagination": {
+      "status": "Measured",
+      "pass": 62,
+      "fail": 38,
+      "same_pdf_hashes_as_previous": 100,
+      "receipt": "target/rtf-import/RC02-font-policy-visual/results.json"
+    },
+    "policy_default_equivalence": {
+      "same_docx": 100,
+      "same_pdf_and_references": 100,
+      "receipt": "target/rtf-import/RC02-font-policy-equivalence.json",
+      "pixel_status": "Historical only; not rerasterized"
+    },
+    "actualtext": {
+      "status": "PassNarrowUnicodeExtraction",
+      "pymupdf": "1.26.4",
+      "mupdf": "1.26.7",
+      "receipt": "target/rtf-import/RC02-actualtext-extraction.json",
+      "lopdf": "ActualText ignored; raw continuation CID limitation retained",
+      "corpus_gates": "Not rerun in focused extraction slice"
+    },
+    "actualtext_clippy": {
+      "status": "PassWithBaselineSuppressionsAndWarnings",
+      "log": "target/rtf-import/RC02-actualtext-clippy.log"
+    },
+    "cli_font_assets": {
+      "status": "Pass",
+      "base_commit": "fe7da50",
+      "manifest_schema": "strictlib.font-assets.v1",
+      "invocation": "render|to-pdf --fonts <manifest.json>",
+      "unit_tests": 4,
+      "process_tests": 1,
+      "bounds": "FontRegistryLimits::default, no system discovery, pinned sha256",
+      "clippy_msrv": "cargo +1.92.0 clippy --workspace --all-targets --all-features -- -D warnings: Pass"
+    },
+    "reviewed_profile": {
+      "status": "Reviewed",
+      "document": "docs/rtf/compatibility/RC02/profile.md",
+      "basis": "font-alias.verification.json, fonts/witnesses/manifest.json, native HarfBuzz oracle, ActualText extraction witness",
+      "decision": "font resolution/registry/shaping/embedding complete for finite witnesses; visual acceptance deferred to RC03/RC04"
+    },
+    "extraction_decision": {
+      "status": "DocumentedLimitation",
+      "mechanism": "UTF-16 ActualText on multi-glyph clusters",
+      "compliant_readers": "MuPDF 1.26.7 / PyMuPDF 1.26.4 extract exactly",
+      "ignoring_readers": "lopdf text helper falls back to per-CID ToUnicode and shows replacement chars",
+      "note": "spec mechanism, not a renderer defect; universal reader compatibility is not claimed"
+    }
+  }
+}

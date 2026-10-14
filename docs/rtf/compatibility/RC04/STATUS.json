@@ -1,0 +1,129 @@
+{
+  "card": "RC04",
+  "status": "InProgress",
+  "updated": "2026-10-11",
+  "scope": "style cascade and paragraph/run text geometry",
+  "base_commit": "a53042b",
+  "dependencies": ["RC02"],
+  "implemented": [
+    "character scaling w:rPr/w:w from \\charscalex (bounded 0..=600, explicit Loss otherwise)",
+    "character spacing w:rPr/w:spacing from \\expnd (quarter-points) and \\expndtw (twips)",
+    "heavy tab leader from \\tlth; explicit Loss for unsupported \\tleq",
+    "explicit Loss for associated-script \\aexpnd with no WML run slot",
+    "\\plain resets scale/spacing through the default run properties",
+    "run effects \\outl/\\shad/\\embo/\\impr/\\noproof/\\snaptogrid -> w:outline/shadow/emboss/imprint/noProof/snapToGrid",
+    "kerning threshold \\kernN -> w:kern (half-points, negative is an explicit Loss)",
+    "vertical position \\positionN and \\upN/\\dnN -> w:position (signed half-points)",
+    "keep/widow/page-break rules (\\keep/\\keepn/\\widctlpar/\\nowidctlpar/\\pagebb) round-trip",
+    "import -> Strict write -> reopen regression for all of the above",
+    "section defaults reset (\\sectd) already covered by section-reset round-trip",
+    "direct effective-facts probe against WPS reference facts for 019/039",
+    "independent resolved-cascade resolver (docDefaults -> pStyle chain -> rStyle -> direct) with a normalizing diff",
+    "RTF default font (\\deff, else the first font-table entry) is written to w:docDefaults/w:rPrDefault/w:rPr/w:rFonts, so runs and paragraph marks with no explicit \\f inherit the real face instead of the renderer fallback",
+    "empty paragraph marks carry the ambient run formatting (w:pPr/w:rPr font + half-points), so a blank line uses the body line height (054 Hotyn2)",
+    "font-family script qualifiers (Times New Roman Cyr, Arial CE, Calibri (Hebrew), Cambria Math Cyr, ...) are stripped before mapping to the bundled metric-compatible face (render-svg map_family)",
+    "RTF 1.0 indent controls \\lin/\\rin/\\fin map to the same w:ind start/end/firstLine as \\li/\\ri/\\fi (the corpus pairs them; 015 gains its indent and the ledger stops reporting the old spellings as loss)"
+  ],
+  "remaining": [
+    "resolved-cascade follow-ups are now specific, not noise: 019 still differs in `w:spacing/@w:line=276` (our import keeps `\\sl276`, the WPS reference drops it) and in the run `w:rFonts` (our explicit Arial `\\f2`/`\\af2` vs WPS inheriting docDefaults Times New Roman/SimSun); 039 differs only in the run `w:cs` slot (our Helvetica vs WPS Times New Roman). These need an oracle decision, not more normalization.",
+    "residual corpus pixels: 6/100 documents and 22/458 pages pass after the 2026-10-09 geometry fixes (from 3/100, 6/423). The remaining line_metrics/row_correlation pages are dominated by advance-driven reflow from substitute-face advance differences (witness 013 page 2: '������.' wraps early while the vertical profile matches, top/bottom +0/+1, shift 0), plus a documented WPS leading-whitespace advance difference (013 page 1); these need exact faces, not a new RTF mapping"
+  ],
+  "blocked": [
+    {
+      "item": "targeted pixels and full geometry acceptance",
+      "contract": "poppler/rasterizer plus the pinned pixel comparator and WPS references",
+      "reason": "the remaining gap is shared-metrics/rasterizer, not a missing RTF mapping; a full visual acceptance needs the shared P5 metrics work and exact faces."
+    }
+  ],
+  "checks": {
+    "character_geometry_roundtrip": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::character_scale_spacing_and_tab_leaders_roundtrip",
+      "assertions": [
+        "\\charscalex150 -> scale Some(150)",
+        "\\expnd4 -> spacing Some(Twips(20))",
+        "\\expndtw12 -> spacing Some(Twips(12))",
+        "\\plain clears scale and spacing",
+        "\\tlth \\tx1000 -> tab stop leader heavy"
+      ]
+    },
+    "rtf_suite": {
+      "status": "Pass",
+      "detail": "strict-ooxml-rtf structure 37 + import 36 + 1 doc-test"
+    },
+    "run_effects_roundtrip": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::run_effects_kerning_and_position_roundtrip",
+      "assertions": [
+        "\\outl/\\embo/\\impr/\\noproof/\\snaptogrid -> TriState::On",
+        "\\shad then \\shad0 -> TriState On then Off",
+        "\\kern24 -> Some(HalfPoints(24))",
+        "\\up6 -> position Some(HalfPoints(6)); \\dn4 -> Some(HalfPoints(-4))"
+      ]
+    },
+    "keep_widow_roundtrip": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::keep_widow_and_page_break_rules_roundtrip",
+      "assertions": [
+        "\\keep/\\keepn/\\widctlpar/\\pagebb -> On",
+        "\\pard + \\nowidctlpar resets other paragraph rules and sets w:widowControl Off"
+      ]
+    },
+    "effective_style_probe": {
+      "status": "Probe",
+      "tool": "xtool/rtf/effective_style_probe.py",
+      "receipts": [
+        "target/rtf-import/RC04-effective-style-019.json",
+        "target/rtf-import/RC04-effective-style-039.json"
+      ],
+      "finding": "every geometry-relevant direct property is present; WPS-only names are writer defaults (paragraph-mark rPr, szCs mirror, docDefaults spacing/kern), not missing mappings"
+    },
+    "resolved_cascade": {
+      "status": "Probe",
+      "tool": "xtool/rtf/effective_style_resolver.py",
+      "receipts": [
+        "target/rtf-import/RC04-resolved-019.json",
+        "target/rtf-import/RC04-resolved-039.json"
+      ],
+      "finding": "after normalizing Strict/Transitional names and zero auto-spacing, the remaining diffs are explicit-defaults-vs-inherited (our writer states docDefaults explicitly, WPS inherits them); no effective-value mismatch found on 019/039"
+    },
+    "resolved_cascade_normalization": {
+      "status": "Pass",
+      "date": "2026-10-11",
+      "tool": "xtool/rtf/effective_style_resolver.py",
+      "test": "xtool/rtf/test_effective_style_resolver.py",
+      "assertions": [
+        "the cascade overlays `w:rFonts` per attribute, so a later `<w:rFonts w:hint>` keeps the inherited ascii/hAnsi slot (test_rfonts_attributes_inherit_from_doc_defaults)",
+        "an explicit Strict default (`jc=start`, `bidi=false`, `widowControl=true`, all-zero `ind`) equals absence (test_explicit_strict_default_equals_absence)",
+        "a non-default toggle (`b=true`) is still reported (negative control, test_non_default_toggle_is_still_reported)",
+        "`docDefaults` without a `pPrDefault`/`rPrDefault` wrapper no longer crashes the loader"
+      ],
+      "findings_2026_10_11": {
+        "019": "133 -> 20 diffs; the remainder is the documented WPS `\\sl276` loss plus a run `w:rFonts` difference (our explicit Arial vs WPS docDefaults)",
+        "039": "18 diffs, all the single `w:cs` slot (our Helvetica vs WPS Times New Roman) — the complex-script font for Latin runs"
+      }
+    },
+    "corpus_geometry": {
+      "status": "Measured",
+      "date": "2026-10-09",
+      "receipts": [
+        "target/rtf-import/RC04-parmark-corpus/results.json",
+        "target/rtf-import/RC04-parmark-visual/results.json",
+        "target/rtf-import/RC04-parmark-pixels/results.json",
+        "target/rtf-import/RC04-parmark-triage/triage.json"
+      ],
+      "results": {
+        "import_text_resource": "100/100 Pass",
+        "xsd": "100/100, 0 violations",
+        "opc": "100 packages, 0 violations",
+        "pagination": "65/100 Pass (was 62)",
+        "pixels": "6/100 documents, 22/458 pages (was 3/100, 6/423)",
+        "pixel_regressions": 0
+      },
+      "witnesses": [
+        "013 COPYING: empty-paragraph line pitch matched after the docDefaults-font fix (paragraph gaps 27.6 -> 27.6pt)",
+        "054 Hotyn2: Arial CYR -> Arimo line pitch 12.2 -> 11.5pt after the script-suffix fix; empty-paragraph gaps 25.3 -> 23.0pt after the paragraph-mark rPr fix"
+      ]
+    }
+  }
+}

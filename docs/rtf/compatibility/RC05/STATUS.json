@@ -1,0 +1,62 @@
+{
+  "card": "RC05",
+  "status": "InProgress",
+  "updated": "2026-10-11",
+  "scope": "lists and numbering",
+  "base_commit": "e453e24",
+  "dependencies": ["RC04"],
+  "implemented": [
+    "legacy/compat list constructs are classified honestly instead of reported as Loss: {\\*\\listtext ...}/{\\listtext ...}/{\\pntext ...} are the cached list text regenerated from the list table (dropping them avoids a double marker), {\\*\\levelmarker ...} is a legacy alternative marker superseded by \\leveltext, and \\jclisttab/\\levelspace/\\levelindent/\\leveltemplateid/\\levelold/\\fbias are Word 6/7 list-level compatibility markers with no Strict equivalent. Corpus import losses fall by 8798 across the affected documents.",
+    "the list table already maps \\list/\\listid/\\listlevel/\\levelnfc/\\levelnfcn/\\levelstartat/\\leveljc/\\leveljcn/\\levelfollow/\\leveltext -> w:abstractNum/w:lvl (start, numFmt, lvlText, lvlJc, suff) and \\listoverride/\\listid/\\ls -> w:num; negative \\listid is preserved as an unsigned source identity.",
+    "list override levels are mapped: {\\lfolevel ...} (with or without the \\* prefix) now builds a w:lvlOverride on the w:num. {\\listoverrideformat{\\listlevel ...}} routes the nested level controls through the same helper as the w:abstractNum levels and stores the replacement as LevelOverride.level; {\\listoverridestart\\levelstartatN} stores LevelOverride.start_override without a w:lvl. The level index is the \\lfolevel ordinal (0-based, up to nine); \\listoverridecount accepts any value (it is redundant with the groups actually present). Corpus 021 now carries w:lvlOverride (the bullet glyph replacing the abstract '*' marker): import losses 152 -> 131 under the RC0506 options, and three \\list:unbound-text events disappear because the nested characters are consumed by the level-text destination.",
+    "\\levelold (Word 6/7 conversion marker) and \\fbias (the East-Asian font-bias hint Word emits only inside a \\listlevel, with no direct w:rFonts analogue) join the list-compat Info set, so they no longer mask real losses."
+  ],
+  "remaining": [
+    "counter continuity across paragraphs/tables/sections is a renderer concern and was not re-audited here.",
+    "list:unbound-text (text directly inside listtable/listoverridetable) stays a Loss; it is malformed source, not a supported construct.",
+    "the 2026-10-11 full-corpus WPS run surfaces one oracle text quirk unrelated to lists: 014's `\\flddirty` PAGEREF keeps the RTF's stale cached page number while WPS recomputes it on export (see corpus_gates). Pagination 65/100 and pixels 6/100 reflect the RC02/RC03/RC04 face-fidelity gap, not RC05."
+  ],
+  "blocked": [],
+  "checks": {
+    "legacy_list_constructs": {
+      "status": "Pass",
+      "test": "strict-ooxml-rtf/tests/structure.rs::legacy_list_constructs_are_info_not_loss",
+      "assertions": [
+        "a list table/override with \\jclisttab, \\levelspace, \\levelindent, \\leveltemplateid, {\\*\\levelmarker} and a {\\listtext} paragraph produces zero import Loss",
+        "destination:listtext and destination:levelmarker appear as Info",
+        "the list structure (numbering instance) still round-trips"
+      ]
+    },
+    "list_override_levels": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::list_override_level_replaces_the_level",
+        "strict-ooxml-rtf/tests/structure.rs::list_override_start_sets_the_start_override"
+      ],
+      "assertions": [
+        "{\\lfolevel\\listoverrideformat{\\listlevel ...}} becomes a w:lvlOverride whose w:lvl replaces the level (format bullet, replacement text) and leaves w:startOverride absent; import Loss is 0 and no list-override-control:* feature remains",
+        "{\\lfolevel\\listoverridestart\\levelstartat5} becomes a w:lvlOverride with w:startOverride=5 and no w:lvl",
+        "the abstract level is untouched (keeps its '*' text) while the instance carries the override",
+        "both survive import -> Strict write -> reopen"
+      ]
+    },
+    "corpus_gates": {
+      "status": "Measured",
+      "date": "2026-10-11",
+      "oracle": "WPS Writer 12.1.0.28485 (KWPS.Application), fresh 100/100 Captured with --pdf; facts 100/100 Extracted",
+      "receipts": [
+        "target/rtf-import/RC05-wps-full/oracle/oracle.json",
+        "target/rtf-import/RC05-wps-full/imported/results.json",
+        "target/rtf-import/RC05-wps-full/visual/results.json",
+        "target/rtf-import/RC05-wps-full/pixel/results.json"
+      ],
+      "results": {
+        "import_text_resource": "100/100 resource Pass; 99/100 text Pass. The single text Fail is 014, a `\\flddirty` PAGEREF: the RTF carries a stale cached page number (1,4,8,...) that the importer preserves, while the WPS reference recomputes it (3,6,10,...). Oracle field-recompute quirk, not an RC05 change.",
+        "import_loss_events": "127228 -> 127197 (-31) over the full corpus: 021 -21 (18 list-override-control:* + 3 list:unbound-text), 015 -1 and 087 -9 (\\fbias list-compat Info).",
+        "xsd_opc_check": "100/100 `strict-ooxml check` -> `ok: strict` on the imported DOCX.",
+        "pagination": "65/100 Pass (4617 reference pages vs 4389 rendered), identical to the RC08-final receipt; 021 Pass (1/1).",
+        "pixels": "6/100 documents, 22/458 pages Pass at 96 DPI with the pinned comparator (399d0af5...), identical to RC08-final. 021 Fail: ssim 0.9067 caused by a pre-existing ~20 px line-pitch gap between the substituted faces and WPS, not the list mapping; the 46-px marker region did change from the abstract '*' to the Symbol bullet as intended."
+      }
+    }
+  }
+}

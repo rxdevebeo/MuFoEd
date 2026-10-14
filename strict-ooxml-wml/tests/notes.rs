@@ -210,3 +210,25 @@ fn footnote_without_id_is_skipped() {
         "reference without id must not invent FootnoteRef(0)"
     );
 }
+
+/// `w:customMarkFollows` is a hand-typed note mark the model does not carry:
+/// the reference is kept, but the input is recorded `Partial` rather than
+/// silently cleaned of the attribute.
+#[test]
+fn custom_mark_follows_is_partial_not_silent() {
+    let parts = document_parts(
+        "<w:p><w:r><w:footnoteReference w:id=\"1\" w:customMarkFollows=\"true\"/></w:r></w:p>",
+        &[],
+    );
+    let document = parse_parts(&parts).expect("parse");
+    assert_eq!(
+        document.support.get("w:footnoteReference").unwrap().status,
+        SupportStatus::Partial
+    );
+    let paragraph = document.body.blocks[0].as_paragraph().unwrap();
+    let run = paragraph.inlines[0].as_run().unwrap();
+    assert!(run
+        .content
+        .iter()
+        .any(|content| matches!(content, RunContent::FootnoteRef(_))));
+}

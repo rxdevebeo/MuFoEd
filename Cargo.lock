@@ -2301,6 +2301,7 @@ dependencies = [
  "strict-ooxml-render-pdf",
  "strict-ooxml-render-svg",
  "strict-ooxml-report",
+ "strict-ooxml-rtf",
  "strict-ooxml-testkit",
  "strict-ooxml-wml",
  "strict-ooxml-write",
@@ -2311,6 +2312,8 @@ name = "strict-ooxml-cli"
 version = "0.1.0"
 dependencies = [
  "djvu-bzz",
+ "serde",
+ "serde_json",
  "sha2",
  "strict-ooxml",
  "strict-ooxml-core",
@@ -2477,6 +2480,19 @@ dependencies = [
  "serde_json",
  "strict-ooxml-core",
  "strict-ooxml-wml",
+]
+
+[[package]]
+name = "strict-ooxml-rtf"
+version = "0.1.0"
+dependencies = [
+ "encoding_rs",
+ "serde_json",
+ "strict-ooxml-core",
+ "strict-ooxml-wml",
+ "strict-ooxml-write",
+ "thiserror",
+ "unicode-bidi",
 ]
 
 [[package]]

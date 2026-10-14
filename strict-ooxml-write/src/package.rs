@@ -645,7 +645,10 @@ pub fn write_package(
 
     // Auxiliary parts first, in a fixed order, so `rId1` always names the
     // styles part when there is one.
-    if !document.styles.is_empty() || options.always_write_styles {
+    if !document.styles.is_empty()
+        || document.styles.defaults().is_some()
+        || options.always_write_styles
+    {
         rels.add(&RelType::Styles, "styles.xml".to_owned(), false);
         content_types.insert_override(PartId::new(STYLES_PART), CONTENT_TYPE_STYLES);
     }

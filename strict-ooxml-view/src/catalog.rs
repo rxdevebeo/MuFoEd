@@ -74,7 +74,7 @@ pub struct Entry {
     pub size: u64,
 }
 
-/// Lists the `.docx` files directly inside `dir`, sorted by name.
+/// Lists the `.docx` and `.rtf` files directly inside `dir`, sorted by name.
 ///
 /// Not recursive: the viewer is pointed at a corpus, and a recursive walk
 /// would pick up temporary copies and nested build output. Word lock files
@@ -88,10 +88,10 @@ pub fn discover(dir: &Path) -> Vec<Entry> {
         .flatten()
         .filter_map(|item| {
             let path = item.path();
-            let is_docx = path
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("docx"));
-            if !is_docx || !path.is_file() {
+            let is_supported = path.extension().is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("docx") || extension.eq_ignore_ascii_case("rtf")
+            });
+            if !is_supported || !path.is_file() {
                 return None;
             }
             let name = path.file_name().map_or_else(
@@ -341,6 +341,122 @@ pub fn render_controlled(
         pages: rendered,
         pipeline,
         page_files: None,
+    })
+}
+
+/// Imports and renders RTF under explicit caller-selected compatibility policies.
+#[allow(clippy::too_many_lines)] // Import ledger, writer losses and render in one view.
+pub fn render_rtf(
+    entry: &Entry,
+    options: &strict_ooxml::RtfOptions,
+    scale: f64,
+) -> Result<DocumentView> {
+    use std::fmt::Write as _;
+
+    let opened = StrictDocument::import_rtf_path(&entry.path, options).map_err(|error| {
+        strict_ooxml_core::error::StrictError::Unsupported(format!("RTF import failed: {error}"))
+    })?;
+    let status = opened.status();
+    let mut note = format!(
+        "RTF {status:?}: {} import losses, {} writer losses, {} discarded NULs.\n",
+        opened.import_report.loss_count,
+        opened.write_report.losses().len(),
+        opened.import_report.discarded_nuls
+    );
+    let mut issues = Vec::new();
+    for issue in &opened.import_report.issues {
+        let location = format!("bytes {}..{}", issue.span.start, issue.span.end);
+        let _ = writeln!(note, "{:?} {location}: {}", issue.severity, issue.feature);
+        issues.push(ViewIssue {
+            stage: "convert".to_owned(),
+            id: issue.feature.clone(),
+            severity: format!("{:?}", issue.severity),
+            part: None,
+            page: None,
+            location: Some(location),
+            count: 1,
+            detail: issue.feature.clone(),
+        });
+    }
+    if opened.import_report.details_truncated {
+        note.push_str(
+            "Diagnostic details capped; aggregate loss count includes omitted details.\n",
+        );
+    }
+    for issue in opened.write_report.losses() {
+        let _ = writeln!(
+            note,
+            "Writer {:?}: {}: {}",
+            issue.severity, issue.feature_id, issue.reason
+        );
+        issues.push(ViewIssue {
+            stage: "write".to_owned(),
+            id: issue.feature_id.clone(),
+            severity: format!("{:?}", issue.severity),
+            part: None,
+            page: None,
+            location: None,
+            count: 1,
+            detail: issue.reason.clone(),
+        });
+    }
+    let support = opened.document.support_report();
+    let pages = opened
+        .document
+        .render_svg(
+            &RenderOptions::default()
+                .scale(scale)
+                .floating(true)
+                .math(true),
+        )?
+        .into_iter()
+        .map(|page| Rendered {
+            number: page.index + 1,
+            width: page.width_px,
+            height: page.height_px,
+            svg: page.svg,
+        })
+        .collect();
+    Ok(DocumentView {
+        page_files: None,
+        name: entry.name.clone(),
+        conformance: "rtf import → strict".to_owned(),
+        summary: Some(Summary {
+            supported: support.summary.supported,
+            partial: support.summary.partial,
+            unsupported: support.summary.unsupported,
+            ignored: support.summary.ignored,
+            error: support.summary.error,
+        }),
+        note: Some(note),
+        pages,
+        pipeline: PipelineView {
+            outcome: format!("{status:?}").to_lowercase(),
+            issues,
+            stages: vec![
+                StageStatus {
+                    stage: "input".to_owned(),
+                    status: "ran".to_owned(),
+                },
+                StageStatus {
+                    stage: "normalize".to_owned(),
+                    status: "not_run".to_owned(),
+                },
+                StageStatus {
+                    stage: "convert".to_owned(),
+                    status: "ran".to_owned(),
+                },
+                StageStatus {
+                    stage: "write".to_owned(),
+                    status: "ran".to_owned(),
+                },
+                StageStatus {
+                    stage: "render".to_owned(),
+                    status: "ran".to_owned(),
+                },
+            ],
+            sidecar: "absent".to_owned(),
+        },
     })
 }
 
@@ -659,7 +775,7 @@ impl Cache {
 
 #[cfg(test)]
 mod tests {
-    use super::{discover, Cache, DocumentView, PipelineView, Summary};
+    use super::{discover, render_rtf, Cache, DocumentView, Entry, PipelineView, Summary};
     use std::path::Path;
 
     #[test]
@@ -669,12 +785,13 @@ mod tests {
     }
 
     #[test]
-    fn discovery_lists_only_docx_files_sorted() {
+    fn discovery_lists_docx_and_rtf_files_sorted() {
         let dir = std::env::temp_dir().join("strict-view-discover-test");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create");
         std::fs::write(dir.join("b.docx"), b"x").expect("write");
         std::fs::write(dir.join("a.docx"), b"x").expect("write");
+        std::fs::write(dir.join("c.RTF"), b"x").expect("write");
         std::fs::write(dir.join("notes.txt"), b"x").expect("write");
         std::fs::write(dir.join("~$a.docx"), b"x").expect("write");
         std::fs::create_dir_all(dir.join("nested")).expect("nested");
@@ -684,9 +801,39 @@ mod tests {
         let names: Vec<&str> = found.iter().map(|entry| entry.name.as_str()).collect();
         assert_eq!(
             names,
-            vec!["a.docx", "b.docx"],
-            "sorted, docx only, not recursive, no Word lock files"
+            vec!["a.docx", "b.docx", "c.RTF"],
+            "sorted, docx and rtf, not recursive, no Word lock files"
         );
+    }
+
+    #[test]
+    fn rtf_render_keeps_import_stages_and_pages_in_the_corpus_view() {
+        let dir = std::env::temp_dir().join(format!("strict-view-rtf-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create");
+        let path = dir.join("sample.rtf");
+        let bytes = br"{\rtf1\ansi RTF viewer}";
+        std::fs::write(&path, bytes).expect("write");
+        let entry = Entry {
+            name: "sample.rtf".to_owned(),
+            path,
+            size: bytes.len() as u64,
+        };
+
+        let view =
+            render_rtf(&entry, &strict_ooxml::RtfOptions::default(), 96.0).expect("RTF renders");
+        assert!(!view.pages.is_empty());
+        assert_eq!(view.pipeline.outcome, "clean");
+        assert_eq!(
+            view.pipeline
+                .stages
+                .iter()
+                .find(|stage| stage.stage == "convert")
+                .map(|stage| stage.status.as_str()),
+            Some("ran")
+        );
+        assert_eq!(view.pipeline.issues.len(), 0);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -1,0 +1,111 @@
+{
+  "card": "RC09",
+  "status": "InProgress",
+  "updated": "2026-10-12",
+  "scope": "remaining loss classes: revision/compat metadata, table/char controls with WML slots, comments, revisions, textboxes, OLE, document metadata",
+  "base_commit": "16f3203",
+  "dependencies": ["RC01"],
+  "implemented": [
+    "revision save identifiers and the Word 6/7 + Asian layout controls whose bare value is the Strict default are named Info instead of Loss: `\\insrsid`/`\\charrsid`/`\\pararsid` (`rsid-compat`), `\\faauto`/`\\adjustright`/`\\aspalpha`/`\\aspnum` (`word6-compat`), and `\\hyphpar`/`\\wrapdefault`/`\\sectdefaultcl`/`\\linex`/`\\lnbrkrule`/`\\partightenfactor` (`paragraph-compat`). Corpus import losses 83010 -> 11394.",
+    "character controls with a real WML slot are mapped instead of dropped: `\\kerning` -> `w:kern` (the WPS spelling of `\\kern`), `\\ulc` -> `w:u/@w:color`, and `\\cb` -> `w:rPr/w:shd` (the WPS spelling of the character background, the same property as `\\chcbpat`).",
+    "text highlight `\\highlightN` -> `w:highlight`: the parameter indexes the colour table and the colour is matched to the `ST_HighlightColor` name (index 0 clears the highlight); a colour outside the fixed highlight set stays a Loss.",
+    "table controls with a real WML slot are mapped: `\\trpadd{t,b,l,r}`/`\\trpaddf{t,b,l,r}` -> `w:tblCellMar` (with `\\trgaph` as the fallback), `\\trrh` -> `w:trHeight` (negative value = `exact`), `\\trqr`/`\\trql`/`\\trqc` -> `w:trPr/w:jc`, and `\\trautofit` -> `w:tblLayout`.",
+    "`\\pardeftab`/`\\deftab` -> `w:defaultTabStop` in settings.xml, and a nested `{\\*\\panose ...}` -> `w:panose1` on the font-table entry.",
+    "the non-visual metadata destinations are named Info: `{\\*\\falt}`, `{\\*\\hyphen}`, `{\\*\\pnseclvl}`, `{\\*\\rsidtbl}`, `{\\*\\revtbl}`, `{\\*\\latentstyles}`, `{\\*\\expandedcolortbl}`, `{\\*\\xmlnstbl}`, `{\\*\\pgptbl}`, `{\\*\\pgdsctbl}`, `{\\*\\wgrffmtfilter}`, `{\\*\\userprops}`, `{\\*\\fname}` and `{\\*\\generator}`.",
+    "document settings and metadata control families are named Info: the table/section/style revision ids (`\\styrsid`/`\\tblrsid`/`\\sectrsid`/`\\rsidroot`), view settings, Word-for-Mac Cocoa flags, drawing-grid display settings, math layout settings (`w:mathPr`), Word application settings, `\\widowctrl` (the Strict default), `\\additive`, `\\pardirnatural`, and the Word 6/7 default-language hints (`\\deflang`/`\\deflangfe`/`\\adeflang`).",
+    "the WPS-default controls whose reference writes nothing back are named Info: `\\hyphpar0`/`\\noline` (`paragraph-compat`), `\\nooverflow`/`\\nocwrap` (`table-cell-compat`), `\\cltxlrtb` (the default cell direction), `\\hres`/`\\chhres` (`picture-resolution`), `\\qk`/`\\qnatural` (`paragraph-compat`), `\\animtext` (`character-compat`) and the row-width unit/value hints (`table-row-compat`).",
+    "the WPS profile's leading group whitespace drop (`wps:header-whitespace:dropped`) is a named Info: WPS drops the same whitespace, so matching it is not a loss.",
+    "picture crop `\\piccrop{t,b,l,r}` maps to DrawingML `a:srcRect`: the twips inset becomes thousandths of a percent of the displayed extent, and an all-zero crop writes no `a:srcRect` (witness 075 has the only non-zero crops).",
+    "`{\\*\\picprop ...}` Word 97 shape hints are a named Info: the WPS reference writes no picture properties back and the Strict picture has no non-visual slot.",
+    "table styles (`{\\*\\tsN ...}` and `\\tsN`/`\\tsdN`) are a named Info (`destination:ts`, `table-style-compat:ts`/`:tsd`): every independent WPS reference writes a single built-in \"Normal Table\" style and reproduces the effective table properties directly from the rows the producer repeats.",
+    "legacy numbering and non-visual metadata destinations are named Info: `{\\*\\pn ...}` (superseded by the list table), `\\defchp`/`\\defpap` (superseded by `w:docDefaults`), `\\template`, `\\datastore`, `\\blipuid`, `\\updnprop`, `\\mmathPr`, and `\\themedata`/`\\colorschememapping` (unreferenced because RTF resolves theme colours to the explicit colour table).",
+    "the WPS leading-group line ending (`wps:leading-group-line-ending`) is a named Info, not a Loss: the WPS profile preserves the line feed exactly as WPS does (the reference writes the same `&#10;`), and the decoded body text matches the oracle for every affected document (005/058/059/075). This corrects the earlier conservative classification.",
+    "Word 97 shapes (`{\\shp ...}`) map to a `wp:anchor` instead of being dropped: `\\shpinst` geometry becomes `wp:positionH/V`/`wp:wrap*`/`relativeHeight`/`behindDoc`; `{\\sp{\\sn X}{\\sv Y}}` properties select the preset geometry, solid fill (`fillType`/`fillColor`), outline (`fLine`/`lineWidth`/`lineColor`) and the non-visual name/description; `\\shptxt` becomes `wps:txbx/w:txbxContent` (fields included); a nested `{\\pict}` (`pib`/`fillBlip`/`\\shppict`) becomes the anchored `pic:pic` and keeps its media. Shape layout hints with no slot (`\\posx`/`\\posy`, `\\pvpara`, `\\wraparound`, `\\dfrmtxt*`, `\\dxfrtext`, `\\absnoovrlp`, `\\anchorText`, `\\shprslt`) and the blip ids (`\\bliptag`/`\\blipupi`) are named Info.",
+    "a `\\shppict`/`\\nonshppict` picture pair is imported instead of dropped outside a shape: the primary `{\\*\\shppict{\\pict ...}}` keeps its `{\\pict}` so the image reaches the package, and the metafile `{\\nonshppict{\\pict ...}}` fallback is a named Info (witnesses 003, 005 - media grew by one PNG and four JPEGs).",
+    "an embedded OLE object (`{\\object ...}`) keeps its cached `\\result` preview as a picture: `\\objemb`/`\\objw`/`\\objh` and the `{\\*\\objclass}`/`{\\*\\oleclsid}`/`{\\*\\objname}`/`{\\*\\objtime}` metadata are named Info, the `{\\*\\objdata}` payload stays an explicit Loss (no Strict OLE activation), and witness 008 gains nine WMF previews.",
+    "a `\\shpgrp` group becomes a `wpg:wgp` with a `wpg:grpSpPr/a:xfrm` (offset `0,0`, extent from `\\shpleft`/`\\shptop`/`\\shpright`/`\\shpbottom`, child offset `0,0`) and the nested `{\\shp ...}` children as `wps:wsp` shapes placed by `relLeft`/`relTop` (or `geoRight`/`geoBottom`) relative to the group origin; a nested group is a named Loss (witness 092 gains three groups, eight `wps:wsp`).",
+    "a zero-width character outline (`\\strokewidth0`, the only value in the corpus) and its `\\strokec` colour are named Info: Strict's `w:outline` is a bare toggle with no width/colour and the independent WPS reference writes no character stroke; a positive `\\strokewidth` stays a Loss."
+  ],
+  "remaining": [
+    "comments (`\\annotation`), tracked revisions and textboxes outside a shape are still Loss; none of them occur in the corpus, so they need portable fixtures before a mapping task. The independent WPS reference writes shapes as transitional `w:pict`/`v:shape` VML, which Strict forbids, so DrawingML is required (floating `\\shp`, `\\shpgrp` and OLE previews are now mapped).",
+    "the implicit `\\s0` (a stylesheet whose first entry omits `\\s0`) is deliberately NOT materialized as a `w:default` Normal style: WPS does not do so, and doing it reflowed 004/017/018/021/051/087 (pagination 66 -> 63, 004 117 -> 156 pages). The `style:undefined-parent:rtf-s0`, `stylesheet:unbound-text` and the first entry's `control:snext` losses therefore stay.",
+    "the language sentinels `\\lang0`/`\\lang1024` and other unknown LCIDs stay explicit `language:unknown-lcid` Loss (pinned by `unknown_language_lcid_remains_an_explicit_loss`/`unknown_alang_lcid_remains_an_explicit_loss`).",
+    "lower-confidence application/layout flags are deliberately left as Loss rather than blanket-renamed to Info: `\\newtblstyruls`, `\\notbrkcnstfrctbl`, `\\indrlsweleven`, `\\sectlinegrid`, `\\horzdoc`, `\\stshf*`, `\\clmar*`, `\\gaph`, `\\fet`, and the remaining table/compatibility flags."
+  ],
+  "blocked": [],
+  "checks": {
+    "legacy_layout_and_revision_controls": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::legacy_layout_and_revision_controls_are_info_not_losses",
+        "strict-ooxml-rtf/tests/structure.rs::non_default_legacy_layout_controls_stay_losses",
+        "strict-ooxml-rtf/tests/structure.rs::document_settings_and_compat_controls_are_info"
+      ]
+    },
+    "character_and_table_slot_mappings": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::kerning_underline_colour_and_character_background_map_to_run_props",
+        "strict-ooxml-rtf/tests/structure.rs::highlight_colour_index_maps_to_the_named_highlight",
+        "strict-ooxml-rtf/tests/structure.rs::table_padding_row_height_alignment_and_layout_map",
+        "strict-ooxml-rtf/tests/structure.rs::default_tab_stop_and_compat_controls_map_and_classify",
+        "strict-ooxml-rtf/tests/structure.rs::font_panose_maps_and_metadata_destinations_are_info"
+      ],
+      "assertions": [
+        "each mapping round-trips through the writer and reader (document + reopened)",
+        "every classified control produces loss_count 0 with its named Info feature"
+      ]
+    },
+    "picture_table_metadata_and_wps_classes": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::picture_crop_maps_to_the_source_rectangle_and_shape_hints_are_info",
+        "strict-ooxml-rtf/tests/structure.rs::absent_picture_crop_writes_no_source_rectangle",
+        "strict-ooxml-rtf/tests/structure.rs::table_style_definition_and_reference_are_info",
+        "strict-ooxml-rtf/tests/structure.rs::legacy_numbering_and_non_visual_metadata_destinations_are_info",
+        "strict-ooxml-rtf/tests/import.rs::wps_leading_group_line_endings_are_info_not_losses"
+      ],
+      "assertions": [
+        "picture crop round-trips to a:srcRect through the writer and reader; zero crop writes none",
+        "the WPS leading-group line feed matches the independent oracle text and is Info"
+      ]
+    },
+    "floating_shapes": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::floating_text_box_shape_maps_to_an_anchored_wps_shape",
+        "strict-ooxml-rtf/tests/structure.rs::floating_picture_shape_maps_to_an_anchored_picture"
+      ],
+      "assertions": [
+        "a \\shp maps to a wp:anchor with the shape extent and a wps:wsp/wps:txbx or pic:pic graphic",
+        "a shape picture keeps its media part and every processed shape document passes `check` -> ok: strict"
+      ]
+    },
+    "embedded_pictures_ole_groups_and_stroke": {
+      "status": "Pass",
+      "tests": [
+        "strict-ooxml-rtf/tests/structure.rs::shppict_pair_imports_the_primary_picture_and_names_the_fallback",
+        "strict-ooxml-rtf/tests/structure.rs::embedded_ole_object_imports_its_result_picture_and_names_the_payload",
+        "strict-ooxml-rtf/tests/structure.rs::grouped_shapes_map_to_an_anchored_wpg_group",
+        "strict-ooxml-rtf/tests/structure.rs::zero_width_character_stroke_is_info_and_a_real_stroke_is_a_loss"
+      ],
+      "assertions": [
+        "a shppict pair imports exactly the primary picture; the nonshppict fallback is Info",
+        "an OLE object imports its \\result preview, names the metadata Info and keeps \\objdata a Loss",
+        "a \\shpgrp maps to a wp:anchor whose graphic is a wpg:wgp with one wps:wsp per nested \\shp",
+        "a zero-width character stroke is Info while a positive width stays a Loss"
+      ]
+    },
+    "corpus_ledger": {
+      "status": "Measured",
+      "date": "2026-10-12",
+      "receipt": "target/rtf-import/rc09-final3/",
+      "results": {
+        "import_losses": "1489 -> 1371 (-118) for the shppict/OLE/group/stroke slices; 127228 -> 1371 across the session",
+        "pagination": "66/100 unchanged vs RC08-columns-layout; only 005 (270 -> 272) and 008 (56 -> 37) change page count, both already mismatched against the reference",
+        "check": "100/100 ok: strict",
+        "output_identity": "only 003/005/008/092 change SHA-256: the shppict/OLE slices add media to 003/005/008 and the group slice adds shapes to 092; the stroke slice is severity-only"
+      }
+    }
+  }
+}

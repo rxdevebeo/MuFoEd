@@ -38,8 +38,11 @@ ocr-ollama = ["dep:strict-ooxml-ocr", "strict-ooxml-convert?/ocr-ollama"]
 parallel = ["strict-ooxml-wml/parallel"]
 # Transactional editing with source-aware save and shared visual geometry.
 edit = ["dep:strict-ooxml-edit", "write", "svg"]
+# Import builds an owned Strict package so existing media/render/write paths work.
+rtf = ["dep:strict-ooxml-rtf", "write"]
 
 [dependencies]
+strict-ooxml-rtf = { version = "0.1.0", path = "../strict-ooxml-rtf", optional = true }
 strict-ooxml-djvu = { version = "0.1.0", path = "../strict-ooxml-djvu", optional = true }
 strict-ooxml-ocr = { version = "0.1.0", path = "../strict-ooxml-ocr", optional = true }
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }

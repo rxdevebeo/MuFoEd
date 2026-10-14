@@ -26,7 +26,9 @@ ocr-ollama = ["strict-ooxml/ocr-ollama"]
 sha2 = "0.11"
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 # AUD-90: meta-crate default is only report+svg; CLI opts into write/pdf/convert.
-strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write", "pdf", "convert", "djvu-image"] }
+strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write", "pdf", "convert", "rtf", "djvu-image"] }
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }

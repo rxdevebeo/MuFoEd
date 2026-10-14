@@ -115,6 +115,16 @@ pub use editing::DocumentEditor;
 #[cfg(feature = "edit")]
 pub use strict_ooxml_edit as edit;
 
+#[cfg(feature = "rtf")]
+mod rtf;
+#[cfg(feature = "rtf")]
+pub use rtf::{RtfOpenError, RtfOpened, RtfStatus};
+#[cfg(feature = "rtf")]
+pub use strict_ooxml_rtf::{
+    CompatibilityProfile, InvalidTextPolicy, NulPolicy, RtfError, RtfIssue, RtfLimits, RtfOptions,
+    RtfReport, RtfSpan, UnicodeParameterPolicy, UnsupportedPolicy,
+};
+
 #[cfg(feature = "convert")]
 pub use strict_ooxml_convert::{
     convert as convert_pdf, ConversionReport, ConvertError, Converted, Mode, ParagraphRules,

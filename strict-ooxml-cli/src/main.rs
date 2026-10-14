@@ -63,6 +63,7 @@ macro_rules! eprintln {
 }
 
 mod djvu;
+mod rtf;
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -128,6 +129,7 @@ fn run_command() -> ExitCode {
         Some("from-djvu") => djvu::run(&args.collect::<Vec<_>>(), false),
         Some("djvu-dump") => djvu::run(&args.collect::<Vec<_>>(), true),
         Some("from-pdf") => run_from_pdf(&args.collect::<Vec<_>>()),
+        Some("import-rtf") => rtf::run(&args.collect::<Vec<_>>()),
         Some("write") => run_write(&args.collect::<Vec<_>>()),
         Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
         Some("--help" | "-h" | "help") | None => {
@@ -148,7 +150,7 @@ fn run_command() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|write|normalize> <file> \
+        "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|import-rtf|write|normalize> <file> \
          [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
          [--no-floating] [--no-math] [--wps-times] [--cell-nowrap=spec|always] [--transitional]"
     );
@@ -159,6 +161,7 @@ fn print_usage() {
     eprintln!("  from-djvu       import DjVu to Strict DOCX --out <file.docx> [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr]");
     eprintln!("  djvu-dump       inspect DjVu chunk headers and text-layer states");
     eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--no-images] [--report-out <json>] (--out is required)");
+    eprintln!("  import-rtf      import .rtf to Strict .docx (--out required); writes .rtf-report.json beside output; --wps-text --allow-unsigned-unicode --drop-nul --reject-unsupported are explicit opt-ins");
     eprintln!("  write           serialize the model back to a Strict .docx [--report-out <json>] (--out is required)");
 }
 

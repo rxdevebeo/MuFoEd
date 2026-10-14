@@ -1,0 +1,96 @@
+{
+  "card": "RC02",
+  "scope": "registry resources admitted through placement and both renderers",
+  "witnesses": [
+    {
+      "name": "bundled adapter",
+      "oracle": "legacy resolver bytes pointer/hash and requested family"
+    },
+    {
+      "name": "shared lifetime",
+      "oracle": "Arc pointer/hash after original owner is dropped"
+    },
+    {
+      "name": "Arimo variable weight",
+      "oracle": "same program hash, distinct instance coordinate"
+    },
+    {
+      "name": "invalid assets",
+      "oracle": "explicit font/index/duplicate-axis/range error"
+    },
+    {
+      "name": "cache collision",
+      "programs": [
+        "Arimo",
+        "Tinos"
+      ],
+      "text": "iiii",
+      "oracle": "distinct resolved hash/advances despite identical supplied family/style"
+    },
+    {
+      "name": "registry owned consumers",
+      "program": "Arimo",
+      "text": "AV office e combining accent",
+      "oracle": "bundled metrics/glyphs/clusters/x positions and pinned instance hash"
+    },
+    {
+      "name": "missing CJK glyph",
+      "program": "Arimo",
+      "text_codepoint": "U+6F22",
+      "oracle": "no scalar glyph/advance; owned shaping returns DegradedMissingGlyph"
+    },
+    {
+      "name": "admission failures",
+      "oracle": "bounded complete preflight, pinned hash/index/axes/metadata/duplicate rejection"
+    },
+    {
+      "name": "embedding restriction",
+      "program": "test-only modified Arimo OS/2 flags",
+      "oracle": "restricted/no-subset/bitmap/unknown flags reject even with permission attestation"
+    },
+    {
+      "name": "SVG registry delivery",
+      "oracle": "pinned bytes hash, resource-derived CSS family, exact owned shaping width, ownership after options drop"
+    },
+    {
+      "name": "PDF owned instances",
+      "oracle": "lopdf parse/ToUnicode extraction; distinct program/weight keys despite same declared resolved family; deterministic bytes"
+    },
+    {
+      "name": "collection face 1",
+      "oracle": "PDF geometry versus identical explicit single-face program; SVG explicit unsupported delivery error"
+    },
+    {
+      "name": "default compatibility",
+      "oracle": "byte-identical SVG/PDF with empty registry; fresh default CLI corpus and 100 unchanged DOCX hashes"
+    },
+    {
+      "name": "RTF script-slot admission",
+      "oracle": "Latin/East Asian aliases reach explicit resource keys; missing CJK outlines remain loss"
+    },
+    {
+      "name": "strict and bounded font policy",
+      "oracle": "unknown request/missing glyph/subset failures refused even at zero detail capacity; continuation reports preserve counts"
+    },
+    {
+      "name": "licensed CJK and Devanagari geometry",
+      "oracle": "pinned source/subset geometry identical in native HarfBuzz; harfrust matches glyphs/clusters/advances/offsets",
+      "manifest": "strict-ooxml-render-svg/fonts/witnesses/manifest.json"
+    },
+    {
+      "name": "real CJK delivery",
+      "oracle": "strict SVG/PDF and RTF East Asian slot; embedded CFF program; independent lopdf Unicode extraction"
+    },
+    {
+      "name": "Devanagari extraction gap",
+      "oracle": "TTF embeds with no missing glyph; continuation CID extraction produces U+FFFD; degraded diagnostic and strict refusal remain"
+    },
+    {
+      "name": "multi-glyph logical extraction",
+      "oracle": "MuPDF 1.26.7 extracts pinned CJK/Devanagari exactly; lopdf parses UTF-16 ActualText and balanced Span BDC/EMC",
+      "receipt": "target/rtf-import/RC02-actualtext-extraction.json",
+      "limits": "lopdf extractor ignores ActualText; full Indic visual acceptance pending"
+    }
+  ],
+  "real_script_geometry_acceptance": "Narrow CJK/Devanagari geometry and ActualText-aware extraction pass; full script acceptance pending"
+}
