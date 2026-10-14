@@ -9,17 +9,51 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use strict_ooxml_view::{failed, render_controlled, DocumentView, Entry, RenderSettings};
+use strict_ooxml_view::{
+    failed, render_controlled, render_rtf, DocumentView, Entry, RenderSettings,
+};
 
 pub(crate) const MEMORY_LIMIT: usize = 2 * 1024 * 1024 * 1024;
 const MAX_RESULT_BYTES: u64 = 96 * 1024 * 1024;
 static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// The RTF compatibility policies the viewer was started with
+/// (`--wps-text` ...): all off unless asked for, as in the CLI.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+#[allow(clippy::struct_excessive_bools)] // One switch per command-line flag.
+pub(crate) struct RtfFlags {
+    pub(crate) wps_text: bool,
+    pub(crate) allow_unsigned_unicode: bool,
+    pub(crate) drop_nul: bool,
+    pub(crate) reject_unsupported: bool,
+}
+
+impl RtfFlags {
+    fn options(self) -> strict_ooxml::RtfOptions {
+        let mut options = strict_ooxml::RtfOptions::default();
+        if self.wps_text {
+            options.compatibility_profile = strict_ooxml::CompatibilityProfile::WpsText;
+        }
+        if self.allow_unsigned_unicode {
+            options.unicode_parameter_policy =
+                strict_ooxml::UnicodeParameterPolicy::AllowUnsignedAndReport;
+        }
+        if self.drop_nul {
+            options.nul_policy = strict_ooxml::NulPolicy::DropAndReport;
+        }
+        if self.reject_unsupported {
+            options.unsupported_policy = strict_ooxml::UnsupportedPolicy::Reject;
+        }
+        options
+    }
+}
 
 #[derive(Deserialize, Serialize)]
 struct Request {
     entry: Entry,
     transitional: bool,
     settings: RenderSettings,
+    rtf: RtfFlags,
     timeout_ms: u64,
 }
 
@@ -49,6 +83,7 @@ pub(crate) fn run(
     entry: &Entry,
     transitional: bool,
     settings: RenderSettings,
+    rtf: RtfFlags,
     timeout: Duration,
 ) -> DocumentView {
     let started = Instant::now();
@@ -74,6 +109,7 @@ pub(crate) fn run(
                 entry,
                 transitional,
                 settings,
+                rtf,
                 timeout,
                 &directory.path().join("metadata.json"),
                 &directory.path().join("worker.stderr"),
@@ -101,6 +137,7 @@ fn execute(
     entry: &Entry,
     transitional: bool,
     settings: RenderSettings,
+    rtf: RtfFlags,
     timeout: Duration,
     path: &std::path::Path,
     stderr_path: &std::path::Path,
@@ -131,6 +168,7 @@ fn execute(
         entry: entry.clone(),
         transitional,
         settings,
+        rtf,
         timeout_ms: u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
     };
     serde_json::to_writer(&mut input, &request).map_err(|error| error.to_string())?;
@@ -202,12 +240,27 @@ pub(crate) fn entry(path: &std::path::Path) -> Result<(), String> {
     let thread = std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
-            render_controlled(
-                &request.entry,
-                request.transitional,
-                request.settings,
-                &control,
-            )
+            // An RTF is imported under the viewer's RTF policies and shown
+            // with its import ledger; the process limits hold for it too.
+            let rtf = request
+                .entry
+                .path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("rtf"));
+            if rtf {
+                render_rtf(
+                    &request.entry,
+                    &request.rtf.options(),
+                    request.settings.scale,
+                )
+            } else {
+                render_controlled(
+                    &request.entry,
+                    request.transitional,
+                    request.settings,
+                    &control,
+                )
+            }
             .map_err(|error| error.to_string())
         })
         .map_err(|error| error.to_string())?;
