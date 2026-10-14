@@ -38,20 +38,28 @@ $script:Toolchain = '+1.92.0'
 $script:Python = 'python'
 $script:QueueName = 'StrictLib-hostq'
 
-# The gitignored corpora that a worktree does not have. Repo-relative.
+# The gitignored corpora a gate copies into its worktree. Repo-relative. The
+# QA jobs (corpus-scan, wps-qa, rtf), the corpus listing of `ping` and the
+# corpus hash of the main-copy state discover every directory of testdata/
+# holding a document (.docx, .rtf) instead (Get-CorpusDirs), so a corpus
+# added there is measured without a change here.
 $script:CorpusDirs = @(
     'strict-ooxml-core/tests/docx',
     'testdata/CC0',
     'testdata/CC0_DOCX',
     'testdata/CC0_DOCX_1'
 )
+$script:DocumentExtensions = @('.docx', '.rtf')
 # What census_gate.py reads besides the tracked tests/samples (its CORPORA).
 $script:CensusCorpusDirs = @(
     'strict-ooxml-core/tests/docx',
     'testdata/CC0_DOCX'
 )
 $script:GateStepOrder = @('fmt', 'clippy', 'test', 'deny', 'doc')
-$script:ScanSets = @('CC0', 'CC0_DOCX', 'CC0_DOCX_1')
+# corpus-scan sets and wps-qa corpora are discovered (Get-TestdataSets), not listed.
+# A wps-qa job that does not say how long it may run gets this many minutes.
+$script:WpsQaMinutes = 240
+$script:WpsQaMaxMinutes = 720
 $script:XsdGates = @('xsd', 'opc', 'census')
 # Criterion benches a `bench` job may run, and the package each belongs to.
 $script:Benches = [ordered]@{
@@ -117,6 +125,39 @@ function Get-Sha256File {
 function Join-RepoPath {
     param([string]$Root, [string]$Relative)
     return [System.IO.Path]::GetFullPath((Join-Path $Root $Relative))
+}
+
+# The directories of testdata/ (repo-relative, sorted) holding at least one
+# file with one of the extensions at their top level; Word lock files (~$*)
+# do not count.
+function Get-TestdataSets {
+    param([string]$Repo, [string[]]$Extensions)
+    $root = Join-RepoPath -Root $Repo -Relative 'testdata'
+    $sets = New-Object System.Collections.Generic.List[string]
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { return , $sets.ToArray() }
+    foreach ($dir in (Get-ChildItem -LiteralPath $root -Directory | Sort-Object Name)) {
+        $documents = @(Get-ChildItem -LiteralPath $dir.FullName -File -Force -ErrorAction SilentlyContinue |
+                Where-Object { $Extensions -contains $_.Extension.ToLowerInvariant() -and -not $_.Name.StartsWith('~$') })
+        if ($documents.Count -gt 0) { $sets.Add('testdata/' + $dir.Name) }
+    }
+    return , $sets.ToArray()
+}
+
+# The fixed corpus directories, then every discovered testdata/ document set.
+function Get-CorpusDirs {
+    param([string]$Repo)
+    $dirs = New-Object System.Collections.Generic.List[string]
+    foreach ($rel in $script:CorpusDirs) { $dirs.Add($rel) }
+    foreach ($rel in (Get-TestdataSets -Repo $Repo -Extensions $script:DocumentExtensions)) {
+        if (-not $dirs.Contains($rel)) { $dirs.Add($rel) }
+    }
+    return , $dirs.ToArray()
+}
+
+# The names (testdata/<name>) of the discovered sets with these extensions.
+function Get-TestdataSetNames {
+    param([string]$Repo, [string[]]$Extensions)
+    return , @(Get-TestdataSets -Repo $Repo -Extensions $Extensions | ForEach-Object { $_.Substring('testdata/'.Length) })
 }
 
 # Seconds left until a deadline, never below 30.
@@ -312,7 +353,7 @@ function Get-StepsStatus {
 function Get-CorpusListingHash {
     param([string]$Repo)
     $lines = New-Object System.Collections.Generic.List[string]
-    foreach ($rel in $script:CorpusDirs) {
+    foreach ($rel in (Get-CorpusDirs -Repo $Repo)) {
         $root = Join-RepoPath -Root $Repo -Relative $rel
         if (-not (Test-Path -LiteralPath $root)) {
             $lines.Add(("{0}`tabsent" -f $rel))
@@ -355,6 +396,8 @@ $script:AllowedFields = @{
     'corpus-scan' = @('id', 'kind', 'sha', 'set')
     'bench'       = @('id', 'kind', 'sha', 'bench')
     'wps'         = @('id', 'kind', 'sha')
+    'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes')
+    'rtf'         = @('id', 'kind', 'sha')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
 }
@@ -417,6 +460,8 @@ function Test-JobRecord {
         'corpus-scan' { $required = @('sha', 'set') }
         'bench' { $required = @('sha', 'bench') }
         'wps' { $required = @('sha') }
+        'wps-qa' { $required = @('sha') }
+        'rtf' { $required = @('sha') }
         'commit' { $required = @('branch', 'paths', 'message') }
         'push' { $required = @('branch') }
     }
@@ -481,8 +526,46 @@ function Test-JobRecord {
             }
         }
         'corpus-scan' {
-            if ($Job.set -isnot [string] -or $script:ScanSets -cnotcontains [string]$Job.set) {
-                return (& $reject ("set '{0}' is not CC0|CC0_DOCX|CC0_DOCX_1" -f $Job.set))
+            $sets = Get-TestdataSetNames -Repo $Repo -Extensions @('.docx')
+            if ($Job.set -isnot [string] -or $sets -cnotcontains [string]$Job.set) {
+                return (& $reject ("set '{0}' is not one of {1}" -f $Job.set, ($sets -join '|')))
+            }
+        }
+        'wps-qa' {
+            # Corpus names are checked by wps_qa.py, which discovers them the
+            # same way (and knows the ones outside testdata/); here only
+            # their shape, so nothing odd reaches a command line.
+            if ($fields -contains 'corpus') {
+                $names = @($Job.corpus)
+                if ($Job.corpus -isnot [string] -and $Job.corpus -isnot [array]) {
+                    return (& $reject 'corpus must be a name or an array of names')
+                }
+                if ($names.Count -eq 0) { return (& $reject 'corpus must not be empty') }
+                foreach ($name in $names) {
+                    if ($name -isnot [string] -or [string]$name -notmatch '^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$') {
+                        return (& $reject ("corpus '{0}' is not a corpus name" -f $name))
+                    }
+                }
+            }
+            if ($fields -contains 'baseline') {
+                if ($Job.baseline -isnot [string] -or [string]$Job.baseline -notmatch '^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$') {
+                    return (& $reject 'baseline is not a label')
+                }
+            }
+            if ($fields -contains 'limit') {
+                if (-not ($Job.limit -is [int] -or $Job.limit -is [long]) -or [long]$Job.limit -lt 0 -or [long]$Job.limit -gt 100000) {
+                    return (& $reject 'limit must be an integer 0..100000')
+                }
+            }
+            foreach ($flag in @('capture', 'recompare')) {
+                if ($fields -contains $flag -and $Job.$flag -isnot [bool]) {
+                    return (& $reject ("{0} must be true or false" -f $flag))
+                }
+            }
+            if ($fields -contains 'minutes') {
+                if (-not ($Job.minutes -is [int] -or $Job.minutes -is [long]) -or [long]$Job.minutes -lt 10 -or [long]$Job.minutes -gt $script:WpsQaMaxMinutes) {
+                    return (& $reject ("minutes must be an integer 10..{0}" -f $script:WpsQaMaxMinutes))
+                }
             }
         }
         'commit' {
@@ -751,6 +834,9 @@ function Invoke-Gate {
     New-Item -ItemType Directory -Force -Path $target | Out-Null
     Ensure-Worktree -Repo $Repo -Wt $wt -Sha $Sha
 
+    # The gate copies its fixed list only: a corpus added to testdata/ must
+    # not change which tests run (corpus-gated tests skip when it is absent)
+    # until it is listed here on purpose.
     $copied = Copy-Corpora -Repo $Repo -Wt $wt -RelDirs $script:CorpusDirs -OutDir $OutDir -AfterCopyHook $AfterCopyHook
     $steps = @($copied.steps)
     if (-not $copied.ok) { return (New-Result 'error' $copied.reason $steps @()) }
@@ -1030,6 +1116,115 @@ function Invoke-Wps {
     return (New-Result $status $reason $steps $artifacts)
 }
 
+# WPS reference QA (xtool/wps-qa) of the CLI built at a commit: render the
+# corpora (an .rtf through import-rtf), compare with the WPS references and
+# report, optionally against a baseline label. Store and corpora are the main
+# copy's (<repo>/wps-qa, gitignored), shared with manual runs; references are
+# captured only when asked (`capture`), since the first capture takes hours.
+# A baseline is compared again in this environment (`recompare`, default on):
+# measurements taken with other library versions are not comparable.
+function Invoke-WpsQa {
+    param([string]$Repo, [string]$QueueDir, [string]$Sha, $Job, [string]$OutDir)
+    $minutes = $script:WpsQaMinutes
+    if ($null -ne $Job.PSObject.Properties['minutes']) { $minutes = [int]$Job.minutes }
+    $deadline = (Get-Date).AddMinutes($minutes)
+    $wt = Join-Path $QueueDir 'wt'
+    $target = Join-Path $QueueDir 'target'
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Ensure-Worktree -Repo $Repo -Wt $wt -Sha $Sha
+
+    $steps = @()
+    $build = Invoke-Logged -Name 'build-cli' -Exe 'cargo' -Arguments @($script:Toolchain, 'build', '--release', '-p', 'strict-ooxml-cli') -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env (Get-CargoEnv -Target $target) -OutDir $OutDir
+    $steps += $build
+    if ($build.timedout -or $build.exit -ne 0) {
+        return (New-Result (Get-StepsStatus $steps) 'wps-qa: the CLI did not build' $steps @())
+    }
+    $cli = Join-Path $target 'release\strict-ooxml.exe'
+    $label = 'sha-' + $Sha.Substring(0, 10)
+    $store = Join-Path $Repo 'wps-qa'
+    $scope = @('--data-root', $Repo, '--store', $store)
+    if ($null -ne $Job.PSObject.Properties['corpus']) {
+        foreach ($name in @($Job.corpus)) { $scope += @('--corpus', [string]$name) }
+    }
+    if ($null -ne $Job.PSObject.Properties['limit'] -and [long]$Job.limit -gt 0) { $scope += @('--limit', [string]$Job.limit) }
+    $baseline = ''
+    if ($null -ne $Job.PSObject.Properties['baseline']) { $baseline = [string]$Job.baseline }
+    $recompare = $true
+    if ($null -ne $Job.PSObject.Properties['recompare']) { $recompare = [bool]$Job.recompare }
+
+    $runs = @()
+    if ($null -ne $Job.PSObject.Properties['capture'] -and [bool]$Job.capture) { $runs += , @('capture', (@('capture') + $scope)) }
+    $runs += , @('render', (@('render', '--cli', $cli, '--label', $label) + $scope))
+    $runs += , @('compare', (@('compare', '--cli', $cli, '--label', $label) + $scope))
+    if ($baseline -ne '' -and $recompare) { $runs += , @('compare-baseline', (@('compare', '--label', $baseline, '--force') + $scope)) }
+    $report = @('report', '--cli', $cli, '--label', $label) + $scope
+    if ($baseline -ne '') { $report += @('--baseline', $baseline) }
+    $runs += , @('report', $report)
+
+    $artifacts = @()
+    foreach ($run in $runs) {
+        $name = [string]$run[0]
+        $step = Invoke-Logged -Name ('wps-qa-' + $name) -Exe $script:Python -Arguments (@('-X', 'utf8', 'xtool/wps-qa/wps_qa.py') + [string[]]$run[1]) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
+        $steps += $step
+        $p = Join-Path $OutDir ('wps-qa-' + $name + '.txt')
+        Save-StepOutput -Step $step -Path $p
+        $artifacts += New-Artifact -QueueDir $QueueDir -Path $p
+        if ($step.timedout -or $step.exit -ne 0) { break }
+    }
+    # The summary and the table travel with the result; report.html stays in
+    # the store beside its images.
+    $cmp = Join-Path $store ('cmp\' + $label)
+    foreach ($file in @('summary.json', 'results.csv')) {
+        $source = Join-Path $cmp $file
+        if (Test-Path -LiteralPath $source) {
+            $copy = Join-Path $OutDir ('wps-qa-' + $file)
+            Copy-Item -LiteralPath $source -Destination $copy -Force
+            $artifacts += New-Artifact -QueueDir $QueueDir -Path $copy
+        }
+    }
+    $steps += New-InfoStep -Name 'wps-qa-store' -Cmd 'report location' -Exit 0 -Tail (Join-Path $cmp 'report.html')
+    $status = Get-StepsStatus $steps
+    $reason = ''
+    if ($status -ne 'ok') { $reason = ('wps-qa: {0} step(s) non-zero' -f @($steps | Where-Object { $_.exit -ne 0 }).Count) }
+    return (New-Result $status $reason $steps $artifacts)
+}
+
+# The RTF harness (xtool/rtf) at a commit: its unit tests, then the census of
+# every discovered RTF set (integrity against its manifest.json and a bounded
+# lexical scan). A set without a manifest is reported, not censused.
+function Invoke-Rtf {
+    param([string]$Repo, [string]$QueueDir, [string]$Sha, [string]$OutDir, [scriptblock]$AfterCopyHook)
+    $deadline = (Get-Date).AddMinutes(30)
+    $wt = Join-Path $QueueDir 'wt'
+    Ensure-Worktree -Repo $Repo -Wt $wt -Sha $Sha
+    $sets = Get-TestdataSets -Repo $Repo -Extensions @('.rtf')
+    $copied = Copy-Corpora -Repo $Repo -Wt $wt -RelDirs $sets -OutDir $OutDir -AfterCopyHook $AfterCopyHook
+    $steps = @($copied.steps)
+    if (-not $copied.ok) { return (New-Result 'error' $copied.reason $steps @()) }
+
+    $artifacts = @()
+    $unit = Invoke-Logged -Name 'rtf-unittest' -Exe $script:Python -Arguments @('-X', 'utf8', '-m', 'unittest', 'discover', '-s', 'xtool/rtf', '-p', 'test_*.py', '-v') -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
+    $steps += $unit
+    $p = Join-Path $OutDir 'rtf-unittest.txt'
+    Save-StepOutput -Step $unit -Path $p
+    $artifacts += New-Artifact -QueueDir $QueueDir -Path $p
+    foreach ($rel in $sets) {
+        $name = $rel.Substring('testdata/'.Length)
+        if (-not (Test-Path -LiteralPath (Join-RepoPath -Root $wt -Relative ($rel + '/manifest.json')))) {
+            $steps += New-InfoStep -Name ('rtf-census ' + $name) -Cmd 'skip' -Exit 0 -Tail ('no manifest.json in ' + $rel)
+            continue
+        }
+        $json = Join-Path $OutDir ('rtf-census-' + $name + '.json')
+        $census = Invoke-Logged -Name ('rtf-census ' + $name) -Exe $script:Python -Arguments @('-X', 'utf8', 'xtool/rtf/census.py', '--corpus', $rel, '--output', $json) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
+        $steps += $census
+        if (Test-Path -LiteralPath $json) { $artifacts += New-Artifact -QueueDir $QueueDir -Path $json }
+    }
+    $status = Get-StepsStatus $steps
+    $reason = ''
+    if ($status -ne 'ok') { $reason = ('rtf: {0} step(s) non-zero' -f @($steps | Where-Object { $_.exit -ne 0 }).Count) }
+    return (New-Result $status $reason $steps $artifacts)
+}
+
 function Invoke-GitInfo {
     param([string]$Repo, $Job, [string]$OutDir)
     $steps = @()
@@ -1079,7 +1274,7 @@ function Invoke-Ping {
     $optional += New-InfoStep -Name 'repo' -Cmd 'repo path' -Exit 0 -Tail $Repo
 
     $corpusLines = New-Object System.Collections.Generic.List[string]
-    foreach ($rel in $script:CorpusDirs) {
+    foreach ($rel in (Get-CorpusDirs -Repo $Repo)) {
         $path = Join-RepoPath -Root $Repo -Relative $rel
         if (Test-Path -LiteralPath $path) {
             $count = @(Get-ChildItem -LiteralPath $path -Recurse -File -Force -ErrorAction SilentlyContinue).Count
@@ -1202,6 +1397,8 @@ function Invoke-JobFile {
                 'corpus-scan' { $r = Invoke-CorpusScan -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'bench' { $r = Invoke-Bench -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
                 'wps' { $r = Invoke-Wps -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -OutDir $outDir -AfterCopyHook $AfterCopyHook }
+                'wps-qa' { $r = Invoke-WpsQa -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
+                'rtf' { $r = Invoke-Rtf -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'commit' { $r = Invoke-Commit -Repo $Repo -Job $job -OutDir $outDir }
                 'push' { $r = Invoke-Push -Repo $Repo -Job $job -OutDir $outDir }
                 default { $r = New-Result 'rejected' 'unknown kind' @() @() }

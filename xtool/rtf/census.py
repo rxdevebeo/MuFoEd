@@ -246,8 +246,9 @@ def inventory(root: Path) -> dict:
     names = [entry["filename"] for entry in entries]
     actual = {path.name for path in root.iterdir() if path.is_file() and path.suffix.lower() == ".rtf"}
     global_errors = []
-    if len(entries) != 100 or len(set(names)) != 100:
-        global_errors.append("expected 100 manifest entries with 100 unique filenames")
+    # Any corpus with a manifest is checked against it, whatever its size.
+    if not entries or len(set(names)) != len(entries):
+        global_errors.append("expected a non-empty manifest with unique filenames")
     if actual != set(names):
         global_errors.append({"missing": sorted(set(names) - actual), "extra": sorted(actual - set(names))})
     rows = []
@@ -342,7 +343,8 @@ def main() -> int:
         return 2
     summary = result["summary"]
     print(json.dumps({key: value for key, value in summary.items() if key not in ("control_occurrences", "control_file_counts")}, ensure_ascii=False, sort_keys=True))
-    return 0 if not result["global_errors"] and summary["integrity_pass"] == 100 and summary["lexical_pass"] == 100 else 1
+    files = summary["files"]
+    return 0 if not result["global_errors"] and summary["integrity_pass"] == files and summary["lexical_pass"] == files else 1
 
 
 if __name__ == "__main__":

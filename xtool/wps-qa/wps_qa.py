@@ -76,8 +76,9 @@ def capture_one(doc: Doc, store: Path, timeout: int) -> dict:
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
     # WPS reads a private copy under an ASCII name: the corpus is never opened
-    # by WPS, and no path quirk of a corpus file reaches COM.
-    src = tmp / "in.docx"
+    # by WPS, and no path quirk of a corpus file reaches COM. The extension
+    # stays, so WPS opens an RTF as RTF.
+    src = tmp / ("in" + doc.path.suffix.lower())
     shutil.copyfile(doc.path, src)
     out = tmp / "out.pdf"
     pidfile = tmp / "pids.json"
@@ -181,6 +182,50 @@ def resolve_label(args) -> str:
     return "bin-" + sha256_file(cli)[:10]
 
 
+# The corpus profile of the RTF importer (docs/rtf/ACCEPTANCE.md): the RTF
+# corpora are read the way WPS reads them. Exit 0 = Clean, 1 = Degraded.
+RTF_IMPORT_FLAGS = ("--wps-text", "--allow-unsigned-unicode", "--drop-nul")
+RTF_STATUS = {0: "Clean", 1: "Degraded"}
+
+
+def _run_cli(argv: list[str], timeout: int) -> tuple[int | None, str]:
+    """Exit code (None on timeout) and stderr of one CLI call."""
+    try:
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return None, ""
+    return proc.returncode, proc.stderr
+
+
+def _import_rtf(doc: Doc, cli: Path, docx: Path, timeout: int, meta: dict) -> bool:
+    """Imports the RTF source to `docx`, recording the import in `meta`;
+    whether there is a DOCX to render."""
+    report = docx.with_name(docx.name + ".rtf-report.json")
+    for stale in (docx, report):
+        if stale.exists():
+            stale.unlink()
+    code, stderr = _run_cli(
+        [str(cli), "import-rtf", str(doc.path), "--out", str(docx), "--report", str(report), *RTF_IMPORT_FLAGS],
+        timeout,
+    )
+    meta["import_exit"] = code
+    meta["import_status"] = "Timeout" if code is None else RTF_STATUS.get(code, "Failed")
+    facts = read_json(report) or {}
+    meta["import_losses"] = (facts.get("import") or {}).get("loss_count")
+    meta["writer_losses"] = (facts.get("writer") or {}).get("loss_count")
+    if code not in RTF_STATUS or not docx.is_file():
+        meta["stderr_tail"] = common.tail(stderr, 12)
+        return False
+    return True
+
+
 def render_one(doc: Doc, cli: Path, out_dir: Path, timeout: int) -> dict:
     pdf = out_dir / doc.corpus / f"{doc.key}.pdf"
     meta_path = pdf.with_suffix(".json")
@@ -190,22 +235,26 @@ def render_one(doc: Doc, cli: Path, out_dir: Path, timeout: int) -> dict:
         tmp_pdf.unlink()
     meta = {"corpus": doc.corpus, "key": doc.key, "source_sha256": sha256_file(doc.path)}
     started = time.time()
-    try:
-        proc = subprocess.run(
-            [str(cli), "to-pdf", str(doc.path), "--transitional", "--out", str(tmp_pdf)],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-        )
-        meta["exit"] = proc.returncode
-        meta["stderr_tail"] = common.tail(proc.stderr, 12)
+    # An RTF is imported to Strict DOCX first, which is kept beside the PDF;
+    # a DOCX of a corpus is read through the transitional normalizer.
+    source = doc.path
+    extra = ["--transitional"]
+    ready = True
+    if doc.is_rtf:
+        source = pdf.with_suffix(".docx")
+        extra = []
+        ready = _import_rtf(doc, cli, source, timeout, meta)
+    if ready:
+        code, stderr = _run_cli([str(cli), "to-pdf", str(source), *extra, "--out", str(tmp_pdf)], timeout)
+        meta["exit"] = code
+        meta["stderr_tail"] = common.tail(stderr, 12)
         # Exit 1 = rendered with reported losses; the PDF exists and counts.
-        meta["status"] = "ok" if proc.returncode in (0, 1) and tmp_pdf.is_file() and tmp_pdf.stat().st_size > 0 else "failed"
-    except subprocess.TimeoutExpired:
-        meta["status"] = "timeout"
-        meta["exit"] = None
+        if code is None:
+            meta["status"] = "timeout"
+        else:
+            meta["status"] = "ok" if code in (0, 1) and tmp_pdf.is_file() and tmp_pdf.stat().st_size > 0 else "failed"
+    else:
+        meta["status"] = "timeout" if meta.get("import_status") == "Timeout" else "import-failed"
     meta["seconds"] = round(time.time() - started, 2)
     if meta["status"] == "ok":
         os.replace(tmp_pdf, pdf)
@@ -348,15 +397,23 @@ def cmd_run(args) -> int:
     return 0
 
 
+def cmd_corpora(args) -> int:
+    """Lists the corpora under the data root with their document counts."""
+    for corpus in common.corpora(args.data_root):
+        count = sum(1 for _ in common.iter_docs(args.data_root, [corpus.name]))
+        print(f"{corpus.name}\t{count}\t{corpus.path}", flush=True)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name, fn in (("capture", cmd_capture), ("render", cmd_render), ("compare", cmd_compare), ("report", cmd_report), ("run", cmd_run)):
+    for name, fn in (("capture", cmd_capture), ("render", cmd_render), ("compare", cmd_compare), ("report", cmd_report), ("run", cmd_run), ("corpora", cmd_corpora)):
         p = sub.add_parser(name)
         p.set_defaults(fn=fn)
         p.add_argument("--store", type=Path, default=common.default_store(), help="output store (default: <main copy>/wps-qa)")
         p.add_argument("--data-root", type=Path, default=common.main_copy_root(), help="where the corpora live (default: the main copy)")
-        p.add_argument("--corpus", action="append", choices=sorted(common.CORPUS_BY_NAME), help="limit to a corpus (repeatable)")
+        p.add_argument("--corpus", action="append", help="limit to a corpus (repeatable; `corpora` lists them)")
         p.add_argument("--limit", type=int, default=0, help="first N documents only (smoke runs)")
         p.add_argument("--force", action="store_true", help="redo even when the cached result is fresh")
         p.add_argument("--cli", default=str(default_cli()), help="our CLI binary (default: main copy target/release)")

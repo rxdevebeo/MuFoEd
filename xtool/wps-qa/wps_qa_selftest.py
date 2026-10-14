@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -12,6 +13,7 @@ import numpy as np  # noqa: E402
 
 import metrics  # noqa: E402
 from metrics import PdfFacts, Word  # noqa: E402
+import wpsqa_common  # noqa: E402
 from wpsqa_common import safe_key  # noqa: E402
 
 
@@ -82,6 +84,18 @@ check("diff image shape", metrics.diff_image(page, page).shape == (100, 80 * 3 +
 
 check("safe_key nested", safe_key("a/b:c.docx") == "a__b_c")
 check("safe_key long", len(safe_key("x" * 300 + ".docx")) <= 111)
+check("safe_key rtf", safe_key("001_doc.rtf") == "001_doc")
+
+# A directory of testdata/ holding a document is a corpus without registering it.
+with tempfile.TemporaryDirectory() as tmp:
+    root = Path(tmp)
+    for rel in ("testdata/NEW_RTF/a.rtf", "testdata/NEW_DOCX/b.docx", "testdata/NEW_DOCX/~$b.docx", "testdata/djvu/c.djvu"):
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_bytes(b"x")
+    names = [c.name for c in wpsqa_common.corpora(root)]
+    check("corpora discovered", "NEW_RTF" in names and "NEW_DOCX" in names and "djvu" not in names)
+    docs = list(wpsqa_common.iter_docs(root, ["NEW_DOCX", "NEW_RTF"]))
+    check("corpora documents", [(d.corpus, d.key, d.is_rtf) for d in docs] == [("NEW_DOCX", "b", False), ("NEW_RTF", "a", True)])
 
 width = max(len(n) for n, _ in checks)
 for name, ok in checks:

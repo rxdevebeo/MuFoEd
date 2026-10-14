@@ -23,12 +23,23 @@ python xtool/wps-qa/wps_qa.py report  --label <имя> [--baseline <прежне
 python xtool/wps-qa/wps_qa_selftest.py                 # самотест метрик, без WPS
 ```
 
-Корпуса — в `wpsqa_common.CORPORA`: `core-strict`, `core-samples`, `core-docx`,
-`CC0`, `CC0_DOCX`, `CC0_DOCX_1`, `CC0_DOCX_MATH`, `CCX`, `pdf-docx`. Они
-gitignored и лежат в основной копии; из worktree она находится через
-`git rev-parse --git-common-dir` (или `--data-root`). PDF/DjVu-корпуса — входы
-импортёров, а не документы для вёрстки; RTF-корпуса добавляются, когда CLI
-читает RTF.
+Корпуса находятся сами (`wps_qa.py corpora` их перечисляет): явно
+зарегистрированы только `core-strict`, `core-samples`, `core-docx` и
+`pdf-docx` (`wpsqa_common.REGISTERED`), а корпусом считается **каждый**
+каталог `testdata/<ИМЯ>`, где на верхнем уровне есть `.docx` или `.rtf`, — с
+именем каталога. Новый корпус, положенный в `testdata/`, измеряется без правки
+кода. Корпуса gitignored и лежат в основной копии; из worktree она находится
+через `git rev-parse --git-common-dir` (или `--data-root`). PDF/DjVu-наборы —
+входы импортёров, документов для вёрстки в них нет, и они не попадают в список.
+
+RTF (`CC0_RTF`, `CC0_RTF_1` и любые новые): WPS снимает эталон с самого `.rtf`;
+наш путь — `import-rtf --wps-text --allow-unsigned-unicode --drop-nul`
+(корпусный профиль `docs/rtf/ACCEPTANCE.md`) в Strict DOCX, затем `to-pdf`.
+DOCX и `.rtf-report.json` остаются рядом с нашим PDF; в отчёте — статус импорта
+(Clean/Degraded/Failed) и число потерь импорта, по документам и по корпусам.
+
+Через очередь хоста: вид задания `wps-qa` (`tools/hostq/README.md`) собирает CLI
+на нужном sha и прогоняет render → compare → report с меткой `sha-<10 hex>`.
 
 По умолчанию `--cli` — `<основная копия>/target/release/strict-ooxml.exe`,
 `--label` — `bin-<sha256 бинарника[:10]>`, так что метка однозначно называет
