@@ -817,3 +817,108 @@ fn unicode_alternate_requires_actual_unicode_destination() {
     ));
     assert_eq!(paragraphs(br"{\rtf1\uc1\u65\bin4 }{\x B}"), ["A B"]);
 }
+
+#[test]
+fn a_header_without_a_version_is_version_one() {
+    // As Word and WPS read it; some real documents start `{\rtf \ansi`.
+    assert_eq!(paragraphs(br"{\rtf \ansi \deff0 Hello}"), ["Hello"]);
+    assert!(matches!(
+        import(br"{\rtf2 Hello}", &RtfOptions::default()),
+        Err(RtfError::InvalidHeader)
+    ));
+}
+
+#[test]
+fn an_untagged_font_name_wins_over_the_tagged_table_name() {
+    // Msftedit writes `{\*\fname Arial;}Arial (Hebrew);`: the tagged name is
+    // no installed font, the `\fname` one is what Word and WPS use.
+    let imported = import(
+        br"{\rtf1\ansi{\fonttbl{\f0\fnil\fcharset177{\*\fname Arial;}Arial (Hebrew);}{\f1\fnil Calibri;}}\f0 x\f1 y\par}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    let Block::Paragraph(p) = &imported.document.body.blocks[0] else {
+        panic!("paragraph expected")
+    };
+    let names: Vec<String> = p
+        .inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Run(r) => r
+                .props
+                .fonts
+                .as_ref()
+                .and_then(|f| f.ascii.as_deref())
+                .map(str::to_owned),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(names, ["Arial", "Calibri"]);
+}
+
+#[test]
+fn physical_alignment_follows_the_paragraph_direction() {
+    use strict_ooxml_wml::model::Justification;
+    // `\ql`/`\qr` are the left and right edges whatever comes first;
+    // Strict's start/end are the paragraph's own.
+    let imported = import(
+        br"{\rtf1\ansi\pard\rtlpar\qr a\par\pard\qr\rtlpar b\par\pard\rtlpar\ql c\par\pard\qr d\par\pard\qr\rtlpar\ltrpar e\par}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    let sides: Vec<(Option<Justification>, TriState)> = imported
+        .document
+        .body
+        .blocks
+        .iter()
+        .map(|block| match block {
+            Block::Paragraph(p) => (p.props.alignment, p.props.bidi),
+            _ => panic!("paragraph expected"),
+        })
+        .collect();
+    assert_eq!(
+        sides,
+        [
+            (Some(Justification::Start), TriState::On),
+            (Some(Justification::Start), TriState::On),
+            (Some(Justification::End), TriState::On),
+            (Some(Justification::End), TriState::Absent),
+            (Some(Justification::End), TriState::Off),
+        ]
+    );
+}
+
+#[test]
+fn a_font_charset_that_cannot_be_decoded_reads_with_the_document_code_page() {
+    // `\fcharset256` is no charset; Word and WPS read the font's text with
+    // `\ansicpg`. The Mac CJK charsets read with the Windows code page of
+    // the same encoding.
+    let imported = import(
+        br"{\rtf1\ansi\ansicpg1252{\fonttbl{\f0\fnil\fcharset256 Times;}{\f1\fnil\fcharset78 Osaka;}}\f0 caf\'e9\f1  \'82\'a0\par}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    let Block::Paragraph(p) = &imported.document.body.blocks[0] else {
+        panic!("paragraph expected")
+    };
+    let text: String = p
+        .inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Run(r) => Some(r),
+            _ => None,
+        })
+        .flat_map(|r| &r.content)
+        .filter_map(|c| match c {
+            RunContent::Text(t) => Some(t.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(text, "café あ");
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|issue| issue.feature == "font-encoding-fallback:256"
+            && issue.severity == Severity::Info));
+}

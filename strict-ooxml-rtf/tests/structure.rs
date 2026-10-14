@@ -2450,3 +2450,49 @@ fn table_compat_controls_are_info_not_loss() {
         .iter()
         .any(|i| i.feature == "table-compat:cgrid"));
 }
+
+#[test]
+fn a_shape_property_inside_a_picture_is_not_picture_data() {
+    // Nisus Writer writes `{\sp ...}` groups straight into `\pict`; their
+    // text is no hex, and Word and WPS skip them.
+    let imported = import(
+        br"{\rtf1{\pict{\*\picprop{\sp{\sn fillOpacity}{\sv 65536}}}{\sp{\sn fShadow}{\sv 0}}\pngblip\picwgoal1440\pichgoal720 89504e470d0a1a0a}}",
+        &RtfOptions::default(),
+    )
+    .expect("picture with shape properties imports");
+    assert_eq!(imported.media.len(), 1);
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|issue| issue.feature == "picture:shape-property"));
+}
+
+#[test]
+fn an_orphan_vertical_merge_continuation_starts_a_merge() {
+    use strict_ooxml_wml::model::VerticalMerge;
+    // The first row has no `\clvmgf`; Word and WPS show the `\clvmrg` cell as a
+    // cell of its own, and the row below joins it.
+    let imported = import(
+        br"{\rtf1\trowd\clvmrg\cellx1000\cellx2000 a\cell b\cell\row\trowd\clvmrg\cellx1000\cellx2000 c\cell d\cell\row}",
+        &RtfOptions::default(),
+    )
+    .expect("orphan continuation imports");
+    let Some(Block::Table(table)) = imported.document.body.blocks.first() else {
+        panic!("table expected")
+    };
+    let merges: Vec<Option<VerticalMerge>> = table
+        .rows
+        .iter()
+        .map(|row| row.cells[0].props.vertical_merge)
+        .collect();
+    assert_eq!(
+        merges,
+        [Some(VerticalMerge::Restart), Some(VerticalMerge::Continue)]
+    );
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|issue| issue.feature == "table:orphan-vertical-merge"));
+}

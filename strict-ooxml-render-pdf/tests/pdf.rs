@@ -184,6 +184,122 @@ fn decode_single_face_cids(pdf: &lopdf::Document, content: &lopdf::content::Cont
     result
 }
 
+#[test]
+fn regular_postscript_family_names_embed_and_preserve_text() {
+    use strict_ooxml_testkit::DocxBuilder;
+
+    for (alias, canonical) in [
+        ("ArialMT", "Arial"),
+        ("TimesNewRomanPSMT", "Times New Roman"),
+    ] {
+        let body = |family: &str| {
+            use std::fmt::Write;
+            let mut out = String::new();
+            for (index, style) in ["", "<w:b/>", "<w:i/>", "<w:b/><w:i/>"].iter().enumerate() {
+                write!(out,
+                    "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"{family}\" w:hAnsi=\"{family}\"/>{style}</w:rPr><w:t>Alias{index}</w:t></w:r></w:p>"
+                ).expect("write fixture");
+            }
+            out
+        };
+        let alias_docx = DocxBuilder::strict().body(&body(alias)).build();
+        let canonical_docx = DocxBuilder::strict().body(&body(canonical)).build();
+        let (pdf, _, report) = to_pdf(&alias_docx);
+        assert!(report.losses().is_empty(), "{alias}: {:?}", report.losses());
+        assert_eq!(
+            pdf,
+            to_pdf(&canonical_docx).0,
+            "{alias}: geometry or font differs"
+        );
+        let reader = lopdf::Document::load_mem(&pdf).expect("independent PDF reader");
+        let text = reader
+            .extract_text(&[1])
+            .expect("ToUnicode text extraction");
+        for index in 0..4 {
+            assert!(text.contains(&format!("Alias{index}")), "{alias}: {text:?}");
+        }
+    }
+}
+
+#[test]
+fn non_bmp_math_font_text_is_extractable() {
+    use strict_ooxml_testkit::DocxBuilder;
+    let bytes = DocxBuilder::strict().body(
+        "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Cambria Math\" w:hAnsi=\"Cambria Math\"/></w:rPr><w:t>Math𝑥</w:t></w:r></w:p>"
+    ).build();
+    let (pdf, _, report) = to_pdf(&bytes);
+    assert!(report.losses().is_empty(), "{:?}", report.losses());
+    let reader = lopdf::Document::load_mem(&pdf).expect("independent PDF reader");
+    let text = reader
+        .extract_text(&[1])
+        .expect("ToUnicode text extraction");
+    assert!(text.contains("Math𝑥"), "{text:?}");
+}
+
+/// A character the selected face lacks is a missing glyph of that face, not
+/// a missing face (restored after merge 5274d07f, 8e612a8e).
+#[test]
+fn a_missing_glyph_is_not_reported_as_a_missing_face() {
+    use strict_ooxml_testkit::DocxBuilder;
+    let bytes = DocxBuilder::strict()
+        .body("<w:p><w:r><w:t>&#x10FFFD;</w:t></w:r></w:p>")
+        .build();
+    let (_, _, report) = to_pdf(&bytes);
+    let ids: Vec<_> = report.losses().iter().map(|loss| loss.id).collect();
+    assert!(ids.contains(&"pdf.font.no_glyph"), "{:?}", report.losses());
+    assert!(!ids.contains(&"pdf.font.missing"), "{:?}", report.losses());
+}
+
+/// The eastAsia face is the one the PDF embeds for East Asian text, as the
+/// SVG chooses it (restored after merge 5274d07f, 81ab887a).
+#[test]
+fn east_asian_script_face_is_embedded_by_pdf_backend() {
+    use strict_ooxml_testkit::DocxBuilder;
+
+    let render = |family: &str| {
+        let body = format!(
+            "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\" w:eastAsia=\"{family}\"/></w:rPr><w:t>漢字。</w:t></w:r></w:p>"
+        );
+        let bytes = DocxBuilder::strict().body(&body).build();
+        to_pdf(&bytes).0
+    };
+    let arial = render("Arial");
+    let times = render("Times New Roman");
+    let font_names = |pdf: &[u8]| {
+        let document = lopdf::Document::load_mem(pdf).expect("PDF parses");
+        document
+            .objects
+            .values()
+            .filter_map(|object| object.as_dict().ok())
+            .filter(|dictionary| {
+                dictionary
+                    .get(b"Type")
+                    .ok()
+                    .and_then(|value| value.as_name().ok())
+                    == Some(&b"Font"[..])
+            })
+            .filter_map(|dictionary| {
+                dictionary
+                    .get(b"BaseFont")
+                    .ok()
+                    .and_then(|value| value.as_name().ok())
+                    .map(<[u8]>::to_vec)
+            })
+            .collect::<Vec<_>>()
+    };
+    let arial_names = font_names(&arial);
+    let times_names = font_names(&times);
+    assert!(arial_names
+        .iter()
+        .any(|name| name.windows(5).any(|part| part == b"Arimo")));
+    assert!(
+        times_names
+            .iter()
+            .any(|name| name.windows(5).any(|part| part == b"Tinos")),
+        "{times_names:?}"
+    );
+}
+
 /// SC-7: every font the pages use is embedded as a file, with an `Identity-H`
 /// encoding and a `ToUnicode` CMap: the two things that make the text
 /// selectable and searchable rather than glyph ids.
@@ -203,6 +319,12 @@ fn every_used_font_is_embedded() {
             };
             if dictionary.get(b"FontFile2").is_ok() || dictionary.get(b"FontFile3").is_ok() {
                 embedded += 1;
+                let bounds = dictionary
+                    .get(b"FontBBox")
+                    .and_then(lopdf::Object::as_array)
+                    .expect("embedded font requires FontBBox");
+                assert_eq!(bounds.len(), 4);
+                assert!(bounds.iter().all(|value| value.as_float().is_ok()));
             }
             let is_font = dictionary
                 .get(b"Type")
@@ -220,6 +342,20 @@ fn every_used_font_is_embedded() {
                 .ok()
                 .and_then(|value| value.as_name().ok())
                 .map(<[u8]>::to_vec);
+            if matches!(subtype.as_deref(), Some(b"CIDFontType0" | b"CIDFontType2")) {
+                let info = dictionary
+                    .get(b"CIDSystemInfo")
+                    .and_then(lopdf::Object::as_dict)
+                    .unwrap_or_else(|error| {
+                        panic!("{name}: CID font {} lacks CIDSystemInfo: {error}", id.0)
+                    });
+                assert_eq!(info.get(b"Registry").unwrap().as_str().unwrap(), b"Adobe");
+                assert_eq!(
+                    info.get(b"Ordering").unwrap().as_str().unwrap(),
+                    b"Identity"
+                );
+                assert_eq!(info.get(b"Supplement").unwrap().as_i64().unwrap(), 0);
+            }
             if dictionary.get(b"Encoding").is_ok() {
                 if subtype.as_deref() == Some(b"Type0") {
                     type0 += 1;

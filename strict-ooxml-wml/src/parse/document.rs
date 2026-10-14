@@ -555,6 +555,7 @@ impl PartParser<'_> {
                 self.skip_element()?;
             }
             InlineKind::FootnoteRef => {
+                record_custom_mark_follows(self, "w:footnoteReference", attrs);
                 if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
                     out.push(Inline::FootnoteRef(id));
                     self.record(
@@ -574,6 +575,7 @@ impl PartParser<'_> {
                 self.skip_element()?;
             }
             InlineKind::EndnoteRef => {
+                record_custom_mark_follows(self, "w:endnoteReference", attrs);
                 if let Some(id) = wml_attr(attrs, "id").and_then(parse_u32) {
                     out.push(Inline::EndnoteRef(id));
                     self.record(

@@ -112,3 +112,39 @@ fn imported_media_outlives_input_and_initial_package_bytes() {
         .svg
         .contains("data:image/png;base64,"));
 }
+
+/// Separator and continuation-separator notes are written with their own
+/// marks and no note reference besides (restored after merge 5274d07f).
+#[test]
+fn separator_notes_are_written_without_a_note_reference() {
+    use strict_ooxml_core::opc::{OpenOptions, Package};
+    use strict_ooxml_core::part::PartId;
+    let source =
+        br"{\rtf1{\*\ftnsep\chftnsep}{\*\ftnsepc\chftnsepc}A\chftn{\footnote\chftn N}\par}";
+    let opened = StrictDocument::import_rtf(source, &RtfOptions::default()).unwrap();
+    let package =
+        Package::open_reader(opened.strict_bytes.as_slice(), &OpenOptions::default()).unwrap();
+    let xml = String::from_utf8(
+        package
+            .read_part(&PartId::new("/word/footnotes.xml"))
+            .unwrap(),
+    )
+    .unwrap();
+    let notes: Vec<&str> = xml.split("<w:footnote ").skip(1).collect();
+    let separator = notes
+        .iter()
+        .find(|note| note.contains("<w:separator/>"))
+        .expect("separator note");
+    let continuation = notes
+        .iter()
+        .find(|note| note.contains("<w:continuationSeparator/>"))
+        .expect("continuation separator note");
+    for note in [separator, continuation] {
+        assert!(!note.contains("w:footnoteRef"), "{note}");
+    }
+    // The ordinary note keeps its reference mark.
+    assert!(
+        notes.iter().any(|note| note.contains("w:footnoteRef")),
+        "{xml}"
+    );
+}

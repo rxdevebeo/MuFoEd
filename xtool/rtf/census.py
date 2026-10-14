@@ -82,8 +82,10 @@ def scan(data: bytes, *, max_depth: int = MAX_DEPTH, max_tokens: int = MAX_TOKEN
 
     if len(data) > MAX_INPUT:
         error("input_limit", 0, f"{len(data)} > {MAX_INPUT}")
-    elif not re.match(rb"\{\\rtf[0-9]+(?:[^a-zA-Z0-9]|$)", data):
-        error("invalid_header", 0, "expected root {\\rtfN at byte zero")
+    # `{\rtf` without a version is read as version 1 by Word, WPS and the
+    # importer; real documents are written that way.
+    elif not re.match(rb"\{\\rtf[0-9]*(?:[^a-zA-Z0-9]|$)", data):
+        error("invalid_header", 0, "expected root {\\rtf or {\\rtfN at byte zero")
 
     while i < len(data) and not errors:
         start = i

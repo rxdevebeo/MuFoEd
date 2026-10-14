@@ -43,6 +43,15 @@ struct FaceSpec {
     data: &'static [u8],
 }
 
+// Shared by a face and its script-fallback alias below, so the bytes are
+// included once.
+static ARIMO: &[u8] = include_bytes!("../../assets/fonts/arimo/Arimo[wght].ttf");
+static ARIMO_ITALIC: &[u8] = include_bytes!("../../assets/fonts/arimo/Arimo-Italic[wght].ttf");
+static TINOS: &[u8] = include_bytes!("../../assets/fonts/tinos/Tinos-Regular.ttf");
+static TINOS_BOLD: &[u8] = include_bytes!("../../assets/fonts/tinos/Tinos-Bold.ttf");
+static TINOS_ITALIC: &[u8] = include_bytes!("../../assets/fonts/tinos/Tinos-Italic.ttf");
+static TINOS_BOLD_ITALIC: &[u8] = include_bytes!("../../assets/fonts/tinos/Tinos-BoldItalic.ttf");
+
 /// The bundled metric-compatible faces (Calibri/Cambria/Arial/Times/Courier),
 /// the math faces and the script faces.
 const FACE_SPECS: &[FaceSpec] = &[
@@ -116,7 +125,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         italic: false,
         single: false,
         weight: Some(400.0),
-        data: include_bytes!("../../assets/fonts/arimo/Arimo[wght].ttf"),
+        data: ARIMO,
     },
     FaceSpec {
         family: "Arimo",
@@ -124,7 +133,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         italic: false,
         single: false,
         weight: Some(700.0),
-        data: include_bytes!("../../assets/fonts/arimo/Arimo[wght].ttf"),
+        data: ARIMO,
     },
     FaceSpec {
         family: "Arimo",
@@ -132,7 +141,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         italic: true,
         single: false,
         weight: Some(400.0),
-        data: include_bytes!("../../assets/fonts/arimo/Arimo-Italic[wght].ttf"),
+        data: ARIMO_ITALIC,
     },
     FaceSpec {
         family: "Arimo",
@@ -140,7 +149,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         italic: true,
         single: false,
         weight: Some(700.0),
-        data: include_bytes!("../../assets/fonts/arimo/Arimo-Italic[wght].ttf"),
+        data: ARIMO_ITALIC,
     },
     FaceSpec {
         family: "Tinos",
@@ -148,7 +157,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         italic: false,
         single: false,
         weight: None,
-        data: include_bytes!("../../assets/fonts/tinos/Tinos-Regular.ttf"),
+        data: TINOS,
     },
     FaceSpec {
         family: "Tinos",
@@ -156,7 +165,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         italic: false,
         single: false,
         weight: None,
-        data: include_bytes!("../../assets/fonts/tinos/Tinos-Bold.ttf"),
+        data: TINOS_BOLD,
     },
     FaceSpec {
         family: "Tinos",
@@ -164,7 +173,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         italic: true,
         single: false,
         weight: None,
-        data: include_bytes!("../../assets/fonts/tinos/Tinos-Italic.ttf"),
+        data: TINOS_ITALIC,
     },
     FaceSpec {
         family: "Tinos",
@@ -172,7 +181,7 @@ const FACE_SPECS: &[FaceSpec] = &[
         italic: true,
         single: false,
         weight: None,
-        data: include_bytes!("../../assets/fonts/tinos/Tinos-BoldItalic.ttf"),
+        data: TINOS_BOLD_ITALIC,
     },
     FaceSpec {
         family: "Cousine",
@@ -352,6 +361,73 @@ const FACE_SPECS: &[FaceSpec] = &[
         data: include_bytes!(
             "../../assets/fonts/stix/strict-math/StrictMathDoubleStruck-BoldItalic.otf"
         ),
+    },
+    // Hebrew for the faces that have none (Carlito, Caladea): Arimo's and
+    // Tinos' own Hebrew under a script-fallback name, so the line box stays
+    // the requested face's (`family::is_script_fallback`).
+    FaceSpec {
+        family: "Arimo Hebrew",
+        bold: false,
+        italic: false,
+        single: false,
+        weight: Some(400.0),
+        data: ARIMO,
+    },
+    FaceSpec {
+        family: "Arimo Hebrew",
+        bold: true,
+        italic: false,
+        single: false,
+        weight: Some(700.0),
+        data: ARIMO,
+    },
+    FaceSpec {
+        family: "Arimo Hebrew",
+        bold: false,
+        italic: true,
+        single: false,
+        weight: Some(400.0),
+        data: ARIMO_ITALIC,
+    },
+    FaceSpec {
+        family: "Arimo Hebrew",
+        bold: true,
+        italic: true,
+        single: false,
+        weight: Some(700.0),
+        data: ARIMO_ITALIC,
+    },
+    FaceSpec {
+        family: "Tinos Hebrew",
+        bold: false,
+        italic: false,
+        single: false,
+        weight: None,
+        data: TINOS,
+    },
+    FaceSpec {
+        family: "Tinos Hebrew",
+        bold: true,
+        italic: false,
+        single: false,
+        weight: None,
+        data: TINOS_BOLD,
+    },
+    FaceSpec {
+        family: "Tinos Hebrew",
+        bold: false,
+        italic: true,
+        single: false,
+        weight: None,
+        data: TINOS_ITALIC,
+    },
+    FaceSpec {
+        family: "Tinos Hebrew",
+        bold: true,
+        italic: true,
+        single: false,
+        weight: None,
+        data: TINOS_BOLD_ITALIC,
     },
     // Script faces (WQ-004): the metric-compatible faces carry no Arabic or
     // Tibetan, so text in those scripts takes its glyphs from these faces
