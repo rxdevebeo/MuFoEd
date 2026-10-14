@@ -2580,12 +2580,28 @@ fn place_token(
     let width = sink
         .ctx
         .measure_with_next_factor(token, run, following, plain);
+    // Spaces after a word hang past the margin, as in Word: a word breaks
+    // only when its letters do not fit, and spaces alone never open a line
+    // (a paragraph ending in five spaces gained an empty line).
+    let ink = token.trim_end_matches(' ');
+    let fit = if ink.len() == token.len() {
+        width
+    } else if ink.is_empty() {
+        0.0
+    } else {
+        sink.ctx
+            .measure_with_next_factor(ink, run, following, plain)
+    };
     if sink.computed.no_wrap {
         // A cell's noWrap retains authored hard breaks and lets the whole
         // word advance beyond the cell when its fixed width is insufficient.
     } else if sink.exclusions.is_empty() {
         let line_end = sink.right_edge;
-        if *x + width > line_end + 1e-9 && !current.is_empty() {
+        if ink.is_empty() && *x + width > line_end + 1e-9 {
+            *x += width;
+            return;
+        }
+        if *x + fit > line_end + 1e-9 && !current.is_empty() {
             sink.emit(std::mem::replace(current, LineBuilder::new()), false);
             *x = normal_x;
         }
@@ -2593,7 +2609,7 @@ fn place_token(
             *x += width;
             return;
         }
-        if *x + width > line_end + 1e-9 && current.is_empty() {
+        if *x + fit > line_end + 1e-9 && current.is_empty() {
             place_long_token(sink, current, x, line_end, normal_x, token, run);
             return;
         }
@@ -2648,13 +2664,21 @@ fn place_formatted_word(
             .iter()
             .map(|(text, run)| sink.ctx.measure(text, run))
             .sum();
+        // Its trailing spaces hang past the margin (see `place_token`).
+        let hanging = pieces
+            .last()
+            .filter(|(text, _)| text.ends_with(' '))
+            .map_or(0.0, |(text, run)| {
+                sink.ctx.measure(text, run) - sink.ctx.measure(text.trim_end_matches(' '), run)
+            })
+            .max(0.0);
         let end = free_spans(sink, normal_x, provisional_line_height(sink))
             .into_iter()
             .find(|(left, right)| *left <= *x + 0.001 && *x < *right)
             .map_or(sink.right_edge, |(_, right)| right);
         let mut cut = word.len();
         let mut hyphen = false;
-        if !sink.computed.no_wrap && *x + total > end + 0.001 {
+        if !sink.computed.no_wrap && *x + total - hanging > end + 0.001 {
             let settings = &sink.ctx.document.settings;
             let zone = settings.hyphenation_zone.map_or(0.0, |v| {
                 twips_to_px(v.value().max(0), sink.ctx.options.scale)
@@ -3388,19 +3412,52 @@ fn finish_line(
                 | strict_ooxml_wml::model::values::Justification::Distribute
         );
 
-    if justify && used < line_width {
+    // The spaces after the line's last word hang past the margin: they are
+    // neither part of the width a justified line fills nor a gap it widens,
+    // so the last letter meets the margin (WPS and Word lines end on it; ours
+    // stopped a space short).
+    let last_item = (!computed.bidi)
+        .then(|| {
+            line.items
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| (a.x + a.width).total_cmp(&(b.x + b.width)))
+                .map(|(index, _)| index)
+        })
+        .flatten();
+    let hanging = last_item
+        .and_then(|index| line.items.get(index))
+        .filter(|item| item.text.ends_with(' '))
+        .map_or(0.0, |item| {
+            let ink = item.text.trim_end_matches(' ');
+            item.width
+                - ctx.measure_with_next_factor(
+                    ink,
+                    &item.run,
+                    item.following_non_space,
+                    item.plain_space_factor,
+                )
+        })
+        .max(0.0);
+    let ink_used = used - hanging;
+    let is_gap = |index: usize, item: &TextItem| {
+        item.text.ends_with(' ') && !(hanging > 0.0 && Some(index) == last_item)
+    };
+    if justify && ink_used < line_width {
         let gaps = line
             .items
             .iter()
-            .filter(|item| item.text.ends_with(' '))
+            .enumerate()
+            .filter(|(index, item)| is_gap(*index, item))
             .count();
         if gaps > 0 {
-            let extra = (line_width - used) / gaps as f64;
+            let extra = (line_width - ink_used) / gaps as f64;
             let boundaries: Vec<f64> = line
                 .items
                 .iter()
-                .filter(|item| item.text.ends_with(' '))
-                .map(|item| item.x + item.width)
+                .enumerate()
+                .filter(|(index, item)| is_gap(*index, item))
+                .map(|(_, item)| item.x + item.width)
                 .collect();
             for graphic in &mut line.graphics {
                 let left = item_left(graphic);
@@ -3412,9 +3469,9 @@ fn finish_line(
                 *graphic = shift_item(graphic.clone(), shift, 0.0);
             }
             let mut shift = 0.0;
-            for item in &mut line.items {
+            for (index, item) in line.items.iter_mut().enumerate() {
                 item.x += shift;
-                if item.text.ends_with(' ') {
+                if item.text.ends_with(' ') && !(hanging > 0.0 && Some(index) == last_item) {
                     shift += extra;
                 }
             }
