@@ -703,6 +703,14 @@ pub struct FaceSource<'a> {
 #[must_use]
 pub fn face_source(family: &str, bold: bool, italic: bool) -> Option<FaceSource<'static>> {
     let mapped = map_family(family);
+    // A profiled family is drawn by its substitute, under its own name.
+    if let Some(profile) = super::profiles::for_family(mapped) {
+        let source = face_source(profile.substitute, bold, italic)?;
+        return Some(FaceSource {
+            family: profile.family,
+            ..source
+        });
+    }
     let exact = FACE_SPECS
         .iter()
         .find(|spec| spec.family == mapped && spec.bold == bold && spec.italic == italic);
@@ -740,6 +748,7 @@ pub fn bundled_families() -> Vec<&'static str> {
             out.push(spec.family);
         }
     }
+    out.extend(super::profiles::all().iter().map(|profile| profile.family));
     out
 }
 
@@ -806,7 +815,39 @@ impl BuiltinFontProvider {
                     vertical,
                 })
             })
-            .collect();
+            .collect::<Vec<FaceEntry>>();
+        // A profiled family: its substitute's faces under the profile's name,
+        // with the profile's line box. Advances come from the profile.
+        let mut aliases = Vec::new();
+        for profile in super::profiles::all() {
+            for entry in faces
+                .iter()
+                .filter(|entry| entry.family == profile.substitute)
+            {
+                let Some(face) = profile.face(entry.bold, entry.italic) else {
+                    continue;
+                };
+                let (ascender, descender) = face.line_box();
+                aliases.push(FaceEntry {
+                    family: profile.family,
+                    bold: entry.bold,
+                    italic: entry.italic,
+                    single: entry.single,
+                    font: entry.font.clone(),
+                    location: entry.location.clone(),
+                    units_per_em: entry.units_per_em,
+                    vertical: FontMetrics {
+                        units_per_em: f64::from(face.units_per_em),
+                        ascender,
+                        descender,
+                        line_gap: 0.0,
+                        width_scale: 1.0,
+                    },
+                });
+            }
+        }
+        let mut faces = faces;
+        faces.extend(aliases);
         Self { faces }
     }
 
@@ -882,7 +923,14 @@ impl FontProvider for BuiltinFontProvider {
     }
 
     fn advance_em(&self, family: &str, ch: char, bold: bool, italic: bool) -> f64 {
-        if let Some(entry) = self.face(map_family(family), bold, italic) {
+        let mapped = map_family(family);
+        if let Some(advance) = super::profiles::for_family(mapped)
+            .and_then(|profile| profile.face(bold, italic))
+            .and_then(|face| face.advance_em(ch))
+        {
+            return advance;
+        }
+        if let Some(entry) = self.face(mapped, bold, italic) {
             if entry.units_per_em > 0.0 {
                 if let Some(glyph) = entry.font.charmap().map(ch) {
                     let glyphs = GlyphMetrics::new(

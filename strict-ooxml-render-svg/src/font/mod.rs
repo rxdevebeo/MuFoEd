@@ -11,6 +11,7 @@ pub mod embedded;
 pub mod face;
 pub mod family;
 pub mod metrics;
+mod profiles;
 pub mod shape;
 mod symbol;
 #[cfg(feature = "system-fonts")]

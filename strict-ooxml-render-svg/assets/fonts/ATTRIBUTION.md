@@ -133,3 +133,15 @@ Google Fonts releases (Noto: `github.com/notofonts/arabic`,
 `github.com/notofonts/nastaliq`; Jomolhari: Christopher J. Fynn). Not bundled
 from the same set: Amiri, Scheherazade New, Noto Nastaliq Urdu, Gulzar and
 Noto Serif Tibetan.
+
+## Metric profiles
+
+`src/font/profiles_data.rs` holds the measure of Windows families that have no
+open metric-compatible face (Verdana, Tahoma, Lucida Sans Unicode, Trebuchet
+MS, Microsoft Sans Serif, Franklin Gothic Medium, Comic Sans MS, Calibri
+Light, Candara, Corbel, Constantia, Palatino Linotype, Sylfaen, Consolas,
+Lucida Console): the `OS/2` Windows ascent and descent and the advance widths
+of the Latin, Greek, Cyrillic and punctuation characters. They are numbers
+read from the installed fonts by `xtool/wps-qa/host_fonts.py` and turned into
+Rust by `xtool/fonts/build_metric_profiles.py`; no outline or other font data
+is included. The glyphs are drawn by the bundled faces above.
