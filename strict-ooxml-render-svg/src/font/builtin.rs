@@ -743,6 +743,23 @@ pub fn bundled_families() -> Vec<&'static str> {
     out
 }
 
+/// The line box (ascender, descender in em) of the proprietary face a
+/// bundled one stands for, where the two differ. Word sets a line by the
+/// `OS/2` Windows box; Gelasio (whose `USE_TYPO_METRICS` box is 1.27 em) and
+/// Selawik (`hhea` 1.20 em) match Georgia's and Segoe UI's advances but not
+/// their boxes (1.136 and 1.330 em), and a Georgia document gained pages.
+fn original_line_box(family: &str) -> Option<(f64, f64)> {
+    match family {
+        // Georgia: usWinAscent 1878, usWinDescent 449, 2048 units.
+        "Gelasio" => Some((1878.0 / 2048.0, 449.0 / 2048.0)),
+        // Segoe UI (all weights): usWinAscent 2210, usWinDescent 514.
+        "Selawik" | "Selawik Light" | "Selawik Semilight" | "Selawik Semibold" => {
+            Some((2210.0 / 2048.0, 514.0 / 2048.0))
+        }
+        _ => None,
+    }
+}
+
 impl BuiltinFontProvider {
     /// Creates the provider, parsing the bundled fonts.
     #[must_use]
@@ -759,7 +776,15 @@ impl BuiltinFontProvider {
                 });
                 let metrics = font.metrics(Size::unscaled(), LocationRef::new(&location));
                 let units_per_em = f64::from(metrics.units_per_em);
-                let vertical = if units_per_em > 0.0 {
+                let vertical = if let Some((ascender, descender)) = original_line_box(spec.family) {
+                    FontMetrics {
+                        units_per_em,
+                        ascender,
+                        descender,
+                        line_gap: 0.0,
+                        width_scale: 1.0,
+                    }
+                } else if units_per_em > 0.0 {
                     FontMetrics {
                         units_per_em,
                         ascender: f64::from(metrics.ascent) / units_per_em,
