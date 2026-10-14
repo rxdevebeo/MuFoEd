@@ -8,6 +8,20 @@ use strict_ooxml_wml::model::{
 
 use super::address::Address;
 
+/// A point in a paragraph's inline tree: before content `content` of the run
+/// at the inline path `inline` (as in [`crate::TextSlice`]), `offset` scalars
+/// into it when that content is text and `0` otherwise. `content` equal to
+/// the run's content length is the run's end. Points are ordered as the
+/// paragraph reads.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct InlinePoint {
+    /// Inline path ending at a run.
+    pub inline: Vec<usize>,
+    /// Content index in that run.
+    pub content: usize,
+    /// Scalar offset in that content when it is text.
+    pub offset: usize,
+}
 /// A rejected transaction: which command failed, where, and why.
 ///
 /// The document and its history are unchanged, as for any [`EditError`].
@@ -66,23 +80,31 @@ pub enum Edit {
         offset: usize,
     },
     /// Split a paragraph at a point of its inline tree, whatever else it
-    /// holds (K06): before content `content` of the run at the inline path
-    /// `inline` - `offset` scalars into it when that content is text, `0`
-    /// otherwise; `content` equal to the run's content length is its end.
-    /// Hyperlinks and bidi wrappers around the point continue in the right
-    /// half with the same properties; the right half takes a fresh identity,
-    /// the paragraph mark and the section boundary, as with [`Edit::Split`].
-    /// A point inside a field, an inline content control or a tracked run is
-    /// refused.
+    /// holds (K06). Hyperlinks and bidi wrappers around the point continue in
+    /// the right half with the same properties; the right half takes a fresh
+    /// identity, the paragraph mark and the section boundary, as with
+    /// [`Edit::Split`]. A point inside a field, an inline content control or a
+    /// tracked run is refused.
     SplitAt {
         /// Target paragraph.
         at: Address,
-        /// Inline path ending at a run.
-        inline: Vec<usize>,
-        /// Content index in that run.
-        content: usize,
-        /// Scalar offset in that content when it is text.
-        offset: usize,
+        /// Where to split.
+        point: InlinePoint,
+    },
+    /// Format the text and other run content between two points of a
+    /// paragraph's inline tree, whatever else it holds (K06): each run the
+    /// range covers in part is cut where the range ends, and wrappers are not
+    /// divided. Runs the patch leaves as they were are not cut. A range
+    /// touching a tracked run is refused.
+    FormatAt {
+        /// Target paragraph.
+        at: Address,
+        /// Start of the range.
+        from: InlinePoint,
+        /// End of the range, not before `from`.
+        to: InlinePoint,
+        /// Properties to set or clear.
+        patch: FormatPatch,
     },
     /// Join a paragraph with its immediate successor, whatever their inlines
     /// hold.
@@ -393,6 +415,7 @@ impl Edit {
             Self::Split { at, .. }
             | Self::Join { at }
             | Self::SplitAt { at, .. }
+            | Self::FormatAt { at, .. }
             | Self::Insert { at, .. }
             | Self::Delete { at }
             | Self::Move { at, .. }

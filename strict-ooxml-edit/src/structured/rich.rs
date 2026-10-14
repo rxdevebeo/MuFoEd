@@ -1,26 +1,21 @@
-//! K06 (second part): splitting a paragraph at a point of its inline tree,
-//! and the measure that lets paragraphs join whatever their inlines hold.
-use crate::{EditError, Unsupported};
+//! K06 (second part): splitting and formatting a paragraph at points of its
+//! inline tree, and the measure that lets paragraphs join whatever their
+//! inlines hold.
+use crate::{EditError, FormatPatch, Unsupported};
 use strict_ooxml_wml::model::{FieldCharType, Inline, Paragraph, Run, RunContent, Space, TextNode};
 use unicode_segmentation::UnicodeSegmentation;
 
-/// A point in a paragraph: before content `content` of the run at the inline
-/// path `inline`, `offset` scalars into it when that content is text.
-pub(super) struct Point<'a> {
-    pub(super) inline: &'a [usize],
-    pub(super) content: usize,
-    pub(super) offset: usize,
-}
+use super::command::InlinePoint;
 
 /// Splits `paragraph` at `point`: it keeps the inlines before the point and
 /// the inlines after it are returned. Wrappers around the point (hyperlinks,
 /// bidi overrides) go to both halves with their properties.
 pub(super) fn split(
     paragraph: &mut Paragraph,
-    point: &Point<'_>,
+    point: &InlinePoint,
     graphemes: bool,
 ) -> Result<Vec<Inline>, EditError> {
-    let right = split_inlines(&mut paragraph.inlines, point.inline, point, graphemes)?;
+    let right = split_inlines(&mut paragraph.inlines, &point.inline, point, graphemes)?;
     // A complex field begun before the point and not ended by it would have
     // its instruction or result cut across two paragraphs.
     if field_depth(&paragraph.inlines) > 0 {
@@ -32,7 +27,7 @@ pub(super) fn split(
 fn split_inlines(
     inlines: &mut Vec<Inline>,
     path: &[usize],
-    point: &Point<'_>,
+    point: &InlinePoint,
     graphemes: bool,
 ) -> Result<Vec<Inline>, EditError> {
     let (&index, rest) = path.split_first().ok_or(EditError::InvalidParagraph)?;
@@ -83,16 +78,35 @@ fn pair((left, right): (bool, bool), a: Inline, b: Inline) -> (Option<Inline>, O
 
 fn split_run(
     mut run: Run,
-    point: &Point<'_>,
+    point: &InlinePoint,
     graphemes: bool,
 ) -> Result<(Option<Inline>, Option<Inline>), EditError> {
-    if point.content > run.content.len() {
+    let after = cut(&mut run.content, point.content, point.offset, graphemes)?;
+    // A tracked run stays whole until the change is accepted or rejected.
+    if run.revision.is_some() && !run.content.is_empty() && !after.is_empty() {
+        return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
+    }
+    let mut other = run.clone();
+    other.content = after;
+    let keep = (!run.content.is_empty(), !other.content.is_empty());
+    Ok(pair(keep, Inline::Run(run), Inline::Run(other)))
+}
+
+/// Cuts `content` before item `index`, `offset` scalars into it when it is
+/// text: `content` keeps what is before, and what is after is returned.
+fn cut(
+    content: &mut Vec<RunContent>,
+    index: usize,
+    offset: usize,
+    graphemes: bool,
+) -> Result<Vec<RunContent>, EditError> {
+    if index > content.len() {
         return Err(EditError::InvalidRange);
     }
-    let mut after = run.content.split_off(point.content);
+    let mut after = content.split_off(index);
     match after.first_mut() {
         Some(RunContent::Text(node)) => {
-            let byte = byte_offset(&node.text, point.offset)?;
+            let byte = byte_offset(&node.text, offset)?;
             if graphemes && !on_grapheme_boundary(&node.text, byte) {
                 return Err(EditError::InvalidRange);
             }
@@ -100,7 +114,7 @@ fn split_run(
             let before = std::mem::replace(&mut node.text, rest);
             node.space = Space::Preserve;
             if !before.is_empty() {
-                run.content.push(RunContent::Text(TextNode {
+                content.push(RunContent::Text(TextNode {
                     text: before,
                     space: Space::Preserve,
                 }));
@@ -110,17 +124,140 @@ fn split_run(
             }
         }
         // Anything but text is one unit: the point is before it.
-        _ if point.offset != 0 => return Err(EditError::InvalidRange),
+        _ if offset != 0 => return Err(EditError::InvalidRange),
         _ => {}
     }
-    // A tracked run stays whole until the change is accepted or rejected.
-    if run.revision.is_some() && !run.content.is_empty() && !after.is_empty() {
+    Ok(after)
+}
+
+/// Formats the run content between `from` and `to` with `patch`.
+pub(super) fn format(
+    paragraph: &mut Paragraph,
+    from: &InlinePoint,
+    to: &InlinePoint,
+    patch: &FormatPatch,
+    graphemes: bool,
+) -> Result<(), EditError> {
+    if from > to {
+        return Err(EditError::InvalidRange);
+    }
+    for point in [from, to] {
+        check_point(&paragraph.inlines, &point.inline, point, graphemes)?;
+    }
+    let mut trail = Vec::new();
+    format_inlines(&mut paragraph.inlines, &mut trail, from, to, patch)
+}
+
+/// Whether `point` names a run and a place in it.
+fn check_point(
+    inlines: &[Inline],
+    path: &[usize],
+    point: &InlinePoint,
+    graphemes: bool,
+) -> Result<(), EditError> {
+    let (&index, rest) = path.split_first().ok_or(EditError::InvalidParagraph)?;
+    let item = inlines.get(index).ok_or(EditError::InvalidParagraph)?;
+    match (item, rest.is_empty()) {
+        (Inline::Run(run), true) => {
+            let mut content = run.content.clone();
+            cut(&mut content, point.content, point.offset, graphemes).map(drop)
+        }
+        (Inline::Hyperlink(v), false) => check_point(&v.inlines, rest, point, graphemes),
+        (Inline::SdtInline(v), false) => check_point(&v.inlines, rest, point, graphemes),
+        (Inline::Directional(v), false) => check_point(&v.inlines, rest, point, graphemes),
+        (Inline::Field(v), false) => check_point(&v.inlines, rest, point, graphemes),
+        _ => Err(EditError::UnsupportedContent(Unsupported::Target)),
+    }
+}
+
+/// Formats the runs under `inlines`, last first, so that the paths of the
+/// points stay valid for the ones not yet visited.
+fn format_inlines(
+    inlines: &mut Vec<Inline>,
+    trail: &mut Vec<usize>,
+    from: &InlinePoint,
+    to: &InlinePoint,
+    patch: &FormatPatch,
+) -> Result<(), EditError> {
+    for index in (0..inlines.len()).rev() {
+        trail.push(index);
+        let pieces = match inlines.get_mut(index) {
+            Some(Inline::Run(run)) => format_run(run, trail, from, to, patch),
+            Some(Inline::Hyperlink(v)) => {
+                format_inlines(&mut v.inlines, trail, from, to, patch).map(|()| None)
+            }
+            Some(Inline::SdtInline(v)) => {
+                format_inlines(&mut v.inlines, trail, from, to, patch).map(|()| None)
+            }
+            Some(Inline::Directional(v)) => {
+                format_inlines(&mut v.inlines, trail, from, to, patch).map(|()| None)
+            }
+            Some(Inline::Field(v)) => {
+                format_inlines(&mut v.inlines, trail, from, to, patch).map(|()| None)
+            }
+            _ => Ok(None),
+        };
+        trail.pop();
+        if let Some(pieces) = pieces? {
+            drop(inlines.splice(index..=index, pieces));
+        }
+    }
+    Ok(())
+}
+
+/// Where `point` falls in the run at `trail` with `len` content items: its
+/// start when the point is before the run, its end when after.
+fn place(trail: &[usize], point: &InlinePoint, len: usize) -> (usize, usize) {
+    match point.inline.as_slice().cmp(trail) {
+        std::cmp::Ordering::Less => (0, 0),
+        std::cmp::Ordering::Equal => (point.content, point.offset),
+        std::cmp::Ordering::Greater => (len, 0),
+    }
+}
+
+/// The pieces the run at `location` becomes, or `None` when it stays as it is.
+fn format_run(
+    run: &Run,
+    location: &[usize],
+    from: &InlinePoint,
+    to: &InlinePoint,
+    patch: &FormatPatch,
+) -> Result<Option<Vec<Inline>>, EditError> {
+    let len = run.content.len();
+    let (start, end) = (place(location, from, len), place(location, to, len));
+    if start >= end {
+        return Ok(None);
+    }
+    let mut props = run.props.clone();
+    crate::patch_properties(&mut props, patch);
+    if props == run.props {
+        return Ok(None);
+    }
+    // The end first: the start's place does not move.
+    let mut head = run.content.clone();
+    let tail = cut(&mut head, end.0, end.1, false)?;
+    let middle = cut(&mut head, start.0, start.1, false)?;
+    if middle.is_empty() {
+        return Ok(None);
+    }
+    if run.revision.is_some() {
         return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
     }
-    let mut other = run.clone();
-    other.content = after;
-    let keep = (!run.content.is_empty(), !other.content.is_empty());
-    Ok(pair(keep, Inline::Run(run), Inline::Run(other)))
+    let piece = |content: Vec<RunContent>, props: &strict_ooxml_wml::model::RunProperties| {
+        let mut piece = run.clone();
+        piece.props = props.clone();
+        piece.content = content;
+        Inline::Run(piece)
+    };
+    let mut pieces = Vec::with_capacity(3);
+    if !head.is_empty() {
+        pieces.push(piece(head, &run.props));
+    }
+    pieces.push(piece(middle, &props));
+    if !tail.is_empty() {
+        pieces.push(piece(tail, &run.props));
+    }
+    Ok(Some(pieces))
 }
 
 fn byte_offset(text: &str, scalars: usize) -> Result<usize, EditError> {
