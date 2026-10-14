@@ -37,6 +37,10 @@ class ScannerTests(unittest.TestCase):
         self.assertEqual(result["parameters"]["uc"], {"0": 1})
         self.assertEqual(result["control_words"]["u"], 2)
 
+    def test_header_without_a_version(self):
+        self.assertEqual(scan(b"{\\rtf \\ansi x}")["status"], "Pass")
+        self.assertEqual(scan(b"{\\rtfx}")["errors"][0]["id"], "invalid_header")
+
     def test_lone_minus_is_following_text(self):
         result = scan(b"{\\rtf1\\b-x}")
         self.assertEqual(result["status"], "Pass")
