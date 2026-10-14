@@ -23,28 +23,48 @@ REPO = HERE.parent.parent
 
 @dataclass(frozen=True)
 class Corpus:
-    """One named set of documents: a directory and a glob under the data root."""
+    """One named set of documents: a directory and its globs under the data root."""
 
     name: str
     path: str
-    glob: str = "*.docx"
+    globs: tuple[str, ...] = ("*.docx", "*.rtf")
 
 
-# Every .docx corpus the repository knows about. The PDF/DjVu sets are inputs
-# of importers, not documents WPS lays out; the RTF sets need RTF import, which
-# is not on master. Add them here when the CLI reads them.
-CORPORA: tuple[Corpus, ...] = (
+# What a corpus holds that WPS lays out the way we do: .docx as it is, .rtf
+# opened as it is by WPS and imported to Strict DOCX by us (`import-rtf`).
+DOCUMENT_SUFFIXES = (".docx", ".rtf")
+
+# Corpora discovery would not find: outside testdata/, or nested. Every other
+# directory of testdata/ holding a .docx or an .rtf is a corpus named after
+# it, so a corpus added there is measured without a change here; the PDF and
+# DjVu sets (importer inputs) hold neither and are left out.
+REGISTERED: tuple[Corpus, ...] = (
     Corpus("core-strict", "strict-ooxml-core/tests/strict"),
     Corpus("core-samples", "strict-ooxml-core/tests/samples"),
     Corpus("core-docx", "strict-ooxml-core/tests/docx"),
-    Corpus("CC0", "testdata/CC0"),
-    Corpus("CC0_DOCX", "testdata/CC0_DOCX"),
-    Corpus("CC0_DOCX_1", "testdata/CC0_DOCX_1"),
-    Corpus("CC0_DOCX_MATH", "testdata/CC0_DOCX_MATH"),
-    Corpus("CCX", "testdata/CCX"),
-    Corpus("pdf-docx", "testdata/pdf", "**/*.docx"),
+    Corpus("pdf-docx", "testdata/pdf", ("**/*.docx",)),
 )
-CORPUS_BY_NAME = {c.name: c for c in CORPORA}
+
+
+def _is_document(path: Path) -> bool:
+    # Word lock files (~$name.docx) are not documents.
+    return path.is_file() and path.suffix.lower() in DOCUMENT_SUFFIXES and not path.name.startswith("~$")
+
+
+def corpora(data_root: Path) -> list[Corpus]:
+    """The registered corpora, then every testdata/ directory holding a
+    document, by name."""
+    found = list(REGISTERED)
+    taken = {c.path for c in found} | {c.name for c in found}
+    testdata = data_root / "testdata"
+    if testdata.is_dir():
+        for directory in sorted(p for p in testdata.iterdir() if p.is_dir()):
+            rel = f"testdata/{directory.name}"
+            if rel in taken or directory.name in taken:
+                continue
+            if any(_is_document(child) for child in directory.iterdir()):
+                found.append(Corpus(directory.name, rel))
+    return found
 
 
 def main_copy_root() -> Path:
@@ -77,10 +97,18 @@ class Doc:
     def ident(self) -> str:
         return f"{self.corpus}/{self.key}"
 
+    @property
+    def is_rtf(self) -> bool:
+        return self.path.suffix.lower() == ".rtf"
+
 
 def safe_key(rel: str) -> str:
     """A file-system-safe, stable key for a corpus-relative path."""
-    stem = rel[:-5] if rel.lower().endswith(".docx") else rel
+    stem = rel
+    for suffix in (".docx", ".rtf"):
+        if rel.lower().endswith(suffix):
+            stem = rel[: -len(suffix)]
+            break
     stem = stem.replace("\\", "/").replace("/", "__")
     bad = '<>:"|?*'
     stem = "".join("_" if ch in bad or ord(ch) < 32 else ch for ch in stem)
@@ -92,16 +120,18 @@ def safe_key(rel: str) -> str:
 
 
 def iter_docs(data_root: Path, names: list[str] | None) -> Iterator[Doc]:
-    selected = CORPORA if not names else [CORPUS_BY_NAME[n] for n in names]
+    known = {c.name: c for c in corpora(data_root)}
+    unknown = [n for n in names or [] if n not in known]
+    if unknown:
+        raise SystemExit(f"wpsqa: unknown corpus {', '.join(unknown)}; known: {', '.join(known)}")
+    selected = list(known.values()) if not names else [known[n] for n in names]
     for corpus in selected:
         root = data_root / corpus.path
         if not root.is_dir():
             print(f"wpsqa: corpus {corpus.name} absent at {root}", file=sys.stderr)
             continue
-        for path in sorted(root.glob(corpus.glob)):
-            # Word lock files (~$name.docx) are not documents.
-            if not path.is_file() or path.name.startswith("~$"):
-                continue
+        paths = sorted({path for pattern in corpus.globs for path in root.glob(pattern) if _is_document(path)})
+        for path in paths:
             rel = path.relative_to(root).as_posix()
             yield Doc(corpus.name, path, safe_key(rel))
 

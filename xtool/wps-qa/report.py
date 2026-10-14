@@ -31,6 +31,8 @@ COLUMNS = [
     ("mean_ssim", "SSIM"),
     ("row_corr", "row corr"),
     ("delta", "Δ score vs baseline"),
+    ("import_status", "RTF import"),
+    ("import_losses", "import losses"),
 ]
 
 
@@ -39,6 +41,10 @@ def _row(doc: common.Doc, store: Path, label: str) -> dict:
     ours = read_json(store / "ours" / label / doc.corpus / f"{doc.key}.json") or {}
     cmp_ = read_json(store / "cmp" / label / doc.corpus / f"{doc.key}.json") or {}
     row: dict = {"corpus": doc.corpus, "key": doc.key, "ident": doc.ident}
+    # An RTF is imported before it is rendered: how that went is part of it.
+    if "import_status" in ours:
+        row["import_status"] = ours.get("import_status")
+        row["import_losses"] = ours.get("import_losses")
     if ref.get("status") != "ok":
         row["status"] = f"wps-{ref.get('status', 'missing')}"
         row["error"] = ref.get("error", "")
@@ -105,7 +111,7 @@ def build(store: Path, data_root: Path, label: str, baseline: str | None, corpor
                 r["delta"] = round(r["score"] - b["score"], 1)
 
     by_corpus: dict[str, dict] = {}
-    for c in common.CORPORA:
+    for c in common.corpora(data_root):
         rs = [r for r in rows if r["corpus"] == c.name]
         if not rs:
             continue
@@ -130,6 +136,13 @@ def build(store: Path, data_root: Path, label: str, baseline: str | None, corpor
             "grades": {g: sum(r.get("grade") == g for r in scored) for g in "ABCDF"},
             "mean_delta": _mean([r.get("delta") for r in rs]),
         }
+        imported = [r for r in rs if r.get("import_status")]
+        if imported:
+            by_corpus[c.name]["rtf_import"] = {
+                status: sum(r["import_status"] == status for r in imported)
+                for status in ("Clean", "Degraded", "Failed", "Timeout")
+            }
+            by_corpus[c.name]["rtf_import_losses"] = sum(r.get("import_losses") or 0 for r in imported)
     all_scored = [r for r in rows if isinstance(r.get("score"), (int, float))]
     total = {
         "documents": len(rows),
@@ -162,6 +175,8 @@ def _html(summary: dict, rows: list[dict]) -> str:
     corp_rows = []
     for name, s in summary["corpora"].items():
         g = s["grades"]
+        imp = s.get("rtf_import")
+        rtf = f"{imp['Clean']}/{imp['Degraded']}/{imp['Failed'] + imp['Timeout']} · {s['rtf_import_losses']}" if imp else "—"
         corp_rows.append(
             "<tr>"
             + f"<td>{e(name)}</td><td>{s['documents']}</td><td>{s['compared']}</td>"
@@ -171,6 +186,7 @@ def _html(summary: dict, rows: list[dict]) -> str:
             + f"<td>{_fmt(s['mean_text_f1'])}</td><td>{_fmt(s['mean_same_page'])}</td>"
             + f"<td>{_fmt(s['mean_line_break_f1'])}</td><td>{_fmt(s['mean_geom_abs'])}</td><td>{_fmt(s['mean_geom_advance'])}</td><td>{_fmt(s['mean_geom_leading'])}</td><td>{_fmt(s['mean_ssim'])}</td>"
             + f"<td>{g['A']}/{g['B']}/{g['C']}/{g['D']}/{g['F']}</td><td>{_fmt(s['mean_delta'])}</td>"
+            + f"<td>{e(rtf)}</td>"
             + "</tr>"
         )
     doc_rows = []
@@ -213,7 +229,7 @@ td:first-child {{ text-align:left; }} .err {{ color:var(--muted); font-size:11px
 оценки A/B/C/D/F: {t['grades']['A']}/{t['grades']['B']}/{t['grades']['C']}/{t['grades']['D']}/{t['grades']['F']}</p>
 <p class="muted">Балл 0–100 = 15% страницы + 25% текст (F1 слов) + 25% поток (та же страница, F1 переносов строк) + 20% геометрия (среднее: абсолютное положение слов на той же странице ≤4 pt, шаг между словами в строке и шаг строк — оба ≤ max(1 pt, 5%)) + 15% растр (SSIM 36 dpi, корреляция профилей). F = наш рендер не отработал.</p>
 <h2>По корпусам</h2>
-<table><tr><th>corpus</th><th>docs</th><th>compared</th><th>WPS fail</th><th>ours fail</th><th>cmp fail</th><th>mean</th><th>median</th><th>pages =</th><th>text F1</th><th>same page</th><th>line breaks</th><th>abs ≤4pt</th><th>advance</th><th>leading</th><th>SSIM</th><th>A/B/C/D/F</th><th>Δ</th></tr>
+<table><tr><th>corpus</th><th>docs</th><th>compared</th><th>WPS fail</th><th>ours fail</th><th>cmp fail</th><th>mean</th><th>median</th><th>pages =</th><th>text F1</th><th>same page</th><th>line breaks</th><th>abs ≤4pt</th><th>advance</th><th>leading</th><th>SSIM</th><th>A/B/C/D/F</th><th>Δ</th><th title="RTF import: Clean/Degraded/Failed · import losses">RTF C/D/F · losses</th></tr>
 {''.join(corp_rows)}</table>
 <h2>Документы (худшие сверху; ссылка — худшая страница: WPS | наш | наложение, красный = только WPS, синий = только наш)</h2>
 <table id="docs"><thead><tr>{head}</tr></thead><tbody>
