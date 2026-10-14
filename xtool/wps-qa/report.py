@@ -38,8 +38,9 @@ COLUMNS = [
 
 
 def _ref_fallback(store: Path, doc: common.Doc) -> float | None:
-    """Share of the reference drawn in WPS's fallback face, cached beside the
-    reference (keyed by its size and mtime: a new capture is read again)."""
+    """Share of the reference drawn in a face the document does not name
+    (`metrics.fallback_share`), cached beside the reference (keyed by its and
+    the source's size and mtime: a new capture is read again)."""
     pdf = store / "refs" / doc.corpus / f"{doc.key}.pdf"
     if not pdf.is_file():
         return None
@@ -58,7 +59,32 @@ def _ref_fallback(store: Path, doc: common.Doc) -> float | None:
         write_json(cache_path, cache)
     import metrics
 
-    return metrics.fallback_share(cache.get("shares", {}))
+    if "named" not in cache or cache.get("source_stamp") != _stamp(doc.path):
+        cache["named"] = sorted(metrics.named_families(str(doc.path)))
+        cache["source_stamp"] = _stamp(doc.path)
+        write_json(cache_path, cache)
+    return metrics.fallback_share(cache.get("shares", {}), set(cache["named"]), _host_families(store))
+
+
+def _stamp(path: Path) -> list[int]:
+    stat = Path(path).stat()
+    return [stat.st_size, int(stat.st_mtime)]
+
+
+_HOST_FAMILIES: dict[str, dict[str, str]] = {}
+
+
+def _host_families(store: Path) -> dict[str, str]:
+    """PostScript name -> legacy family, from the host inventory."""
+    key = str(store)
+    if key not in _HOST_FAMILIES:
+        inventory = read_json(store / "host-fonts.json") or {}
+        _HOST_FAMILIES[key] = {
+            face["postscript"]: face.get("legacy_family") or face.get("family", "")
+            for face in inventory.get("faces", [])
+            if face.get("postscript")
+        }
+    return _HOST_FAMILIES[key]
 
 
 def _is_fallback(row: dict) -> bool:
