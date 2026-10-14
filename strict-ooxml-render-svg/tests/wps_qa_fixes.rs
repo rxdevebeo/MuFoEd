@@ -344,6 +344,51 @@ fn wq004_script_text_takes_script_faces_and_keeps_the_line_box() {
     )));
 }
 
+/// Hebrew in Calibri or Cambria, whose bundled stand-ins (Carlito, Caladea)
+/// have no Hebrew, is drawn from Arimo's or Tinos' Hebrew under a script
+/// fallback name, and the line keeps the requested face's box; Hebrew in
+/// Arial stays in Arimo itself.
+#[test]
+fn hebrew_in_calibri_is_drawn_and_keeps_the_line_box() {
+    let line = |font: &str, text: &str| {
+        format!(
+            "<w:p><w:pPr><w:bidi/><w:spacing w:after=\"0\"/></w:pPr><w:r><w:rPr>\
+<w:rFonts w:ascii=\"{font}\" w:hAnsi=\"{font}\" w:cs=\"{font}\"/><w:rtl/></w:rPr><w:t>{text}</w:t></w:r></w:p>"
+        )
+    };
+    let place = |font: &str, first: &str| {
+        let body = format!("{}{}{NARROW}", line(font, first), line(font, "x"));
+        pages(&body, &RenderOptions::default()).remove(0)
+    };
+    let family_of = |page: &PlacedPage, letter: char| {
+        page.items.iter().find_map(|item| match item {
+            Item::Text(text) if text.text.contains(letter) => Some(
+                strict_ooxml_render_svg::style::chosen_family(&text.run, &text.text),
+            ),
+            _ => None,
+        })
+    };
+    let gap = |page: &PlacedPage| {
+        let lines = baselines(page);
+        lines[1] - lines[0]
+    };
+    for (font, fallback) in [
+        ("Calibri", "Arimo Hebrew"),
+        ("Cambria", "Tinos Hebrew"),
+        ("Arial", "Arimo"),
+    ] {
+        let hebrew = place(font, "שלום עולם");
+        assert_eq!(family_of(&hebrew, 'ש').as_deref(), Some(fallback), "{font}");
+        let latin = place(font, "y");
+        assert!(
+            (gap(&hebrew) - gap(&latin)).abs() < 0.01,
+            "{font}: Hebrew line {} against Latin {}",
+            gap(&hebrew),
+            gap(&latin)
+        );
+    }
+}
+
 /// Baselines of the text items whose text is not `skip`.
 fn flow_baselines(page: &PlacedPage, skip: &str) -> Vec<f64> {
     texts(page)
