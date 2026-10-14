@@ -2268,7 +2268,7 @@ impl Parser<'_> {
     /// The font text takes when no `\fN` selected one: `\deff`, as Word and
     /// the RTF specification have it - or none under the WPS text profile.
     /// WPS sets such text in Times New Roman whatever `\deff`, `\plain` or
-    /// the font table say (probes 2026-10-15, CC0_RTF 072: Verdana as
+    /// the font table say (probes 2026-10-15, `CC0_RTF` 072: Verdana as
     /// `\deff0`, the body in Times New Roman); `w:docDefaults` carries that.
     fn implicit_font(&self) -> Option<i32> {
         if self.options.compatibility_profile == CompatibilityProfile::WpsText {
