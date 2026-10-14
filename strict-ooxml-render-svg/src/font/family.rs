@@ -68,7 +68,9 @@ fn exact_family(name: &str) -> Option<&'static str> {
     Some(match name {
         "calibri" | "carlito" => "Carlito",
         // Calibri is the wildcard below: it is the family Carlito metrics match.
-        "cambria" | "caladea" => "Caladea",
+        // Cambria has a metric profile (`profiles`): Caladea's advances and
+        // digits are not Cambria's.
+        "caladea" => "Caladea",
         // LibreOffice writes its own metric-compatible Liberation families;
         // the bundled Arimo/Tinos/Cousine are the same designs under the OFL
         // names (STAGE-5C-REWORK-1 D1).
@@ -212,7 +214,7 @@ mod tests {
         assert_eq!(map_family("  calibri "), "Carlito");
         assert_eq!(map_family("ARIAL"), "Arimo");
         assert_eq!(map_family("Helvetica"), "Arimo");
-        assert_eq!(map_family("Cambria"), "Caladea");
+        assert_eq!(map_family("Cambria"), "Caladea for Cambria");
         assert_eq!(map_family("Times New Roman"), "Tinos");
         assert_eq!(map_family("Courier New"), "Cousine");
     }
@@ -360,7 +362,7 @@ mod tests {
         assert_eq!(map_family("Arial CYR"), "Arimo");
         assert_eq!(map_family("Arial Greek"), "Arimo");
         assert_eq!(map_family("Arial (Hebrew)"), "Arimo");
-        assert_eq!(map_family("Cambria (Vietnamese)"), "Caladea");
+        assert_eq!(map_family("Cambria (Vietnamese)"), "Caladea for Cambria");
         assert_eq!(map_family("Courier New Tur"), "Cousine");
         // A qualifier is not a family: an unknown base stays unknown.
         assert_eq!(super::known_family("Courier"), None);
