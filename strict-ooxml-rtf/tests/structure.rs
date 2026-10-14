@@ -2541,3 +2541,52 @@ fn the_wps_text_profile_sets_text_without_a_font_in_times_new_roman() {
         Some("Verdana")
     );
 }
+
+/// `\sN` only names a paragraph's style: the stylesheet's formatting is not
+/// applied unless the paragraph repeats it (WPS probe `PROBE_RTF_GROUP` 02:
+/// `{\s1\fs48 BIG\par}` with a `\sb480\sa480` style shows no spacing). The
+/// paragraph keeps the style; what it does not say is written at the default.
+#[test]
+fn a_style_tag_does_not_apply_the_stylesheet_formatting() {
+    let source = br"{\rtf1\ansi\deff0{\fonttbl{\f0\froman Times New Roman;}}{\stylesheet{\s0 Normal;}{\s1\sb480\sa480\qc\b\fs48 Big;}}
+{\s1 tagged\par}\pard\plain\s1\sb480\b\fs48 explicit\par}";
+    let result = import(source, &RtfOptions::default()).unwrap();
+    let paragraphs: Vec<_> = result
+        .document
+        .body
+        .blocks
+        .iter()
+        .filter_map(|b| match b {
+            Block::Paragraph(p) => Some(p),
+            _ => None,
+        })
+        .collect();
+    let tagged = paragraphs[0];
+    assert_eq!(
+        tagged.props.style.as_ref().map(StyleId::as_str),
+        Some("rtf-s1")
+    );
+    let spacing = tagged.props.spacing.as_ref().expect("spacing written back");
+    assert_eq!(
+        (spacing.before, spacing.after),
+        (Some(Twips(0)), Some(Twips(0)))
+    );
+    assert_eq!(tagged.props.alignment, Some(Justification::Start));
+    let Inline::Run(run) = &tagged.inlines[0] else {
+        panic!("run")
+    };
+    assert_eq!(run.props.bold, TriState::Off);
+    assert_eq!(run.props.size, Some(HalfPoints(24)));
+    // What the paragraph says itself stays.
+    let explicit = paragraphs[1];
+    let spacing = explicit.props.spacing.as_ref().expect("spacing");
+    assert_eq!(
+        (spacing.before, spacing.after),
+        (Some(Twips(480)), Some(Twips(0)))
+    );
+    let Inline::Run(run) = &explicit.inlines[0] else {
+        panic!("run")
+    };
+    assert_eq!(run.props.bold, TriState::On);
+    assert_eq!(run.props.size, Some(HalfPoints(48)));
+}
