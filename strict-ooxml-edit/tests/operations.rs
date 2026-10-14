@@ -88,8 +88,14 @@ fn moved_block_changes_order_reports_identity_and_undo() {
         .unwrap();
     assert_eq!(text(e.document()), vec!["b", "c", "a"]);
     assert_eq!(report.destination, Address::body(2));
-    assert_eq!(report.identities.len(), 1);
-    assert!(report.identities[0].after.is_some());
+    // The move keeps identities; this paragraph has none to keep.
+    assert_eq!(
+        report.identities,
+        [IdentityChange {
+            before: None,
+            after: None
+        }]
+    );
     e.undo(1).unwrap();
     assert_eq!(e.document().body, original);
 }
@@ -114,7 +120,7 @@ fn moved_row_changes_order_and_undo() {
     e.undo(1).unwrap();
     assert_eq!(e.document().body, original);
 }
-use strict_ooxml_edit::{Container, Edit, EditError, Invariant, OperationError};
+use strict_ooxml_edit::{Container, Edit, EditError, IdentityChange, Invariant, OperationError};
 #[test]
 fn lowercase_expansion_never_splits_an_original_scalar() {
     let mut d = doc("<w:p><w:r><w:t>İ i X🙂</w:t></w:r></w:p>");
@@ -394,13 +400,47 @@ fn nested_block_move_retains_contents_and_reports_fresh_ids() {
         .move_block(1, &source, &dest)
         .unwrap();
     assert_eq!(report.identities[0].before, id);
-    assert_ne!(report.identities[0].after, id);
+    assert_eq!(report.identities[0].after, id, "a move keeps the identity");
+    assert_eq!(
+        e.find(&Story::Body, id.as_ref().unwrap()).unwrap(),
+        dest,
+        "and the paragraph is found where it went"
+    );
     let p = e.paragraph(&dest).unwrap();
     let strict_ooxml_wml::model::Inline::Run(run) = &p.inlines[0] else {
         panic!()
     };
     assert!(
         matches!(&run.content[0], strict_ooxml_wml::model::RunContent::Text(t) if t.text == "b")
+    );
+    e.undo(2).unwrap();
+    e.undo(3).unwrap();
+    assert_eq!(e.document().body, original);
+}
+#[test]
+fn a_block_moves_out_of_a_container_keeping_its_identity() {
+    let mut d=doc("<w:p><w:r><w:t>a</w:t></w:r></w:p><w:sdt><w:sdtContent><w:p><w:r><w:t>b</w:t></w:r></w:p><w:p><w:r><w:t>c</w:t></w:r></w:p></w:sdtContent></w:sdt>");
+    let original = d.body.clone();
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let source = Address {
+        story: Story::Body,
+        containers: vec![Container::Sdt(1)],
+        block: 1,
+    };
+    e.transact(0, &[Edit::Identify { at: source.clone() }])
+        .unwrap();
+    let id = e.paragraph(&source).unwrap().para_id.clone();
+    let report = Operations::new(&mut e, OperationLimits::default())
+        .move_block(1, &source, &Address::body(0))
+        .unwrap();
+    assert_eq!(report.destination, Address::body(0));
+    assert_eq!(text(e.document()), vec!["c", "a"]);
+    assert_eq!(
+        report.identities,
+        [IdentityChange {
+            before: id.clone(),
+            after: id
+        }]
     );
     e.undo(2).unwrap();
     e.undo(3).unwrap();

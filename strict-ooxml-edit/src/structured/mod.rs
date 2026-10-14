@@ -5,6 +5,7 @@ mod command;
 mod editor;
 mod ids;
 mod moves;
+pub(crate) use moves::after_removal;
 mod notes;
 mod revisions;
 mod rich;

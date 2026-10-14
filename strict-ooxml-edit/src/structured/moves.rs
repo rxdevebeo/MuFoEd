@@ -35,7 +35,7 @@ pub(super) fn region(at: &Address, to: &Address) -> (usize, usize) {
 
 /// Where `to`, written against the story before the move, points once the
 /// block at `at` is gone; `None` when it points into that block.
-fn after_removal(at: &Address, to: &Address) -> Option<Address> {
+pub(crate) fn after_removal(at: &Address, to: &Address) -> Option<Address> {
     let mut to = to.clone();
     let depth = at.containers.len();
     if to.containers.get(..depth) != Some(at.containers.as_slice()) {
