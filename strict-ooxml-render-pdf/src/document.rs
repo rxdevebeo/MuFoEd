@@ -502,6 +502,11 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
                             glyph.glyph_id,
                             label,
                         );
+                        // A right-to-left ligature's text layer is written
+                        // letter by letter (`glyphs::rtl_ligature`).
+                        for ch in crate::glyphs::rtl_ligature(label).unwrap_or_default() {
+                            collector.add(&source, text.run.bold, text.run.italic, ch);
+                        }
                     }
                 }
             } else {
@@ -1163,10 +1168,21 @@ impl PageWriter<'_> {
                 let Some(&cid) = font.cluster_cids.get(&(glyph.glyph_id, label.to_owned())) else {
                     continue;
                 };
+                // The letters of a right-to-left ligature, each with a code of
+                // its own, in visual order: the text layer writes them in
+                // place of the ligature (`glyphs::rtl_ligature`).
+                let letters = crate::glyphs::rtl_ligature(label).and_then(|letters| {
+                    letters
+                        .iter()
+                        .rev()
+                        .map(|ch| font.chars.get(ch).copied())
+                        .collect::<Option<Vec<u16>>>()
+                });
                 placed.push(PlacedGlyph {
                     visual: cluster.glyph_start.saturating_add(index),
                     logical: cluster.byte_start,
                     cid,
+                    letters,
                     offset_px: glyph.x_em * text.size_px + cluster_extra,
                     rise_px: glyph.y_offset_em * text.size_px,
                     carries_text: !label.is_empty(),
@@ -1233,9 +1249,13 @@ impl PageWriter<'_> {
                 if gap.abs() > 1e-6 {
                     items.adjust((-gap * 1000.0) as f32);
                 }
-                let bytes = cid.to_be_bytes();
-                items.show(Str(&bytes));
-                pen = at + f64::from(*font.widths.get(&cid).unwrap_or(&0)) / 1000.0;
+                let codes = glyph.letters.clone().unwrap_or_else(|| vec![cid]);
+                pen = at;
+                for code in codes {
+                    let bytes = code.to_be_bytes();
+                    items.show(Str(&bytes));
+                    pen += f64::from(*font.widths.get(&code).unwrap_or(&0)) / 1000.0;
+                }
             }
         }
         self.content.end_text();
@@ -1272,6 +1292,9 @@ struct PlacedGlyph {
     offset_px: f64,
     /// Offset above the baseline, in px.
     rise_px: f64,
+    /// The codes the text layer writes for a right-to-left ligature, in
+    /// visual order; `None` writes [`Self::cid`].
+    letters: Option<Vec<u16>>,
     /// Whether this glyph carries text in the text layer.
     carries_text: bool,
     /// Whether the glyph advances the pen (a mark does not).

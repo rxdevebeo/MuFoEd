@@ -1041,3 +1041,50 @@ fn right_to_left_text_is_one_invisible_text_layer() {
     assert!(content.contains("3 Tr"), "no invisible text layer");
     assert!(content.contains(" Do"), "no outline forms drawn");
 }
+
+/// A right-to-left ligature (Noto Naskh's lam-alef here; Windows Arial's Urdu
+/// `نی` in CC0/001) is written letter by letter in the text layer: as one
+/// two-letter `ToUnicode` entry a reader turning the line around turned the
+/// letters around too.
+#[test]
+fn a_right_to_left_ligature_is_written_letter_by_letter() {
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(
+            "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rFonts w:cs=\"Traditional Arabic\"/><w:rtl/></w:rPr>\
+             <w:t>لا</w:t></w:r></w:p>",
+        )
+        .build();
+    let (pdf, _, _) = to_pdf(&bytes);
+    let document = lopdf::Document::load_mem(&pdf).expect("valid PDF");
+    let mut destinations = Vec::new();
+    for object in document.objects.values() {
+        let Ok(stream) = object.as_stream() else {
+            continue;
+        };
+        let content = stream
+            .decompressed_content()
+            .unwrap_or_else(|_| stream.content.clone());
+        let text = String::from_utf8_lossy(&content);
+        if !text.contains("beginbfchar") {
+            continue;
+        }
+        for line in text.lines() {
+            let columns: Vec<&str> = line.split_whitespace().collect();
+            if columns.len() == 2 && columns[0].starts_with('<') {
+                destinations.push(columns[1].trim_matches(['<', '>']).to_owned());
+            }
+        }
+    }
+    assert!(
+        destinations.iter().any(|d| d == "0644"),
+        "lam: {destinations:?}"
+    );
+    assert!(
+        destinations.iter().any(|d| d == "0627"),
+        "alef: {destinations:?}"
+    );
+    assert!(
+        !destinations.iter().any(|d| d == "06440627"),
+        "no two-letter entry: {destinations:?}"
+    );
+}
