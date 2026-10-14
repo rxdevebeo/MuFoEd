@@ -396,7 +396,7 @@ $script:AllowedFields = @{
     'corpus-scan' = @('id', 'kind', 'sha', 'set')
     'bench'       = @('id', 'kind', 'sha', 'bench')
     'wps'         = @('id', 'kind', 'sha')
-    'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes')
+    'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts')
     'rtf'         = @('id', 'kind', 'sha')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
@@ -557,7 +557,7 @@ function Test-JobRecord {
                     return (& $reject 'limit must be an integer 0..100000')
                 }
             }
-            foreach ($flag in @('capture', 'recompare')) {
+            foreach ($flag in @('capture', 'recompare', 'system_fonts')) {
                 if ($fields -contains $flag -and $Job.$flag -isnot [bool]) {
                     return (& $reject ("{0} must be true or false" -f $flag))
                 }
@@ -1141,6 +1141,13 @@ function Invoke-WpsQa {
     }
     $cli = Join-Path $target 'release\strict-ooxml.exe'
     $label = 'sha-' + $Sha.Substring(0, 10)
+    # The machine's installed fonts (to-pdf --system-fonts): a label of its
+    # own, so it is compared with, never mixed into, the bundled-font render.
+    $renderExtra = @()
+    if ($null -ne $Job.PSObject.Properties['system_fonts'] -and [bool]$Job.system_fonts) {
+        $label += '-sysfonts'
+        $renderExtra = @('--to-pdf-arg=--system-fonts')
+    }
     $store = Join-Path $Repo 'wps-qa'
     $scope = @('--data-root', $Repo, '--store', $store)
     if ($null -ne $Job.PSObject.Properties['corpus']) {
@@ -1154,7 +1161,7 @@ function Invoke-WpsQa {
 
     $runs = @()
     if ($null -ne $Job.PSObject.Properties['capture'] -and [bool]$Job.capture) { $runs += , @('capture', (@('capture') + $scope)) }
-    $runs += , @('render', (@('render', '--cli', $cli, '--label', $label) + $scope))
+    $runs += , @('render', (@('render', '--cli', $cli, '--label', $label) + $renderExtra + $scope))
     $runs += , @('compare', (@('compare', '--cli', $cli, '--label', $label) + $scope))
     if ($baseline -ne '' -and $recompare) { $runs += , @('compare-baseline', (@('compare', '--label', $baseline, '--force') + $scope)) }
     $report = @('report', '--cli', $cli, '--label', $label) + $scope
