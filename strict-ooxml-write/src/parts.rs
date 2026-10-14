@@ -1563,9 +1563,15 @@ fn leading_paragraph_has_reference(note: &Note) -> bool {
 }
 
 fn paragraph_has_reference(paragraph: &Paragraph) -> bool {
-    paragraph.inlines.iter().any(
-        |inline| matches!(inline, Inline::Run(run) if run.content.contains(&RunContent::NoteRef)),
-    )
+    // A separator or continuation-separator note's mark is its
+    // `w:separator`/`w:continuationSeparator`; it takes no `w:footnoteRef`
+    // besides (restored after merge 5274d07f, b5f6cfd8).
+    paragraph.inlines.iter().any(|inline| {
+        matches!(inline, Inline::Run(run) if run.content.iter().any(|content| matches!(
+            content,
+            RunContent::NoteRef | RunContent::NoteSeparator(_)
+        )))
+    })
 }
 
 /// Ensures the first run of `paragraph` carries [`RunContent::NoteRef`].
