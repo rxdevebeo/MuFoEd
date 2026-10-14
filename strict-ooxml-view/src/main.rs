@@ -1001,7 +1001,6 @@ mod tests {
             &entry,
             false,
             strict_ooxml_view::RenderSettings::new(96.0),
-            worker::RtfFlags::default(),
             Duration::from_secs(30),
         );
         assert_eq!(view.name, "missing.docx");
