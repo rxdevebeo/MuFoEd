@@ -36,6 +36,8 @@ pub fn known_family(family: &str) -> Option<&'static str> {
         "noto naskh arabic" => "Noto Naskh Arabic",
         "noto sans arabic" => "Noto Sans Arabic",
         "jomolhari" => "Jomolhari",
+        "arimo hebrew" => "Arimo Hebrew",
+        "tinos hebrew" => "Tinos Hebrew",
         // An unknown CSS family is measured and delivered as Carlito, the bundled
         // Calibri-metric face. Leaving the request unchanged made layout use the
         // fallback model while the SVG named a face the viewer does not have.
@@ -45,8 +47,11 @@ pub fn known_family(family: &str) -> Option<&'static str> {
 
 /// Bundled face that draws `ch` when the `base` face has no glyph for it.
 ///
-/// The metric-compatible faces cover Latin, Greek, Cyrillic and Hebrew only;
-/// Word and WPS draw Arabic and Tibetan from a font that has them (WQ-004).
+/// The metric-compatible faces cover Latin, Greek and Cyrillic; Arimo, Tinos
+/// and Cousine cover Hebrew too, Carlito and Caladea do not, though the
+/// Calibri and Cambria they stand for do. Word and WPS draw Arabic and Tibetan
+/// from a font that has them (WQ-004), and Hebrew in Calibri from Calibri:
+/// here it comes from Arimo's or Tinos' Hebrew.
 /// Arabic next to a sans face (Arial, Tahoma via Arimo) takes the sans
 /// Arabic design, otherwise the Naskh one, which is the style of Times New
 /// Roman's and Traditional Arabic's Arabic. Urdu set in a Nastaliq family
@@ -65,6 +70,11 @@ pub fn script_fallback(base: &str, ch: char) -> Option<&'static str> {
             "Noto Naskh Arabic"
         }),
         '\u{0F00}'..='\u{0FFF}' => Some("Jomolhari"),
+        '\u{0590}'..='\u{05FF}' | '\u{FB1D}'..='\u{FB4F}' => Some(if base == "Caladea" {
+            "Tinos Hebrew"
+        } else {
+            "Arimo Hebrew"
+        }),
         _ => None,
     }
 }
@@ -78,7 +88,7 @@ pub fn script_fallback(base: &str, ch: char) -> Option<&'static str> {
 pub fn is_script_fallback(family: &str) -> bool {
     matches!(
         family,
-        "Noto Naskh Arabic" | "Noto Sans Arabic" | "Jomolhari"
+        "Noto Naskh Arabic" | "Noto Sans Arabic" | "Jomolhari" | "Arimo Hebrew" | "Tinos Hebrew"
     )
 }
 
