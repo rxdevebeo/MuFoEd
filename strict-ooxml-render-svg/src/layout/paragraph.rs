@@ -3446,8 +3446,7 @@ fn finish_line(
 
     warn_line_overflow(ctx, &line, right_edge);
 
-    let (mut height, mut ascent) =
-        resolve_line_metrics(ctx, computed, line.items.first(), grid_line_pitch);
+    let (mut height, mut ascent) = line_box(ctx, computed, &line.items, last, grid_line_pitch);
     (height, ascent) = resolve_math_line_metrics(&mut line, height, ascent);
     if computed.line_rule != LineSpacingRule::Exact {
         let extra_above = line
@@ -3673,6 +3672,43 @@ fn item_right(item: &Item) -> f64 {
 }
 
 /// Computes line height and ascent for a line given its first item.
+/// The line box of a whole line: the largest ascent and the largest descent
+/// among its runs, the paragraph mark's included on the last line, as Word
+/// sets a line with a larger word in it (CC0_RTF/075: 28 pt spaces in a
+/// 14 pt line set it 7 pt lower). The first run alone decided before. An
+/// exact line height does not depend on the runs and keeps the first's
+/// baseline rule.
+fn line_box(
+    ctx: &LayoutContext<'_>,
+    computed: &ComputedParagraph,
+    items: &[TextItem],
+    last: bool,
+    grid_line_pitch: Option<f64>,
+) -> (f64, f64) {
+    let first = resolve_line_metrics(ctx, computed, items.first(), grid_line_pitch);
+    if computed.line_rule == LineSpacingRule::Exact || items.is_empty() {
+        return first;
+    }
+    let mut ascent = first.1;
+    let mut descent = first.0 - first.1;
+    let mut take = |(height, item_ascent): (f64, f64)| {
+        ascent = ascent.max(item_ascent);
+        descent = descent.max(height - item_ascent);
+    };
+    for item in items.iter().skip(1) {
+        take(resolve_line_metrics(
+            ctx,
+            computed,
+            Some(item),
+            grid_line_pitch,
+        ));
+    }
+    if last {
+        take(resolve_line_metrics(ctx, computed, None, grid_line_pitch));
+    }
+    (ascent + descent, ascent)
+}
+
 fn resolve_line_metrics(
     ctx: &LayoutContext<'_>,
     computed: &ComputedParagraph,
