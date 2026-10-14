@@ -7,6 +7,7 @@ mod ids;
 mod moves;
 mod notes;
 mod revisions;
+mod rich;
 mod sections;
 mod tables;
 mod validate;

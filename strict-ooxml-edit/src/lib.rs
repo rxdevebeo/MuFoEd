@@ -180,6 +180,9 @@ pub enum Unsupported {
     Target,
     /// A cached field result, which the field's next update would overwrite.
     FieldResult,
+    /// An inline content control, which two paragraphs cannot each hold half
+    /// of: it has one identity.
+    Indivisible,
 }
 impl std::fmt::Display for Unsupported {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -190,6 +193,7 @@ impl std::fmt::Display for Unsupported {
             Self::OpaqueDrawing => "an opaque drawing",
             Self::Target => "a target of another kind than the command needs",
             Self::FieldResult => "a cached field result",
+            Self::Indivisible => "an inline content control that cannot be divided",
         })
     }
 }

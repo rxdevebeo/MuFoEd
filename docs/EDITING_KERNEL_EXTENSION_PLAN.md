@@ -15,7 +15,7 @@
 | K03 сноски | сделано (2026-10-14) | `Edit::InsertNote` (следующий положительный id, знак номера, ссылка-ран), `Edit::DeleteNote` (in-use → отказ; ссылка удаляется `DeleteInline` в той же транзакции); `split_shared_notes` как был |
 | K04 секции/колонтитулы | частично (2026-10-14) | есть: `Edit::SectionProperties`, `InsertSectionBreak`, `RemoveSectionBreak { keep_after }`; нет: создание/прикрепление частей колонтитулов (нужен overlay K05) |
 | K05 новые изображения | не начато | `Edit::Drawing` меняет геометрию, байты — из исходного `Source` |
-| K06 rich split/join, move | частично (2026-10-14) | есть: `Edit::Move` — блок между контейнерами одной истории (тело, ячейка, SDT, текстовое поле) с сохранением paraId; нет: rich split/join, фрагменты, перенос между историями; `Operations::move_block` по-прежнему выдаёт новые id |
+| K06 rich split/join, move | частично (2026-10-14) | есть: `Edit::Move` — блок между контейнерами одной истории (тело, ячейка, SDT, текстовое поле) с сохранением paraId; `Edit::SplitAt` — разрез в точке дерева inline (гиперссылки/bidi продолжаются справа; поле, inline SDT, отслеживаемый ран — отказ); `Join` любых абзацев; нет: фрагменты/CopyNodes, перенос между историями; `Operations::move_block` по-прежнему выдаёт новые id |
 | K07 accept/reject, трекинг | частично | есть: `AcceptRevisions`/`RejectRevisions`, `Operations::accept_all`/`reject_all`, `TrackedText`; нет: выбор по id/диапазону, парность move, трекинг знака абзаца, `rPrChange`/`pPrChange` в модели |
 | K08 поля/TOC | не начато | есть защита `Unsupported::FieldResult` |
 | K09 merge/split cells | сделано (2026-10-14) | `Edit::MergeCells { rows, columns }`, `Edit::SplitCell { row, column, rows, columns }` по логической сетке; тесты `tests/tables.rs` |

@@ -160,6 +160,30 @@ pub(super) fn apply(
                 p.props.section = None;
                 blocks.insert(at.block + 1, Block::Paragraph(right));
             }
+            Edit::SplitAt {
+                inline,
+                content,
+                offset,
+                ..
+            } => {
+                let p = paragraph_mut(blocks, at.block)?;
+                let mut left = p.clone();
+                let point = super::rich::Point {
+                    inline,
+                    content: *content,
+                    offset: *offset,
+                };
+                let after = super::rich::split(&mut left, &point, limits.grapheme_boundaries)?;
+                assign_id(&mut left, ids, false)?;
+                let mut right = left.clone();
+                right.inlines = after;
+                // The original mark, tracked or not, ends the right half.
+                left.revision = None;
+                left.props.section = None;
+                assign_id(&mut right, ids, true)?;
+                *p = left;
+                blocks.insert(at.block + 1, Block::Paragraph(right));
+            }
             Edit::Join { .. } => {
                 let mut left = paragraph_mut(blocks, at.block)?.clone();
                 let right = paragraph_mut(blocks, at.block + 1)?.clone();
@@ -171,12 +195,9 @@ pub(super) fn apply(
                 if left.revision.is_some() || right.revision.is_some() {
                     return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
                 }
-                let a = crate::plain_runs(&left, limits.paragraph_scalars)?;
-                let b = crate::plain_runs(&right, limits.paragraph_scalars)?;
-                if a.iter()
-                    .chain(&b)
-                    .map(|(_, t)| t.chars().count())
-                    .sum::<usize>()
+                // Whatever the two hold moves as it is; only the size counts.
+                if super::rich::scalars(&left.inlines)
+                    .saturating_add(super::rich::scalars(&right.inlines))
                     > limits.paragraph_scalars
                 {
                     return Err(EditError::LimitExceeded);
