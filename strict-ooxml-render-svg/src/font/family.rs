@@ -11,10 +11,61 @@ pub fn map_family(family: &str) -> &'static str {
     known_family(family).unwrap_or("Carlito")
 }
 
+/// Script qualifiers RTF and Word append to a family name (`Times New Roman
+/// Cyr`, `Arial CE`, `Calibri (Hebrew)`): the same design, which otherwise
+/// fell to the Carlito wildcard (RTF RC04, doc 054; restored after merge
+/// 5274d07f dropped it).
+const SCRIPT_SUFFIXES: [&str; 15] = [
+    "cyr",
+    "cyrillic",
+    "ce",
+    "baltic",
+    "greek",
+    "tur",
+    "turkish",
+    "latin",
+    "hebrew",
+    "arabic",
+    "vietnamese",
+    "thai",
+    "devanagari",
+    "complex",
+    "central european",
+];
+
+/// A trimmed, lower-cased name without one trailing `(...)` tag or one
+/// trailing script word.
+fn base_family(name: &str) -> &str {
+    if name.ends_with(')') {
+        if let Some(base) = name.rfind(" (").and_then(|open| name.get(..open)) {
+            return base;
+        }
+    }
+    for suffix in SCRIPT_SUFFIXES {
+        if let Some(stripped) = name
+            .strip_suffix(suffix)
+            .and_then(|rest| rest.strip_suffix(' '))
+        {
+            return stripped;
+        }
+    }
+    name
+}
+
 /// Returns a bundled face only for a recognized family or alias.
 #[must_use]
 pub fn known_family(family: &str) -> Option<&'static str> {
-    Some(match family.trim().to_ascii_lowercase().as_str() {
+    let name = family.trim().to_ascii_lowercase();
+    // The exact name first: the script faces ("Arimo Hebrew", "Noto Sans
+    // Arabic") end in a qualifier word and map to themselves.
+    exact_family(&name).or_else(|| {
+        let base = base_family(&name);
+        (base != name).then(|| exact_family(base)).flatten()
+    })
+}
+
+fn exact_family(name: &str) -> Option<&'static str> {
+    Some(match name {
         "calibri" | "carlito" => "Carlito",
         // Calibri is the wildcard below: it is the family Carlito metrics match.
         "cambria" | "caladea" => "Caladea",
@@ -23,7 +74,10 @@ pub fn known_family(family: &str) -> Option<&'static str> {
         // names (STAGE-5C-REWORK-1 D1).
         // Regular PostScript names used by Cocoa RTF producers (name ID 6).
         // Font style still comes from the run's bold/italic properties.
-        "arial" | "arialmt" | "helvetica" | "liberation sans" | "arimo" => "Arimo",
+        // Verdana, Tahoma and Helvetica Neue: WPS sets them at Arial-metric line
+        // height (RTF 072: 16.1 pt against Carlito's 17.1 pt).
+        "arial" | "arialmt" | "helvetica" | "helvetica neue" | "helveticaneue" | "verdana"
+        | "tahoma" | "liberation sans" | "arimo" => "Arimo",
         "times new roman" | "timesnewromanpsmt" | "liberation serif" | "tinos" => "Tinos",
         "courier new" | "liberation mono" | "cousine" => "Cousine",
         // The math family of Word documents (Stage 5C, §9.1): STIX Two Math
@@ -188,6 +242,36 @@ mod tests {
         );
         // Styled PostScript names need their weight/slant resolved as well;
         // a family-only alias must not silently discard those properties.
-        assert_eq!(map_family("Arial-BoldMT"), "Arial-BoldMT");
+        assert_eq!(super::known_family("Arial-BoldMT"), None);
+    }
+
+    #[test]
+    fn maps_the_common_sans_families_to_arimo() {
+        for family in ["Verdana", "Tahoma", "Helvetica Neue", "HelveticaNeue"] {
+            assert_eq!(map_family(family), "Arimo", "{family}");
+        }
+    }
+
+    #[test]
+    fn strips_script_qualifiers_before_mapping() {
+        assert_eq!(map_family("Times New Roman Cyr"), "Tinos");
+        assert_eq!(map_family("Times New Roman CE"), "Tinos");
+        assert_eq!(map_family("Times New Roman Baltic"), "Tinos");
+        assert_eq!(map_family("Arial CYR"), "Arimo");
+        assert_eq!(map_family("Arial Greek"), "Arimo");
+        assert_eq!(map_family("Arial (Hebrew)"), "Arimo");
+        assert_eq!(map_family("Cambria (Vietnamese)"), "Caladea");
+        assert_eq!(map_family("Courier New Tur"), "Cousine");
+        // A qualifier is not a family: an unknown base stays unknown.
+        assert_eq!(super::known_family("Courier"), None);
+        // The script faces keep their own names.
+        for family in [
+            "Arimo Hebrew",
+            "Tinos Hebrew",
+            "Noto Sans Arabic",
+            "Noto Naskh Arabic",
+        ] {
+            assert_eq!(map_family(family), family);
+        }
     }
 }
