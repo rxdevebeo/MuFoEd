@@ -40,6 +40,10 @@ struct ManifestAsset {
     sha256: String,
     #[serde(default)]
     face_index: u32,
+    /// Also draw what a run's face lacks, for text in this language (BCP 47;
+    /// empty for any): a CJK pack (`xtool/fonts/fetch_noto_cjk.py`).
+    #[serde(default)]
+    fallback: Option<String>,
     #[serde(default)]
     resolved_family: Option<String>,
     #[serde(default)]
@@ -177,11 +181,13 @@ fn load(manifest_path: &str) -> Result<Vec<FontAsset>, String> {
         file.take(cap.saturating_add(1))
             .read_to_end(&mut bytes)
             .map_err(|error| format!("{label} cannot read {}: {error}", path.display()))?;
-        assets.push(
-            FontAsset::new(&asset.family, asset.bold, asset.italic, bytes)
-                .face_index(asset.face_index)
-                .pinned(pin),
-        );
+        let mut program = FontAsset::new(&asset.family, asset.bold, asset.italic, bytes)
+            .face_index(asset.face_index)
+            .pinned(pin);
+        if let Some(language) = &asset.fallback {
+            program = program.fallback(language);
+        }
+        assets.push(program);
     }
     Ok(assets)
 }

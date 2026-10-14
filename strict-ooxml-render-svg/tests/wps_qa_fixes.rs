@@ -373,8 +373,8 @@ fn hebrew_in_calibri_is_drawn_and_keeps_the_line_box() {
         lines[1] - lines[0]
     };
     for (font, fallback) in [
-        ("Calibri", "Arimo Hebrew"),
-        ("Cambria", "Tinos Hebrew"),
+        ("Calibri", "Arimo Fallback"),
+        ("Cambria", "Tinos Fallback"),
         ("Arial", "Arimo"),
     ] {
         let hebrew = place(font, "שלום עולם");

@@ -137,6 +137,9 @@ pub struct FontPrograms {
     pub faces: BTreeMap<(String, bool, bool), Arc<FontProgram>>,
     /// Unavailable programs reported by layout.
     pub(crate) warnings: Vec<String>,
+    /// Caller programs that draw what a run's face lacks
+    /// ([`super::assets::FontAsset::fallback`]), in the caller's order.
+    pub fallbacks: Vec<super::assets::ScriptFallback>,
 }
 impl FontPrograms {
     /// The document's embedded fonts, then the caller's `assets` for every
@@ -154,6 +157,7 @@ impl FontPrograms {
                     .entry(key.clone())
                     .or_insert_with(|| Arc::clone(program));
             }
+            result.fallbacks = assets.fallbacks().to_vec();
         }
         result
     }
@@ -245,7 +249,68 @@ impl FontPrograms {
     }
     /// Looks up its stable resource name.
     pub fn for_resource(&self, family: &str) -> Option<&Arc<FontProgram>> {
-        self.faces.values().find(|program| program.family == family)
+        self.faces
+            .values()
+            .chain(self.fallbacks.iter().map(|fallback| &fallback.program))
+            .find(|program| program.family == family)
+    }
+
+    /// Whether the resource `family` is drawing only as a fallback: it keeps
+    /// the line box of the face the run asked for.
+    #[must_use]
+    pub fn is_fallback(&self, family: &str) -> bool {
+        self.fallbacks
+            .iter()
+            .any(|fallback| fallback.program.family == family)
+    }
+
+    /// The fallback program that draws `ch` for a run in `language` (BCP 47,
+    /// any case) and style. Preferred, in order: the longest language tag
+    /// that is a prefix of the run's (kana is `ja` and hangul `ko` whatever
+    /// the run says), then the run's style, then the caller's order.
+    #[must_use]
+    pub fn fallback_for(
+        &self,
+        ch: char,
+        language: Option<&str>,
+        bold: bool,
+        italic: bool,
+    ) -> Option<&Arc<FontProgram>> {
+        let script = match ch {
+            '\u{3040}'..='\u{30FF}' | '\u{31F0}'..='\u{31FF}' | '\u{FF66}'..='\u{FF9F}' => {
+                Some("ja")
+            }
+            '\u{1100}'..='\u{11FF}' | '\u{3130}'..='\u{318F}' | '\u{AC00}'..='\u{D7AF}' => {
+                Some("ko")
+            }
+            _ => None,
+        };
+        let language = language.map(str::to_ascii_lowercase);
+        let wanted = script.or(language.as_deref()).unwrap_or("");
+        let mut best: Option<((usize, u8), &Arc<FontProgram>)> = None;
+        for fallback in &self.fallbacks {
+            let tag = fallback.language.as_str();
+            let matches = tag.is_empty()
+                || wanted == tag
+                || wanted
+                    .strip_prefix(tag)
+                    .is_some_and(|rest| rest.starts_with('-'));
+            if !matches || fallback.program.advance_em(ch).is_none() {
+                continue;
+            }
+            let style = u8::from(fallback.bold == bold) * 2 + u8::from(fallback.italic == italic);
+            let score = (tag.len(), style);
+            if best.is_none_or(|(top, _)| score > top) {
+                best = Some((score, &fallback.program));
+            }
+        }
+        best.map(|(_, program)| program).or_else(|| {
+            // No program for the language: any that has the glyph beats none.
+            self.fallbacks
+                .iter()
+                .find(|fallback| fallback.program.advance_em(ch).is_some())
+                .map(|fallback| &fallback.program)
+        })
     }
 }
 /// Returns the font bytes this run measures and paints.
@@ -267,14 +332,17 @@ pub fn run_face_source<'a>(
 /// Effective vertical metrics, including a document-supplied font.
 ///
 /// A script fallback face keeps the line box of the face the run asked for
-/// ([`super::family::is_script_fallback`]).
+/// ([`super::family::is_script_fallback`], [`FontPrograms::is_fallback`]).
 pub fn run_metrics(
     run: &crate::style::ComputedRun,
     family: &str,
     provider: &dyn super::FontProvider,
 ) -> FontMetrics {
     if let Some(program) = run.font_programs.for_resource(family) {
-        return program.metrics;
+        if !run.font_programs.is_fallback(family) {
+            return program.metrics;
+        }
+        return provider.metrics(crate::style::script_line_family(run), run.bold, run.italic);
     }
     let line_family = if super::family::is_script_fallback(family) {
         crate::style::script_line_family(run)
@@ -326,6 +394,53 @@ pub fn run_advance_em(
 mod tests {
     use super::word_line_metrics;
     use skrifa::FontRef;
+
+    /// Kana goes to the Japanese program, hangul to the Korean one, Han by
+    /// the run's language; a style match only breaks ties within a language.
+    #[test]
+    fn a_fallback_is_chosen_by_script_then_language_then_style() {
+        use super::super::assets::ScriptFallback;
+        use super::{FontProgram, FontPrograms};
+        use std::sync::Arc;
+        // STIX stands in for a CJK face: the choice is checked on a glyph it
+        // has, with the script read from the character the tests pass.
+        let source = super::super::face_source("STIX Two Math", false, false).expect("STIX");
+        let program = Arc::new(FontProgram::from_bytes(source.data.to_vec(), "T").expect("font"));
+        let entry = |language: &str, bold: bool| ScriptFallback {
+            language: language.to_owned(),
+            bold,
+            italic: false,
+            program: Arc::new((*program).clone()),
+        };
+        let programs = FontPrograms {
+            fallbacks: vec![
+                entry("zh-cn", false),
+                entry("zh-tw", false),
+                entry("ja", false),
+                entry("ja", true),
+            ],
+            ..FontPrograms::default()
+        };
+        let pick = |language: Option<&str>, bold: bool| {
+            let chosen = programs
+                .fallback_for('A', language, bold, false)
+                .expect("a program");
+            programs
+                .fallbacks
+                .iter()
+                .position(|fallback| Arc::ptr_eq(&fallback.program, chosen))
+        };
+        assert_eq!(
+            pick(None, false),
+            Some(0),
+            "no language: the caller's order"
+        );
+        assert_eq!(pick(Some("zh-TW"), false), Some(1));
+        assert_eq!(pick(Some("zh-HK"), false), Some(0), "no zh-hk program");
+        assert_eq!(pick(Some("ja-JP"), false), Some(2));
+        assert_eq!(pick(Some("ja-JP"), true), Some(3));
+        assert_eq!(programs.fallback_for('\u{AC00}', None, false, false), None);
+    }
 
     /// Carlito carries Calibri's metrics: Word's single line is 1.2207 em,
     /// the Windows box with no external leading.

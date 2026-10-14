@@ -396,7 +396,7 @@ $script:AllowedFields = @{
     'corpus-scan' = @('id', 'kind', 'sha', 'set')
     'bench'       = @('id', 'kind', 'sha', 'bench')
     'wps'         = @('id', 'kind', 'sha')
-    'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts')
+    'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts', 'font_pack')
     'rtf'         = @('id', 'kind', 'sha')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
@@ -560,6 +560,11 @@ function Test-JobRecord {
             foreach ($flag in @('capture', 'recompare', 'system_fonts')) {
                 if ($fields -contains $flag -and $Job.$flag -isnot [bool]) {
                     return (& $reject ("{0} must be true or false" -f $flag))
+                }
+            }
+            if ($fields -contains 'font_pack') {
+                if ($Job.font_pack -isnot [string] -or [string]$Job.font_pack -notmatch '^[a-z0-9][a-z0-9-]{0,31}$') {
+                    return (& $reject 'font_pack is not a pack name')
                 }
             }
             if ($fields -contains 'minutes') {
@@ -1147,6 +1152,16 @@ function Invoke-WpsQa {
     if ($null -ne $Job.PSObject.Properties['system_fonts'] -and [bool]$Job.system_fonts) {
         $label += '-sysfonts'
         $renderExtra = @('--to-pdf-arg=--system-fonts')
+    }
+    # A font pack under testdata\fonts\<name> (manifest.json, e.g. from
+    # xtool/fonts/fetch_noto_cjk.py): to-pdf --fonts, a label of its own too.
+    if ($null -ne $Job.PSObject.Properties['font_pack']) {
+        $manifest = Join-Path $Repo ('testdata\fonts\' + [string]$Job.font_pack + '\manifest.json')
+        if (-not (Test-Path -LiteralPath $manifest)) {
+            return (New-Result 'error' ('wps-qa: no font pack manifest at {0}' -f $manifest) $steps @())
+        }
+        $label += '-' + [string]$Job.font_pack
+        $renderExtra += @('--to-pdf-arg=--fonts', ('--to-pdf-arg=' + $manifest))
     }
     $store = Join-Path $Repo 'wps-qa'
     $scope = @('--data-root', $Repo, '--store', $store)

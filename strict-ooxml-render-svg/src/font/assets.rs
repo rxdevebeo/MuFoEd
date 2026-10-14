@@ -27,6 +27,7 @@ pub struct FontAsset {
     bytes: Arc<[u8]>,
     face_index: u32,
     sha256: Option<[u8; 32]>,
+    fallback: Option<String>,
 }
 
 impl FontAsset {
@@ -41,6 +42,7 @@ impl FontAsset {
             bytes: bytes.into(),
             face_index: 0,
             sha256: None,
+            fallback: None,
         }
     }
 
@@ -55,6 +57,17 @@ impl FontAsset {
     #[must_use]
     pub fn pinned(mut self, sha256: [u8; 32]) -> Self {
         self.sha256 = Some(sha256);
+        self
+    }
+
+    /// Lets the program also draw what a run's face lacks, for text in
+    /// `language` (a BCP 47 tag such as `ja` or `zh-TW`; empty for any): a CJK
+    /// pack covers documents whose East Asian fonts are missing. The run keeps
+    /// the line box of the face it asked for, as with the bundled script
+    /// faces.
+    #[must_use]
+    pub fn fallback(mut self, language: &str) -> Self {
+        self.fallback = Some(language.trim().to_ascii_lowercase());
         self
     }
 
@@ -137,7 +150,22 @@ impl std::error::Error for FontAssetError {}
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FontAssets {
     faces: Vec<((String, bool, bool), Arc<FontProgram>)>,
+    fallbacks: Vec<ScriptFallback>,
     set_hash: [u8; 32],
+}
+
+/// A caller program that draws characters a run's face lacks
+/// ([`FontAsset::fallback`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScriptFallback {
+    /// Lower-cased BCP 47 tag the program is meant for; empty for any.
+    pub language: String,
+    /// The style the program is.
+    pub bold: bool,
+    /// The style the program is.
+    pub italic: bool,
+    /// The program.
+    pub program: Arc<FontProgram>,
 }
 
 impl FontAssets {
@@ -155,6 +183,7 @@ impl FontAssets {
         let mut total = 0usize;
         let mut faces: Vec<((String, bool, bool), Arc<FontProgram>)> =
             Vec::with_capacity(assets.len());
+        let mut fallbacks = Vec::new();
         for asset in assets {
             if asset.bytes.len() > limits.max_asset_bytes {
                 return Err(FontAssetError::TooLarge(asset.family));
@@ -176,7 +205,27 @@ impl FontAssets {
                 .ok_or_else(|| FontAssetError::Invalid(asset.family.clone()))?;
             let program = FontProgram::from_bytes(bytes, "ASSET")
                 .ok_or_else(|| FontAssetError::Invalid(asset.family.clone()))?;
-            faces.push((key, Arc::new(program)));
+            let program = Arc::new(program);
+            if let Some(language) = asset.fallback {
+                // A resource name of its own (the bytes are shared): a run the
+                // fallback draws keeps its own line box, a run that names the
+                // family takes the program's.
+                let mut fallback = (*program).clone();
+                fallback.family = format!(
+                    "FALLBACK{}",
+                    program
+                        .family
+                        .strip_prefix("ASSET")
+                        .unwrap_or(&program.family)
+                );
+                fallbacks.push(ScriptFallback {
+                    language,
+                    bold: asset.bold,
+                    italic: asset.italic,
+                    program: Arc::new(fallback),
+                });
+            }
+            faces.push((key, program));
         }
         faces.sort_by(|(a, _), (b, _)| a.cmp(b));
         let mut hasher = Sha256::new();
@@ -185,8 +234,15 @@ impl FontAssets {
             hasher.update([u8::from(*bold), u8::from(*italic)]);
             hasher.update(program.hash);
         }
+        // In the caller's order, which breaks ties between equal candidates.
+        for fallback in &fallbacks {
+            hasher.update(b"\0fallback\0");
+            hasher.update(fallback.language.as_bytes());
+            hasher.update(fallback.program.hash);
+        }
         Ok(Self {
             faces,
+            fallbacks,
             set_hash: hasher.finalize().into(),
         })
     }
@@ -220,6 +276,12 @@ impl FontAssets {
             .collect();
         families.dedup();
         families
+    }
+
+    /// The programs that draw what a run's face lacks, in the caller's order.
+    #[must_use]
+    pub fn fallbacks(&self) -> &[ScriptFallback] {
+        &self.fallbacks
     }
 
     /// The programs, keyed by lower-cased family and style.

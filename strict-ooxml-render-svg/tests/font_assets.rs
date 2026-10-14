@@ -230,3 +230,32 @@ fn a_no_subset_font_goes_whole_into_svg() {
         .iter()
         .any(|warning| warning.starts_with("font.embedding.no-subset")));
 }
+
+/// A fallback program draws what the run's face lacks, under a resource name
+/// of its own; without the flag the same program only answers to its family.
+#[test]
+fn a_fallback_program_draws_what_the_face_lacks() {
+    // U+2A00 (n-ary circled dot): in STIX Two Math, not in Carlito.
+    let body = "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\"/></w:rPr>\
+<w:t>\u{2A00}</w:t></w:r></w:p>";
+    let stix = face_source("STIX Two Math", false, false).expect("bundled STIX");
+    let render_with = |asset: FontAsset| {
+        let assets = FontAssets::new(vec![asset], FontAssetLimits::default()).expect("assets");
+        let (package, document) = open_body(body);
+        let options = RenderOptions::default().font_assets(Arc::new(assets));
+        render_with_media(&document, &options, Some(&package)).expect("render")
+    };
+    let plain = render_with(FontAsset::new(
+        "Pack Math",
+        false,
+        false,
+        stix.data.to_vec(),
+    ));
+    assert!(
+        !plain[0].svg.contains("FALLBACK-"),
+        "not offered as a fallback"
+    );
+    let fallback =
+        render_with(FontAsset::new("Pack Math", false, false, stix.data.to_vec()).fallback(""));
+    assert!(fallback[0].svg.contains("FALLBACK-"), "{}", fallback[0].svg);
+}

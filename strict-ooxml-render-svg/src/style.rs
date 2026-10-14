@@ -1029,8 +1029,37 @@ pub fn chosen_family(run: &ComputedRun, text: &str) -> String {
         if let Some(script) = script {
             return script.to_owned();
         }
+        if let Some(program) = supplied_fallback(run, &base, text) {
+            return program;
+        }
     }
     base
+}
+
+/// The caller's fallback program ([`crate::font::FontAsset::fallback`]) for
+/// the first character of `text` that the bundled `base` cannot draw and a
+/// program can: East Asian text by the run's East Asian language, the rest
+/// by its ordinary one.
+fn supplied_fallback(run: &ComputedRun, base: &str, text: &str) -> Option<String> {
+    if run.font_programs.fallbacks.is_empty() {
+        return None;
+    }
+    text.chars().find_map(|ch| {
+        if ch.is_whitespace()
+            || ch.is_control()
+            || crate::font::builtin::bundled_has_glyph(base, ch)
+        {
+            return None;
+        }
+        let language = if crate::font::metrics::is_wide_character(ch) {
+            run.language.east_asia.as_deref()
+        } else {
+            run.language.val.as_deref()
+        };
+        run.font_programs
+            .fallback_for(ch, language, run.bold, run.italic)
+            .map(|program| program.family.clone())
+    })
 }
 
 /// The face that draws `text`: the one layout measured it with, unless that is
