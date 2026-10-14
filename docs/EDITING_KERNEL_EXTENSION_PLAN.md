@@ -19,7 +19,7 @@
 | K07 accept/reject, трекинг | частично | есть: `AcceptRevisions`/`RejectRevisions`, `Operations::accept_all`/`reject_all`, `TrackedText`; нет: выбор по id/диапазону, парность move, трекинг знака абзаца, `rPrChange`/`pPrChange` в модели |
 | K08 поля/TOC | не начато | есть защита `Unsupported::FieldResult` |
 | K09 merge/split cells | сделано (2026-10-14) | `Edit::MergeCells { rows, columns }`, `Edit::SplitCell { row, column, rows, columns }` по логической сетке; тесты `tests/tables.rs` |
-| K10 импорт/слияние | не начато | |
+| K10 импорт/слияние | частично (2026-10-14) | есть: `Editor::import(revision, at, source, blocks)` — стили (побеждают стили назначения по id; недостающие — с basedOn/next/link и списками), списки — новыми экземплярами, закладки — новые id, конфликтующие имена отброшены, разрывы секций отброшены; нет: изображения/гиперссылки по r:id (нужен overlay K05), сноски, комментарии, списки через numStyleLink — `Unsupported::Import` |
 | K11 repair | не начато | |
 | K12 diff/EditReport/CLI | не начато | |
 | K13 графемы/ввод/hit | частично | есть: `EditLimits::grapheme_boundaries`, UTF-16 ↔ scalar; нет: IME, clipboard, hit по геометрии |
