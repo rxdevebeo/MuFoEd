@@ -1081,7 +1081,7 @@ impl PageWriter<'_> {
             let labels = crate::glyphs::cluster_labels(glyphs, unicode);
             for (index, glyph) in glyphs.iter().enumerate() {
                 if glyph.glyph_id == 0 {
-                    if let Some(ch) = unicode.chars().next() {
+                    for ch in unicode.chars() {
                         self.report.record_missing_glyph(&text.run.family, ch);
                     }
                     continue;
@@ -1150,7 +1150,7 @@ impl PageWriter<'_> {
             let labels = crate::glyphs::cluster_labels(glyphs, unicode);
             for (index, glyph) in glyphs.iter().enumerate() {
                 if glyph.glyph_id == 0 {
-                    if let Some(ch) = unicode.chars().next() {
+                    for ch in unicode.chars() {
                         self.report.record_missing_glyph(&text.run.family, ch);
                     }
                     continue;

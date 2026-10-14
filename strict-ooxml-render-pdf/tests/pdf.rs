@@ -236,6 +236,70 @@ fn non_bmp_math_font_text_is_extractable() {
     assert!(text.contains("Math𝑥"), "{text:?}");
 }
 
+/// A character the selected face lacks is a missing glyph of that face, not
+/// a missing face (restored after merge 5274d07f, 8e612a8e).
+#[test]
+fn a_missing_glyph_is_not_reported_as_a_missing_face() {
+    use strict_ooxml_testkit::DocxBuilder;
+    let bytes = DocxBuilder::strict()
+        .body("<w:p><w:r><w:t>&#x10FFFD;</w:t></w:r></w:p>")
+        .build();
+    let (_, _, report) = to_pdf(&bytes);
+    let ids: Vec<_> = report.losses().iter().map(|loss| loss.id).collect();
+    assert!(ids.contains(&"pdf.font.no_glyph"), "{:?}", report.losses());
+    assert!(!ids.contains(&"pdf.font.missing"), "{:?}", report.losses());
+}
+
+/// The eastAsia face is the one the PDF embeds for East Asian text, as the
+/// SVG chooses it (restored after merge 5274d07f, 81ab887a).
+#[test]
+fn east_asian_script_face_is_embedded_by_pdf_backend() {
+    use strict_ooxml_testkit::DocxBuilder;
+
+    let render = |family: &str| {
+        let body = format!(
+            "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\" w:eastAsia=\"{family}\"/></w:rPr><w:t>漢字。</w:t></w:r></w:p>"
+        );
+        let bytes = DocxBuilder::strict().body(&body).build();
+        to_pdf(&bytes).0
+    };
+    let arial = render("Arial");
+    let times = render("Times New Roman");
+    let font_names = |pdf: &[u8]| {
+        let document = lopdf::Document::load_mem(pdf).expect("PDF parses");
+        document
+            .objects
+            .values()
+            .filter_map(|object| object.as_dict().ok())
+            .filter(|dictionary| {
+                dictionary
+                    .get(b"Type")
+                    .ok()
+                    .and_then(|value| value.as_name().ok())
+                    == Some(&b"Font"[..])
+            })
+            .filter_map(|dictionary| {
+                dictionary
+                    .get(b"BaseFont")
+                    .ok()
+                    .and_then(|value| value.as_name().ok())
+                    .map(<[u8]>::to_vec)
+            })
+            .collect::<Vec<_>>()
+    };
+    let arial_names = font_names(&arial);
+    let times_names = font_names(&times);
+    assert!(arial_names
+        .iter()
+        .any(|name| name.windows(5).any(|part| part == b"Arimo")));
+    assert!(
+        times_names
+            .iter()
+            .any(|name| name.windows(5).any(|part| part == b"Tinos")),
+        "{times_names:?}"
+    );
+}
+
 /// SC-7: every font the pages use is embedded as a file, with an `Identity-H`
 /// encoding and a `ToUnicode` CMap: the two things that make the text
 /// selectable and searchable rather than glyph ids.
