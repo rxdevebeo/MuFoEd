@@ -2,15 +2,19 @@
 //!
 //! `--fonts <manifest.json>` names exact programs: the loader reads only the
 //! paths the manifest declares, pins each by SHA-256 and hands them to
-//! [`FontAssets`]. `--strict-fonts` refuses a rendering in which a font the
-//! document names is not available ([`FontPolicy::Reject`]).
+//! [`FontAssets`]. `--system-fonts` adds the installed fonts the document
+//! names (a manifest's binding wins over an installed one). `--strict-fonts`
+//! refuses a rendering in which a font the document names is not available
+//! ([`FontPolicy::Reject`]). The set used is printed with its hash.
 
 use std::io::Read as _;
 use std::path::Path;
 use std::sync::Arc;
 
 use serde::Deserialize;
-use strict_ooxml::{FontAsset, FontAssetLimits, FontAssets, FontPolicy, RenderOptions};
+use strict_ooxml::{
+    system_fonts, FontAsset, FontAssetLimits, FontAssets, FontPolicy, RenderOptions, StrictDocument,
+};
 
 /// The manifest schema, as RC02 defined it.
 const SCHEMA: &str = "strictlib.font-assets.v1";
@@ -52,6 +56,7 @@ struct ManifestAsset {
 #[derive(Default)]
 pub(super) struct FontArgs {
     manifest: Option<String>,
+    system: bool,
     strict: bool,
 }
 
@@ -73,19 +78,59 @@ impl FontArgs {
                 self.strict = true;
                 Ok(true)
             }
+            Some("--system-fonts") => {
+                self.system = true;
+                Ok(true)
+            }
             _ => Ok(false),
         }
     }
 
     /// Whether any font option was given.
     pub(super) fn is_set(&self) -> bool {
-        self.manifest.is_some() || self.strict
+        self.manifest.is_some() || self.system || self.strict
     }
 
-    /// `options` with the fonts and the policy these arguments ask for.
-    pub(super) fn apply(&self, mut options: RenderOptions) -> Result<RenderOptions, String> {
-        if let Some(manifest) = &self.manifest {
-            options = options.font_assets(load(manifest)?);
+    /// `options` with the fonts and the policy these arguments ask for, for
+    /// `document`.
+    pub(super) fn apply(
+        &self,
+        mut options: RenderOptions,
+        document: &StrictDocument,
+    ) -> Result<RenderOptions, String> {
+        let limits = FontAssetLimits::default();
+        let mut assets = match &self.manifest {
+            Some(manifest) => load(manifest)?,
+            None => Vec::new(),
+        };
+        if self.system {
+            let named = system_fonts::document_families(document.document());
+            let installed = system_fonts::assets_for(&named, system_fonts::index(), limits)
+                .map_err(|error| format!("installed fonts: {error}"))?;
+            let pinned: Vec<_> = assets.iter().map(FontAsset::key).collect();
+            assets.extend(
+                installed
+                    .into_iter()
+                    .filter(|asset| !pinned.contains(&asset.key())),
+            );
+        }
+        if !assets.is_empty() {
+            let set = FontAssets::new(assets, limits)
+                .map_err(|error| format!("fonts rejected: {error}"))?;
+            let hash = set
+                .set_hash()
+                .iter()
+                .fold(String::with_capacity(64), |mut hex, byte| {
+                    use std::fmt::Write as _;
+                    let _ = write!(hex, "{byte:02x}");
+                    hex
+                });
+            eprintln!(
+                "fonts: {} program(s) [{}], set sha256 {hash}",
+                set.len(),
+                set.families().join(", ")
+            );
+            options = options.font_assets(Arc::new(set));
         }
         if self.strict {
             options = options.font_policy(FontPolicy::Reject);
@@ -96,7 +141,7 @@ impl FontArgs {
 
 /// Loads a manifest and the programs it names; paths are relative to the
 /// manifest's directory.
-fn load(manifest_path: &str) -> Result<Arc<FontAssets>, String> {
+fn load(manifest_path: &str) -> Result<Vec<FontAsset>, String> {
     let bytes = std::fs::read(manifest_path)
         .map_err(|error| format!("cannot read font manifest {manifest_path}: {error}"))?;
     let manifest: Manifest = serde_json::from_slice(&bytes)
@@ -138,9 +183,7 @@ fn load(manifest_path: &str) -> Result<Arc<FontAssets>, String> {
                 .pinned(pin),
         );
     }
-    FontAssets::new(assets, limits)
-        .map(Arc::new)
-        .map_err(|error| format!("font manifest rejected: {error}"))
+    Ok(assets)
 }
 
 fn decode_sha256(text: &str) -> Option<[u8; 32]> {

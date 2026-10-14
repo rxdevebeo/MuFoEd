@@ -63,6 +63,13 @@ impl FontAsset {
     pub fn family(&self) -> &str {
         &self.family
     }
+
+    /// The lower-cased family and the style: what two programs of one set
+    /// may not share.
+    #[must_use]
+    pub fn key(&self) -> (String, bool, bool) {
+        (self.family.to_lowercase(), self.bold, self.italic)
+    }
 }
 
 /// Bounds on a set of caller-supplied fonts, checked before any is parsed.

@@ -13,6 +13,8 @@ pub mod family;
 pub mod metrics;
 pub mod shape;
 mod symbol;
+#[cfg(feature = "system-fonts")]
+pub mod system;
 
 pub use symbol::present_text;
 

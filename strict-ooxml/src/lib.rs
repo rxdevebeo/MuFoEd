@@ -150,6 +150,9 @@ pub use strict_ooxml_render_pdf::{
     render as render_pdf_pages, render_with_source as render_pdf_pages_with_source, PdfLoss,
     PdfOutput, PdfReport,
 };
+/// The machine's installed fonts (feature `system-fonts`).
+#[cfg(feature = "system-fonts")]
+pub use strict_ooxml_render_svg::font::system as system_fonts;
 #[cfg(feature = "svg")]
 pub use strict_ooxml_render_svg::font::{FontAsset, FontAssetError, FontAssetLimits, FontAssets};
 #[cfg(feature = "svg")]
