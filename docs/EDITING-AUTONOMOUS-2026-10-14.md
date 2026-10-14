@@ -18,7 +18,7 @@
 | 6 | K07: `AcceptRevision`/`RejectRevision` по id, `TrackedSplit`/`TrackedJoin`; `apply_list`/`remove_list` | см. `master` `2eacbbf` | влито |
 | 7 | K12-lite: `diff(before, after, mode)` — типизированный список изменений | `a90c70d` | влито |
 | 8 | Исправление: paraId удалённого абзаца не переиспользуется в сессии | `6da844e`, `d27a077` | влито |
-| 9 | K06 (часть): `Edit::Move` между контейнерами одной истории, id сохраняются | — | гейт |
+| 9 | K06 (часть): `Edit::Move` между контейнерами одной истории, id сохраняются | `889a7c1` | влито |
 
 Гейты: тесты 2052/0 на `2720378`; fmt+clippy на `dec0f4d` — зелёные.
 Всё до п. 6 влито в `master` `2eacbbf` (no-ff); полный гейт `2eacbbf` зелёный.
