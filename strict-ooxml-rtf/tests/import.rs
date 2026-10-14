@@ -887,3 +887,38 @@ fn physical_alignment_follows_the_paragraph_direction() {
         ]
     );
 }
+
+#[test]
+fn a_font_charset_that_cannot_be_decoded_reads_with_the_document_code_page() {
+    // `\fcharset256` is no charset; Word and WPS read the font's text with
+    // `\ansicpg`. The Mac CJK charsets read with the Windows code page of
+    // the same encoding.
+    let imported = import(
+        br"{\rtf1\ansi\ansicpg1252{\fonttbl{\f0\fnil\fcharset256 Times;}{\f1\fnil\fcharset78 Osaka;}}\f0 caf\'e9\f1  \'82\'a0\par}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    let Block::Paragraph(p) = &imported.document.body.blocks[0] else {
+        panic!("paragraph expected")
+    };
+    let text: String = p
+        .inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Run(r) => Some(r),
+            _ => None,
+        })
+        .flat_map(|r| &r.content)
+        .filter_map(|c| match c {
+            RunContent::Text(t) => Some(t.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(text, "café あ");
+    assert!(imported
+        .report
+        .issues
+        .iter()
+        .any(|issue| issue.feature == "font-encoding-fallback:256"
+            && issue.severity == Severity::Info));
+}

@@ -2181,22 +2181,28 @@ impl Parser<'_> {
             }
         }
         let mut column = 0u32;
-        for cell in &cells {
+        let mut orphans = 0usize;
+        for cell in &mut cells {
             let end = column
                 .checked_add(u32::from(cell.props.grid_span.unwrap_or(1)))
                 .ok_or(RtfError::Malformed {
                     offset: span.start,
                     reason: "merge grid overflow",
                 })?;
+            // A continuation with no merge above it in the same columns (the
+            // row above is cut differently, or has no `\clvmgf`) is a cell
+            // of its own to Word and WPS; it starts the merge that later
+            // continuations in its columns join.
             if cell.props.vertical_merge == Some(VerticalMerge::Continue)
                 && !previous_merges.contains_key(&(column, end))
             {
-                return malformed(
-                    span.start,
-                    "vertical merge continuation without matching predecessor",
-                );
+                cell.props.vertical_merge = Some(VerticalMerge::Restart);
+                orphans += 1;
             }
             column = end;
+        }
+        if orphans > 0 {
+            self.issue(span, Severity::Info, "table:orphan-vertical-merge")?;
         }
         self.table
             .as_mut()
@@ -2229,20 +2235,33 @@ impl Parser<'_> {
             if name.is_empty() {
                 return malformed(offset, "empty font name");
             }
-            self.fonts.insert(
-                id,
-                Font {
-                    name,
-                    charset: self.font_charset,
-                    codepage: self.font_codepage,
-                    theme: self.font_theme.take(),
-                    panose: {
-                        let panose = std::mem::take(&mut self.font_panose);
-                        let panose = panose.trim();
-                        (!panose.is_empty()).then(|| panose.to_string())
-                    },
+            let font = Font {
+                name,
+                charset: self.font_charset,
+                codepage: self.font_codepage,
+                theme: self.font_theme.take(),
+                panose: {
+                    let panose = std::mem::take(&mut self.font_panose);
+                    let panose = panose.trim();
+                    (!panose.is_empty()).then(|| panose.to_string())
                 },
-            );
+            };
+            // A charset or code page that cannot be decoded is read with the
+            // document's code page when the font is used (`select_font`).
+            let fallback = font_codepage(&font, self.document_codepage).is_none();
+            let charset = font.charset;
+            self.fonts.insert(id, font);
+            if fallback {
+                let span = RtfSpan {
+                    start: offset,
+                    end: offset,
+                };
+                self.issue(
+                    span,
+                    Severity::Info,
+                    format!("font-encoding-fallback:{charset}"),
+                )?;
+            }
         }
         Ok(())
     }
@@ -2250,33 +2269,16 @@ impl Parser<'_> {
         let Some(font) = self.fonts.get(&id) else {
             return self.issue(span, Severity::Loss, format!("undefined-font:{id}"));
         };
-        let cp = font
-            .codepage
-            .or(match font.charset {
-                0 | 1 => Some(self.document_codepage),
-                // Font-encoded glyphs use w:sym, never an ANSI decoder.
-                2 => Some(-2),
-                77 => Some(10000),
-                128 => Some(932),
-                129 => Some(949),
-                134 => Some(936),
-                136 => Some(950),
-                161 => Some(1253),
-                162 => Some(1254),
-                163 => Some(1258),
-                177 => Some(1255),
-                178 => Some(1256),
-                186 => Some(1257),
-                204 => Some(1251),
-                222 => Some(874),
-                238 => Some(1250),
-                _ => None,
-            })
-            .filter(|cp| matches!(*cp, -2 | 0) || codepage(*cp).is_some())
-            .ok_or(RtfError::InvalidEncoding {
+        // A charset or code page this importer cannot decode is read with the
+        // document's code page, as Word and WPS read it; the font definition
+        // reported that once (`font-encoding-fallback`).
+        let cp = font_codepage(font, self.document_codepage).unwrap_or(self.document_codepage);
+        if !(matches!(cp, -2 | 0) || codepage(cp).is_some()) {
+            return Err(RtfError::InvalidEncoding {
                 offset: span.start,
                 reason: "unsupported font charset/codepage",
-            })?;
+            });
+        }
         let face = Arc::<str>::from(font.name.as_str());
         if let Some(slot) = self
             .state
@@ -3434,6 +3436,13 @@ impl Parser<'_> {
             )
         {
             return self.issue(span, Severity::Info, format!("ole-control:{name}"));
+        }
+        // A shape property written straight into a picture (Nisus Writer:
+        // `{\pict ... {\sp {\sn fShadow}{\sv 0}} ...}`) describes the frame,
+        // not the image, and its text is not picture data; Word and WPS skip it.
+        if first && name == "sp" && self.state.destination == Destination::Picture {
+            self.state.skip = true;
+            return self.issue(span, Severity::Info, "picture:shape-property");
         }
         if first && name == "sp" && (self.shape.is_some() || self.group.is_some()) {
             self.shape_prop = Some(ShapePropDraft {
@@ -5299,6 +5308,37 @@ fn xml_char(c: char) -> bool {
         || ('\u{20}'..='\u{d7ff}').contains(&c)
         || ('\u{e000}'..='\u{fffd}').contains(&c)
         || c >= '\u{10000}'
+}
+/// The code page a font's text is in, when this importer can decode it.
+fn font_codepage(font: &Font, document: i32) -> Option<i32> {
+    font.codepage
+        .or(match font.charset {
+            0 | 1 => Some(document),
+            // Font-encoded glyphs use w:sym, never an ANSI decoder.
+            2 => Some(-2),
+            77 => Some(10000),
+            128 => Some(932),
+            129 => Some(949),
+            134 => Some(936),
+            136 => Some(950),
+            // The Mac CJK charsets (Shift_JIS, Hangul, GB2312, Big5 for the
+            // Mac) are read with the Windows code page of the same encoding.
+            78 => Some(932),
+            79 => Some(949),
+            80 => Some(936),
+            81 => Some(950),
+            161 => Some(1253),
+            162 => Some(1254),
+            163 => Some(1258),
+            177 => Some(1255),
+            178 => Some(1256),
+            186 => Some(1257),
+            204 => Some(1251),
+            222 => Some(874),
+            238 => Some(1250),
+            _ => None,
+        })
+        .filter(|cp| matches!(*cp, -2 | 0) || codepage(*cp).is_some())
 }
 fn codepage(cp: i32) -> Option<&'static encoding_rs::Encoding> {
     let label = match cp {
