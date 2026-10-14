@@ -18,7 +18,7 @@ pub mod system;
 
 pub use symbol::present_text;
 
-pub use assets::{FontAsset, FontAssetError, FontAssetLimits, FontAssets};
+pub use assets::{FontAsset, FontAssetError, FontAssetLimits, FontAssets, ScriptFallback};
 pub use builtin::{bundled_families, face_source, BuiltinFontProvider, FaceSource};
 pub use face::{hash_face_bytes, hash_face_bytes_hex, resolve_face, FaceId, ResolvedFace};
 pub use family::{map_family, substitute_width_scale};
