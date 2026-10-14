@@ -33,7 +33,48 @@ COLUMNS = [
     ("delta", "Δ score vs baseline"),
     ("import_status", "RTF import"),
     ("import_losses", "import losses"),
+    ("ref_fallback", "WPS fallback font share"),
 ]
+
+
+def _ref_fallback(store: Path, doc: common.Doc) -> float | None:
+    """Share of the reference drawn in WPS's fallback face, cached beside the
+    reference (keyed by its size and mtime: a new capture is read again)."""
+    pdf = store / "refs" / doc.corpus / f"{doc.key}.pdf"
+    if not pdf.is_file():
+        return None
+    stat = pdf.stat()
+    stamp = [stat.st_size, int(stat.st_mtime)]
+    cache_path = store / "refs" / doc.corpus / f"{doc.key}.fonts.json"
+    cache = read_json(cache_path) or {}
+    if cache.get("stamp") != stamp:
+        import metrics
+
+        try:
+            shares = metrics.font_shares(str(pdf))
+        except Exception:  # noqa: BLE001
+            return None
+        cache = {"stamp": stamp, "shares": shares}
+        write_json(cache_path, cache)
+    import metrics
+
+    return metrics.fallback_share(cache.get("shares", {}))
+
+
+def _is_fallback(row: dict) -> bool:
+    import metrics
+
+    return (row.get("ref_fallback") or 0.0) >= metrics.FALLBACK_SHARE
+
+
+def _group(rows: list[dict]) -> dict:
+    scored = [r for r in rows if isinstance(r.get("score"), (int, float))]
+    return {
+        "documents": len(rows),
+        "mean_score": _mean([r["score"] for r in scored]),
+        "grades": {g: sum(r.get("grade") == g for r in scored) for g in "ABCDF"},
+        "mean_delta": _mean([r.get("delta") for r in rows]),
+    }
 
 
 def _row(doc: common.Doc, store: Path, label: str) -> dict:
@@ -41,6 +82,8 @@ def _row(doc: common.Doc, store: Path, label: str) -> dict:
     ours = read_json(store / "ours" / label / doc.corpus / f"{doc.key}.json") or {}
     cmp_ = read_json(store / "cmp" / label / doc.corpus / f"{doc.key}.json") or {}
     row: dict = {"corpus": doc.corpus, "key": doc.key, "ident": doc.ident}
+    if ref.get("status") == "ok":
+        row["ref_fallback"] = _ref_fallback(store, doc)
     # An RTF is imported before it is rendered: how that went is part of it.
     if "import_status" in ours:
         row["import_status"] = ours.get("import_status")
@@ -139,6 +182,8 @@ def build(store: Path, data_root: Path, label: str, baseline: str | None, corpor
             "mean_ssim": _mean([r.get("mean_ssim") for r in ok]),
             "grades": {g: sum(r.get("grade") == g for r in scored) for g in "ABCDF"},
             "mean_delta": _mean([r.get("delta") for r in rs]),
+            "ref_fallback_docs": sum(_is_fallback(r) for r in rs),
+            "mean_score_clean": _mean([r["score"] for r in scored if not _is_fallback(r)]),
         }
         imported = [r for r in rs if r.get("import_status")]
         if imported:
@@ -153,6 +198,10 @@ def build(store: Path, data_root: Path, label: str, baseline: str | None, corpor
         "compared": sum(r["status"] == "ok" for r in rows),
         "mean_score": _mean([r["score"] for r in all_scored]),
         "grades": {g: sum(r.get("grade") == g for r in all_scored) for g in "ABCDF"},
+        # References WPS drew mostly in its fallback face measure the host's
+        # missing fonts, not our layout: apart, so they hide nothing.
+        "clean": _group([r for r in rows if not _is_fallback(r)]),
+        "ref_fallback": _group([r for r in rows if _is_fallback(r)]),
     }
     build_info = read_json(store / "ours" / label / "build.json") or {}
     summary = {
@@ -174,6 +223,28 @@ def build(store: Path, data_root: Path, label: str, baseline: str | None, corpor
     return path
 
 
+def _split_html(t: dict) -> str:
+    import metrics
+
+    e = html.escape
+    lines = []
+    for key, title in (("clean", "Без подмены шрифта в эталоне"), ("ref_fallback", "Эталон WPS в шрифте-подмене")):
+        g = t.get(key)
+        if not g:
+            continue
+        gr = g["grades"]
+        lines.append(
+            f"<tr><td>{e(title)}</td><td>{g['documents']}</td><td><b>{_fmt(g['mean_score'])}</b></td>"
+            f"<td>{gr['A']}/{gr['B']}/{gr['C']}/{gr['D']}/{gr['F']}</td><td>{_fmt(g['mean_delta'])}</td></tr>"
+        )
+    fonts = ", ".join(metrics.WPS_FALLBACK_FONTS)
+    return (
+        f"<table><tr><th>группа</th><th>docs</th><th>mean</th><th>A/B/C/D/F</th><th>Δ</th></tr>{''.join(lines)}</table>"
+        f"<p class='muted'>«Эталон в шрифте-подмене»: ≥{metrics.FALLBACK_SHARE:.0%} видимых символов эталона нарисованы {e(fonts)} — "
+        "так WPS на этом хосте рисует любой отсутствующий шрифт; такой эталон меряет шрифты хоста, а не нашу раскладку.</p>"
+    )
+
+
 def _html(summary: dict, rows: list[dict]) -> str:
     e = html.escape
     corp_rows = []
@@ -185,7 +256,7 @@ def _html(summary: dict, rows: list[dict]) -> str:
             "<tr>"
             + f"<td>{e(name)}</td><td>{s['documents']}</td><td>{s['compared']}</td>"
             + f"<td>{s['wps_failed']}</td><td>{s['ours_failed']}</td><td>{s['cmp_failed']}</td>"
-            + f"<td><b>{_fmt(s['mean_score'])}</b></td><td>{_fmt(s['median_score'])}</td>"
+            + f"<td><b>{_fmt(s['mean_score'])}</b></td><td>{_fmt(s.get('mean_score_clean'))}</td><td>{s.get('ref_fallback_docs', 0)}</td><td>{_fmt(s['median_score'])}</td>"
             + f"<td>{s['page_count_exact']}/{s['compared']}</td>"
             + f"<td>{_fmt(s['mean_text_f1'])}</td><td>{_fmt(s['mean_same_page'])}</td>"
             + f"<td>{_fmt(s['mean_line_break_f1'])}</td><td>{_fmt(s['mean_geom_abs'])}</td><td>{_fmt(s['mean_geom_advance'])}</td><td>{_fmt(s['mean_geom_leading'])}</td><td>{_fmt(s['mean_ssim'])}</td>"
@@ -231,9 +302,10 @@ td:first-child {{ text-align:left; }} .err {{ color:var(--muted); font-size:11px
 <p class="muted">generated {e(summary['generated'])} · CLI {e(str(build.get('cli', '')))} · baseline {e(str(summary.get('baseline') or '—'))}</p>
 <p>Документов: <b>{t['documents']}</b>, сравнено: <b>{t['compared']}</b>, средний балл: <b>{_fmt(t['mean_score'])}</b>,
 оценки A/B/C/D/F: {t['grades']['A']}/{t['grades']['B']}/{t['grades']['C']}/{t['grades']['D']}/{t['grades']['F']}</p>
+{_split_html(t)}
 <p class="muted">Балл 0–100 = 15% страницы + 25% текст (F1 слов) + 25% поток (та же страница, F1 переносов строк) + 20% геометрия (среднее: абсолютное положение слов на той же странице ≤4 pt, шаг между словами в строке и шаг строк — оба ≤ max(1 pt, 5%)) + 15% растр (SSIM 36 dpi, корреляция профилей). F = наш рендер не отработал.</p>
 <h2>По корпусам</h2>
-<table><tr><th>corpus</th><th>docs</th><th>compared</th><th>WPS fail</th><th>ours fail</th><th>cmp fail</th><th>mean</th><th>median</th><th>pages =</th><th>text F1</th><th>same page</th><th>line breaks</th><th>abs ≤4pt</th><th>advance</th><th>leading</th><th>SSIM</th><th>A/B/C/D/F</th><th>Δ</th><th title="RTF import: Clean/Degraded/Failed · import losses">RTF C/D/F · losses</th></tr>
+<table><tr><th>corpus</th><th>docs</th><th>compared</th><th>WPS fail</th><th>ours fail</th><th>cmp fail</th><th>mean</th><th title="без эталонов в шрифте-подмене">mean clean</th><th title="эталонов в шрифте-подмене">fallback refs</th><th>median</th><th>pages =</th><th>text F1</th><th>same page</th><th>line breaks</th><th>abs ≤4pt</th><th>advance</th><th>leading</th><th>SSIM</th><th>A/B/C/D/F</th><th>Δ</th><th title="RTF import: Clean/Degraded/Failed · import losses">RTF C/D/F · losses</th></tr>
 {''.join(corp_rows)}</table>
 <h2>Документы (худшие сверху; ссылка — худшая страница: WPS | наш | наложение, красный = только WPS, синий = только наш)</h2>
 <table id="docs"><thead><tr>{head}</tr></thead><tbody>

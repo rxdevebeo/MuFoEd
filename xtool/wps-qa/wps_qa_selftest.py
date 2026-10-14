@@ -79,6 +79,11 @@ check("align matches 9 of 10", len(pairs) == 9)
 page = np.ones((100, 80), dtype=np.float32)
 page[20:30, 10:70] = 0.0
 check("raster identical ssim 1", metrics.page_raster_metrics(page, page)["ssim"] > 0.999)
+
+# The share of a reference WPS drew in its fallback face: every style of it.
+shares = {"SegoePrint": 0.5, "SegoePrint-Bold": 0.2, "ArialMT": 0.3}
+check("fallback share sums the fallback styles", metrics.fallback_share(shares) == 0.7)
+check("no fallback face, no share", metrics.fallback_share({"ArialMT": 1.0}) == 0.0)
 check("raster blank candidate low", metrics.page_raster_metrics(page, np.ones_like(page))["row_corr"] == 0.0)
 check("diff image shape", metrics.diff_image(page, page).shape == (100, 80 * 3 + 12, 3))
 

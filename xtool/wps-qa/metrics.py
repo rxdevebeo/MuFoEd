@@ -392,6 +392,45 @@ def _geometry(ref_words: list[Word], our_words: list[Word], pairs: list[tuple[in
     }
 
 
+# The face WPS draws a family with when the machine does not have it: Segoe
+# Print, whatever the family was (inter, EB Garamond, Century Schoolbook,
+# even Cousine). Such a reference shows the host's substitution, not the
+# document, and its score is reported apart.
+WPS_FALLBACK_FONTS = ("SegoePrint",)
+FALLBACK_SHARE = 0.10
+
+
+def font_shares(path: str) -> dict[str, float]:
+    """Share of the visible characters of `path` drawn in each font (by
+    base name, without the subset tag)."""
+    import ctypes
+
+    doc = pdfium.PdfDocument(path)
+    counts: Counter = Counter()
+    buf = ctypes.create_string_buffer(256)
+    flags = ctypes.c_int()
+    try:
+        for index in range(len(doc)):
+            page = doc[index]
+            textpage = page.get_textpage()
+            for i in range(textpage.count_chars()):
+                code = pdfium_c.FPDFText_GetUnicode(textpage.raw, i)
+                if code <= 32 or pdfium_c.FPDFText_IsGenerated(textpage.raw, i) == 1:
+                    continue
+                pdfium_c.FPDFText_GetFontInfo(textpage.raw, i, buf, len(buf), ctypes.byref(flags))
+                counts[buf.value.decode("latin-1").split("+")[-1]] += 1
+            textpage.close()
+            page.close()
+    finally:
+        doc.close()
+    total = sum(counts.values())
+    return {name: round(n / total, 4) for name, n in counts.most_common()} if total else {}
+
+
+def fallback_share(shares: dict[str, float]) -> float:
+    return round(sum(v for k, v in shares.items() if k.startswith(WPS_FALLBACK_FONTS)), 4)
+
+
 def compare(ref: PdfFacts, ours: PdfFacts, with_raster: bool = True) -> dict:
     out: dict = {}
     # -- pages -------------------------------------------------------------
