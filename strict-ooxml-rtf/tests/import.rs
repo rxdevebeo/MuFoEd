@@ -817,3 +817,13 @@ fn unicode_alternate_requires_actual_unicode_destination() {
     ));
     assert_eq!(paragraphs(br"{\rtf1\uc1\u65\bin4 }{\x B}"), ["A B"]);
 }
+
+#[test]
+fn a_header_without_a_version_is_version_one() {
+    // As Word and WPS read it; some real documents start `{\rtf \ansi`.
+    assert_eq!(paragraphs(br"{\rtf \ansi \deff0 Hello}"), ["Hello"]);
+    assert!(matches!(
+        import(br"{\rtf2 Hello}", &RtfOptions::default()),
+        Err(RtfError::InvalidHeader)
+    ));
+}

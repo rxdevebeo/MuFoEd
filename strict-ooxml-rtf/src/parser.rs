@@ -3835,7 +3835,7 @@ impl Parser<'_> {
                 return self.issue(span, Severity::Info, format!("shape-layout:{name}"));
             }
             "upr" => self.state.upr_children = Some(0),
-            "rtf" if n == Some(1) && self.stack.len() == 1 => (),
+            "rtf" if matches!(n, None | Some(1)) && self.stack.len() == 1 => (),
             // RichEdit writes this when the document uses one CHP font rather
             // than associated script fonts; plain `\f` already seeds all WML slots.
             "fbidis" => self.single_font_active = n != Some(0),
@@ -5302,7 +5302,9 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         pos: 0,
     };
     if !matches!(lexer.next()?, Some((_, Token::Open)))
-        || !matches!(lexer.next()?, Some((_, Token::Word("rtf", Some(1)))))
+        // `{\rtf` without a version is version 1 to Word and WPS, and real
+        // documents are written that way.
+        || !matches!(lexer.next()?, Some((_, Token::Word("rtf", None | Some(1)))))
     {
         return Err(RtfError::InvalidHeader);
     }
