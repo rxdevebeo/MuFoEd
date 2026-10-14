@@ -179,6 +179,18 @@ impl<'a> Editor<'a> {
         commands: &[Edit],
     ) -> Result<ChangeSet, EditFailure> {
         self.check(revision).map_err(EditFailure::batch)?;
+        // The ids a transaction minted stay spent only if it is kept, so that
+        // both paths hand out the same ids for the same history.
+        let (revision, high_water) = (self.revision, self.ids.high_water());
+        let result = self.transact_checked(commands);
+        if self.revision == revision {
+            self.ids.lower_to(high_water);
+        }
+        result
+    }
+    /// [`transact_detailed`](Self::transact_detailed) once the revision is
+    /// checked.
+    fn transact_checked(&mut self, commands: &[Edit]) -> Result<ChangeSet, EditFailure> {
         // A note or section command changes a note table or the section list
         // besides a story: the whole-document path keeps both in one history
         // entry.
@@ -279,11 +291,15 @@ impl<'a> Editor<'a> {
     /// given notes of their own.
     fn transact_whole(&mut self, commands: &[Edit]) -> Result<ChangeSet, EditFailure> {
         let mut candidate = self.document.clone();
+        // Carries the high-water paragraph id from command to command.
+        let mut minted = self.ids.clone();
         for (index, command) in commands.iter().enumerate() {
             // The index as it stands in the candidate, per command: what the
             // whole-document path has always minted against.
-            let mut ids = IdIndex::of(&candidate);
-            apply(&mut candidate, command, self.limits, &mut ids).map_err(|error| EditFailure {
+            let mut ids = IdIndex::of(&candidate).above(&minted);
+            let result = apply(&mut candidate, command, self.limits, &mut ids);
+            minted = ids;
+            result.map_err(|error| EditFailure {
                 command: Some(index),
                 address: Some(command.address().clone()),
                 error,
@@ -291,7 +307,11 @@ impl<'a> Editor<'a> {
         }
         split_shared_notes(&mut candidate).map_err(EditFailure::batch)?;
         validate(&candidate, &self.limits.resource).map_err(EditFailure::batch)?;
+        let revision = self.revision;
         let change = self.commit_whole(candidate)?;
+        if self.revision != revision {
+            self.ids = std::mem::take(&mut self.ids).above(&minted);
+        }
         self.notes_settled = true;
         Ok(change)
     }
@@ -311,7 +331,7 @@ impl<'a> Editor<'a> {
         }
         let before = std::mem::replace(&mut *self.document, candidate);
         let blocks = whole_story_changes(&before, self.document);
-        self.ids = IdIndex::of(self.document);
+        self.ids = IdIndex::of(self.document).above(&self.ids);
         self.record(
             Change::Whole {
                 before: Box::new(before),
@@ -371,7 +391,7 @@ impl<'a> Editor<'a> {
             Change::Whole { before, after } => {
                 // The state before may share notes again.
                 self.document.clone_from(before);
-                self.ids = IdIndex::of(self.document);
+                self.ids = IdIndex::of(self.document).above(&self.ids);
                 self.notes_settled = has_no_notes(self.document);
                 whole_story_changes(after, self.document)
             }
@@ -402,7 +422,7 @@ impl<'a> Editor<'a> {
             }
             Change::Whole { before, after } => {
                 self.document.clone_from(after);
-                self.ids = IdIndex::of(self.document);
+                self.ids = IdIndex::of(self.document).above(&self.ids);
                 self.notes_settled = true;
                 whole_story_changes(before, self.document)
             }

@@ -9,6 +9,9 @@ use strict_ooxml_wml::model::{
 
 use super::address::{visit_boxes, visit_drawings};
 
+/// Paragraph ids are below `0x80000000` (MS-DOCX `w14:paraId`).
+const MAX_PARA_ID: u32 = 0x8000_0000;
+
 /// Every paragraph identity in the document, uppercased, with how many
 /// paragraphs carry it: identities are unique within a story, not across
 /// stories, so one id can stand in two.
@@ -24,6 +27,10 @@ pub(super) struct IdIndex {
     /// in the document; only ever counts up, so an id is never handed out
     /// twice in a session.
     next_revision: u32,
+    /// The lowest paragraph id worth trying for a new paragraph: past every
+    /// one the session has seen, so a paragraph deleted in this session never
+    /// lends its identity to a new one.
+    next_para: u32,
 }
 impl IdIndex {
     /// The index of every story of `document`.
@@ -83,9 +90,32 @@ impl IdIndex {
         self.remove(before);
         self.add(after);
     }
+    /// The index with `other`'s high-water ids kept: an index
+    /// rebuilt from the document has forgotten the ids of deleted paragraphs.
+    pub(super) fn above(mut self, other: &Self) -> Self {
+        self.next_para = self.next_para.max(other.next_para);
+        self.next_revision = self.next_revision.max(other.next_revision);
+        self
+    }
+    /// The high-water paragraph id, for [`lower_to`](Self::lower_to).
+    pub(super) fn high_water(&self) -> u32 {
+        self.next_para
+    }
+    /// Gives back the paragraph ids minted since `high_water` was read: their
+    /// transaction was not kept.
+    pub(super) fn lower_to(&mut self, high_water: u32) {
+        self.next_para = high_water;
+    }
     /// Counts the identities under `blocks`.
     pub(super) fn add(&mut self, blocks: &[Block]) {
-        collect(blocks, &mut |id| *self.counts.entry(id).or_insert(0) += 1);
+        collect(blocks, &mut |id| {
+            if let Ok(n) = u32::from_str_radix(&id, 16) {
+                if n < MAX_PARA_ID {
+                    self.next_para = self.next_para.max(n + 1);
+                }
+            }
+            *self.counts.entry(id).or_insert(0) += 1;
+        });
     }
     /// Uncounts the identities under `blocks`.
     pub(super) fn remove(&mut self, blocks: &[Block]) {
@@ -201,9 +231,13 @@ pub(super) fn assign_id(
     if !fresh && p.para_id.is_some() {
         return Ok(());
     }
-    for n in 1..0x8000_0000_u32 {
+    // Upwards from the high-water mark first; below it only once the id space
+    // above is spent.
+    let start = ids.next_para.max(1);
+    for n in (start..MAX_PARA_ID).chain(1..start) {
         let id = format!("{n:08X}");
         if ids.claim(&id) {
+            ids.next_para = ids.next_para.max(n + 1);
             if fresh {
                 // This is a logical identity for a newly synthesized paragraph,
                 // not a claimed position in the input package. The renderer's

@@ -225,6 +225,71 @@ fn stable_identity_survives_insertions_and_sdt_addresses_work() {
     assert_eq!(e.paragraphs(&Story::Body).unwrap().len(), 3);
 }
 #[test]
+fn a_deleted_paragraph_never_lends_its_identity_to_a_new_one() {
+    let body = format!("{}{}{}<w:sectPr/>", paragraph(), paragraph(), paragraph());
+    let fresh = doc(paragraph()).body.blocks.remove(0);
+    // Once per path: patches, and the whole document (a section break).
+    for whole in [false, true] {
+        let mut d = doc(&body);
+        let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+        e.transact(
+            0,
+            &[Edit::Identify {
+                at: Address::body(0),
+            }],
+        )
+        .unwrap();
+        let gone = e
+            .paragraph(&Address::body(0))
+            .unwrap()
+            .para_id
+            .clone()
+            .unwrap();
+        let mut commands = vec![
+            Edit::Delete {
+                at: Address::body(0),
+            },
+            Edit::Insert {
+                at: Address::body(0),
+                block: Box::new(fresh.clone()),
+            },
+        ];
+        if whole {
+            commands.push(Edit::InsertSectionBreak {
+                at: Address::body(0),
+            });
+        }
+        e.transact(1, &commands).unwrap();
+        let new = e
+            .paragraph(&Address::body(0))
+            .unwrap()
+            .para_id
+            .clone()
+            .unwrap();
+        assert_ne!(new, gone, "whole document path: {whole}");
+        assert!(e.find(&Story::Body, &gone).is_err());
+        // Nor after the deletion is undone and done again.
+        e.undo(e.revision()).unwrap();
+        e.redo(e.revision()).unwrap();
+        e.transact(
+            e.revision(),
+            &[Edit::Insert {
+                at: Address::body(2),
+                block: Box::new(fresh.clone()),
+            }],
+        )
+        .unwrap();
+        let third = e
+            .paragraph(&Address::body(2))
+            .unwrap()
+            .para_id
+            .clone()
+            .unwrap();
+        assert_ne!(third, gone);
+        assert_ne!(third, new);
+    }
+}
+#[test]
 fn header_and_note_edits_undo_together_without_touching_body() {
     use strict_ooxml_core::{error::SourceLocation, part::PartId};
     use strict_ooxml_wml::model::{HeaderFooter, Note, NoteKind};

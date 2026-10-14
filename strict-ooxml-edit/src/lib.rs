@@ -26,6 +26,8 @@ mod structured;
 pub use structured::{Address, Container, Edit, EditFailure, Editor, Story};
 mod definitions;
 pub use definitions::{restarted, unused_abstract_num_id, unused_num_id, Definition};
+mod diff;
+pub use diff::{diff, DiffChange, DiffItem, DiffMode, DocumentDiff};
 mod operations;
 pub use operations::{
     IdentityChange, MoveReport, OperationError, OperationLimits, Operations, ReplacePolicy,
