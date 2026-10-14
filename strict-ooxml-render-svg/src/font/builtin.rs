@@ -1038,7 +1038,10 @@ mod tests {
             );
         };
         check("Calibri", ' ', 0.2261); // Carlito (fallback 0.25)
-        check("Cambria", 'M', 0.888); // Caladea (fallback 0.85)
+        check("Caladea", 'M', 0.888); // Caladea itself (fallback 0.85)
+                                      // Cambria is measured by its profile: the installed Cambria's 'M' is
+                                      // 1670/2048, not Caladea's 0.888 (`profiles`).
+        check("Cambria", 'M', 1670.0 / 2048.0);
         check("Arial", ' ', 0.2778); // Arimo (fallback 0.25)
         check("Times New Roman", 'M', 0.8892); // Tinos (fallback 0.85)
         check("Courier New", 'i', 0.6001); // Cousine (fallback 0.28)
