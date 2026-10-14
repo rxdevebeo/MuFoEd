@@ -252,6 +252,9 @@ impl FaceCollector {
             return Err(FontError::NoUnitsPerEm);
         }
         let scale = 1000.0 / units_per_em;
+        let bounds = metrics
+            .bounds
+            .ok_or_else(|| FontError::Parse("missing font bounds".into()))?;
         let gids = subset_font.glyph_metrics(Size::unscaled(), LocationRef::default());
         // The width is a whole number of 1000-unit steps, which is what the PDF
         // `/W` array is specified in. Keeping it an integer rather than an `f32`
@@ -306,6 +309,8 @@ impl FaceCollector {
             cluster_unicode,
             cid_to_gid,
             is_cff,
+            bounds: [bounds.x_min, bounds.y_min, bounds.x_max, bounds.y_max]
+                .map(|value| f64::from(value) * scale),
             ascent: f64::from(metrics.ascent) * scale,
             descent: f64::from(metrics.descent) * scale,
             cap_height: metrics.cap_height.map(|value| f64::from(value) * scale),
@@ -338,6 +343,8 @@ pub struct EmbeddedFont {
     pub cid_to_gid: Vec<u16>,
     /// Whether the program carries CFF (OpenType/PostScript) outlines.
     pub is_cff: bool,
+    /// Font bounding box in 1000-unit text space, from the embedded program.
+    pub bounds: [f64; 4],
     /// Ascender in 1000-unit text space.
     pub ascent: f64,
     /// Descender (negative) in 1000-unit text space.
@@ -438,11 +445,11 @@ pub fn to_unicode_cmap(font: &EmbeddedFont) -> Vec<u8> {
     for chunk in entries.chunks(100) {
         let _ = writeln!(out, "{} beginbfchar", chunk.len());
         for (gid, text) in chunk {
-            let mut encoded = String::new();
+            let _ = write!(out, "<{gid:04X}> <");
             for unit in text.encode_utf16() {
-                let _ = write!(encoded, "{unit:04X}");
+                let _ = write!(out, "{unit:04X}");
             }
-            let _ = writeln!(out, "<{gid:04X}> <{encoded}>");
+            out.push_str(">\n");
         }
         out.push_str("endbfchar\n");
     }
@@ -459,7 +466,7 @@ pub fn identity_h_cmap() -> Vec<u8> {
     let mut out = String::with_capacity(512);
     out.push_str("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n");
     out.push_str("/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> def\n");
-    out.push_str("/CMapName /Identity-H def\n/CMapType 2 def\n");
+    out.push_str("/CMapName /Identity-H def\n/CMapType 1 def\n");
     out.push_str("1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n");
     out.push_str("1 begincidrange\n<0000> <FFFF> 0\nendcidrange\n");
     out.push_str("endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
@@ -567,12 +574,44 @@ mod tests {
             bold: false,
             italic: false,
         };
-        let font = collector.build(&key, &source).expect("subset");
+        let mut font = collector.build(&key, &source).expect("subset");
         let cmap = String::from_utf8(super::to_unicode_cmap(&font)).expect("utf-8");
         assert!(cmap.contains("beginbfchar"), "{cmap}");
         assert!(cmap.contains("<0041>"), "A must map to U+0041:\n{cmap}");
         let identity = String::from_utf8(super::identity_h_cmap()).expect("utf-8");
         assert!(identity.contains("begincidrange"), "{identity}");
+        for count in [0_u16, 1, 100, 101, 201] {
+            font.to_unicode = (0..count).map(|cid| (cid, 'A')).collect();
+            let cmap = String::from_utf8(super::to_unicode_cmap(&font)).expect("utf-8");
+            let counts: Vec<usize> = cmap
+                .lines()
+                .filter_map(|line| line.strip_suffix(" beginbfchar"))
+                .map(|value| value.parse().expect("mapping count"))
+                .collect();
+            let expected: Vec<usize> = (0..usize::from(count))
+                .collect::<Vec<_>>()
+                .chunks(100)
+                .map(<[usize]>::len)
+                .collect();
+            assert_eq!(counts, expected, "{count} mappings");
+        }
+    }
+
+    #[test]
+    fn cmap_encodes_non_bmp_destinations_as_utf16_surrogates() {
+        let source = face_source("Calibri", false, false).expect("bundled");
+        let mut collector = FaceCollector::new();
+        collector.add(&source, false, false, 'A');
+        let key = FaceKey {
+            family: source.family,
+            bold: false,
+            italic: false,
+        };
+        let mut font = collector.build(&key, &source).expect("subset");
+        font.to_unicode.clear();
+        font.to_unicode.insert(1, '\u{1F600}');
+        let cmap = String::from_utf8(super::to_unicode_cmap(&font)).expect("utf-8");
+        assert!(cmap.contains("<0001> <D83DDE00>"), "{cmap}");
     }
 
     /// Every `bfchar` section announces its own entry count, including the
