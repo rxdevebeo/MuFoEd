@@ -22,7 +22,8 @@ pub use symbol::present_text;
 /// The advance `family` measures `ch` at when it is a metric profile
 /// (`profiles`): the face drawing it is narrower or wider, and a PDF records
 /// this width so its glyphs sit where layout put them without gaps a text
-/// extractor reads as spaces ("1 . Cover" for Cambria's tabular digits).
+/// extractor reads as spaces (pdfium read "1 . Cover" where Caladea drew
+/// Cambria's tabular digits).
 #[must_use]
 pub fn profile_advance_em(family: &str, bold: bool, italic: bool, ch: char) -> Option<f64> {
     profiles::for_family(family)?

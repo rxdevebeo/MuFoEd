@@ -535,13 +535,13 @@ mod tests {
     }
 
     /// A metric profile's glyphs advance by the profiled family's widths:
-    /// Cambria's tabular `1` is 554/1000 wide, Caladea's own glyph 362.
+    /// Verdana's `a` is 1230/2048 (601/1000), Arimo's own glyph 1139/2048.
     #[test]
     fn a_profiled_face_records_the_profile_widths() {
-        let source = face_source("Cambria", false, false).expect("Caladea for Cambria");
-        assert_eq!(source.family, "Caladea for Cambria");
+        let source = face_source("Verdana", false, false).expect("Arimo for Verdana");
+        assert_eq!(source.family, "Arimo for Verdana");
         let mut collector = FaceCollector::new();
-        collector.add(&source, false, false, '1');
+        collector.add(&source, false, false, 'a');
         collector.add_notdef();
         let key = FaceKey {
             family: source.family.to_owned(),
@@ -549,8 +549,8 @@ mod tests {
             italic: false,
         };
         let font = collector.build(&key, &source).expect("subset");
-        let one = font.chars.get(&'1').expect("cid of 1");
-        assert_eq!(font.widths.get(one), Some(&554), "{:?}", font.widths);
+        let a = font.chars.get(&'a').expect("cid of a");
+        assert_eq!(font.widths.get(a), Some(&601), "{:?}", font.widths);
     }
 
     #[test]
