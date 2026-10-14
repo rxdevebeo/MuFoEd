@@ -180,6 +180,16 @@ pub(super) fn apply(
                 let p = paragraph_mut(blocks, at.block)?;
                 super::rich::format(p, from, to, patch, limits.grapheme_boundaries)?;
             }
+            Edit::ReplaceAt { from, to, text, .. } => {
+                valid_text(text)?;
+                let p = paragraph_mut(blocks, at.block)?;
+                let before = super::rich::scalars(&p.inlines);
+                super::rich::replace(p, from, to, text, limits.grapheme_boundaries)?;
+                let after = super::rich::scalars(&p.inlines);
+                if after > before && after > limits.paragraph_scalars {
+                    return Err(EditError::LimitExceeded);
+                }
+            }
             Edit::Join { .. } => {
                 let mut left = paragraph_mut(blocks, at.block)?.clone();
                 let right = paragraph_mut(blocks, at.block + 1)?.clone();

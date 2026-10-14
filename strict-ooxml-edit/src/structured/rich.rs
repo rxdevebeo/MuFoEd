@@ -324,3 +324,211 @@ pub(super) fn scalars(inlines: &[Inline]) -> usize {
         })
         .fold(0, usize::saturating_add)
 }
+
+/// Replaces what lies between `from` and `to` with `text`, which goes into
+/// the run at `from` with that run's properties. Inlines between the points
+/// go, but for bookmark and comment range marks, which stay where the range
+/// was; runs and wrappers the deletion empties go too.
+pub(super) fn replace(
+    paragraph: &mut Paragraph,
+    from: &InlinePoint,
+    to: &InlinePoint,
+    text: &str,
+    graphemes: bool,
+) -> Result<(), EditError> {
+    if from > to {
+        return Err(EditError::InvalidRange);
+    }
+    for point in [from, to] {
+        check_point(&paragraph.inlines, &point.inline, point, graphemes)?;
+    }
+    // Inside a field's instruction or cached result; a field the range
+    // covers in part is refused as the deletion meets its characters.
+    if depth_before(&paragraph.inlines, from) > 0 {
+        return Err(EditError::UnsupportedContent(Unsupported::FieldResult));
+    }
+    let mut trail = Vec::new();
+    delete_inlines(&mut paragraph.inlines, &mut trail, from, to)?;
+    if text.is_empty() {
+        return Ok(());
+    }
+    let run = run_at(&mut paragraph.inlines, &from.inline)?;
+    if run.revision.is_some() {
+        return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
+    }
+    let mut after = cut(&mut run.content, from.content, from.offset, false)?;
+    run.content.push(RunContent::Text(TextNode {
+        text: text.to_owned(),
+        space: Space::Preserve,
+    }));
+    run.content.append(&mut after);
+    Ok(())
+}
+
+fn run_at<'a>(inlines: &'a mut [Inline], path: &[usize]) -> Result<&'a mut Run, EditError> {
+    let (&index, rest) = path.split_first().ok_or(EditError::InvalidParagraph)?;
+    match (inlines.get_mut(index), rest.is_empty()) {
+        (Some(Inline::Run(run)), true) => Ok(run),
+        (Some(Inline::Hyperlink(v)), false) => run_at(&mut v.inlines, rest),
+        (Some(Inline::SdtInline(v)), false) => run_at(&mut v.inlines, rest),
+        (Some(Inline::Directional(v)), false) => run_at(&mut v.inlines, rest),
+        (Some(Inline::Field(v)), false) => run_at(&mut v.inlines, rest),
+        _ => Err(EditError::InvalidParagraph),
+    }
+}
+
+/// How many complex fields are open at `point`, counted from the start of
+/// the paragraph; a point inside a simple field counts as one.
+fn depth_before(inlines: &[Inline], point: &InlinePoint) -> usize {
+    fn walk(inlines: &[Inline], trail: &mut Vec<usize>, point: &InlinePoint, depth: &mut usize) {
+        for (index, inline) in inlines.iter().enumerate() {
+            trail.push(index);
+            let order = trail.as_slice().cmp(point.inline.as_slice());
+            let inside = point.inline.starts_with(trail);
+            match inline {
+                _ if order == std::cmp::Ordering::Greater && !inside => {
+                    trail.pop();
+                    return;
+                }
+                Inline::Run(run) => {
+                    let end = if inside {
+                        point.content
+                    } else {
+                        run.content.len()
+                    };
+                    for content in run.content.iter().take(end) {
+                        if let RunContent::FieldChar(c) = content {
+                            if c.kind == FieldCharType::Begin {
+                                *depth += 1;
+                            } else if c.kind == FieldCharType::End {
+                                *depth = depth.saturating_sub(1);
+                            }
+                        }
+                    }
+                }
+                Inline::Field(v) if inside => {
+                    *depth += 1;
+                    walk(&v.inlines, trail, point, depth);
+                }
+                Inline::Hyperlink(v) => walk(&v.inlines, trail, point, depth),
+                Inline::SdtInline(v) => walk(&v.inlines, trail, point, depth),
+                Inline::Directional(v) => walk(&v.inlines, trail, point, depth),
+                _ => {}
+            }
+            trail.pop();
+        }
+    }
+    let mut depth = 0;
+    walk(inlines, &mut Vec::new(), point, &mut depth);
+    depth
+}
+
+/// Whether the inline at `trail`, a leaf or a whole wrapper, lies between the
+/// points.
+fn between(trail: &[usize], from: &InlinePoint, to: &InlinePoint) -> bool {
+    from.inline.as_slice() < trail
+        && !from.inline.starts_with(trail)
+        && trail < to.inline.as_slice()
+        && !to.inline.starts_with(trail)
+}
+
+/// Deletes what lies between the points under `inlines`, last first; the
+/// run at `from` stays, even emptied, to take the new text.
+fn delete_inlines(
+    inlines: &mut Vec<Inline>,
+    trail: &mut Vec<usize>,
+    from: &InlinePoint,
+    to: &InlinePoint,
+) -> Result<(), EditError> {
+    for index in (0..inlines.len()).rev() {
+        trail.push(index);
+        let keep = trail.as_slice() == from.inline.as_slice();
+        let inside = between(trail, from, to);
+        let remove = match inlines.get_mut(index) {
+            Some(Inline::Run(run)) => delete_in_run(run, trail, from, to)? && !keep,
+            Some(Inline::Hyperlink(v)) => wrapped(&mut v.inlines, trail, from, to)?,
+            Some(Inline::SdtInline(v)) => wrapped(&mut v.inlines, trail, from, to)?,
+            Some(Inline::Directional(v)) => wrapped(&mut v.inlines, trail, from, to)?,
+            Some(Inline::Field(_)) if inside => true,
+            // Range marks stay where the range was; a point inside a simple
+            // field is refused before.
+            Some(
+                Inline::Field(_)
+                | Inline::BookmarkStart(_)
+                | Inline::BookmarkEnd(_)
+                | Inline::CommentRangeStart(_)
+                | Inline::CommentRangeEnd(_),
+            )
+            | None => false,
+            // A note or comment would lose its only reference; opaque markup
+            // is not known to be removable.
+            Some(
+                Inline::FootnoteRef(_)
+                | Inline::EndnoteRef(_)
+                | Inline::CommentReference(_)
+                | Inline::Opaque(_),
+            ) if inside => {
+                return Err(EditError::UnsupportedContent(Unsupported::Inline));
+            }
+            Some(_) => inside,
+        };
+        trail.pop();
+        if remove {
+            inlines.remove(index);
+        }
+    }
+    Ok(())
+}
+
+/// Deletes inside a wrapper; whether the wrapper is left empty by it.
+fn wrapped(
+    inlines: &mut Vec<Inline>,
+    trail: &mut Vec<usize>,
+    from: &InlinePoint,
+    to: &InlinePoint,
+) -> Result<bool, EditError> {
+    let before = inlines.len();
+    delete_inlines(inlines, trail, from, to)?;
+    Ok(inlines.is_empty() && before > 0)
+}
+
+/// Deletes the run content between the points; whether the run is left
+/// empty by it.
+fn delete_in_run(
+    run: &mut Run,
+    location: &[usize],
+    from: &InlinePoint,
+    to: &InlinePoint,
+) -> Result<bool, EditError> {
+    let len = run.content.len();
+    let (start, end) = (place(location, from, len), place(location, to, len));
+    if start >= end {
+        return Ok(false);
+    }
+    let mut head = run.content.clone();
+    let mut tail = cut(&mut head, end.0, end.1, false)?;
+    let middle = cut(&mut head, start.0, start.1, false)?;
+    if middle.is_empty() {
+        return Ok(false);
+    }
+    if run.revision.is_some() {
+        return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
+    }
+    for content in &middle {
+        match content {
+            RunContent::FieldChar(_) | RunContent::InstrText(_) => {
+                return Err(EditError::UnsupportedContent(Unsupported::FieldResult));
+            }
+            RunContent::FootnoteRef(_)
+            | RunContent::EndnoteRef(_)
+            | RunContent::NoteRef
+            | RunContent::NoteSeparator(_) => {
+                return Err(EditError::UnsupportedContent(Unsupported::RunContent));
+            }
+            _ => {}
+        }
+    }
+    head.append(&mut tail);
+    run.content = head;
+    Ok(run.content.is_empty())
+}
