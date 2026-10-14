@@ -43,6 +43,8 @@ enum Destination {
     Overrides,
     LevelText,
     Panose,
+    /// `{\*\fname ...}` in a font definition: the untagged font name.
+    FontName,
     /// Body content of a shape text box (`\shptxt`).
     ShapeText,
     /// The `\sn <name>` half of a `{\sp{\sn ..}{\sv ..}}` shape property.
@@ -783,6 +785,9 @@ struct Parser<'a> {
     font_codepage: Option<i32>,
     /// Accumulated `{\*\panose ...}` text for the font being defined.
     font_panose: String,
+    /// Accumulated `{\*\fname ...}` text for the font being defined: the
+    /// untagged name (`Arial` for the table's `Arial (Hebrew)`).
+    font_fname: String,
     font_theme: Option<FontTheme>,
     pending_font_theme: Option<FontTheme>,
     single_font_active: bool,
@@ -2213,13 +2218,21 @@ impl Parser<'_> {
                 offset,
                 "font_definitions",
             )?;
-            if self.font_name.trim().is_empty() {
+            let untagged = std::mem::take(&mut self.font_fname);
+            let untagged = untagged.trim().trim_end_matches(';').trim();
+            let name = if untagged.is_empty() {
+                std::mem::take(&mut self.font_name).trim().to_string()
+            } else {
+                self.font_name.clear();
+                untagged.to_string()
+            };
+            if name.is_empty() {
                 return malformed(offset, "empty font name");
             }
             self.fonts.insert(
                 id,
                 Font {
-                    name: std::mem::take(&mut self.font_name).trim().to_string(),
+                    name,
                     charset: self.font_charset,
                     codepage: self.font_codepage,
                     theme: self.font_theme.take(),
@@ -2460,6 +2473,16 @@ impl Parser<'_> {
                 "leveltext_bytes",
             )?;
             draft.text.push_str(&text);
+            return Ok(());
+        }
+        if self.state.destination == Destination::FontName {
+            bounded(
+                self.font_fname.len() + text.len(),
+                self.options.limits.input_bytes,
+                offset,
+                "fname_bytes",
+            )?;
+            self.font_fname.push_str(&text);
             return Ok(());
         }
         if self.state.destination == Destination::Panose {
@@ -3438,6 +3461,15 @@ impl Parser<'_> {
                 self.font_panose.clear();
                 return Ok(());
             }
+            // `{\*\fname Arial;}` names the font as installed; the table text
+            // after it may carry a charset tag (`Arial (Hebrew)`) that names no
+            // installed font. Word and WPS use the untagged name.
+            if name == "fname" && self.font_id.is_some() {
+                self.state.ignorable = false;
+                self.state.destination = Destination::FontName;
+                self.font_fname.clear();
+                return Ok(());
+            }
             self.state.skip = true;
             // `{\*\levelmarker ...}` is a legacy alternative list marker
             // superseded by `\leveltext`, and `{\*\datafield ...}` is a legacy
@@ -3596,6 +3628,7 @@ impl Parser<'_> {
                     self.font_codepage = None;
                     self.font_name.clear();
                     self.font_panose.clear();
+                    self.font_fname.clear();
                 }
                 "fbimajor" | "fbiminor" | "fdbmajor" | "fdbminor" | "fhimajor" | "fhiminor"
                 | "flomajor" | "flominor" => {
@@ -4328,12 +4361,41 @@ impl Parser<'_> {
             "super" => self.state.run.vert_align = Some(VertAlign::Superscript),
             "sub" => self.state.run.vert_align = Some(VertAlign::Subscript),
             "nosupersub" => self.state.run.vert_align = Some(VertAlign::Baseline),
-            "ql" => self.state.paragraph.alignment = Some(Justification::Start),
-            "qr" => self.state.paragraph.alignment = Some(Justification::End),
+            // `\ql`/`\qr` are the physical left and right edges; Strict's
+            // `start`/`end` follow the paragraph's direction. The alignment
+            // is kept logical for the direction in force, and a later
+            // `\rtlpar`/`\ltrpar` turns it with the paragraph (WPS sets
+            // `\rtlpar\qr` Hebrew flush right).
+            "ql" => {
+                self.state.paragraph.alignment =
+                    Some(if self.state.paragraph.bidi == TriState::On {
+                        Justification::End
+                    } else {
+                        Justification::Start
+                    });
+            }
+            "qr" => {
+                self.state.paragraph.alignment =
+                    Some(if self.state.paragraph.bidi == TriState::On {
+                        Justification::Start
+                    } else {
+                        Justification::End
+                    });
+            }
             "qc" => self.state.paragraph.alignment = Some(Justification::Center),
             "qj" => self.state.paragraph.alignment = Some(Justification::Both),
-            "rtlpar" => self.state.paragraph.bidi = TriState::On,
-            "ltrpar" => self.state.paragraph.bidi = TriState::Off,
+            "rtlpar" | "ltrpar" => {
+                let rtl = name == "rtlpar";
+                if rtl != (self.state.paragraph.bidi == TriState::On) {
+                    self.state.paragraph.alignment =
+                        self.state.paragraph.alignment.map(|side| match side {
+                            Justification::Start => Justification::End,
+                            Justification::End => Justification::Start,
+                            other => other,
+                        });
+                }
+                self.state.paragraph.bidi = if rtl { TriState::On } else { TriState::Off };
+            }
             "rtlsect" => self.section.bidi = true,
             "ltrsect" => self.section.bidi = false,
             "keep" => self.state.paragraph.keep_lines = toggle,
@@ -5352,6 +5414,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         font_charset: 0,
         font_codepage: None,
         font_panose: String::new(),
+        font_fname: String::new(),
         font_theme: None,
         pending_font_theme: None,
         single_font_active: false,

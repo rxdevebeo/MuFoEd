@@ -827,3 +827,63 @@ fn a_header_without_a_version_is_version_one() {
         Err(RtfError::InvalidHeader)
     ));
 }
+
+#[test]
+fn an_untagged_font_name_wins_over_the_tagged_table_name() {
+    // Msftedit writes `{\*\fname Arial;}Arial (Hebrew);`: the tagged name is
+    // no installed font, the `\fname` one is what Word and WPS use.
+    let imported = import(
+        br"{\rtf1\ansi{\fonttbl{\f0\fnil\fcharset177{\*\fname Arial;}Arial (Hebrew);}{\f1\fnil Calibri;}}\f0 x\f1 y\par}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    let Block::Paragraph(p) = &imported.document.body.blocks[0] else {
+        panic!("paragraph expected")
+    };
+    let names: Vec<String> = p
+        .inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Run(r) => r
+                .props
+                .fonts
+                .as_ref()
+                .and_then(|f| f.ascii.as_deref())
+                .map(str::to_owned),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(names, ["Arial", "Calibri"]);
+}
+
+#[test]
+fn physical_alignment_follows_the_paragraph_direction() {
+    use strict_ooxml_wml::model::Justification;
+    // `\ql`/`\qr` are the left and right edges whatever comes first;
+    // Strict's start/end are the paragraph's own.
+    let imported = import(
+        br"{\rtf1\ansi\pard\rtlpar\qr a\par\pard\qr\rtlpar b\par\pard\rtlpar\ql c\par\pard\qr d\par\pard\qr\rtlpar\ltrpar e\par}",
+        &RtfOptions::default(),
+    )
+    .unwrap();
+    let sides: Vec<(Option<Justification>, TriState)> = imported
+        .document
+        .body
+        .blocks
+        .iter()
+        .map(|block| match block {
+            Block::Paragraph(p) => (p.props.alignment, p.props.bidi),
+            _ => panic!("paragraph expected"),
+        })
+        .collect();
+    assert_eq!(
+        sides,
+        [
+            (Some(Justification::Start), TriState::On),
+            (Some(Justification::Start), TriState::On),
+            (Some(Justification::End), TriState::On),
+            (Some(Justification::End), TriState::Absent),
+            (Some(Justification::End), TriState::Off),
+        ]
+    );
+}
