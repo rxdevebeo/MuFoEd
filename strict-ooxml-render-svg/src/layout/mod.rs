@@ -19,7 +19,7 @@ use std::collections::HashMap;
 
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::props::{PageMargins, SectionProperties};
-use strict_ooxml_wml::model::values::{PageOrientation, Twips};
+use strict_ooxml_wml::model::values::Twips;
 use strict_ooxml_wml::model::Document;
 
 use crate::font::FontProvider;
@@ -665,15 +665,12 @@ pub(crate) fn geometry_for(
     let page_h = raw_h
         .filter(|value| *value > 0)
         .unwrap_or(DEFAULT_PAGE_HEIGHT);
-    let mut width = twips_to_px(page_w, scale);
-    let mut height = twips_to_px(page_h, scale);
-    if matches!(
-        page.and_then(|page| page.orientation),
-        Some(PageOrientation::Landscape)
-    ) && width < height
-    {
-        std::mem::swap(&mut width, &mut height);
-    }
+    // `w` and `h` are the page; `orient` only tells the printer which way to
+    // feed the paper (ISO/IEC 29500-1 §17.6.13). A landscape section written
+    // 11905 x 16838 is a portrait page in Word and WPS: swapping it turned
+    // four corpus documents sideways (CC0_DOCX/060: 40 pages against 34).
+    let width = twips_to_px(page_w, scale);
+    let height = twips_to_px(page_h, scale);
 
     let margins = section
         .and_then(|section| section.page_margins)

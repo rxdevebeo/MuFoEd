@@ -75,6 +75,18 @@ fn portrait_landscape_portrait_have_matching_viewboxes() {
     );
 }
 
+/// `orient` does not size the page: a landscape section written narrower
+/// than tall stays a portrait page, as Word and WPS show it (CC0_DOCX/060).
+#[test]
+fn orient_does_not_swap_the_written_page_size() {
+    let body = "<w:p><w:r><w:t>A</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"11905\" w:h=\"16838\" w:orient=\"landscape\"/>\
+<w:pgMar w:top=\"284\" w:right=\"284\" w:bottom=\"284\" w:left=\"284\"/></w:sectPr>";
+    let pages = render_body(body);
+    let (w, h) = view_box(&pages[0].svg);
+    assert!(w < h, "{w}x{h}");
+}
+
 #[test]
 fn odd_page_section_break_inserts_blank_page() {
     // AUD-74: oddPage after page 1 inserts an empty even page.
