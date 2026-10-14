@@ -5,7 +5,7 @@ produces deterministic, Word-comparable output without depending on system
 fonts (ADR-0006, `STAGE-4-RENDER-FIDELITY.md` S4F.1/S4F.3). They are
 **metric-compatible** substitutes for the proprietary fonts that Word documents
 request; the proprietary originals (Calibri, Cambria, Arial, Times New Roman,
-Courier New) are **not** bundled.
+Courier New, Georgia, Segoe UI) are **not** bundled.
 
 No font was modified; the OFL license text is included alongside each family.
 
@@ -18,6 +18,8 @@ No font was modified; the OFL license text is included alongside each family.
 | Arimo | Arial / Helvetica | SIL Open Font License 1.1 (`arimo/OFL.txt`) | `arimo/Arimo[wght].ttf`, `arimo/Arimo-Italic[wght].ttf` (variable `wght` 400/700) |
 | Tinos | Times New Roman | SIL Open Font License 1.1 (`tinos/OFL.txt`) | `tinos/Tinos-{Regular,Bold,Italic,BoldItalic}.ttf` |
 | Cousine | Courier New | SIL Open Font License 1.1 (`cousine/OFL.txt`) | `cousine/Cousine-{Regular,Bold,Italic,BoldItalic}.ttf` |
+| Gelasio | Georgia | SIL Open Font License 1.1 (`gelasio/OFL.txt`) | `gelasio/Gelasio[wght].ttf`, `gelasio/Gelasio-Italic[wght].ttf` (variable `wght` 400/700) |
+| Selawik | Segoe UI (and its Light, Semilight, Semibold families) | SIL Open Font License 1.1 (`selawik/OFL.txt`) | `selawik/selawk{,b,l,sl,sb}.ttf` (no italic: the upright face serves italic runs) |
 | STIX Two Math | Cambria Math | SIL Open Font License 1.1 (`stix/OFL.txt`) | `stix/STIXTwoMath-Regular.otf` |
 | Noto Naskh Arabic | — (Arabic glyphs for serif runs) | SIL Open Font License 1.1 (`noto-naskh-arabic/OFL.txt`) | `noto-naskh-arabic/NotoNaskhArabic[wght].ttf` (variable `wght` 400/700) |
 | Noto Sans Arabic | — (Arabic glyphs for sans runs) | SIL Open Font License 1.1 (`noto-sans-arabic/OFL.txt`) | `noto-sans-arabic/NotoSansArabic[wdth,wght].ttf` (variable `wght` 400/700, default `wdth`) |
@@ -36,6 +38,13 @@ instantiates `wght` 400/700 with `skrifa`.
 | `ofl/arimo` | `903d46673260c1f4c7f7ef67f5190fb03eab5042` |
 | `ofl/tinos` | `ba95515f1333efe9342c2ad988b9c2f6bef6dbad` |
 | `ofl/cousine` | `ab75f7cf3e87c9ba8663f431f2ee4279c6406ee3` |
+| `ofl/gelasio` | `a60a77e14f28abd4ef243a1b5dfc48df0cec5205` |
+
+Selawik is Microsoft's open Segoe UI fallback, release 1.01 from
+`github.com/microsoft/Selawik`; its `OFL.txt` is that repository's
+`LICENSE.txt`. Gelasio and Selawik cover Latin only: Cyrillic, Greek and
+Hebrew in those runs are drawn by Tinos and Arimo (`font::family::script_fallback`)
+inside the requested face's line box.
 
 The Tinos `OFL.txt` is taken from the upstream `googlefonts/tinos` repository at
 `3b4482a99b80ea5fc75f187b1be3120a3f5905b3` (google/fonts ships none for that
@@ -97,6 +106,13 @@ Rebuild with `xtool/corpus/build_math_style_fonts.py` (fontTools required).
 | `cousine/Cousine-Bold.ttf` | `17c8a7245156d2253531c9e529474937b09d9f641c5ae7695c5e33f22822eef4` |
 | `cousine/Cousine-Italic.ttf` | `ea2a76ae3d0ece9cd59f0d30fdc08dd70e8f5f457beee5b0852a7b50c2286c7c` |
 | `cousine/Cousine-BoldItalic.ttf` | `848e858726fee0ae27b754e4cd6a2755209bf1428a8c91f747696d58c33906c3` |
+| `gelasio/Gelasio[wght].ttf` | `4daecea457258c9ebeb8bc99ed3fd24353618bfad3ea4b93fa0b5d0468fc04e4` |
+| `gelasio/Gelasio-Italic[wght].ttf` | `52559e845a4d33514e5f93bb9ae7dbeae1894a53f2c565a15f18af40cd337c09` |
+| `selawik/selawk.ttf` | `e9d98518d8ac2817782a9a382430463a2e0793ea68350b695bb727d9a830ee1c` |
+| `selawik/selawkb.ttf` | `f0db5e174a90e0956ad7d2844bdca1d5e6da92ec65b2c04e57ba9b180668c904` |
+| `selawik/selawkl.ttf` | `8e19d073091a1e869b5b0d48b925e605c0a4c6ece7df7b22a364fb065314c4c5` |
+| `selawik/selawksl.ttf` | `8620960344f12093482cded984a1aafa5a57d24cbf7e9299da125ccf0e9d4102` |
+| `selawik/selawksb.ttf` | `0a9e9d0549a10f24bef9b3a29e06fe6e0b5c21e7a784c503b048a307841a7783` |
 
 ## License of the project
 

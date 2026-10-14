@@ -56,7 +56,7 @@ fn base_family(name: &str) -> &str {
 #[must_use]
 pub fn known_family(family: &str) -> Option<&'static str> {
     let name = family.trim().to_ascii_lowercase();
-    // The exact name first: the script faces ("Arimo Hebrew", "Noto Sans
+    // The exact name first: the script faces ("Arimo Fallback", "Noto Sans
     // Arabic") end in a qualifier word and map to themselves.
     exact_family(&name).or_else(|| {
         let base = base_family(&name);
@@ -80,6 +80,14 @@ fn exact_family(name: &str) -> Option<&'static str> {
         | "tahoma" | "liberation sans" | "arimo" => "Arimo",
         "times new roman" | "timesnewromanpsmt" | "liberation serif" | "tinos" => "Tinos",
         "courier new" | "liberation mono" | "cousine" => "Cousine",
+        // Gelasio and Selawik are drawn to Georgia's and Segoe UI's metrics;
+        // neither has Cyrillic or full Greek, which [`script_fallback`] takes
+        // from Tinos and Arimo.
+        "georgia" | "gelasio" => "Gelasio",
+        "segoe ui" | "segoeui" | "selawik" => "Selawik",
+        "segoe ui light" | "segoeui-light" | "selawik light" => "Selawik Light",
+        "segoe ui semilight" | "segoeui-semilight" | "selawik semilight" => "Selawik Semilight",
+        "segoe ui semibold" | "segoeui-semibold" | "selawik semibold" => "Selawik Semibold",
         // The math family of Word documents (Stage 5C, §9.1): STIX Two Math
         // is the bundled OFL face with the full OMML glyph repertoire.
         "cambria math" | "strict math" => "Strict Math",
@@ -92,8 +100,8 @@ fn exact_family(name: &str) -> Option<&'static str> {
         "noto naskh arabic" => "Noto Naskh Arabic",
         "noto sans arabic" => "Noto Sans Arabic",
         "jomolhari" => "Jomolhari",
-        "arimo hebrew" => "Arimo Hebrew",
-        "tinos hebrew" => "Tinos Hebrew",
+        "arimo fallback" => "Arimo Fallback",
+        "tinos fallback" => "Tinos Fallback",
         // An unknown CSS family is measured and delivered as Carlito, the bundled
         // Calibri-metric face. Leaving the request unchanged made layout use the
         // fallback model while the SVG named a face the viewer does not have.
@@ -107,7 +115,9 @@ fn exact_family(name: &str) -> Option<&'static str> {
 /// and Cousine cover Hebrew too, Carlito and Caladea do not, though the
 /// Calibri and Cambria they stand for do. Word and WPS draw Arabic and Tibetan
 /// from a font that has them (WQ-004), and Hebrew in Calibri from Calibri:
-/// here it comes from Arimo's or Tinos' Hebrew.
+/// here it comes from Arimo's or Tinos' Hebrew. Gelasio and Selawik (Georgia,
+/// Segoe UI) cover Latin only: the rest of the Latin-Greek-Cyrillic range
+/// comes from Tinos and Arimo, under their fallback names.
 /// Arabic next to a sans face (Arial, Tahoma via Arimo) takes the sans
 /// Arabic design, otherwise the Naskh one, which is the style of Times New
 /// Roman's and Traditional Arabic's Arabic. Urdu set in a Nastaliq family
@@ -126,13 +136,28 @@ pub fn script_fallback(base: &str, ch: char) -> Option<&'static str> {
             "Noto Naskh Arabic"
         }),
         '\u{0F00}'..='\u{0FFF}' => Some("Jomolhari"),
-        '\u{0590}'..='\u{05FF}' | '\u{FB1D}'..='\u{FB4F}' => Some(if base == "Caladea" {
-            "Tinos Hebrew"
+        '\u{0590}'..='\u{05FF}' | '\u{FB1D}'..='\u{FB4F}' => Some(if serif(base) {
+            "Tinos Fallback"
         } else {
-            "Arimo Hebrew"
+            "Arimo Fallback"
         }),
+        '\u{0000}'..='\u{052F}' | '\u{1E00}'..='\u{1FFF}' | '\u{2000}'..='\u{2BFF}'
+            if base == "Gelasio" =>
+        {
+            Some("Tinos Fallback")
+        }
+        '\u{0000}'..='\u{052F}' | '\u{1E00}'..='\u{1FFF}' | '\u{2000}'..='\u{2BFF}'
+            if base.starts_with("Selawik") =>
+        {
+            Some("Arimo Fallback")
+        }
         _ => None,
     }
+}
+
+/// Whether a fallback for `base` takes the serif design.
+fn serif(base: &str) -> bool {
+    matches!(base, "Caladea" | "Gelasio")
 }
 
 /// Whether `family` is a face [`script_fallback`] substitutes for glyphs only.
@@ -144,7 +169,11 @@ pub fn script_fallback(base: &str, ch: char) -> Option<&'static str> {
 pub fn is_script_fallback(family: &str) -> bool {
     matches!(
         family,
-        "Noto Naskh Arabic" | "Noto Sans Arabic" | "Jomolhari" | "Arimo Hebrew" | "Tinos Hebrew"
+        "Noto Naskh Arabic"
+            | "Noto Sans Arabic"
+            | "Jomolhari"
+            | "Arimo Fallback"
+            | "Tinos Fallback"
     )
 }
 
@@ -211,8 +240,8 @@ mod tests {
         assert_eq!(script_fallback("Carlito", 'a'), None);
         // Hebrew: offered for any face, taken only where the face lacks it
         // (`chosen_family` checks the glyph): Carlito and Caladea, not Tinos.
-        assert_eq!(script_fallback("Carlito", 'א'), Some("Arimo Hebrew"));
-        assert_eq!(script_fallback("Caladea", 'א'), Some("Tinos Hebrew"));
+        assert_eq!(script_fallback("Carlito", 'א'), Some("Arimo Fallback"));
+        assert_eq!(script_fallback("Caladea", 'א'), Some("Tinos Fallback"));
         assert!(crate::font::builtin::bundled_has_glyph("Tinos", 'א'));
         assert!(!crate::font::builtin::bundled_has_glyph("Carlito", 'א'));
         assert!(is_script_fallback("Jomolhari"));
@@ -221,8 +250,8 @@ mod tests {
             "Noto Naskh Arabic",
             "Noto Sans Arabic",
             "Jomolhari",
-            "Arimo Hebrew",
-            "Tinos Hebrew",
+            "Arimo Fallback",
+            "Tinos Fallback",
         ] {
             assert_eq!(map_family(family), family);
             assert!(is_script_fallback(family));
@@ -232,7 +261,7 @@ mod tests {
 
     #[test]
     fn unknown_families_use_the_bundled_fallback() {
-        assert_eq!(map_family("Segoe UI"), "Carlito");
+        assert_eq!(map_family("Segoe UI Black"), "Carlito");
         assert_eq!(map_family(""), "Carlito");
         assert_eq!(map_family("Not A Real Font"), "Carlito");
         // Mapping is idempotent: a second pass must not send Arimo through the
@@ -265,6 +294,47 @@ mod tests {
     }
 
     #[test]
+    fn maps_georgia_and_segoe_ui_to_their_metric_twins() {
+        assert_eq!(map_family("Georgia"), "Gelasio");
+        assert_eq!(map_family("Georgia Cyr"), "Gelasio");
+        assert_eq!(map_family("Segoe UI"), "Selawik");
+        assert_eq!(map_family("Segoe UI Semibold"), "Selawik Semibold");
+        assert_eq!(map_family("Segoe UI Light"), "Selawik Light");
+        assert_eq!(map_family("Segoe UI Semilight"), "Selawik Semilight");
+        for family in [
+            "Gelasio",
+            "Selawik",
+            "Selawik Light",
+            "Selawik Semilight",
+            "Selawik Semibold",
+        ] {
+            assert_eq!(map_family(family), family);
+            assert!(crate::font::builtin::bundled_has_glyph(family, 'a'));
+        }
+    }
+
+    #[test]
+    fn latin_only_faces_take_cyrillic_and_greek_from_tinos_and_arimo() {
+        use super::script_fallback;
+        use crate::font::builtin::bundled_has_glyph;
+        for (base, fallback) in [
+            ("Gelasio", "Tinos Fallback"),
+            ("Selawik", "Arimo Fallback"),
+            ("Selawik Semibold", "Arimo Fallback"),
+        ] {
+            assert!(!bundled_has_glyph(base, 'Ж'), "{base}");
+            assert_eq!(script_fallback(base, 'Ж'), Some(fallback));
+            assert_eq!(script_fallback(base, 'א'), Some(fallback));
+            assert!(bundled_has_glyph(fallback, 'Ж'));
+        }
+        // Offered for Latin too, but taken only where the glyph is missing.
+        assert!(bundled_has_glyph("Gelasio", 'é'));
+        // Tinos has no CJK either: no point in offering it.
+        assert_eq!(script_fallback("Gelasio", '中'), None);
+        assert_eq!(script_fallback("Tinos", 'Ж'), None);
+    }
+
+    #[test]
     fn strips_script_qualifiers_before_mapping() {
         assert_eq!(map_family("Times New Roman Cyr"), "Tinos");
         assert_eq!(map_family("Times New Roman CE"), "Tinos");
@@ -278,8 +348,8 @@ mod tests {
         assert_eq!(super::known_family("Courier"), None);
         // The script faces keep their own names.
         for family in [
-            "Arimo Hebrew",
-            "Tinos Hebrew",
+            "Arimo Fallback",
+            "Tinos Fallback",
             "Noto Sans Arabic",
             "Noto Naskh Arabic",
         ] {

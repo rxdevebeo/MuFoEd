@@ -74,7 +74,7 @@ fn f07_cs_font_does_not_override_cyrillic() {
     let svg = svg_of(body);
     assert!(svg.contains("font-family=\"Caladea\""), "{svg}");
     assert!(
-        !svg.contains("font-family=\"Carlito\""),
+        !svg.contains("font-family=\"Carlito\"") && !svg.contains("Selawik"),
         "Segoe UI must not become the run face: {svg}"
     );
     assert!(svg.contains("@font-face") && svg.contains("font-family: \"Caladea\""));
