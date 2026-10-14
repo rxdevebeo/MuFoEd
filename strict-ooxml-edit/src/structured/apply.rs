@@ -160,20 +160,10 @@ pub(super) fn apply(
                 p.props.section = None;
                 blocks.insert(at.block + 1, Block::Paragraph(right));
             }
-            Edit::SplitAt {
-                inline,
-                content,
-                offset,
-                ..
-            } => {
+            Edit::SplitAt { point, .. } => {
                 let p = paragraph_mut(blocks, at.block)?;
                 let mut left = p.clone();
-                let point = super::rich::Point {
-                    inline,
-                    content: *content,
-                    offset: *offset,
-                };
-                let after = super::rich::split(&mut left, &point, limits.grapheme_boundaries)?;
+                let after = super::rich::split(&mut left, point, limits.grapheme_boundaries)?;
                 assign_id(&mut left, ids, false)?;
                 let mut right = left.clone();
                 right.inlines = after;
@@ -183,6 +173,12 @@ pub(super) fn apply(
                 assign_id(&mut right, ids, true)?;
                 *p = left;
                 blocks.insert(at.block + 1, Block::Paragraph(right));
+            }
+            Edit::FormatAt {
+                from, to, patch, ..
+            } => {
+                let p = paragraph_mut(blocks, at.block)?;
+                super::rich::format(p, from, to, patch, limits.grapheme_boundaries)?;
             }
             Edit::Join { .. } => {
                 let mut left = paragraph_mut(blocks, at.block)?.clone();

@@ -23,7 +23,7 @@ use strict_ooxml_wml::model::{
 };
 
 mod structured;
-pub use structured::{Address, Container, Edit, EditFailure, Editor, Story};
+pub use structured::{Address, Container, Edit, EditFailure, Editor, InlinePoint, Story};
 mod definitions;
 pub use definitions::{restarted, unused_abstract_num_id, unused_num_id, Definition};
 mod diff;
@@ -636,7 +636,7 @@ fn push_merged(out: &mut Vec<Inline>, next: Inline) {
     }
     out.push(next);
 }
-fn patch_properties(props: &mut RunProperties, patch: &FormatPatch) {
+pub(crate) fn patch_properties(props: &mut RunProperties, patch: &FormatPatch) {
     if let Some(v) = patch.bold {
         props.bold = v;
     }

@@ -15,6 +15,6 @@ mod validate;
 pub use address::{Address, Container, Story};
 #[cfg(feature = "visual")]
 pub(crate) use apply::complex_fields;
-pub use command::{Edit, EditFailure};
+pub use command::{Edit, EditFailure, InlinePoint};
 pub use editor::Editor;
 pub(crate) use revisions::has_revision;
