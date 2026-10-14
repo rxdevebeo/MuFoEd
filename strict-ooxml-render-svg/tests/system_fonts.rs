@@ -23,7 +23,7 @@ fn installed_faces_are_found_by_the_family_a_document_names() {
         .to_vec();
     std::fs::write(nested.join("Arimo.TTF"), &arimo).expect("font");
     std::fs::write(dir.join("readme.txt"), b"not a font").expect("text");
-    let faces = scan(&[dir.clone()]);
+    let faces = scan(std::slice::from_ref(&dir));
     assert!(
         faces
             .iter()
