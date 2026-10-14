@@ -2265,6 +2265,18 @@ impl Parser<'_> {
         }
         Ok(())
     }
+    /// The font text takes when no `\fN` selected one: `\deff`, as Word and
+    /// the RTF specification have it - or none under the WPS text profile.
+    /// WPS sets such text in Times New Roman whatever `\deff`, `\plain` or
+    /// the font table say (probes 2026-10-15, `CC0_RTF` 072: Verdana as
+    /// `\deff0`, the body in Times New Roman); `w:docDefaults` carries that.
+    fn implicit_font(&self) -> Option<i32> {
+        if self.options.compatibility_profile == CompatibilityProfile::WpsText {
+            None
+        } else {
+            self.default_font
+        }
+    }
     fn select_font(&mut self, id: i32, span: RtfSpan) -> Result<(), RtfError> {
         let Some(font) = self.fonts.get(&id) else {
             return self.issue(span, Severity::Loss, format!("undefined-font:{id}"));
@@ -2632,7 +2644,7 @@ impl Parser<'_> {
             return Ok(());
         }
         if self.state.run.fonts.is_none() && !self.fonts.is_empty() {
-            if let Some(id) = self.default_font {
+            if let Some(id) = self.implicit_font() {
                 self.select_font(
                     id,
                     RtfSpan {
@@ -2791,7 +2803,7 @@ impl Parser<'_> {
             && self.state.run.fonts.is_none()
             && !self.fonts.is_empty()
         {
-            if let Some(id) = self.default_font {
+            if let Some(id) = self.implicit_font() {
                 self.select_font(
                     id,
                     RtfSpan {
@@ -3969,7 +3981,7 @@ impl Parser<'_> {
                 self.state.font_slot = None;
                 self.state.strokewidth = 0;
                 self.state.codepage = self.document_codepage;
-                if let Some(id) = self.default_font {
+                if let Some(id) = self.implicit_font() {
                     self.select_font(id, span)?;
                 }
             }
@@ -5888,12 +5900,19 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         properties: p.section,
         location: SourceLocation::unknown(),
     });
-    let default_fonts = p
-        .default_font
-        .or_else(|| p.fonts.keys().next().copied())
-        .and_then(|id| p.fonts.get(&id))
-        .map(|f| {
-            let name = Arc::<str>::from(f.name.as_str());
+    // WPS's own default face stands for text no `\fN` selected (see
+    // `implicit_font`); otherwise `\deff`, or the first font of the table.
+    let wps_default = (options.compatibility_profile == CompatibilityProfile::WpsText)
+        .then(|| "Times New Roman".to_owned());
+    let default_fonts = wps_default
+        .or_else(|| {
+            p.default_font
+                .or_else(|| p.fonts.keys().next().copied())
+                .and_then(|id| p.fonts.get(&id))
+                .map(|f| f.name.clone())
+        })
+        .map(|name| {
+            let name = Arc::<str>::from(name.as_str());
             Fonts {
                 ascii: Some(name.clone()),
                 h_ansi: Some(name.clone()),

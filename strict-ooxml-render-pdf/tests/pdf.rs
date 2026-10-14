@@ -1019,3 +1019,25 @@ fn supplied_fonts_embed_unless_their_licence_forbids_it() {
         "{restricted:?}"
     );
 }
+
+/// Right-to-left text goes through the outlined path even when every cluster
+/// is one glyph on the baseline (Hebrew here; Windows Arial's Urdu in
+/// CC0/001): drawn glyph by glyph, a reader ordered the letters by their
+/// geometry and swapped the last two of a word.
+#[test]
+fn right_to_left_text_is_one_invisible_text_layer() {
+    let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+        .body(
+            "<w:p><w:pPr><w:bidi/></w:pPr><w:r><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\" w:cs=\"Arial\"/><w:rtl/></w:rPr>\
+             <w:t>שלום עולם</w:t></w:r></w:p>",
+        )
+        .build();
+    let (pdf, _, report) = to_pdf(&bytes);
+    assert!(
+        !report.to_string().contains("pdf.font.no_glyph"),
+        "{report}"
+    );
+    let content = extracted_text(&pdf);
+    assert!(content.contains("3 Tr"), "no invisible text layer");
+    assert!(content.contains(" Do"), "no outline forms drawn");
+}

@@ -2496,3 +2496,48 @@ fn an_orphan_vertical_merge_continuation_starts_a_merge() {
         .iter()
         .any(|issue| issue.feature == "table:orphan-vertical-merge"));
 }
+
+#[test]
+fn the_wps_text_profile_sets_text_without_a_font_in_times_new_roman() {
+    use strict_ooxml_rtf::CompatibilityProfile;
+    // Probes in WPS 12.1 (2026-10-15): text no `\fN` selected is set in Times
+    // New Roman whatever `\deff`, `\plain` or the font table say; an explicit
+    // `\f0` selects the font. Word and the specification take `\deff`.
+    let wps = RtfOptions {
+        compatibility_profile: CompatibilityProfile::WpsText,
+        ..RtfOptions::default()
+    };
+    let first_font = |input: &[u8], options: &RtfOptions| {
+        let imported = import(input, options).unwrap();
+        let Some(Block::Paragraph(p)) = imported.document.body.blocks.first() else {
+            panic!("paragraph expected")
+        };
+        let run = p.inlines.iter().find_map(|inline| match inline {
+            Inline::Run(run) => Some(run),
+            _ => None,
+        });
+        let own = run
+            .and_then(|run| run.props.fonts.as_ref())
+            .and_then(|fonts| fonts.ascii.clone());
+        let default = imported
+            .document
+            .styles
+            .defaults()
+            .and_then(|defaults| defaults.run.fonts.as_ref())
+            .and_then(|fonts| fonts.ascii.clone());
+        own.or(default).map(|name| name.to_string())
+    };
+    let implicit = br"{\rtf1\ansi\deff0{\fonttbl{\f0\fswiss Verdana;}}{\pard Body\par}}";
+    let plain = br"{\rtf1\ansi\deff0{\fonttbl{\f0\fswiss Verdana;}}{\pard\plain Body\par}}";
+    let explicit = br"{\rtf1\ansi\deff0{\fonttbl{\f0\fswiss Verdana;}}{\pard\f0 Body\par}}";
+    assert_eq!(
+        first_font(implicit, &wps).as_deref(),
+        Some("Times New Roman")
+    );
+    assert_eq!(first_font(plain, &wps).as_deref(), Some("Times New Roman"));
+    assert_eq!(first_font(explicit, &wps).as_deref(), Some("Verdana"));
+    assert_eq!(
+        first_font(implicit, &RtfOptions::default()).as_deref(),
+        Some("Verdana")
+    );
+}
