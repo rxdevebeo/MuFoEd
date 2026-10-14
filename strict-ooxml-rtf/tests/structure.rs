@@ -2590,3 +2590,16 @@ fn a_style_tag_does_not_apply_the_stylesheet_formatting() {
     assert_eq!(run.props.bold, TriState::On);
     assert_eq!(run.props.size, Some(HalfPoints(48)));
 }
+
+/// A paragraph's mark takes the character formatting in effect at `\par`,
+/// whether or not the paragraph has text: the mark sets its last line's box.
+#[test]
+fn the_paragraph_mark_carries_the_formatting_at_par() {
+    let source = br"{\rtf1\ansi\deff0{\fonttbl{\f0\fswiss Arial;}}\f0\fs18 small line\par}";
+    let result = import(source, &RtfOptions::default()).unwrap();
+    let Block::Paragraph(paragraph) = &result.document.body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let mark = paragraph.props.run_props.as_ref().expect("mark formatting");
+    assert_eq!(mark.size, Some(HalfPoints(18)));
+}

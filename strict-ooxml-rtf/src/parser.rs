@@ -2769,7 +2769,15 @@ impl Parser<'_> {
             }
             props
         } else {
-            self.paragraph_props.clone()
+            // The paragraph mark takes the character formatting in effect at
+            // `\par`, as for an empty paragraph: it sets the last line's box
+            // (a 9 pt changelog line had a 12 pt default mark and stood 3.5 pt
+            // taller, CC0_RTF/066).
+            let mut props = self.paragraph_props.clone();
+            if props.run_props.is_none() && self.state.run != RunProperties::default() {
+                props.run_props = Some(self.state.run.clone());
+            }
+            props
         };
         let mut inlines = std::mem::take(&mut self.inlines);
         split_mixed_directional_runs(&mut inlines);
