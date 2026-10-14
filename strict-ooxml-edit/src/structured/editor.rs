@@ -470,6 +470,9 @@ impl<'a> Editor<'a> {
 /// add or remove top-level blocks - the blocks around the change.
 fn region(command: &Edit) -> (usize, usize) {
     let at = command.address();
+    if let Edit::Move { to, .. } = command {
+        return super::moves::region(at, to);
+    }
     if let Some(outer) = at.containers.first() {
         let top = match outer {
             Container::Cell { table, .. } => *table,
