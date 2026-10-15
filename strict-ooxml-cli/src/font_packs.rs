@@ -687,8 +687,16 @@ fn sha256_file(path: &Path) -> Result<String, String> {
         .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
     use sha2::Digest as _;
     let mut hasher = sha2::Sha256::new();
-    std::io::copy(&mut file, &mut hasher)
-        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let mut buffer = vec![0u8; 1 << 16];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(buffer.get(..read).unwrap_or_default());
+    }
     Ok(hex(&hasher.finalize()))
 }
 
