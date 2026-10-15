@@ -510,6 +510,9 @@ relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverla
     assert!(widest < 60.0, "gap of {widest} px between lines {lines:?}");
 }
 
+/// A line's baseline and its `(x, width, text)` items.
+type PlacedLine = (f64, Vec<(f64, f64, String)>);
+
 /// Spaces after the last word hang past the margin: a justified line's last
 /// letter meets the margin (WPS ends its lines there; ours stopped a space
 /// short), and spaces alone at the end of a paragraph add no line.
@@ -532,8 +535,7 @@ fn trailing_spaces_hang_past_the_margin() {
 <w:sz w:val=\"22\"/></w:rPr><w:t xml:space=\"preserve\">{words}</w:t></w:r></w:p>{NARROW}"
     );
     let placed = pages(&body, &RenderOptions::default());
-    type Line = (f64, Vec<(f64, f64, String)>);
-    let mut lines: Vec<Line> = Vec::new();
+    let mut lines: Vec<PlacedLine> = Vec::new();
     let mut items = Vec::new();
     walk(&placed[0].items, &mut items);
     for (baseline, x, width, text) in items {
