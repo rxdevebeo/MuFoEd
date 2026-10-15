@@ -519,7 +519,7 @@ fn trailing_spaces_hang_past_the_margin() {
         for item in items {
             match item {
                 Item::Text(text) => {
-                    out.push((text.baseline, text.x, text.width, text.text.clone()))
+                    out.push((text.baseline, text.x, text.width, text.text.clone()));
                 }
                 Item::Group(group) => walk(&group.items, out),
                 _ => {}
@@ -532,7 +532,8 @@ fn trailing_spaces_hang_past_the_margin() {
 <w:sz w:val=\"22\"/></w:rPr><w:t xml:space=\"preserve\">{words}</w:t></w:r></w:p>{NARROW}"
     );
     let placed = pages(&body, &RenderOptions::default());
-    let mut lines: Vec<(f64, Vec<(f64, f64, String)>)> = Vec::new();
+    type Line = (f64, Vec<(f64, f64, String)>);
+    let mut lines: Vec<Line> = Vec::new();
     let mut items = Vec::new();
     walk(&placed[0].items, &mut items);
     for (baseline, x, width, text) in items {
