@@ -48,6 +48,7 @@ strict-ooxml normalize <file.docx>                       # Loss Report for Trans
 strict-ooxml to-pdf    <file.docx> --out <file.pdf>      # Stage 8B
 strict-ooxml from-pdf  <file.pdf>  --out <file.docx>     # Stage 8C+
 strict-ooxml write     <file.docx> --out <file.docx>     # Stage 8A
+strict-ooxml fonts     list | install <pack...> | needed <file.docx>
 ```
 
 `check` exits `0` when no `unsupported`/`error` blocker is found, `1` for a
@@ -59,6 +60,15 @@ the text is selectable and searchable; it exits `1` when the render lost
 something. `write` serializes the parsed model back to a Strict package, prints
 what the writer could not express, and exits `1` when something was lost
 (`STAGE-8-TASK.md`).
+
+The bundled faces draw Latin, Greek, Cyrillic, Hebrew, Arabic and Tibetan.
+Text in Chinese, Japanese, Korean, the Indic scripts, Thai, Lao, Khmer,
+Myanmar or Ethiopic needs a font pack: `strict-ooxml fonts list` shows the
+catalog (Noto, SIL OFL 1.1), `strict-ooxml fonts install <pack...>` downloads
+packs into a local cache, with every file pinned by SHA-256, and `render` and
+`to-pdf` then use the installed packs that a document's text needs. Nothing is
+downloaded unless asked; `--fetch-fonts` on a render fetches the missing packs
+first, and `--no-font-packs` renders without them.
 
 Every line the CLI prints passes through one escaping step: C0/C1 control
 characters from document text (part names, relationship targets, loss details)
