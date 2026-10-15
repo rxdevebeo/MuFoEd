@@ -97,7 +97,11 @@ impl FaceCollector {
     ///
     /// A character the face lacks keeps the face (with only `.notdef` if need
     /// be) and is recorded, so the drawing pass reports a missing glyph rather
-    /// than a missing face.
+    /// than a missing face. It still gets a CID of its own on `.notdef`, whose
+    /// `ToUnicode` entry is the character: the page shows the missing-glyph
+    /// box and the text extracts. Dropping it lost the whole text of a CJK or
+    /// Devanagari document without a font for it (2% of its words extracted,
+    /// where WPS's PDF gave 64-89%).
     pub fn add(&mut self, source: &FaceSource<'_>, bold: bool, italic: bool, ch: char) {
         let key = FaceKey {
             family: source.family.to_owned(),
@@ -105,7 +109,10 @@ impl FaceCollector {
             italic,
         };
         let Some(glyph) = glyph_for(source, ch) else {
-            self.faces.entry(key.clone()).or_default();
+            self.faces
+                .entry(key.clone())
+                .or_default()
+                .insert((GlyphId::new(0), Some(ch)));
             self.missing_glyphs.entry(key).or_default().insert(ch);
             return;
         };
@@ -131,7 +138,26 @@ impl FaceCollector {
             italic,
         };
         if glyph_id == 0 {
-            self.faces.entry(key.clone()).or_default();
+            // `.notdef` with the cluster's text, as in `add`.
+            let mut chars = unicode.chars();
+            match (chars.next(), chars.next()) {
+                (Some(ch), None) => {
+                    self.faces
+                        .entry(key.clone())
+                        .or_default()
+                        .insert((GlyphId::new(0), Some(ch)));
+                }
+                (Some(_), Some(_)) => {
+                    self.faces.entry(key.clone()).or_default();
+                    self.shaped
+                        .entry(key.clone())
+                        .or_default()
+                        .insert((0, unicode.to_owned()));
+                }
+                _ => {
+                    self.faces.entry(key.clone()).or_default();
+                }
+            }
             self.missing_glyphs
                 .entry(key)
                 .or_default()
@@ -287,6 +313,7 @@ impl FaceCollector {
         // assignment is deterministic. The content stream writes CIDs; the map
         // stream turns them back into subset GIDs for painting.
         let mut chars: BTreeMap<char, u16> = BTreeMap::new();
+        let mut notdef_chars: BTreeSet<char> = BTreeSet::new();
         let mut to_unicode: BTreeMap<u16, char> = BTreeMap::new();
         let mut cluster_unicode: BTreeMap<u16, String> = BTreeMap::new();
         let mut cluster_cids: BTreeMap<(u16, String), u16> = BTreeMap::new();
@@ -321,6 +348,9 @@ impl FaceCollector {
             if let Some(ch) = glyph.character {
                 chars.insert(ch, cid);
                 to_unicode.insert(cid, ch);
+                if glyph.source.to_u32() == 0 {
+                    notdef_chars.insert(ch);
+                }
             }
         }
 
@@ -339,6 +369,7 @@ impl FaceCollector {
             ascent: f64::from(metrics.ascent) * scale,
             descent: f64::from(metrics.descent) * scale,
             cap_height: metrics.cap_height.map(|value| f64::from(value) * scale),
+            notdef_chars,
         })
     }
 }
@@ -376,6 +407,9 @@ pub struct EmbeddedFont {
     pub descent: f64,
     /// Cap height in 1000-unit text space, when the face declares one.
     pub cap_height: Option<f64>,
+    /// Characters the face lacks: their CIDs draw `.notdef` and extract as
+    /// the character (`FaceCollector::add`).
+    pub notdef_chars: BTreeSet<char>,
 }
 
 /// Builds the `/CIDToGIDMap` stream body: two big-endian bytes per CID.
@@ -612,7 +646,15 @@ mod tests {
             italic: false,
         };
         let font = collector.build(&key, &source).expect("subset .notdef");
-        assert!(font.chars.is_empty());
+        // It draws `.notdef` under a CID of its own that extracts as the
+        // character, and is marked as such for the loss report.
+        let cid = *font
+            .chars
+            .get(&'\u{10FFFD}')
+            .expect("a CID for the character");
+        assert_eq!(font.cid_to_gid.get(usize::from(cid)), Some(&0));
+        assert_eq!(font.to_unicode.get(&cid), Some(&'\u{10FFFD}'));
+        assert!(font.notdef_chars.contains(&'\u{10FFFD}'));
     }
 
     #[test]

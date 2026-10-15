@@ -129,7 +129,7 @@ impl PdfReport {
     pub fn record_missing_glyph(&mut self, family: &str, ch: char) {
         self.push(
             "pdf.font.no_glyph",
-            format!("'{ch}' is not in the bundled face for '{family}' and was not drawn"),
+            format!("'{ch}' is not in the bundled face for '{family}'; it is drawn as the missing-glyph box and extracts as text"),
             Severity::Text,
         );
     }
