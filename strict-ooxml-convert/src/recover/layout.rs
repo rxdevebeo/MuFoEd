@@ -828,21 +828,75 @@ struct Arrangement {
     page: (usize, usize),
 }
 
-/// The bands and columns of a page's blocks. A block wider than 60% of the
-/// text column is a band of its own (a title across the page); the blocks
-/// between such are grouped by overlapping x-ranges, and a group of two or
-/// more columns whose blocks share some height is laid out side by side.
+/// The bands and columns of a page's blocks. The columns are found from the
+/// narrow blocks (under 30% of the text column; under 50% when fewer than two
+/// are): their x-ranges, joined where they overlap. A block across two
+/// columns or more - a title, a table head - is a band of its own; the other
+/// blocks belong to the column they overlap most. The blocks between two such
+/// bands are laid out side by side when they fill two columns or more that
+/// share some height.
 fn arrange(areas: &[PixelBox], page: (usize, usize)) -> Arrangement {
     let width = page.1.saturating_sub(page.0).max(1);
+    let narrow = |limit: usize| -> Vec<usize> {
+        (0..areas.len())
+            .filter(|index| {
+                areas
+                    .get(*index)
+                    .is_some_and(|area| area.width() * 100 < width * limit)
+            })
+            .collect()
+    };
+    let mut seeds = narrow(30);
+    if seeds.len() < 2 {
+        seeds = narrow(50);
+    }
+    seeds.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.left));
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    for index in seeds {
+        let Some(area) = areas.get(index) else {
+            continue;
+        };
+        match spans.last_mut() {
+            Some(span) if area.left < span.1 => span.1 = span.1.max(area.right),
+            _ => spans.push((area.left, area.right)),
+        }
+    }
+    let overlap = |area: &PixelBox, span: &(usize, usize)| {
+        area.right.min(span.1).saturating_sub(area.left.max(span.0))
+    };
+    // Per block: its column, or `None` across columns (or with no columns).
+    let column_of: Vec<Option<usize>> = areas
+        .iter()
+        .map(|area| {
+            if spans.len() < 2 {
+                return None;
+            }
+            let touched: Vec<usize> = spans
+                .iter()
+                .enumerate()
+                .filter(|(_, span)| overlap(area, span) > 0)
+                .map(|(at, _)| at)
+                .collect();
+            match touched.as_slice() {
+                [only] => Some(*only),
+                [] => spans
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_, span)| {
+                        let centre = usize::midpoint(area.left, area.right);
+                        centre.abs_diff(usize::midpoint(span.0, span.1))
+                    })
+                    .map(|(at, _)| at),
+                _ => None,
+            }
+        })
+        .collect();
     let mut order: Vec<usize> = (0..areas.len()).collect();
     order.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.top));
     let mut bands: Vec<Vec<usize>> = Vec::new();
     let mut current: Vec<usize> = Vec::new();
     for index in order {
-        let Some(area) = areas.get(index) else {
-            continue;
-        };
-        if area.width() * 10 > width * 6 {
+        if column_of.get(index).copied().flatten().is_none() {
             if !current.is_empty() {
                 bands.push(std::mem::take(&mut current));
             }
@@ -857,20 +911,29 @@ fn arrange(areas: &[PixelBox], page: (usize, usize)) -> Arrangement {
     let mut frames = vec![page; areas.len()];
     let mut out = Vec::with_capacity(bands.len());
     for band in bands {
-        let mut by_left = band.clone();
-        by_left.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.left));
         let mut columns: Vec<Column> = Vec::new();
-        for index in by_left {
-            let Some(area) = areas.get(index) else {
+        for (at, span) in spans.iter().enumerate() {
+            let members: Vec<usize> = band
+                .iter()
+                .copied()
+                .filter(|index| column_of.get(*index).copied().flatten() == Some(at))
+                .collect();
+            if members.is_empty() {
                 continue;
-            };
-            match columns.last_mut() {
-                Some(column) if area.left < column.1 => {
-                    column.1 = column.1.max(area.right);
-                    column.2.push(index);
-                }
-                _ => columns.push((area.left, area.right, vec![index])),
             }
+            let left = members
+                .iter()
+                .filter_map(|index| areas.get(*index))
+                .map(|area| area.left)
+                .min()
+                .unwrap_or(span.0);
+            let right = members
+                .iter()
+                .filter_map(|index| areas.get(*index))
+                .map(|area| area.right)
+                .max()
+                .unwrap_or(span.1);
+            columns.push((left, right, members));
         }
         let side_by_side = columns.len() >= 2
             && columns.iter().enumerate().any(|(at, column)| {
@@ -1755,6 +1818,19 @@ mod tests {
         assert_eq!(columns[0].2, vec![1, 3]);
         assert_eq!(arrangement.frames[2], (520, 900));
         assert_eq!(arrangement.frames[0], (100, 900));
+        // A title and a table head across columns do not join them (page 6).
+        let contents = [
+            area(66, 52, 578, 162),
+            area(367, 165, 717, 180),
+            area(60, 208, 270, 287),
+            area(367, 211, 464, 227),
+            area(634, 211, 736, 340),
+            area(367, 227, 600, 243),
+            area(106, 317, 214, 334),
+        ];
+        let arrangement = super::arrange(&contents, (60, 944));
+        let sides: Vec<usize> = arrangement.bands.iter().map(|band| band.1.len()).collect();
+        assert_eq!(sides, vec![0, 0, 3], "{sides:?}");
         // Indented blocks one under the other stay one column.
         let stacked = [area(100, 100, 500, 140), area(200, 150, 520, 190)];
         assert!(super::arrange(&stacked, (100, 900))
