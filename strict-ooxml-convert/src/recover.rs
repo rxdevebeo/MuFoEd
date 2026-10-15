@@ -221,7 +221,7 @@ pub(crate) fn recover_pages(
                     report.record(
                         "text.recovery",
                         Severity::Lost,
-                        format!("page {} could not be rasterized: {error}", index + 1),
+                        format!("page {} could not be rasterized: {error}", page.number),
                     );
                     continue;
                 }
@@ -248,7 +248,7 @@ pub(crate) fn recover_pages(
                     .ok();
                 let frame = layout::Frame {
                     scale,
-                    page: index + 1,
+                    page: page.number,
                     detail,
                 };
                 if let Some(items) = layout::rebuild(&*recovery, &pixels, &frame, options, report) {
@@ -279,7 +279,7 @@ pub(crate) fn recover_pages(
                     );
                     policy::record_restored(
                         report,
-                        index + 1,
+                        page.number,
                         restored,
                         options.recovery_lexicon.as_deref(),
                     );
@@ -291,7 +291,7 @@ pub(crate) fn recover_pages(
                         format!(
                             "page {}: {} paragraph(s) read by model {} {} from {}, {:.0}x{:.0} pt at \
                              ({:.0},{:.0}); the paragraph breaks are the model's",
-                            index + 1,
+                            page.number,
                             paragraphs.len(),
                             answer.model,
                             answer.version,
@@ -314,14 +314,14 @@ pub(crate) fn recover_pages(
                     Severity::Lost,
                     format!(
                         "page {}: the model found no text in {}, which has ink on the page",
-                        index + 1,
+                        page.number,
                         region.origin.name()
                     ),
                 ),
                 Err(error) => report.record(
                     "text.recovery",
                     Severity::Lost,
-                    format!("page {}: {error}", index + 1),
+                    format!("page {}: {error}", page.number),
                 ),
             }
         }

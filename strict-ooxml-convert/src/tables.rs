@@ -387,6 +387,8 @@ pub(crate) fn plan(
 /// A table of `columns` equal columns across `width` points, thin grey rules,
 /// from rows of cell paragraphs: what a model read as a table on a scan,
 /// which states its cells and not their geometry. A short row is padded.
+// A column count is small; its f64 is exact.
+#[allow(clippy::cast_precision_loss)]
 pub(crate) fn grid_table(width: f64, columns: usize, rows: Vec<Vec<Vec<Paragraph>>>) -> Table {
     let columns = columns.max(1);
     let column_width = width / columns as f64;

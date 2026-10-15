@@ -578,36 +578,54 @@ pub(crate) fn rebuild(
 }
 
 /// The stroke thickness of each word of a line, measured on `detail` (the
-/// page at `factor` times the scale `line` was found at). Words are runs of
-/// ink columns split by gaps of a third of the main band or more.
+/// page at `factor` times the scale `line` was found at). The gaps between
+/// runs of ink are split in two by Otsu's rule - letter gaps and word gaps -
+/// which on a book page counts the words the text has; a line whose widest
+/// gap is narrow is one word.
 fn line_word_strokes(detail: &Ink, line: &Line, factor: f64) -> Vec<f64> {
     let scale = |value: usize| (value as f64 * factor).round() as usize;
     let (top, bottom) = (scale(line.top), scale(line.bottom).min(detail.height));
     let (left, right) = (scale(line.left), scale(line.right).min(detail.width));
-    let gap = ((line.core as f64 * factor) / 3.0).max(2.0) as usize;
     let inked: Vec<bool> = (left..right)
         .map(|x| detail.column_ink(x, top, bottom) > 0)
         .collect();
-    let mut words: Vec<(usize, usize)> = Vec::new();
+    // Runs of ink: (start, end) offsets.
+    let mut runs: Vec<(usize, usize)> = Vec::new();
     let mut start: Option<usize> = None;
-    let mut blank = 0usize;
     for (offset, ink) in inked.iter().enumerate() {
-        if *ink {
-            if start.is_none() {
-                start = Some(offset);
-            } else if blank >= gap {
-                if let (Some(begin), Some(end)) = (start, offset.checked_sub(blank)) {
-                    words.push((begin, end));
-                }
-                start = Some(offset);
+        match (*ink, start) {
+            (true, None) => start = Some(offset),
+            (false, Some(begin)) => {
+                runs.push((begin, offset));
+                start = None;
             }
-            blank = 0;
-        } else {
-            blank += 1;
+            _ => {}
         }
     }
     if let Some(begin) = start {
-        words.push((begin, inked.len().saturating_sub(blank)));
+        runs.push((begin, inked.len()));
+    }
+    let gaps: Vec<usize> = runs
+        .windows(2)
+        .filter_map(|pair| match pair {
+            [first, second] => Some(second.0 - first.1),
+            _ => None,
+        })
+        .collect();
+    let core = line.core as f64 * factor;
+    let widest = gaps.iter().copied().max().unwrap_or(0);
+    let threshold = if (widest as f64) < core * 0.35 {
+        usize::MAX
+    } else {
+        otsu(&gaps).max((core * 0.25).ceil() as usize)
+    };
+    let mut words: Vec<(usize, usize)> = Vec::new();
+    for (index, run) in runs.iter().enumerate() {
+        let split = index == 0 || gaps.get(index - 1).is_some_and(|gap| *gap >= threshold);
+        match words.last_mut() {
+            Some(word) if !split => word.1 = run.1,
+            _ => words.push(*run),
+        }
     }
     words
         .into_iter()
@@ -633,6 +651,28 @@ fn line_word_strokes(detail: &Ink, line: &Line, factor: f64) -> Vec<f64> {
             }
         })
         .collect()
+}
+
+/// The value that splits `values` into two groups most apart (Otsu): the
+/// smallest value of the upper group.
+fn otsu(values: &[usize]) -> usize {
+    let mut sorted = values.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    let mut best: Option<(f64, usize)> = None;
+    for &threshold in sorted.iter().skip(1) {
+        let (low, high): (Vec<usize>, Vec<usize>) =
+            values.iter().partition(|value| **value < threshold);
+        if low.is_empty() || high.is_empty() {
+            continue;
+        }
+        let mean = |group: &[usize]| group.iter().sum::<usize>() as f64 / group.len() as f64;
+        let spread = (low.len() * high.len()) as f64 * (mean(&high) - mean(&low)).powi(2);
+        if best.is_none_or(|(top, _)| spread > top) {
+            best = Some((spread, threshold));
+        }
+    }
+    best.map_or(usize::MAX, |(_, threshold)| threshold)
 }
 
 /// `text` with its words marked `**bold**` where `bold` says, when the text
@@ -1427,6 +1467,12 @@ mod tests {
                 "{left}-{right}"
             );
         }
+    }
+
+    #[test]
+    fn otsu_splits_letter_gaps_from_word_gaps() {
+        assert_eq!(super::otsu(&[2, 3, 2, 9, 3, 2, 10, 3]), 9);
+        assert_eq!(super::otsu(&[]), usize::MAX);
     }
 
     #[test]
