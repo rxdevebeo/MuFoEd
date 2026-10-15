@@ -131,11 +131,17 @@ impl InkBounds {
 #[must_use]
 pub(crate) fn section_for(page: &PdfPage, visual: bool) -> SectionProperties {
     let bounds = InkBounds::of(page);
-    let width = to_twips(page.geometry.width.round());
-    let height = to_twips(page.geometry.height.round());
-    let margins = if visual {
+    // The page as it is shown: a scanned book stored as landscape pages
+    // turned by /Rotate 90 is a portrait book, and its DOCX pages are portrait.
+    let (shown_width, shown_height) = page.geometry.displayed();
+    let width = to_twips(shown_width.round());
+    let height = to_twips(shown_height.round());
+    let turned = page.geometry.rotation % 360 != 0;
+    let margins = if visual || turned {
         // The visual mode reproduces positions, so the page keeps the ink where
-        // it was and the margins are the *author's* frame, not the ink's.
+        // it was and the margins are the *author's* frame, not the ink's. A
+        // turned page's ink is measured in its unturned frame, whose edges are
+        // not the shown page's: it gets the default frame too.
         let default = to_twips(DEFAULT_MARGIN_PT);
         PageMargins {
             top: Some(Twips(default)),
@@ -164,6 +170,22 @@ pub(crate) fn section_for(page: &PdfPage, visual: bool) -> SectionProperties {
 #[cfg(test)]
 mod tests {
     use super::{InkBounds, DEFAULT_MARGIN_PT, MIN_MARGIN_PT};
+
+    #[test]
+    fn a_turned_page_keeps_its_shown_orientation() {
+        let mut page = page_with(Vec::new(), 842.0, 595.0);
+        page.geometry.rotation = 90;
+        let section = super::section_for(&page, false);
+        let size = section.page_size.expect("a size");
+        assert_eq!(
+            size.width.map(|twips| twips.0),
+            Some(crate::to_twips(595.0))
+        );
+        assert_eq!(
+            size.height.map(|twips| twips.0),
+            Some(crate::to_twips(842.0))
+        );
+    }
     use crate::to_twips;
     use strict_ooxml_pdf::{content::Item, Glyph, PdfPage, RenderMode, Rgb};
 
