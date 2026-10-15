@@ -136,10 +136,17 @@ pub(crate) fn build(
     // and the `numbering.xml` that defines its marker have to arrive together.
     let mut numbering = strict_ooxml_wml::model::numbering::NumberingTable::new();
 
+    let scan_margins = scan_margins(pages, recovered);
     for (index, page) in pages.iter().enumerate() {
         // A size or margin change closes the previous page before these blocks
         // are appended. Identical neighbours stay in the open section.
-        sections.begin_page(&mut blocks, section_for(page, false), false);
+        let mut section = section_for(page, false);
+        let rebuilt = recovered.page(index).iter().any(|block| block.whole_page);
+        if let (true, Some(margins)) = (rebuilt, scan_margins.as_ref()) {
+            section.page_margins = Some(*margins);
+        }
+        let text_area = text_area(&section);
+        sections.begin_page(&mut blocks, section, false);
         let raw_lines = strict_ooxml_pdf::text::lines(page.items());
         report.lines += raw_lines.len();
         let column_plan = crate::columns::plan(page, &raw_lines, report);
@@ -229,7 +236,7 @@ pub(crate) fn build(
         // Text a model read off a picture-only region comes after the page's
         // own content, indented to the region's left edge.
         for block in recovered.page(index) {
-            let mut placed = recovered_blocks(block, index, &mut media, report);
+            let mut placed = recovered_blocks(block, index, &mut media, report, text_area);
             if block.whole_page && !blocks.is_empty() {
                 start_page(&mut placed);
             }
@@ -809,6 +816,58 @@ fn image_paragraph(
     sized_image_paragraph(image.width, image.height, part, description)
 }
 
+/// The margins of a scanned book's pages rebuilt from their layout: the
+/// medians of where their ink lies, so every page has the frame the book has
+/// (one section, no breaks between pages that differ by a few points).
+fn scan_margins(
+    pages: &[PdfPage],
+    recovered: &crate::recover::Recovered,
+) -> Option<strict_ooxml_wml::model::props::PageMargins> {
+    let mut sides: [Vec<f64>; 4] = Default::default();
+    for (index, page) in pages.iter().enumerate() {
+        let (width, height) = page.geometry.displayed();
+        for block in recovered.page(index) {
+            let Some([left, top, right, bottom]) = block.extent.filter(|_| block.whole_page) else {
+                continue;
+            };
+            for (side, value) in sides
+                .iter_mut()
+                .zip([left, top, width - right, height - bottom])
+            {
+                side.push(value);
+            }
+        }
+    }
+    let median = |values: &mut Vec<f64>| -> Option<f64> {
+        values.sort_by(f64::total_cmp);
+        values.get(values.len() / 2).copied()
+    };
+    let [left, top, right, bottom] = sides.each_mut().map(median);
+    let twips = |points: Option<f64>| -> Option<Twips> {
+        points.map(|points| Twips(to_twips(points.clamp(18.0, 108.0).floor())))
+    };
+    left?;
+    Some(strict_ooxml_wml::model::props::PageMargins {
+        top: twips(top),
+        right: twips(right),
+        bottom: twips(bottom),
+        left: twips(left),
+        header: None,
+        footer: None,
+        gutter: None,
+    })
+}
+
+/// The width and height between a section's margins, in points.
+fn text_area(section: &strict_ooxml_wml::model::props::SectionProperties) -> Option<(f64, f64)> {
+    let size = section.page_size.as_ref()?;
+    let margins = section.page_margins.as_ref()?;
+    let points = |twips: Option<Twips>| f64::from(twips.map_or(0, |twips| twips.0)) / 20.0;
+    let width = points(size.width) - points(margins.left) - points(margins.right);
+    let height = points(size.height) - points(margins.top) - points(margins.bottom);
+    (width > 0.0 && height > 0.0).then_some((width, height))
+}
+
 /// Makes `blocks` begin a new page: the first paragraph breaks before
 /// itself, or an empty paragraph that does is put in front of a table.
 fn start_page(blocks: &mut Vec<Block>) {
@@ -840,31 +899,69 @@ pub(crate) fn recovered_blocks(
     index: usize,
     media: &mut crate::media::MediaCollector,
     report: &mut ConversionReport,
+    fit: Option<(f64, f64)>,
 ) -> Vec<Block> {
-    use crate::recover::RecoveredItem;
     let mut out = Vec::with_capacity(block.items.len());
     for item in &block.items {
-        match item {
-            RecoveredItem::Paragraph(paragraph) => {
-                out.push(Block::Paragraph(paragraph.as_ref().clone()));
-            }
-            RecoveredItem::Table(table) => out.push(Block::Table(table.as_ref().clone())),
-            RecoveredItem::Picture(picture) => match media.add(index, &picture.image) {
-                Ok(part) => out.push(Block::Paragraph(sized_image_paragraph(
-                    picture.width,
-                    picture.height,
+        out.extend(item_blocks(item, index, media, report, fit));
+    }
+    out
+}
+
+/// The blocks one recovered item places; `fit` is the room it has, in points.
+fn item_blocks(
+    item: &crate::recover::RecoveredItem,
+    index: usize,
+    media: &mut crate::media::MediaCollector,
+    report: &mut ConversionReport,
+    fit: Option<(f64, f64)>,
+) -> Vec<Block> {
+    use crate::recover::RecoveredItem;
+    match item {
+        RecoveredItem::Paragraph(paragraph) => vec![Block::Paragraph(paragraph.as_ref().clone())],
+        RecoveredItem::Table(table) => vec![Block::Table(table.as_ref().clone())],
+        RecoveredItem::Columns { widths, cells } => {
+            let height = fit.map(|(_, height)| height);
+            let contents = widths
+                .iter()
+                .zip(cells)
+                .map(|(width, items)| {
+                    // A cell's own margins take a few points of its width.
+                    let room = height.map(|height| ((width - 11.0).max(18.0), height));
+                    items
+                        .iter()
+                        .flat_map(|item| item_blocks(item, index, media, report, room))
+                        .collect()
+                })
+                .collect();
+            vec![Block::Table(tables::columns_table(widths, contents))]
+        }
+        RecoveredItem::Picture(picture) => match media.add(index, &picture.image) {
+            Ok(part) => {
+                // A picture cut from a scan is as large as the page it
+                // was on, and the page has margins: it is scaled to fit.
+                let shrink = fit.map_or(1.0, |(width, height)| {
+                    (width / picture.width)
+                        .min(height * 0.98 / picture.height)
+                        .min(1.0)
+                });
+                vec![Block::Paragraph(sized_image_paragraph(
+                    picture.width * shrink,
+                    picture.height * shrink,
                     &part,
                     picture.description.clone(),
-                ))),
-                Err(reason) => report.record(
+                ))]
+            }
+            Err(reason) => {
+                report.record(
                     "image.lost",
                     Severity::Lost,
                     format!("page {}: a picture cut from the scan: {reason}", index + 1),
-                ),
-            },
-        }
+                );
+                Vec::new()
+            }
+        },
     }
-    out
 }
 
 /// A paragraph holding one picture of `width` x `height` points.

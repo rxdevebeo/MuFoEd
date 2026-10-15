@@ -104,13 +104,41 @@ impl Ink {
             }
         }
         let threshold = (median - 70).clamp(60, 170);
+        // The paper's own tone: the median colour of the brighter half of the
+        // page. Cream or grey stock is paper; a strongly coloured "paper" (a
+        // cover printed yellow all over) is not, and the page is a picture.
+        let paper = {
+            let mut channels: [Vec<u8>; 3] = Default::default();
+            for pixel in pixels.rgba.chunks_exact(4) {
+                if tone(pixel).0 >= median {
+                    for (channel, value) in channels.iter_mut().zip(pixel.iter()) {
+                        channel.push(*value);
+                    }
+                }
+            }
+            channels.map(|mut channel| {
+                channel.sort_unstable();
+                channel
+                    .get(channel.len() / 2)
+                    .copied()
+                    .map_or(255, i32::from)
+            })
+        };
+        let paper_chroma =
+            paper.iter().copied().max().unwrap_or(255) - paper.iter().copied().min().unwrap_or(255);
+        let coloured_paper = paper_chroma > 60;
         let mut dark = Vec::with_capacity(width * height);
         let mut unpaper = Vec::with_capacity(width * height);
         for pixel in pixels.rgba.chunks_exact(4) {
             let (luma, chroma) = tone(pixel);
-            let brightest = pixel.iter().take(3).copied().max().unwrap_or(255);
             dark.push(luma < threshold || (chroma > 60 && luma < median - 20));
-            unpaper.push(brightest < 215 || chroma > 40);
+            let distance = pixel
+                .iter()
+                .zip(paper.iter())
+                .map(|(value, paper)| (i32::from(*value) - paper).abs())
+                .max()
+                .unwrap_or(0);
+            unpaper.push(coloured_paper || distance > 40);
         }
         Self {
             width,
@@ -506,17 +534,20 @@ pub(crate) struct Frame {
     /// The same pixels at twice the scale, when they could be had: what the
     /// weight of single words is measured on.
     pub(crate) detail: Option<Pixels>,
+    /// Where the pixels' top-left corner lies on the shown page, in points.
+    pub(crate) origin: (f64, f64),
 }
 
-/// The page rebuilt from the model's layout, or `None` when the model gave
-/// none (the caller then asks for the plain text).
+/// The page rebuilt from the model's layout, with where its ink lies (points
+/// of the shown page: left, top, right, bottom), or `None` when the model
+/// gave none (the caller then asks for the plain text).
 pub(crate) fn rebuild(
     recovery: &dyn TextRecovery,
     pixels: &Pixels,
     frame: &Frame,
     options: &PdfOptions,
     report: &mut ConversionReport,
-) -> Option<Vec<RecoveredItem>> {
+) -> Option<(Vec<RecoveredItem>, Option<[f64; 4]>)> {
     let png = pixels.to_png().ok()?;
     let layout = match recovery.recover_layout(&strict_ooxml_ocr::Image::png(png)) {
         Ok(Some(layout)) => layout,
@@ -559,12 +590,15 @@ pub(crate) fn rebuild(
             right: ink.width,
             bottom: ink.height,
         };
-        return Some(vec![RecoveredItem::Picture(picture(
-            pixels,
-            whole,
-            frame.scale,
-            (!description.is_empty()).then_some(description),
-        ))]);
+        return Some((
+            vec![RecoveredItem::Picture(picture(
+                pixels,
+                whole,
+                frame.scale,
+                (!description.is_empty()).then_some(description),
+            ))],
+            None,
+        ));
     }
     let detail = frame.detail.as_ref().map(Ink::of);
     let page = Page {
@@ -577,12 +611,32 @@ pub(crate) fn rebuild(
     Some(build_items(&layout.blocks, &page, options, report, &source))
 }
 
+/// Where a page's blocks lie, in points of the shown page.
+fn extent_of(areas: impl Iterator<Item = PixelBox>, frame: &Frame) -> Option<[f64; 4]> {
+    let (mut left, mut top, mut right, mut bottom) = (usize::MAX, usize::MAX, 0, 0);
+    for area in areas {
+        left = left.min(area.left);
+        top = top.min(area.top);
+        right = right.max(area.right);
+        bottom = bottom.max(area.bottom);
+    }
+    let point = |pixels: usize, origin: f64| origin + pixels as f64 / frame.scale;
+    (right > left && bottom > top).then(|| {
+        [
+            point(left, frame.origin.0),
+            point(top, frame.origin.1),
+            point(right, frame.origin.0),
+            point(bottom, frame.origin.1),
+        ]
+    })
+}
+
 /// The stroke thickness of each word of a line, measured on `detail` (the
 /// page at `factor` times the scale `line` was found at). The gaps between
 /// runs of ink are split in two by Otsu's rule - letter gaps and word gaps -
 /// which on a book page counts the words the text has; a line whose widest
 /// gap is narrow is one word.
-fn line_word_strokes(detail: &Ink, line: &Line, factor: f64) -> Vec<f64> {
+fn line_word_strokes(detail: &Ink, line: &Line, factor: f64) -> Vec<(f64, f64)> {
     let scale = |value: usize| (value as f64 * factor).round() as usize;
     let (top, bottom) = (scale(line.top), scale(line.bottom).min(detail.height));
     let (left, right) = (scale(line.left), scale(line.right).min(detail.width));
@@ -644,11 +698,12 @@ fn line_word_strokes(detail: &Ink, line: &Line, factor: f64) -> Vec<f64> {
                     previous = dark;
                 }
             }
-            if runs == 0 {
+            let stroke = if runs == 0 {
                 0.0
             } else {
                 pixels as f64 / runs as f64
-            }
+            };
+            (stroke, (end - begin) as f64 / core.max(1.0))
         })
         .collect()
 }
@@ -673,6 +728,36 @@ fn otsu(values: &[usize]) -> usize {
         }
     }
     best.map_or(usize::MAX, |(_, threshold)| threshold)
+}
+
+/// Which words are bold: a stroke `WORD_BOLD_RATIO` times the page's typical
+/// one. A short word (under 2.5 x-heights wide: `za`, `se`, `i`) has too few
+/// strokes to measure and follows its neighbours - bold only between bold
+/// words.
+fn word_weights(words: &[(f64, f64)], body: f64) -> Vec<bool> {
+    let measured: Vec<bool> = words
+        .iter()
+        .map(|(stroke, _)| *stroke > body * WORD_BOLD_RATIO)
+        .collect();
+    words
+        .iter()
+        .enumerate()
+        .map(|(index, (_, width))| {
+            if *width >= 2.5 {
+                return measured.get(index).copied().unwrap_or(false);
+            }
+            let before = index
+                .checked_sub(1)
+                .and_then(|at| measured.get(at))
+                .copied();
+            let after = measured.get(index + 1).copied();
+            match (before, after) {
+                (Some(before), Some(after)) => before && after,
+                (Some(only), None) | (None, Some(only)) => only,
+                (None, None) => false,
+            }
+        })
+        .collect()
 }
 
 /// `text` with its words marked `**bold**` where `bold` says, when the text
@@ -728,6 +813,164 @@ fn embolden(text: &str, bold: &[bool]) -> Option<String> {
     Some(out)
 }
 
+/// One column of a band: left and right pixels, and its blocks.
+type Column = (usize, usize, Vec<usize>);
+
+/// How a page's blocks sit: bands from top to bottom, a band of blocks side
+/// by side split into columns.
+struct Arrangement {
+    /// Per block, the frame (left, right pixels) its alignment and indent are
+    /// measured in: its column, or the page's text column.
+    frames: Vec<(usize, usize)>,
+    /// Bands, top to bottom: the blocks of each, and its columns when it has
+    /// two or more side by side (left, right pixels; blocks).
+    bands: Vec<(Vec<usize>, Vec<Column>)>,
+    page: (usize, usize),
+}
+
+/// The bands and columns of a page's blocks. A block wider than 60% of the
+/// text column is a band of its own (a title across the page); the blocks
+/// between such are grouped by overlapping x-ranges, and a group of two or
+/// more columns whose blocks share some height is laid out side by side.
+fn arrange(areas: &[PixelBox], page: (usize, usize)) -> Arrangement {
+    let width = page.1.saturating_sub(page.0).max(1);
+    let mut order: Vec<usize> = (0..areas.len()).collect();
+    order.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.top));
+    let mut bands: Vec<Vec<usize>> = Vec::new();
+    let mut current: Vec<usize> = Vec::new();
+    for index in order {
+        let Some(area) = areas.get(index) else {
+            continue;
+        };
+        if area.width() * 10 > width * 6 {
+            if !current.is_empty() {
+                bands.push(std::mem::take(&mut current));
+            }
+            bands.push(vec![index]);
+        } else {
+            current.push(index);
+        }
+    }
+    if !current.is_empty() {
+        bands.push(current);
+    }
+    let mut frames = vec![page; areas.len()];
+    let mut out = Vec::with_capacity(bands.len());
+    for band in bands {
+        let mut by_left = band.clone();
+        by_left.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.left));
+        let mut columns: Vec<Column> = Vec::new();
+        for index in by_left {
+            let Some(area) = areas.get(index) else {
+                continue;
+            };
+            match columns.last_mut() {
+                Some(column) if area.left < column.1 => {
+                    column.1 = column.1.max(area.right);
+                    column.2.push(index);
+                }
+                _ => columns.push((area.left, area.right, vec![index])),
+            }
+        }
+        let side_by_side = columns.len() >= 2
+            && columns.iter().enumerate().any(|(at, column)| {
+                columns.iter().skip(at + 1).any(|other| {
+                    column.2.iter().any(|a| {
+                        other
+                            .2
+                            .iter()
+                            .any(|b| match (areas.get(*a), areas.get(*b)) {
+                                (Some(a), Some(b)) => a.top < b.bottom && b.top < a.bottom,
+                                _ => false,
+                            })
+                    })
+                })
+            });
+        if side_by_side {
+            for column in &columns {
+                for index in &column.2 {
+                    if let Some(frame) = frames.get_mut(*index) {
+                        *frame = (column.0, column.1);
+                    }
+                }
+            }
+            out.push((band, columns));
+        } else {
+            out.push((band, Vec::new()));
+        }
+    }
+    Arrangement {
+        frames,
+        bands: out,
+        page,
+    }
+}
+
+impl Arrangement {
+    /// `items` (in the blocks' order, block `n`'s from `starts[n]`, then the
+    /// pictures no block claimed from `end`) put together band by band, a
+    /// band of columns as one `Columns` item.
+    fn apply(
+        &self,
+        items: Vec<RecoveredItem>,
+        starts: &[usize],
+        end: usize,
+        scale: f64,
+    ) -> Vec<RecoveredItem> {
+        let mut slots: Vec<Option<RecoveredItem>> = items.into_iter().map(Some).collect();
+        let mut take = |block: usize| -> Vec<RecoveredItem> {
+            let from = starts.get(block).copied().unwrap_or(end);
+            let to = starts.get(block + 1).copied().unwrap_or(end);
+            (from..to)
+                .filter_map(|index| slots.get_mut(index).and_then(Option::take))
+                .collect()
+        };
+        let mut out = Vec::new();
+        for (blocks, columns) in &self.bands {
+            if columns.is_empty() {
+                let mut ordered = blocks.clone();
+                ordered.sort_unstable();
+                for block in ordered {
+                    out.extend(take(block));
+                }
+                continue;
+            }
+            // Columns span the text column: each takes up to the middle of
+            // the gap to its neighbour.
+            let mut edges = vec![self.page.0];
+            for pair in columns.windows(2) {
+                if let [left, right] = pair {
+                    edges.push(usize::midpoint(left.1, right.0));
+                }
+            }
+            edges.push(self.page.1.max(columns.last().map_or(0, |column| column.1)));
+            let widths: Vec<f64> = edges
+                .windows(2)
+                .map(|pair| match pair {
+                    [left, right] => right.saturating_sub(*left) as f64 / scale,
+                    _ => 0.0,
+                })
+                .collect();
+            let cells = columns
+                .iter()
+                .map(|column| {
+                    let mut ordered = column.2.clone();
+                    ordered.sort_unstable();
+                    ordered.into_iter().flat_map(&mut take).collect()
+                })
+                .collect();
+            out.push(RecoveredItem::Columns { widths, cells });
+        }
+        out.extend(
+            slots
+                .into_iter()
+                .skip(starts.first().copied().unwrap_or(end).min(end))
+                .flatten(),
+        );
+        out
+    }
+}
+
 /// What a page's blocks are measured on and asked about.
 struct Page<'a> {
     ink: &'a Ink,
@@ -745,7 +988,7 @@ fn build_items(
     options: &PdfOptions,
     report: &mut ConversionReport,
     source: &str,
-) -> Vec<RecoveredItem> {
+) -> (Vec<RecoveredItem>, Option<[f64; 4]>) {
     let (ink, pixels, frame) = (page.ink, page.pixels, page.frame);
     let mut placed: Vec<(&LayoutBlock, Measured)> = Vec::new();
     let mut dropped = 0usize;
@@ -768,7 +1011,7 @@ fn build_items(
             .iter()
             .filter(|(block, _)| block.kind != BlockKind::Figure)
     };
-    let column = (
+    let page_column = (
         text_blocks()
             .map(|(_, measured)| measured.area.left)
             .min()
@@ -783,6 +1026,10 @@ fn build_items(
         .filter_map(|(_, measured)| measured.stroke_ratio())
         .collect();
     let body_ratio = (!body_ratios.is_empty()).then(|| median(body_ratios));
+    // Blocks side by side on the scan stay side by side: each block is set
+    // in its own column's frame, and the bands are put together below.
+    let areas: Vec<PixelBox> = placed.iter().map(|(_, measured)| measured.area).collect();
+    let arrangement = arrange(&areas, page_column);
 
     // Running text on a page is one size; a single line measured off it is
     // the measure's noise (a line of capitals, a bold label, a box that took
@@ -823,7 +1070,7 @@ fn build_items(
 
     // The weight of single words, measured at twice the scale: running text
     // with a few bold words keeps them bold.
-    let word_strokes: Vec<Option<Vec<f64>>> = placed
+    let word_strokes: Vec<Option<Vec<(f64, f64)>>> = placed
         .iter()
         .map(|(block, measured)| {
             let detail = page.detail?;
@@ -845,7 +1092,12 @@ fn build_items(
         })
         .collect();
     let word_body = {
-        let all: Vec<f64> = word_strokes.iter().flatten().flatten().copied().collect();
+        let all: Vec<f64> = word_strokes
+            .iter()
+            .flatten()
+            .flatten()
+            .map(|(stroke, _)| *stroke)
+            .collect();
         (all.len() >= 20).then(|| median(all))
     };
 
@@ -897,7 +1149,15 @@ fn build_items(
         )));
         Some(region.bottom)
     };
+    // Where each block's items start in `items`.
+    let mut starts: Vec<usize> = Vec::with_capacity(placed.len());
     for (position, (block, measured)) in placed.iter().enumerate() {
+        starts.push(items.len());
+        let column = arrangement
+            .frames
+            .get(position)
+            .copied()
+            .unwrap_or(page_column);
         // Pictures no block fell into, above this block.
         for (index, region) in regions.iter().enumerate() {
             let unclaimed = region_text.get(index).is_none_or(Vec::is_empty);
@@ -935,10 +1195,7 @@ fn build_items(
         };
         let text = match (word_strokes.get(position).cloned().flatten(), word_body) {
             (Some(strokes), Some(body)) if !text.contains('*') => {
-                let bold: Vec<bool> = strokes
-                    .iter()
-                    .map(|stroke| *stroke > body * WORD_BOLD_RATIO)
-                    .collect();
+                let bold = word_weights(&strokes, body);
                 match embolden(&text, &bold) {
                     Some(marked) => {
                         bold_words += bold.iter().filter(|bold| **bold).count();
@@ -986,12 +1243,15 @@ fn build_items(
         });
         if let Some(rows) = rows {
             tables += 1;
+            // A table's size is its text's, not its block's: the block's
+            // "lines" are its rows, their pitch the rows'.
             let cell_style = Style {
                 align: Align::Left,
                 before: None,
                 indent: 0.0,
                 first_line: 0.0,
                 heading: None,
+                size: body_size.or(Some(10.0)),
                 ..style
             };
             let columns = rows.iter().map(Vec::len).max().unwrap_or(1);
@@ -1026,9 +1286,11 @@ fn build_items(
         }
         previous_bottom = Some(measured.area.bottom);
     }
+    let placed_end = items.len();
     for index in 0..regions.len() {
         let _ = emit(index, &mut items, &mut figures);
     }
+    let items = arrangement.apply(items, &starts, placed_end, frame.scale);
     report.record(
         "text.recovered",
         Severity::Recovered,
@@ -1053,7 +1315,8 @@ fn build_items(
     if let Some(lexicon) = options.recovery_lexicon.as_deref() {
         super::policy::record_restored(report, frame.page, restored, Some(lexicon));
     }
-    items
+    let extent = extent_of(placed.iter().map(|(_, measured)| measured.area), frame);
+    (items, extent)
 }
 
 /// Whether a text is set in capitals: two letters or more, none lower case.
@@ -1470,6 +1733,47 @@ mod tests {
     }
 
     #[test]
+    fn blocks_side_by_side_become_columns() {
+        let area = |left, top, right, bottom| PixelBox {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        // A title across the page, then two columns, then a footer.
+        let areas = [
+            area(100, 50, 900, 90),
+            area(100, 120, 480, 300),
+            area(520, 120, 900, 260),
+            area(100, 320, 480, 400),
+            area(100, 900, 900, 930),
+        ];
+        let arrangement = super::arrange(&areas, (100, 900));
+        assert_eq!(arrangement.bands.len(), 3);
+        let columns = &arrangement.bands[1].1;
+        assert_eq!(columns.len(), 2);
+        assert_eq!(columns[0].2, vec![1, 3]);
+        assert_eq!(arrangement.frames[2], (520, 900));
+        assert_eq!(arrangement.frames[0], (100, 900));
+        // Indented blocks one under the other stay one column.
+        let stacked = [area(100, 100, 500, 140), area(200, 150, 520, 190)];
+        assert!(super::arrange(&stacked, (100, 900))
+            .bands
+            .iter()
+            .all(|band| band.1.is_empty()));
+    }
+
+    #[test]
+    fn a_short_word_follows_its_neighbours() {
+        // `rešenja za savladavanje`: `za` measured heavy, its neighbours not.
+        let words = [(2.0, 6.0), (3.0, 1.5), (2.0, 9.0)];
+        assert_eq!(super::word_weights(&words, 2.0), vec![false, false, false]);
+        // `lekcija, i izraza`: `i` measured light between bold words.
+        let words = [(3.0, 6.0), (2.0, 0.5), (3.0, 5.0)];
+        assert_eq!(super::word_weights(&words, 2.0), vec![true, true, true]);
+    }
+
+    #[test]
     fn otsu_splits_letter_gaps_from_word_gaps() {
         assert_eq!(super::otsu(&[2, 3, 2, 9, 3, 2, 10, 3]), 9);
         assert_eq!(super::otsu(&[]), usize::MAX);
@@ -1571,6 +1875,15 @@ mod tests {
         let region = regions[0];
         assert!(region.left <= 112 && region.right >= 352, "{region:?}");
         assert!(region.top <= 400 && region.bottom >= 752, "{region:?}");
+    }
+
+    #[test]
+    fn cream_stock_is_paper() {
+        let mut pixels = page(100, 100, &[]);
+        for pixel in pixels.rgba.chunks_exact_mut(4) {
+            pixel.copy_from_slice(&[240, 232, 210, 255]);
+        }
+        assert!(Ink::of(&pixels).unpaper_ratio() < 0.05);
     }
 
     #[test]
