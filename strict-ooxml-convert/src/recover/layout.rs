@@ -47,69 +47,67 @@ use crate::PdfOptions;
 /// Share of a page that is not paper past which the page is kept as a picture.
 const PICTURE_PAGE_RATIO: f64 = 0.5;
 
-/// Stroke-to-height ratio over the page's body text past which a block is bold.
-const BOLD_RATIO: f64 = 1.3;
+/// Stroke-to-band ratio over the page's body text past which a heading is
+/// bold. Only headings: at the 144 dpi a model reads, a body stroke is 2-3
+/// pixels, and a paragraph with a few bold words measures like a bold one.
+const BOLD_RATIO: f64 = 1.15;
 
 /// The page's pixels classified: ink (text and line art) and paper.
 pub(crate) struct Ink {
     width: usize,
     height: usize,
+    /// Type and line art: what is clearly darker than the page's typical tone,
+    /// or clearly coloured and darker than it (light-blue headings).
     dark: Vec<bool>,
     /// Pixels that are neither white paper nor near it: colour, grey, ink.
-    unpaper: usize,
+    unpaper: Vec<bool>,
 }
 
 impl Ink {
-    /// Classifies RGBA pixels. Ink is what is clearly darker than the page's
-    /// typical tone - so purple type on a yellow cover is ink and the yellow is
-    /// not.
+    /// Classifies RGBA pixels. Ink is what stands out from the page's typical
+    /// tone - so purple type on a yellow cover is ink and the yellow is not.
     pub(crate) fn of(pixels: &Pixels) -> Self {
         let width = pixels.size.width as usize;
         let height = pixels.size.height as usize;
-        let luma: Vec<u8> = pixels
-            .rgba
-            .chunks_exact(4)
-            .map(|pixel| match pixel {
+        let tone = |pixel: &[u8]| -> (i32, i32) {
+            match pixel {
                 [r, g, b, _] => {
-                    let value =
+                    let luma =
                         0.299 * f64::from(*r) + 0.587 * f64::from(*g) + 0.114 * f64::from(*b);
-                    value.round().clamp(0.0, 255.0) as u8
+                    let chroma = i32::from((*r).max(*g).max(*b)) - i32::from((*r).min(*g).min(*b));
+                    (luma.round() as i32, chroma)
                 }
-                _ => 255,
-            })
-            .collect();
+                _ => (255, 0),
+            }
+        };
         let mut histogram = [0usize; 256];
-        for value in &luma {
-            if let Some(slot) = histogram.get_mut(usize::from(*value)) {
+        for pixel in pixels.rgba.chunks_exact(4) {
+            let (luma, _) = tone(pixel);
+            if let Some(slot) =
+                histogram.get_mut(usize::try_from(luma.clamp(0, 255)).unwrap_or(255))
+            {
                 *slot += 1;
             }
         }
-        let half = luma.len() / 2;
+        let half = width * height / 2;
         let mut seen = 0;
-        let mut median = 255u8;
+        let mut median = 255i32;
         for (value, count) in histogram.iter().enumerate() {
             seen += count;
             if seen > half {
-                median = u8::try_from(value).unwrap_or(255);
+                median = i32::try_from(value).unwrap_or(255);
                 break;
             }
         }
-        let threshold = (i32::from(median) - 70).clamp(60, 170);
-        let dark = luma
-            .iter()
-            .map(|value| i32::from(*value) < threshold)
-            .collect();
-        let unpaper = pixels
-            .rgba
-            .chunks_exact(4)
-            .filter(|pixel| match pixel {
-                [r, g, b, _] => {
-                    let (max, min) = ((*r).max(*g).max(*b), (*r).min(*g).min(*b));
-                    max < 215 || max - min > 40
-                }
-                _ => false,
-            })
-            .count();
+        let threshold = (median - 70).clamp(60, 170);
+        let mut dark = Vec::with_capacity(width * height);
+        let mut unpaper = Vec::with_capacity(width * height);
+        for pixel in pixels.rgba.chunks_exact(4) {
+            let (luma, chroma) = tone(pixel);
+            let brightest = pixel.iter().take(3).copied().max().unwrap_or(255);
+            dark.push(luma < threshold || (chroma > 60 && luma < median - 20));
+            unpaper.push(brightest < 215 || chroma > 40);
+        }
         Self {
             width,
             height,
@@ -125,7 +123,7 @@ impl Ink {
     /// The share of the page that is not paper.
     pub(crate) fn unpaper_ratio(&self) -> f64 {
         let total = (self.width * self.height).max(1);
-        self.unpaper as f64 / total as f64
+        self.unpaper.iter().filter(|unpaper| **unpaper).count() as f64 / total as f64
     }
 
     /// Ink pixels in row `y` between `left` and `right` (exclusive).
@@ -135,6 +133,92 @@ impl Ink {
 
     fn column_ink(&self, x: usize, top: usize, bottom: usize) -> usize {
         (top..bottom).filter(|y| self.is_dark(x, *y)).count()
+    }
+
+    /// Solid areas of colour or tone on a paper page - a sticker, a coloured
+    /// panel, a photograph: cells of 16 px that are mostly not paper, joined,
+    /// at least 1% of the page. Thin strips along the page (a scan's dark
+    /// edge, a coloured thumb index) are not pictures.
+    pub(crate) fn filled_regions(&self) -> Vec<PixelBox> {
+        const CELL: usize = 16;
+        let (columns, rows) = (self.width / CELL, self.height / CELL);
+        if columns == 0 || rows == 0 {
+            return Vec::new();
+        }
+        let mut filled = vec![false; columns * rows];
+        for row in 0..rows {
+            for column in 0..columns {
+                let mut count = 0usize;
+                for y in row * CELL..(row + 1) * CELL {
+                    let start = y * self.width + column * CELL;
+                    count += self
+                        .unpaper
+                        .get(start..start + CELL)
+                        .unwrap_or_default()
+                        .iter()
+                        .filter(|unpaper| **unpaper)
+                        .count();
+                }
+                if let Some(cell) = filled.get_mut(row * columns + column) {
+                    *cell = count * 2 > CELL * CELL;
+                }
+            }
+        }
+        let mut seen = vec![false; filled.len()];
+        let mut regions = Vec::new();
+        for start in 0..filled.len() {
+            if !filled.get(start).copied().unwrap_or(false)
+                || seen.get(start).copied().unwrap_or(true)
+            {
+                continue;
+            }
+            let (mut left, mut top, mut right, mut bottom, mut cells) =
+                (usize::MAX, usize::MAX, 0, 0, 0);
+            let mut stack = vec![start];
+            if let Some(mark) = seen.get_mut(start) {
+                *mark = true;
+            }
+            while let Some(index) = stack.pop() {
+                let (row, column) = (index / columns, index % columns);
+                cells += 1;
+                left = left.min(column);
+                right = right.max(column + 1);
+                top = top.min(row);
+                bottom = bottom.max(row + 1);
+                let mut visit = |next: usize| {
+                    if filled.get(next).copied().unwrap_or(false)
+                        && !seen.get(next).copied().unwrap_or(true)
+                    {
+                        if let Some(mark) = seen.get_mut(next) {
+                            *mark = true;
+                        }
+                        stack.push(next);
+                    }
+                };
+                if column > 0 {
+                    visit(index - 1);
+                }
+                if column + 1 < columns {
+                    visit(index + 1);
+                }
+                if row > 0 {
+                    visit(index - columns);
+                }
+                if row + 1 < rows {
+                    visit(index + columns);
+                }
+            }
+            let thin = (right - left) * 100 < columns * 6 || (bottom - top) * 100 < rows * 6;
+            if cells * 100 >= columns * rows && !thin {
+                regions.push(PixelBox {
+                    left: left * CELL,
+                    top: top * CELL,
+                    right: right * CELL,
+                    bottom: bottom * CELL,
+                });
+            }
+        }
+        regions
     }
 }
 
@@ -198,12 +282,16 @@ pub(crate) struct Line {
     pub(crate) bottom: usize,
     pub(crate) left: usize,
     pub(crate) right: usize,
+    /// Rows of the line's main band - the x-height of mixed case, the cap
+    /// height of capitals - where most of its ink is.
+    pub(crate) core: usize,
     /// Mean length of a horizontal run of ink: the stroke thickness.
     stroke: f64,
 }
 
-/// The text lines of a block: runs of rows with ink, an accent row merged
-/// into the line it sits on.
+/// The text lines of a block: runs of rows with ink. A run much shorter than
+/// the block's lines - accents over capitals, a háček, dots - belongs to the
+/// line below it (or above, at the end).
 pub(crate) fn lines_of(ink: &Ink, area: PixelBox) -> Vec<Line> {
     let noise = 1 + area.width() / 400;
     let mut runs: Vec<(usize, usize)> = Vec::new();
@@ -219,56 +307,70 @@ pub(crate) fn lines_of(ink: &Ink, area: PixelBox) -> Vec<Line> {
             _ => {}
         }
     }
-    let mut heights: Vec<usize> = runs.iter().map(|(top, bottom)| bottom - top).collect();
+    let tallest = runs
+        .iter()
+        .map(|(top, bottom)| bottom - top)
+        .max()
+        .unwrap_or(0);
+    let mut heights: Vec<usize> = runs
+        .iter()
+        .map(|(top, bottom)| bottom - top)
+        .filter(|height| height * 2 >= tallest)
+        .collect();
     heights.sort_unstable();
     let typical = heights.get(heights.len() / 2).copied().unwrap_or(0);
-    // Accents and dots above a line form short runs of their own: they join
-    // the run below them.
-    let mut merged: Vec<(usize, usize)> = Vec::new();
-    for (top, bottom) in runs {
-        let short = (bottom - top) * 3 < typical;
-        match merged.last_mut() {
-            Some(last) if short && top.saturating_sub(last.1) * 4 < typical => last.1 = bottom,
-            _ => merged.push((top, bottom)),
-        }
-    }
-    let mut lines = Vec::new();
+    let mut joined: Vec<(usize, usize)> = Vec::new();
     let mut pending: Option<usize> = None;
-    for (top, bottom) in merged {
-        if (bottom - top) * 3 < typical {
-            // A short run before a line: an accent row, joined to the next.
+    for (top, bottom) in runs {
+        if (bottom - top) * 2 < typical {
             pending.get_or_insert(top);
             continue;
         }
-        let top = pending.take().map_or(top, |accent| accent.min(top));
-        lines.push(measure_line(ink, area, top, bottom));
+        joined.push((pending.take().map_or(top, |accent| accent.min(top)), bottom));
     }
-    lines
+    if let (Some(_), Some(last)) = (pending, joined.last_mut()) {
+        // Marks under the last line (a cedilla, an underline) stay with it.
+        last.1 = area.bottom.max(last.1);
+    }
+    joined
+        .into_iter()
+        .map(|(top, bottom)| measure_line(ink, area, top, bottom))
+        .collect()
 }
 
 fn measure_line(ink: &Ink, area: PixelBox, top: usize, bottom: usize) -> Line {
     let (mut left, mut right) = (area.right, area.left);
     let (mut pixels, mut runs) = (0usize, 0usize);
+    let mut row_counts = Vec::with_capacity(bottom.saturating_sub(top));
     for y in top..bottom {
         let mut previous = false;
+        let mut count = 0usize;
         for x in area.left..area.right {
             let dark = ink.is_dark(x, y);
             if dark {
                 left = left.min(x);
                 right = right.max(x + 1);
-                pixels += 1;
+                count += 1;
                 if !previous {
                     runs += 1;
                 }
             }
             previous = dark;
         }
+        pixels += count;
+        row_counts.push(count);
     }
+    let busiest = row_counts.iter().copied().max().unwrap_or(0);
+    let core = row_counts
+        .iter()
+        .filter(|count| **count * 2 >= busiest && **count > 0)
+        .count();
     Line {
         top,
         bottom,
         left: left.min(right),
         right,
+        core,
         stroke: if runs == 0 {
             0.0
         } else {
@@ -285,8 +387,10 @@ pub(crate) struct Measured {
 }
 
 impl Measured {
-    /// Type size in points: line pitch over 1.2, or a single line's height.
-    pub(crate) fn size_pt(&self, scale: f64) -> Option<f64> {
+    /// Type size in points: line pitch over 1.2; for a single line its main
+    /// band, which is the cap height (0.7 em) of capitals and the x-height
+    /// (0.5 em) of mixed case.
+    pub(crate) fn size_pt(&self, scale: f64, capitals: bool) -> Option<f64> {
         let pitches: Vec<f64> = self
             .lines
             .windows(2)
@@ -297,20 +401,20 @@ impl Measured {
             .collect();
         let size = if pitches.is_empty() {
             let line = self.lines.first()?;
-            (line.bottom - line.top) as f64 / scale * 1.1
+            line.core as f64 / scale / if capitals { 0.7 } else { 0.5 }
         } else {
             median(pitches) / 1.2
         };
         (size.is_finite() && size > 0.0).then(|| ((size * 2.0).round() / 2.0).clamp(6.0, 72.0))
     }
 
-    /// The block's stroke thickness relative to its line height.
+    /// The block's stroke thickness relative to its lines' main band.
     fn stroke_ratio(&self) -> Option<f64> {
         let ratios: Vec<f64> = self
             .lines
             .iter()
-            .filter(|line| line.bottom > line.top && line.stroke > 0.0)
-            .map(|line| line.stroke / (line.bottom - line.top) as f64)
+            .filter(|line| line.core > 0 && line.stroke > 0.0)
+            .map(|line| line.stroke / line.core as f64)
             .collect();
         (!ratios.is_empty()).then(|| median(ratios))
     }
@@ -356,22 +460,22 @@ impl Measured {
                 fallback.unwrap_or(Align::Left)
             };
         }
+        // One line: where it sits in the page's text column.
         let (column_left, column_right) = column;
         let column_width = column_right.saturating_sub(column_left).max(1) as f64;
-        let centre = (self.area.left + self.area.right) as f64 / 2.0;
-        let column_centre = (column_left + column_right) as f64 / 2.0;
-        let narrow = (self.area.width() as f64) < column_width * 0.85;
-        if narrow && (centre - column_centre).abs() < column_width * 0.04 {
+        let tolerance = (column_width * 0.02).max(6.0);
+        let left_gap = self.area.left as f64 - column_left as f64;
+        let right_gap = column_right as f64 - self.area.right as f64;
+        if left_gap <= tolerance && right_gap <= tolerance {
+            fallback
+                .filter(|align| *align != Align::Center)
+                .unwrap_or(Align::Left)
+        } else if (left_gap - right_gap).abs() <= tolerance * 2.0 {
             Align::Center
-        } else if narrow
-            && (column_right as f64 - self.area.right as f64).abs() < column_width * 0.03
-            && (self.area.left as f64 - column_left as f64) > column_width * 0.2
-        {
+        } else if right_gap <= tolerance {
             Align::Right
         } else {
-            fallback
-                .filter(|align| *align != Align::Justify)
-                .unwrap_or(Align::Left)
+            Align::Left
         }
     }
 
@@ -513,11 +617,105 @@ fn build_items(
         .collect();
     let body_ratio = (!body_ratios.is_empty()).then(|| median(body_ratios));
 
+    // Running text on a page is one size; a single line measured a point or
+    // two off it is the measure's noise (a line of capitals, a bold label),
+    // not a different size. Headings keep theirs.
+    let measured_sizes: Vec<Option<f64>> = placed
+        .iter()
+        .map(|(block, measured)| measured.size_pt(frame.scale, capitals(&block.text)))
+        .collect();
+    let body_size = {
+        let running = |multi: bool| -> Vec<f64> {
+            placed
+                .iter()
+                .zip(&measured_sizes)
+                .filter(|((block, measured), _)| {
+                    matches!(block.kind, BlockKind::Paragraph | BlockKind::ListItem)
+                        && (measured.lines.len() >= 2) == multi
+                })
+                .filter_map(|(_, size)| *size)
+                .collect()
+        };
+        let multi = running(true);
+        let sizes = if multi.is_empty() {
+            running(false)
+        } else {
+            multi
+        };
+        (!sizes.is_empty()).then(|| median(sizes))
+    };
+    let size_of = |index: usize, kind: BlockKind| -> Option<f64> {
+        let size = measured_sizes.get(index).copied().flatten()?;
+        let running = !matches!(kind, BlockKind::Title | BlockKind::Heading);
+        match body_size {
+            Some(body) if running && size > body * 0.75 && size < body * 1.33 => Some(body),
+            _ => Some(size),
+        }
+    };
+
+    // Solid areas of colour are pictures whatever the model called the blocks
+    // inside them: a sticker read as five headings is still a sticker.
+    let regions = ink.filled_regions();
+    let region_of = |block: &LayoutBlock| {
+        let x = f64::midpoint(block.bbox[0], block.bbox[2]) * ink.width as f64;
+        let y = f64::midpoint(block.bbox[1], block.bbox[3]) * ink.height as f64;
+        regions.iter().position(|region| {
+            (region.left as f64..region.right as f64).contains(&x)
+                && (region.top as f64..region.bottom as f64).contains(&y)
+        })
+    };
+    let mut region_text: Vec<Vec<String>> = vec![Vec::new(); regions.len()];
+    for (block, _) in &placed {
+        if let Some(text) = region_of(block).and_then(|index| region_text.get_mut(index)) {
+            let words = plain(&block.text);
+            if !words.is_empty() {
+                text.push(words);
+            }
+        }
+    }
+    let mut emitted = vec![false; regions.len()];
+
     let mut items = Vec::new();
     let mut restored = 0usize;
     let mut previous_bottom: Option<usize> = None;
     let (mut headings, mut figures, mut bold_blocks) = (0usize, 0usize, 0usize);
-    for (block, measured) in &placed {
+    let mut emit = |index: usize, items: &mut Vec<RecoveredItem>, figures: &mut usize| {
+        let (Some(region), Some(done)) = (regions.get(index), emitted.get_mut(index)) else {
+            return None;
+        };
+        if *done {
+            return None;
+        }
+        *done = true;
+        *figures += 1;
+        let description = region_text
+            .get(index)
+            .map(|text| text.join("\n"))
+            .unwrap_or_default();
+        items.push(RecoveredItem::Picture(picture(
+            pixels,
+            *region,
+            frame.scale,
+            (!description.is_empty()).then_some(description),
+        )));
+        Some(region.bottom)
+    };
+    for (position, (block, measured)) in placed.iter().enumerate() {
+        // Pictures no block fell into, above this block.
+        for (index, region) in regions.iter().enumerate() {
+            let unclaimed = region_text.get(index).is_none_or(Vec::is_empty);
+            if unclaimed && region.top < measured.area.top {
+                if let Some(bottom) = emit(index, &mut items, &mut figures) {
+                    previous_bottom = Some(bottom);
+                }
+            }
+        }
+        if let Some(index) = region_of(block) {
+            if let Some(bottom) = emit(index, &mut items, &mut figures) {
+                previous_bottom = Some(bottom);
+            }
+            continue;
+        }
         if block.kind == BlockKind::Figure {
             figures += 1;
             let description = plain(&block.text);
@@ -544,11 +742,15 @@ fn build_items(
             _ => None,
         };
         headings += usize::from(heading.is_some());
-        let bold = matches!((measured.stroke_ratio(), body_ratio), (Some(ratio), Some(body)) if ratio > body * BOLD_RATIO);
+        let bold = heading.is_some()
+            && matches!(
+                (measured.stroke_ratio(), body_ratio),
+                (Some(ratio), Some(body)) if ratio > body * BOLD_RATIO
+            );
         bold_blocks += usize::from(bold);
         let style = Style {
             align: measured.alignment(column, block.align),
-            size: measured.size_pt(frame.scale),
+            size: size_of(position, block.kind),
             bold,
             heading,
             before: previous_bottom
@@ -571,6 +773,9 @@ fn build_items(
             ))));
         }
         previous_bottom = Some(measured.area.bottom);
+    }
+    for index in 0..regions.len() {
+        let _ = emit(index, &mut items, &mut figures);
     }
     report.record(
         "text.recovered",
@@ -596,6 +801,12 @@ fn build_items(
         super::policy::record_restored(report, frame.page, restored, Some(lexicon));
     }
     items
+}
+
+/// Whether a text is set in capitals: two letters or more, none lower case.
+fn capitals(text: &str) -> bool {
+    let letters: Vec<char> = text.chars().filter(|ch| ch.is_alphabetic()).collect();
+    letters.len() >= 2 && !letters.iter().any(|ch| ch.is_lowercase())
 }
 
 /// How a block's paragraphs are set.
@@ -868,7 +1079,7 @@ mod tests {
             lines: lines_of(&ink, area),
         };
         assert_eq!(measured.lines.len(), 4);
-        assert_eq!(measured.size_pt(2.0), Some(10.0));
+        assert_eq!(measured.size_pt(2.0, false), Some(10.0));
         assert_eq!(measured.alignment((100, 900), None), Align::Justify);
         // Centred lines of different widths.
         let pixels = page(1000, 400, &[(300, 100, 700, 116), (400, 124, 600, 140)]);
@@ -884,6 +1095,30 @@ mod tests {
             lines: lines_of(&ink, area),
         };
         assert_eq!(measured.alignment((100, 900), None), Align::Center);
+        // One line: its gaps to the text column.
+        for (left, right, expected) in [
+            (150, 850, Align::Center),
+            (100, 600, Align::Left),
+            (400, 900, Align::Right),
+        ] {
+            let pixels = page(1000, 400, &[(left, 100, right, 116)]);
+            let ink = Ink::of(&pixels);
+            let area = PixelBox {
+                left: left as usize,
+                top: 100,
+                right: right as usize,
+                bottom: 116,
+            };
+            let measured = Measured {
+                area,
+                lines: lines_of(&ink, area),
+            };
+            assert_eq!(
+                measured.alignment((100, 900), None),
+                expected,
+                "{left}-{right}"
+            );
+        }
     }
 
     #[test]
@@ -909,6 +1144,44 @@ mod tests {
             paragraph_texts(BlockKind::ListItem, "- prvo"),
             vec!["\u{2022} prvo".to_owned()]
         );
+    }
+
+    /// A white page with bars of one colour.
+    fn coloured(width: u32, height: u32, colour: [u8; 3], bars: &[(u32, u32, u32, u32)]) -> Pixels {
+        let mut pixels = page(width, height, &[]);
+        for &(left, top, right, bottom) in bars {
+            for y in top..bottom {
+                for x in left..right {
+                    let at = ((y * width + x) * 4) as usize;
+                    pixels.rgba[at..at + 3].copy_from_slice(&colour);
+                }
+            }
+        }
+        pixels
+    }
+
+    #[test]
+    fn light_coloured_type_is_ink() {
+        // The light-blue heading of a scanned book: brighter than any grey
+        // threshold, plainly type.
+        let pixels = coloured(1000, 1000, [140, 195, 240], &[(200, 100, 500, 130)]);
+        let area = snap(&Ink::of(&pixels), [0.2, 0.1, 0.5, 0.13]).expect("ink");
+        assert_eq!((area.left, area.top), (200, 100));
+    }
+
+    #[test]
+    fn a_solid_area_is_a_picture_and_a_scan_edge_is_not() {
+        let pixels = coloured(
+            800,
+            800,
+            [120, 60, 170],
+            &[(100, 400, 360, 760), (780, 0, 800, 800)],
+        );
+        let regions = Ink::of(&pixels).filled_regions();
+        assert_eq!(regions.len(), 1, "{regions:?}");
+        let region = regions[0];
+        assert!(region.left <= 112 && region.right >= 352, "{region:?}");
+        assert!(region.top <= 400 && region.bottom >= 752, "{region:?}");
     }
 
     #[test]
