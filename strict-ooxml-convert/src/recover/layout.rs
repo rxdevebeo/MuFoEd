@@ -506,17 +506,20 @@ pub(crate) struct Frame {
     /// The same pixels at twice the scale, when they could be had: what the
     /// weight of single words is measured on.
     pub(crate) detail: Option<Pixels>,
+    /// Where the pixels' top-left corner lies on the shown page, in points.
+    pub(crate) origin: (f64, f64),
 }
 
-/// The page rebuilt from the model's layout, or `None` when the model gave
-/// none (the caller then asks for the plain text).
+/// The page rebuilt from the model's layout, with where its ink lies (points
+/// of the shown page: left, top, right, bottom), or `None` when the model
+/// gave none (the caller then asks for the plain text).
 pub(crate) fn rebuild(
     recovery: &dyn TextRecovery,
     pixels: &Pixels,
     frame: &Frame,
     options: &PdfOptions,
     report: &mut ConversionReport,
-) -> Option<Vec<RecoveredItem>> {
+) -> Option<(Vec<RecoveredItem>, Option<[f64; 4]>)> {
     let png = pixels.to_png().ok()?;
     let layout = match recovery.recover_layout(&strict_ooxml_ocr::Image::png(png)) {
         Ok(Some(layout)) => layout,
@@ -559,12 +562,15 @@ pub(crate) fn rebuild(
             right: ink.width,
             bottom: ink.height,
         };
-        return Some(vec![RecoveredItem::Picture(picture(
-            pixels,
-            whole,
-            frame.scale,
-            (!description.is_empty()).then_some(description),
-        ))]);
+        return Some((
+            vec![RecoveredItem::Picture(picture(
+                pixels,
+                whole,
+                frame.scale,
+                (!description.is_empty()).then_some(description),
+            ))],
+            None,
+        ));
     }
     let detail = frame.detail.as_ref().map(Ink::of);
     let page = Page {
@@ -577,12 +583,32 @@ pub(crate) fn rebuild(
     Some(build_items(&layout.blocks, &page, options, report, &source))
 }
 
+/// Where a page's blocks lie, in points of the shown page.
+fn extent_of(areas: impl Iterator<Item = PixelBox>, frame: &Frame) -> Option<[f64; 4]> {
+    let (mut left, mut top, mut right, mut bottom) = (usize::MAX, usize::MAX, 0, 0);
+    for area in areas {
+        left = left.min(area.left);
+        top = top.min(area.top);
+        right = right.max(area.right);
+        bottom = bottom.max(area.bottom);
+    }
+    let point = |pixels: usize, origin: f64| origin + pixels as f64 / frame.scale;
+    (right > left && bottom > top).then(|| {
+        [
+            point(left, frame.origin.0),
+            point(top, frame.origin.1),
+            point(right, frame.origin.0),
+            point(bottom, frame.origin.1),
+        ]
+    })
+}
+
 /// The stroke thickness of each word of a line, measured on `detail` (the
 /// page at `factor` times the scale `line` was found at). The gaps between
 /// runs of ink are split in two by Otsu's rule - letter gaps and word gaps -
 /// which on a book page counts the words the text has; a line whose widest
 /// gap is narrow is one word.
-fn line_word_strokes(detail: &Ink, line: &Line, factor: f64) -> Vec<f64> {
+fn line_word_strokes(detail: &Ink, line: &Line, factor: f64) -> Vec<(f64, f64)> {
     let scale = |value: usize| (value as f64 * factor).round() as usize;
     let (top, bottom) = (scale(line.top), scale(line.bottom).min(detail.height));
     let (left, right) = (scale(line.left), scale(line.right).min(detail.width));
@@ -644,11 +670,12 @@ fn line_word_strokes(detail: &Ink, line: &Line, factor: f64) -> Vec<f64> {
                     previous = dark;
                 }
             }
-            if runs == 0 {
+            let stroke = if runs == 0 {
                 0.0
             } else {
                 pixels as f64 / runs as f64
-            }
+            };
+            (stroke, (end - begin) as f64 / core.max(1.0))
         })
         .collect()
 }
@@ -673,6 +700,36 @@ fn otsu(values: &[usize]) -> usize {
         }
     }
     best.map_or(usize::MAX, |(_, threshold)| threshold)
+}
+
+/// Which words are bold: a stroke `WORD_BOLD_RATIO` times the page's typical
+/// one. A short word (under 2.5 x-heights wide: `za`, `se`, `i`) has too few
+/// strokes to measure and follows its neighbours - bold only between bold
+/// words.
+fn word_weights(words: &[(f64, f64)], body: f64) -> Vec<bool> {
+    let measured: Vec<bool> = words
+        .iter()
+        .map(|(stroke, _)| *stroke > body * WORD_BOLD_RATIO)
+        .collect();
+    words
+        .iter()
+        .enumerate()
+        .map(|(index, (_, width))| {
+            if *width >= 2.5 {
+                return measured.get(index).copied().unwrap_or(false);
+            }
+            let before = index
+                .checked_sub(1)
+                .and_then(|at| measured.get(at))
+                .copied();
+            let after = measured.get(index + 1).copied();
+            match (before, after) {
+                (Some(before), Some(after)) => before && after,
+                (Some(only), None) | (None, Some(only)) => only,
+                (None, None) => false,
+            }
+        })
+        .collect()
 }
 
 /// `text` with its words marked `**bold**` where `bold` says, when the text
@@ -745,7 +802,7 @@ fn build_items(
     options: &PdfOptions,
     report: &mut ConversionReport,
     source: &str,
-) -> Vec<RecoveredItem> {
+) -> (Vec<RecoveredItem>, Option<[f64; 4]>) {
     let (ink, pixels, frame) = (page.ink, page.pixels, page.frame);
     let mut placed: Vec<(&LayoutBlock, Measured)> = Vec::new();
     let mut dropped = 0usize;
@@ -823,7 +880,7 @@ fn build_items(
 
     // The weight of single words, measured at twice the scale: running text
     // with a few bold words keeps them bold.
-    let word_strokes: Vec<Option<Vec<f64>>> = placed
+    let word_strokes: Vec<Option<Vec<(f64, f64)>>> = placed
         .iter()
         .map(|(block, measured)| {
             let detail = page.detail?;
@@ -845,7 +902,12 @@ fn build_items(
         })
         .collect();
     let word_body = {
-        let all: Vec<f64> = word_strokes.iter().flatten().flatten().copied().collect();
+        let all: Vec<f64> = word_strokes
+            .iter()
+            .flatten()
+            .flatten()
+            .map(|(stroke, _)| *stroke)
+            .collect();
         (all.len() >= 20).then(|| median(all))
     };
 
@@ -935,10 +997,7 @@ fn build_items(
         };
         let text = match (word_strokes.get(position).cloned().flatten(), word_body) {
             (Some(strokes), Some(body)) if !text.contains('*') => {
-                let bold: Vec<bool> = strokes
-                    .iter()
-                    .map(|stroke| *stroke > body * WORD_BOLD_RATIO)
-                    .collect();
+                let bold = word_weights(&strokes, body);
                 match embolden(&text, &bold) {
                     Some(marked) => {
                         bold_words += bold.iter().filter(|bold| **bold).count();
@@ -1053,7 +1112,8 @@ fn build_items(
     if let Some(lexicon) = options.recovery_lexicon.as_deref() {
         super::policy::record_restored(report, frame.page, restored, Some(lexicon));
     }
-    items
+    let extent = extent_of(placed.iter().map(|(_, measured)| measured.area), frame);
+    (items, extent)
 }
 
 /// Whether a text is set in capitals: two letters or more, none lower case.
@@ -1467,6 +1527,16 @@ mod tests {
                 "{left}-{right}"
             );
         }
+    }
+
+    #[test]
+    fn a_short_word_follows_its_neighbours() {
+        // `rešenja za savladavanje`: `za` measured heavy, its neighbours not.
+        let words = [(2.0, 6.0), (3.0, 1.5), (2.0, 9.0)];
+        assert_eq!(super::word_weights(&words, 2.0), vec![false, false, false]);
+        // `lekcija, i izraza`: `i` measured light between bold words.
+        let words = [(3.0, 6.0), (2.0, 0.5), (3.0, 5.0)];
+        assert_eq!(super::word_weights(&words, 2.0), vec![true, true, true]);
     }
 
     #[test]

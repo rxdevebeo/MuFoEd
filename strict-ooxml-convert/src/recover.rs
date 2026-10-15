@@ -117,6 +117,9 @@ pub(crate) struct RecoveredBlock {
     /// so page 37 of a scanned book is page 37 of the document and a page
     /// whose content overflows shows as an extra page.
     pub whole_page: bool,
+    /// Where the page's ink lies, in points of the shown page: left, top,
+    /// right, bottom - the frame the scan's margins are read from.
+    pub extent: Option<[f64; 4]>,
 }
 
 /// One thing a recovered block places.
@@ -254,8 +257,11 @@ pub(crate) fn recover_pages(
                     scale,
                     page: page.number,
                     detail,
+                    origin: (region.left, region.top),
                 };
-                if let Some(items) = layout::rebuild(&*recovery, &pixels, &frame, options, report) {
+                if let Some((items, extent)) =
+                    layout::rebuild(&*recovery, &pixels, &frame, options, report)
+                {
                     report.recovered_pages += 1;
                     report.recovered_paragraphs += items
                         .iter()
@@ -264,6 +270,7 @@ pub(crate) fn recover_pages(
                     out.blocks.entry(index).or_default().push(RecoveredBlock {
                         items,
                         whole_page: true,
+                        extent,
                     });
                     continue;
                 }
@@ -312,6 +319,7 @@ pub(crate) fn recover_pages(
                             .map(|paragraph| RecoveredItem::Paragraph(Box::new(paragraph)))
                             .collect(),
                         whole_page: false,
+                        extent: None,
                     });
                 }
                 Ok(None) => report.record(

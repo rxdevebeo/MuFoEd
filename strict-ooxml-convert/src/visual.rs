@@ -122,7 +122,7 @@ pub(crate) fn build(
         // leading would be a lie about where the lines sat.
         for block in recovered.page(index) {
             blocks.extend(crate::semantic::recovered_blocks(
-                block, index, &mut media, report,
+                block, index, &mut media, report, None,
             ));
         }
     }
