@@ -60,8 +60,9 @@ $script:GateStepOrder = @('fmt', 'clippy', 'test', 'deny', 'doc')
 # A wps-qa job that does not say how long it may run gets this many minutes.
 $script:WpsQaMinutes = 240
 $script:WpsQaMaxMinutes = 720
-# ocr-probe: pages per job and the default budget (a page is about a minute).
-$script:OcrProbeMaxPages = 50
+# ocr-probe: pages per job (a whole book: a page is 20-60 s with layout) and
+# the default budget.
+$script:OcrProbeMaxPages = 300
 $script:OcrProbeMinutes = 120
 $script:XsdGates = @('xsd', 'opc', 'census')
 # Criterion benches a `bench` job may run, and the package each belongs to.
