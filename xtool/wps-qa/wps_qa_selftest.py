@@ -91,6 +91,20 @@ named = {"Agency FB", "Helvetica"}
 check("unnamed face is a substitution", metrics.fallback_share({"YuGothicUI-Regular": 0.7, "ArialMT": 0.3}, named, families) == 0.7)
 check("aliases and script faces are not", metrics.fallback_share({"ArialMT": 0.6, "SimSun": 0.4}, named, families) == 0.0)
 check("a named face is not", metrics.fallback_share({"ArialMT": 1.0}, {"Arial"}, families) == 0.0)
+
+# Readability against the source: every word, visible, in order, no overlap.
+rpage = [Word(t, 0, 10 + 40 * i, 10, 40 + 40 * i, 20) for i, t in enumerate(["one", "two", "three"])]
+facts = PdfFacts(1, [(600.0, 800.0)], rpage, 11)
+full = metrics.readability(["one", "two", "three"], facts, set(), 0, 0)
+check("readability: all words in order", full["score"] == 100.0)
+swapped = PdfFacts(1, [(600.0, 800.0)], [rpage[0], rpage[2], rpage[1]], 11)
+check("readability: order counts", metrics.readability(["one", "two", "three"], swapped, set(), 0, 0)["order"] < 1.0)
+check("readability: a missing-glyph box is not read", metrics.readability(["one", "two", "three"], facts, {"o"}, 0, 0)["completeness"] < 1.0)
+check("readability: a missing picture counts", metrics.readability(["one", "two", "three"], facts, set(), 2, 1)["images"] == 0.5)
+overlap = PdfFacts(1, [(600.0, 800.0)], [Word("one", 0, 10, 10, 60, 20), Word("two", 0, 12, 10, 62, 20), Word("three", 0, 100, 10, 140, 20)], 11)
+check("readability: words over words are not legible", metrics.readability(["one", "two", "three"], overlap, set(), 0, 0)["legibility"] < 1.0)
+empty = PdfFacts(1, [(600.0, 800.0)], [], 0)
+check("readability: an empty page is not legible", metrics.readability(["one"], empty, set(), 0, 0)["score"] <= 15.0)
 check("raster blank candidate low", metrics.page_raster_metrics(page, np.ones_like(page))["row_corr"] == 0.0)
 check("diff image shape", metrics.diff_image(page, page).shape == (100, 80 * 3 + 12, 3))
 

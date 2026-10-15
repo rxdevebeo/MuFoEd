@@ -118,3 +118,22 @@ New), символьных и математических шрифтов и с�
 `total.clean` / `total.ref_fallback`, по корпусам `mean_score_clean` и
 `ref_fallback_docs`. Общий `mean_score` не меняется, чтобы метки оставались
 сопоставимыми.
+
+## Readability — the headline score
+
+The report leads with **readability** (0–100): how well our PDF carries the
+document to a reader, scored against the source document itself, not
+against WPS (`metrics.readability`):
+
+| Part | Weight | What it measures |
+|---|---|---|
+| completeness | 40% | share of the body's words found on our pages, discounted for characters drawn as missing-glyph boxes (`missing_glyphs` in the render metadata, from `pdf.font.no_glyph`) |
+| reading order | 25% | share of the body's words that come in order (the same monotone alignment as the fidelity score) |
+| legibility | 20% | share of words neither drawn over another word nor off the page, scaled by the share of words present |
+| pictures | 15% | share of the body's pictures (DrawingML pictures, VML image data) drawn on the pages |
+
+WPS's own PDF is scored the same way (`ref_readability`), which shows where
+WPS itself loses the text. The source is the DOCX, or the Strict DOCX an RTF
+was imported to. The **WPS fidelity** score (pages, text, flow, geometry,
+raster against WPS's PDF) stays as the second number: how close the pages
+are to WPS's, not whether the document reads.

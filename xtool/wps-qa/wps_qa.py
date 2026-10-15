@@ -18,6 +18,7 @@ import argparse
 import concurrent.futures as cf
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -248,6 +249,9 @@ def render_one(doc: Doc, cli: Path, out_dir: Path, timeout: int, extra_args: tup
         code, stderr = _run_cli([str(cli), "to-pdf", str(source), *extra, *extra_args, "--out", str(tmp_pdf)], timeout)
         meta["exit"] = code
         meta["stderr_tail"] = common.tail(stderr, 12)
+        # Characters drawn as missing-glyph boxes: in the text layer, but not
+        # readable (the readability score discounts them).
+        meta["missing_glyphs"] = sorted(set(re.findall(r"\[pdf\.font\.no_glyph\][^']*'(.)'", stderr or "")))
         # Exit 1 = rendered with reported losses; the PDF exists and counts.
         if code is None:
             meta["status"] = "timeout"
@@ -332,7 +336,7 @@ def cmd_render(args) -> int:
 # ---------------------------------------------------------------------------
 
 
-def compare_one(ref_pdf: str, our_pdf: str, img_path: str) -> dict:
+def compare_one(ref_pdf: str, our_pdf: str, img_path: str, source: str = "", missing: tuple[str, ...] = ()) -> dict:
     import numpy as np
     from PIL import Image
 
@@ -343,6 +347,13 @@ def compare_one(ref_pdf: str, our_pdf: str, img_path: str) -> dict:
         ref = metrics.read_pdf(ref_pdf)
         ours = metrics.read_pdf(our_pdf)
         result = metrics.compare(ref, ours)
+        if source:
+            # Readability is scored against the source document, for our PDF
+            # and, for comparison, for WPS's.
+            words = metrics.source_words(source)
+            images = metrics.source_images(source)
+            result["readability"] = metrics.readability(words, ours, set(missing), images, metrics.pdf_images(our_pdf))
+            result["ref_readability"] = metrics.readability(words, ref, set(), images, metrics.pdf_images(ref_pdf))
         worst = result.get("raster", {}).get("worst_page")
         if worst:
             p, q = worst["ref_page"] - 1, worst["our_page"] - 1
@@ -378,6 +389,7 @@ def cmd_compare(args) -> int:
             and prev.get("status") == "ok"
             and prev.get("ref_pdf_sha256") == ref_meta.get("pdf_sha256")
             and prev.get("our_pdf_sha256") == our_meta.get("pdf_sha256")
+            and "readability" in prev
         ):
             continue
         todo.append((doc, ref_meta, our_meta))
@@ -388,7 +400,12 @@ def cmd_compare(args) -> int:
             ref_pdf = args.store / "refs" / doc.corpus / f"{doc.key}.pdf"
             our_pdf = ours_dir / doc.corpus / f"{doc.key}.pdf"
             img = cmp_dir / "img" / doc.corpus / f"{doc.key}.png"
-            fut = pool.submit(compare_one, str(ref_pdf), str(our_pdf), str(img))
+            # The source the readability is scored against: the DOCX, or the
+            # Strict DOCX an RTF was imported to.
+            source = ours_dir / doc.corpus / f"{doc.key}.docx" if doc.is_rtf else doc.path
+            fut = pool.submit(
+                compare_one, str(ref_pdf), str(our_pdf), str(img), str(source), tuple(our_meta.get("missing_glyphs") or ())
+            )
             futures[fut] = (doc, ref_meta, our_meta)
         for n, fut in enumerate(cf.as_completed(futures), 1):
             doc, ref_meta, our_meta = futures[fut]
