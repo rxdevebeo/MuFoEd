@@ -235,7 +235,6 @@ impl Lexicon {
         }
         found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(b.1)));
         let best = match found.as_slice() {
-            [] => return None,
             [(_, only)] => *only,
             [(top, best), (second, _), ..] if top > second => *best,
             _ => return None,
