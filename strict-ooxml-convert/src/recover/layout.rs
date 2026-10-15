@@ -104,13 +104,41 @@ impl Ink {
             }
         }
         let threshold = (median - 70).clamp(60, 170);
+        // The paper's own tone: the median colour of the brighter half of the
+        // page. Cream or grey stock is paper; a strongly coloured "paper" (a
+        // cover printed yellow all over) is not, and the page is a picture.
+        let paper = {
+            let mut channels: [Vec<u8>; 3] = Default::default();
+            for pixel in pixels.rgba.chunks_exact(4) {
+                if tone(pixel).0 >= median {
+                    for (channel, value) in channels.iter_mut().zip(pixel.iter()) {
+                        channel.push(*value);
+                    }
+                }
+            }
+            channels.map(|mut channel| {
+                channel.sort_unstable();
+                channel
+                    .get(channel.len() / 2)
+                    .copied()
+                    .map_or(255, i32::from)
+            })
+        };
+        let paper_chroma =
+            paper.iter().copied().max().unwrap_or(255) - paper.iter().copied().min().unwrap_or(255);
+        let coloured_paper = paper_chroma > 60;
         let mut dark = Vec::with_capacity(width * height);
         let mut unpaper = Vec::with_capacity(width * height);
         for pixel in pixels.rgba.chunks_exact(4) {
             let (luma, chroma) = tone(pixel);
-            let brightest = pixel.iter().take(3).copied().max().unwrap_or(255);
             dark.push(luma < threshold || (chroma > 60 && luma < median - 20));
-            unpaper.push(brightest < 215 || chroma > 40);
+            let distance = pixel
+                .iter()
+                .zip(paper.iter())
+                .map(|(value, paper)| (i32::from(*value) - paper).abs())
+                .max()
+                .unwrap_or(0);
+            unpaper.push(coloured_paper || distance > 40);
         }
         Self {
             width,
@@ -1215,12 +1243,15 @@ fn build_items(
         });
         if let Some(rows) = rows {
             tables += 1;
+            // A table's size is its text's, not its block's: the block's
+            // "lines" are its rows, their pitch the rows'.
             let cell_style = Style {
                 align: Align::Left,
                 before: None,
                 indent: 0.0,
                 first_line: 0.0,
                 heading: None,
+                size: body_size.or(Some(10.0)),
                 ..style
             };
             let columns = rows.iter().map(Vec::len).max().unwrap_or(1);
@@ -1844,6 +1875,15 @@ mod tests {
         let region = regions[0];
         assert!(region.left <= 112 && region.right >= 352, "{region:?}");
         assert!(region.top <= 400 && region.bottom >= 752, "{region:?}");
+    }
+
+    #[test]
+    fn cream_stock_is_paper() {
+        let mut pixels = page(100, 100, &[]);
+        for pixel in pixels.rgba.chunks_exact_mut(4) {
+            pixel.copy_from_slice(&[240, 232, 210, 255]);
+        }
+        assert!(Ink::of(&pixels).unpaper_ratio() < 0.05);
     }
 
     #[test]
