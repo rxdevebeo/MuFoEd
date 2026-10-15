@@ -89,6 +89,20 @@ pub trait TextRecovery: Send + Sync {
     fn recover_region(&self, region: &Image) -> Result<Option<Recovered>, VisionError> {
         self.recover_page(region)
     }
+
+    /// The page's blocks - kinds, boxes, text - in reading order.
+    ///
+    /// `Ok(None)` means this implementation does not do layout, and the
+    /// caller falls back to [`TextRecovery::recover_page`]; that is the
+    /// default, so every implementation keeps working.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`VisionError`] when no usable answer could be obtained.
+    fn recover_layout(&self, page: &Image) -> Result<Option<crate::Layout>, VisionError> {
+        let _ = page;
+        Ok(None)
+    }
 }
 
 /// Says what a graphic region is, and describes it in words.

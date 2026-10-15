@@ -127,8 +127,8 @@ pub use strict_ooxml_rtf::{
 
 #[cfg(feature = "convert")]
 pub use strict_ooxml_convert::{
-    convert as convert_pdf, ConversionReport, ConvertError, Converted, Mode, ParagraphRules,
-    PdfOptions,
+    convert as convert_pdf, ConversionReport, ConvertError, Converted, Lexicon, LexiconError, Mode,
+    ParagraphRules, PdfOptions,
 };
 pub use strict_ooxml_core::control::{CancelReason, OpenControl, Progress, Stage};
 pub use strict_ooxml_core::error::StrictError;

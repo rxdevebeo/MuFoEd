@@ -793,6 +793,16 @@ fn from_pdf_checks_its_ocr_and_page_options() {
     ]);
     assert_eq!(code, 2);
     assert!(stderr.contains("requires --ocr"), "{stderr}");
+    let (code, _, stderr) = run(&[
+        "from-pdf",
+        "missing.pdf",
+        "--out",
+        "out.docx",
+        "--ocr-lang",
+        "sr",
+    ]);
+    assert_eq!(code, 2);
+    assert!(stderr.contains("requires --ocr"), "{stderr}");
     for pages in ["0", "3-2", "x"] {
         let (code, _, stderr) = run(&[
             "from-pdf",
@@ -805,4 +815,29 @@ fn from_pdf_checks_its_ocr_and_page_options() {
         assert_eq!(code, 2, "{pages}");
         assert!(stderr.contains("'--pages'"), "{pages}: {stderr}");
     }
+}
+
+#[test]
+fn lexicons_list_shows_the_catalog_and_the_cache() {
+    let cache = empty_font_cache("lexicons");
+    let output = Command::new(env!("CARGO_BIN_EXE_strict-ooxml"))
+        .args(["lexicons", "list"])
+        .env("STRICTLIB_LEXICON_DIR", &cache)
+        .output()
+        .expect("run binary");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "{stdout}");
+    assert!(
+        stdout.lines().any(|line| line.starts_with("sr ")),
+        "{stdout}"
+    );
+    assert!(stdout.contains(&cache.display().to_string()), "{stdout}");
+    let output = Command::new(env!("CARGO_BIN_EXE_strict-ooxml"))
+        .args(["lexicons", "install", "xx"])
+        .env("STRICTLIB_LEXICON_DIR", &cache)
+        .output()
+        .expect("run binary");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("no word list 'xx'"));
+    let _ = std::fs::remove_dir_all(&cache);
 }

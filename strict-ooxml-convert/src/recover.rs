@@ -64,6 +64,8 @@ use crate::report::{ConversionReport, Severity};
 #[cfg(feature = "raster")]
 use crate::PdfOptions;
 
+#[cfg(feature = "raster")]
+pub(crate) mod layout;
 /// The style id of a recovered paragraph.
 ///
 /// The *name* ([`crate::RECOVERY_STYLE_NAME`]) is what a reader of the file
@@ -72,7 +74,7 @@ use crate::PdfOptions;
 #[cfg(any(feature = "raster", feature = "djvu-image"))]
 pub(crate) mod policy;
 #[cfg(feature = "raster")]
-pub(crate) use policy::{declare_style, paragraphs_of};
+pub(crate) use policy::declare_style;
 
 /// How a region was chosen, which is a fact about the document a caller may want
 /// to filter on.
@@ -108,8 +110,31 @@ impl Origin {
 /// said so. The type costs nothing when it is always empty.
 #[derive(Clone, Debug)]
 pub(crate) struct RecoveredBlock {
-    /// What the model said, one paragraph per line it gave.
-    pub paragraphs: Vec<Paragraph>,
+    /// What the model said - one paragraph per line it gave, or, from a
+    /// page's layout, its paragraphs and pictures in reading order.
+    pub items: Vec<RecoveredItem>,
+}
+
+/// One thing a recovered block places.
+#[derive(Clone, Debug)]
+pub(crate) enum RecoveredItem {
+    /// A paragraph of text a model read.
+    Paragraph(Box<Paragraph>),
+    /// A part of the page cut out as a picture.
+    Picture(RecoveredPicture),
+}
+
+/// A picture cut out of a scanned page.
+#[derive(Clone, Debug)]
+pub(crate) struct RecoveredPicture {
+    /// The pixels.
+    pub image: strict_ooxml_pdf::Encoded,
+    /// Its size on the page, in points.
+    pub width: f64,
+    /// Its height on the page, in points.
+    pub height: f64,
+    /// What a model read inside it, for `wp:docPr/@descr`.
+    pub description: Option<String>,
 }
 
 /// The paragraph list of every page a model read, by 0-based page index.
@@ -186,8 +211,10 @@ pub(crate) fn recover_pages(
             (regions_of(page, options), Ask::Page)
         };
         for region in regions {
-            let request = match rasterize(&rasterizer, page, &region, options) {
-                Ok(png) => png,
+            let raster_result = rasterize(&rasterizer, page, &region, options)
+                .and_then(|(pixels, scale)| pixels.to_png().map(|png| (pixels, scale, png)));
+            let (pixels, scale, request) = match raster_result {
+                Ok(raster) => raster,
                 Err(error) => {
                     report.record(
                         "text.recovery",
@@ -197,6 +224,26 @@ pub(crate) fn recover_pages(
                     continue;
                 }
             };
+            // A scan read block by block keeps its headings, alignment, sizes
+            // and pictures; a model that gives no layout gets the plain ask.
+            if ask == Ask::Page && options.recovery_layout {
+                let frame = layout::Frame {
+                    scale,
+                    page: index + 1,
+                };
+                if let Some(items) = layout::rebuild(&*recovery, &pixels, &frame, options, report) {
+                    report.recovered_pages += 1;
+                    report.recovered_paragraphs += items
+                        .iter()
+                        .filter(|item| matches!(item, RecoveredItem::Paragraph(_)))
+                        .count();
+                    out.blocks
+                        .entry(index)
+                        .or_default()
+                        .push(RecoveredBlock { items });
+                    continue;
+                }
+            }
             let image = strict_ooxml_ocr::Image::png(request);
             let answer = match ask {
                 Ask::Page => recovery.recover_page(&image),
@@ -204,7 +251,18 @@ pub(crate) fn recover_pages(
             };
             match answer {
                 Ok(Some(answer)) => {
-                    let paragraphs = paragraphs_of(&answer.text, region.left);
+                    let (paragraphs, restored) = policy::recovered_paragraphs(
+                        &answer.text,
+                        region.left,
+                        options.recovery_lexicon.as_deref(),
+                        options.recovery_language.as_deref(),
+                    );
+                    policy::record_restored(
+                        report,
+                        index + 1,
+                        restored,
+                        options.recovery_lexicon.as_deref(),
+                    );
                     report.recovered_pages += 1;
                     report.recovered_paragraphs += paragraphs.len();
                     report.record(
@@ -224,10 +282,12 @@ pub(crate) fn recover_pages(
                             region.top,
                         ),
                     );
-                    out.blocks
-                        .entry(index)
-                        .or_default()
-                        .push(RecoveredBlock { paragraphs });
+                    out.blocks.entry(index).or_default().push(RecoveredBlock {
+                        items: paragraphs
+                            .into_iter()
+                            .map(|paragraph| RecoveredItem::Paragraph(Box::new(paragraph)))
+                            .collect(),
+                    });
                 }
                 Ok(None) => report.record(
                     "text.recovery",
@@ -456,7 +516,9 @@ fn mixed_regions_of(
     regions.truncate(options.recovery_max_regions);
     if let Some(classifier) = options.figure_classifier.clone() {
         regions.retain(|region| {
-            let image = match rasterize(rasterizer, page, region, options) {
+            let png = rasterize(rasterizer, page, region, options)
+                .and_then(|(pixels, _)| pixels.to_png());
+            let image = match png {
                 Ok(png) => strict_ooxml_ocr::Image::png(png),
                 Err(error) => {
                     report.record(
@@ -570,7 +632,7 @@ fn rasterize(
     page: &PdfPage,
     region: &Region,
     options: &PdfOptions,
-) -> strict_ooxml_pdf::error::Result<Vec<u8>> {
+) -> strict_ooxml_pdf::error::Result<(strict_ooxml_pdf::raster::Pixels, f64)> {
     let (page_width, page_height) = page.geometry.displayed();
     let page_area = (page_width * page_height).max(1.0);
     // `u64 as f64` loses precision above 2^53, and a budget that large is not a
@@ -582,24 +644,61 @@ fn rasterize(
     let long_side = region.width.max(region.height).max(1.0);
     let wanted = options.recovery_min_region_px / long_side;
     let scale = wanted.min(affordable).max(options.recovery_scale);
-    rasterizer.region_png(
-        page.number,
-        strict_ooxml_pdf::raster::Region {
-            x: region.left,
-            y: region.top,
-            width: region.width,
-            height: region.height,
-        },
-        &strict_ooxml_pdf::raster::RasterOptions {
-            scale,
-            max_pixels: options.recovery_max_pixels,
-        },
-    )
+    rasterizer
+        .region_pixels(
+            page.number,
+            strict_ooxml_pdf::raster::Region {
+                x: region.left,
+                y: region.top,
+                width: region.width,
+                height: region.height,
+            },
+            &strict_ooxml_pdf::raster::RasterOptions {
+                scale,
+                max_pixels: options.recovery_max_pixels,
+            },
+        )
+        .map(|pixels| (pixels, scale))
 }
 
 #[cfg(all(test, feature = "raster"))]
 mod tests {
-    use super::{displayed_rect, paragraphs_of};
+    use super::displayed_rect;
+    use super::policy::paragraphs_of;
+
+    #[test]
+    fn recovered_words_are_repaired_and_tagged_by_script() {
+        use strict_ooxml_wml::model::inline::Inline;
+        let lexicon = strict_ooxml_ocr::Lexicon::from_hunspell(
+            "sr-Latn",
+            "2\nnemački\nčovek\n",
+            "SET UTF-8\n",
+            None,
+        )
+        .expect("parses");
+        let (paragraphs, restored) = super::policy::recovered_paragraphs(
+            "Prevod: nemacki covek\nПревод речника",
+            0.0,
+            Some(&lexicon),
+            Some("sr"),
+        );
+        assert_eq!(restored, 2);
+        let tags: Vec<String> = paragraphs
+            .iter()
+            .map(|paragraph| match paragraph.inlines.first() {
+                Some(Inline::Run(run)) => run
+                    .props
+                    .language
+                    .as_ref()
+                    .and_then(|language| language.val.as_deref())
+                    .unwrap_or("")
+                    .to_owned(),
+                _ => String::new(),
+            })
+            .collect();
+        assert_eq!(tags, ["sr-Latn-RS", "sr-Cyrl-RS"]);
+        assert_eq!(super::policy::language_of("en-GB", "Hello"), "en-GB");
+    }
 
     #[test]
     fn a_rotated_page_is_cropped_where_it_is_displayed() {

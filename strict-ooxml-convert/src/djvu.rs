@@ -37,6 +37,10 @@ pub struct DjvuOptions {
     pub recovery_max_regions: usize,
     /// Fraction of a figure's size to add as margin when cropping it for a model.
     pub recovery_region_margin: f64,
+    /// The language of recovered text, as [`crate::PdfOptions::recovery_language`].
+    pub recovery_language: Option<String>,
+    /// Its word forms, as [`crate::PdfOptions::recovery_lexicon`].
+    pub recovery_lexicon: Option<std::sync::Arc<strict_ooxml_ocr::Lexicon>>,
 }
 impl Default for DjvuOptions {
     fn default() -> Self {
@@ -52,6 +56,8 @@ impl Default for DjvuOptions {
             recovery_mixed_min_area_ratio: 0.25,
             recovery_max_regions: 4,
             recovery_region_margin: 0.05,
+            recovery_language: None,
+            recovery_lexicon: None,
         }
     }
 }
@@ -560,7 +566,18 @@ fn scan(
             if !answer.text.trim().is_empty()
                 && answer.text.len() <= options.max_recovered_text_bytes =>
         {
-            let paragraphs = crate::recover::policy::paragraphs_of(&answer.text, 0.0);
+            let (paragraphs, restored) = crate::recover::policy::recovered_paragraphs(
+                &answer.text,
+                0.0,
+                options.recovery_lexicon.as_deref(),
+                options.recovery_language.as_deref(),
+            );
+            crate::recover::policy::record_restored(
+                report,
+                page.number,
+                restored,
+                options.recovery_lexicon.as_deref(),
+            );
             report.recovered_pages += 1;
             report.recovered_paragraphs += paragraphs.len();
             report.record(
@@ -1188,7 +1205,18 @@ fn recover_region(
             if !answer.text.trim().is_empty()
                 && answer.text.len() <= options.max_recovered_text_bytes =>
         {
-            let paragraphs = crate::recover::policy::paragraphs_of(&answer.text, region.x);
+            let (paragraphs, restored) = crate::recover::policy::recovered_paragraphs(
+                &answer.text,
+                region.x,
+                options.recovery_lexicon.as_deref(),
+                options.recovery_language.as_deref(),
+            );
+            crate::recover::policy::record_restored(
+                report,
+                page.number,
+                restored,
+                options.recovery_lexicon.as_deref(),
+            );
             crate::recover::policy::declare_style(document);
             report.recovered_pages += 1;
             report.recovered_paragraphs += paragraphs.len();

@@ -93,6 +93,8 @@ use strict_ooxml_wml::model::Document;
 pub use lists::ListRules;
 pub use report::{ConversionLoss, ConversionReport, Severity};
 pub use semantic::ParagraphRules;
+/// Word forms that restore the diacritics of recovered text ([`PdfOptions::recovery_lexicon`]).
+pub use strict_ooxml_ocr::{Lexicon, LexiconError};
 pub use tables::TableRules;
 
 use crate::semantic::ParagraphRules as Rules;
@@ -267,6 +269,22 @@ pub struct PdfOptions {
     /// figure, and a figure gets a `descr`, not paragraphs guessed from its pixels.
     #[cfg(feature = "raster")]
     pub recovery_mixed_min_area_ratio: f64,
+    /// The language of the scanned text (BCP 47, such as `sr` or `en-GB`):
+    /// recovered paragraphs carry it as their language (`w:lang`), so a word
+    /// processor checks their spelling and hyphenates them. For a language
+    /// written in two scripts (`sr`) each paragraph gets the script it is in.
+    pub recovery_language: Option<String>,
+    /// Read a scanned page block by block: the model is asked for the page's
+    /// layout, every box is checked against the page's ink, and the page is
+    /// rebuilt with its headings, alignment, type sizes, bold blocks and
+    /// pictures (`recover::layout`). Off by default: one longer request a
+    /// page, and a model that gives no layout falls back to plain lines.
+    #[cfg(feature = "raster")]
+    pub recovery_layout: bool,
+    /// Correct word forms of that language: a recovered word that is not one,
+    /// but is one with the diacritics a model dropped restored, is restored
+    /// ([`strict_ooxml_ocr::Lexicon`]). The report counts the repairs.
+    pub recovery_lexicon: Option<std::sync::Arc<strict_ooxml_ocr::Lexicon>>,
 }
 
 /// The name of the paragraph style a recovered paragraph carries, as a reader
@@ -300,6 +318,10 @@ impl Default for PdfOptions {
             recovery_max_regions: 4,
             #[cfg(feature = "raster")]
             recovery_mixed_min_area_ratio: 0.25,
+            recovery_language: None,
+            #[cfg(feature = "raster")]
+            recovery_layout: false,
+            recovery_lexicon: None,
         }
     }
 }
