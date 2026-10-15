@@ -250,6 +250,28 @@ fn a_missing_glyph_is_not_reported_as_a_missing_face() {
     assert!(!ids.contains(&"pdf.font.missing"), "{:?}", report.losses());
 }
 
+/// Text in a script no bundled face carries still extracts: each character
+/// draws `.notdef` under a CID of its own whose `ToUnicode` entry is the
+/// character. Dropping it lost the whole text layer of CJK and Devanagari
+/// documents rendered without a font for them.
+#[test]
+fn a_character_without_a_glyph_extracts_as_text() {
+    use strict_ooxml_testkit::DocxBuilder;
+    let bytes = DocxBuilder::strict()
+        .body("<w:p><w:r><w:t>Hello \u{4E2D}\u{6587} \u{0928}\u{092E}\u{0938}\u{094D}\u{0924}\u{0947}</w:t></w:r></w:p>")
+        .build();
+    let (pdf, _, report) = to_pdf(&bytes);
+    let ids: Vec<_> = report.losses().iter().map(|loss| loss.id).collect();
+    assert!(ids.contains(&"pdf.font.no_glyph"), "{:?}", report.losses());
+    let reader = lopdf::Document::load_mem(&pdf).expect("independent PDF reader");
+    let text = reader
+        .extract_text(&[1])
+        .expect("ToUnicode text extraction");
+    assert!(text.contains("Hello"), "{text:?}");
+    assert!(text.contains("\u{4E2D}\u{6587}"), "{text:?}");
+    assert!(text.contains('\u{0928}'), "{text:?}");
+}
+
 /// The eastAsia face is the one the PDF embeds for East Asian text, as the
 /// SVG chooses it (restored after merge 5274d07f, 81ab887a).
 #[test]

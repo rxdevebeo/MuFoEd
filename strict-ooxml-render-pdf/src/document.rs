@@ -963,7 +963,12 @@ impl PageWriter<'_> {
         let mut missing: Vec<char> = Vec::new();
         for ch in text.text.chars() {
             match font.chars.get(&ch) {
-                Some(gid) => encoded.extend_from_slice(&gid.to_be_bytes()),
+                Some(gid) => {
+                    if font.notdef_chars.contains(&ch) {
+                        missing.push(ch);
+                    }
+                    encoded.extend_from_slice(&gid.to_be_bytes());
+                }
                 None => missing.push(ch),
             }
         }
@@ -1012,6 +1017,9 @@ impl PageWriter<'_> {
         for (index, &ch) in chars.iter().enumerate() {
             match font.chars.get(&ch) {
                 Some(cid) => {
+                    if font.notdef_chars.contains(&ch) {
+                        self.report.record_missing_glyph(&text.run.family, ch);
+                    }
                     let x_px = text.x + cursor * text.run.char_scale;
                     self.content.set_text_matrix([
                         text.run.char_scale as f32,
@@ -1090,10 +1098,10 @@ impl PageWriter<'_> {
             let labels = crate::glyphs::cluster_labels(glyphs, unicode);
             for (index, glyph) in glyphs.iter().enumerate() {
                 if glyph.glyph_id == 0 {
+                    // Drawn as `.notdef` with the text it stands for.
                     for ch in unicode.chars() {
                         self.report.record_missing_glyph(&text.run.family, ch);
                     }
-                    continue;
                 }
                 let label = labels.get(index).map_or("", String::as_str);
                 let cid = font
@@ -1159,10 +1167,10 @@ impl PageWriter<'_> {
             let labels = crate::glyphs::cluster_labels(glyphs, unicode);
             for (index, glyph) in glyphs.iter().enumerate() {
                 if glyph.glyph_id == 0 {
+                    // Drawn as `.notdef` with the text it stands for.
                     for ch in unicode.chars() {
                         self.report.record_missing_glyph(&text.run.family, ch);
                     }
-                    continue;
                 }
                 let label = labels.get(index).map_or("", String::as_str);
                 let Some(&cid) = font.cluster_cids.get(&(glyph.glyph_id, label.to_owned())) else {
