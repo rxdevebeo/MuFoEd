@@ -272,6 +272,31 @@ fn a_character_without_a_glyph_extracts_as_text() {
     assert!(text.contains('\u{0928}'), "{text:?}");
 }
 
+/// Cyrillic and Greek in Cambria are drawn: Caladea, which stands in for
+/// Cambria, has neither, and Russian headings in Word's default theme came out
+/// as missing-glyph boxes (CC0/009).
+#[test]
+fn cyrillic_in_cambria_has_glyphs() {
+    use strict_ooxml_testkit::DocxBuilder;
+    let bytes = DocxBuilder::strict()
+        .body(
+            "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Cambria\" w:hAnsi=\"Cambria\"/></w:rPr>\
+             <w:t>\u{0414}\u{0435}\u{043D}\u{044C}\u{0433}\u{0438} \u{03A9}</w:t></w:r></w:p>",
+        )
+        .build();
+    let (pdf, _, report) = to_pdf(&bytes);
+    let ids: Vec<_> = report.losses().iter().map(|loss| loss.id).collect();
+    assert!(!ids.contains(&"pdf.font.no_glyph"), "{:?}", report.losses());
+    let reader = lopdf::Document::load_mem(&pdf).expect("independent PDF reader");
+    let text = reader
+        .extract_text(&[1])
+        .expect("ToUnicode text extraction");
+    assert!(
+        text.contains("\u{0414}\u{0435}\u{043D}\u{044C}\u{0433}\u{0438}"),
+        "{text:?}"
+    );
+}
+
 /// The eastAsia face is the one the PDF embeds for East Asian text, as the
 /// SVG chooses it (restored after merge 5274d07f, 81ab887a).
 #[test]

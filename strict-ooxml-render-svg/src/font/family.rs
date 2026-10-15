@@ -114,9 +114,11 @@ fn exact_family(name: &str) -> Option<&'static str> {
 
 /// Bundled face that draws `ch` when the `base` face has no glyph for it.
 ///
-/// The metric-compatible faces cover Latin, Greek and Cyrillic; Arimo, Tinos
-/// and Cousine cover Hebrew too, Carlito and Caladea do not, though the
-/// Calibri and Cambria they stand for do. Word and WPS draw Arabic and Tibetan
+/// Carlito, Arimo, Tinos and Cousine cover Latin, Greek and Cyrillic; Arimo,
+/// Tinos and Cousine cover Hebrew too, Carlito and Caladea do not, though the
+/// Calibri and Cambria they stand for do. Caladea covers Latin only, so the
+/// Greek and Cyrillic of Cambria - every Russian heading in Word's default
+/// theme - come from Tinos, as the Hebrew does. Word and WPS draw Arabic and Tibetan
 /// from a font that has them (WQ-004), and Hebrew in Calibri from Calibri:
 /// here it comes from Arimo's or Tinos' Hebrew. Gelasio and Selawik (Georgia,
 /// Segoe UI) cover Latin only: the rest of the Latin-Greek-Cyrillic range
@@ -147,7 +149,7 @@ pub fn script_fallback(base: &str, ch: char) -> Option<&'static str> {
             "Arimo Fallback"
         }),
         '\u{0000}'..='\u{052F}' | '\u{1E00}'..='\u{1FFF}' | '\u{2000}'..='\u{2BFF}'
-            if base == "Gelasio" =>
+            if base == "Gelasio" || base == "Caladea" =>
         {
             Some("Tinos Fallback")
         }
@@ -242,6 +244,10 @@ mod tests {
         assert_eq!(script_fallback("Carlito", 'ﻻ'), Some("Noto Naskh Arabic"));
         assert_eq!(script_fallback("Arimo", 'ب'), Some("Noto Sans Arabic"));
         assert_eq!(script_fallback("Carlito", 'ཀ'), Some("Jomolhari"));
+        // Cambria's Cyrillic and Greek: Caladea has neither.
+        assert_eq!(script_fallback("Caladea", 'Ж'), Some("Tinos Fallback"));
+        assert_eq!(script_fallback("Caladea", 'Ω'), Some("Tinos Fallback"));
+        assert!(!crate::font::builtin::bundled_has_glyph("Caladea", 'Ж'));
         assert_eq!(script_fallback("Carlito", 'a'), None);
         // Hebrew: offered for any face, taken only where the face lacks it
         // (`chosen_family` checks the glyph): Carlito and Caladea, not Tinos.
