@@ -387,6 +387,68 @@ pub(crate) fn plan(
 /// A table of `columns` equal columns across `width` points, thin grey rules,
 /// from rows of cell paragraphs: what a model read as a table on a scan,
 /// which states its cells and not their geometry. A short row is padded.
+/// Columns of a scanned page set side by side: one row, one cell a column,
+/// no rules, `widths` in points.
+pub(crate) fn columns_table(widths: &[f64], cells: Vec<Vec<Block>>) -> Table {
+    let location = || strict_ooxml_core::error::SourceLocation::unknown();
+    let cells = widths
+        .iter()
+        .zip(cells)
+        .map(|(width, mut blocks)| {
+            if !blocks
+                .iter()
+                .any(|block| matches!(block, Block::Paragraph(_)))
+            {
+                blocks.push(Block::Paragraph(Paragraph {
+                    props: ParagraphProperties::default(),
+                    inlines: Vec::new(),
+                    rsids: Rsids::default(),
+                    para_id: None,
+                    text_id: None,
+                    revision: None,
+                    location: location(),
+                }));
+            }
+            TableCell {
+                props: CellProperties {
+                    width: Some(Width {
+                        kind: WidthKind::Dxa,
+                        value: Some(to_twips(*width)),
+                    }),
+                    ..CellProperties::default()
+                },
+                blocks,
+                sdt: None,
+                location: location(),
+            }
+        })
+        .collect();
+    Table {
+        props: TableProperties {
+            width: Some(Width {
+                kind: WidthKind::Dxa,
+                value: Some(to_twips(widths.iter().sum())),
+            }),
+            layout: Some(TableLayout::Fixed),
+            ..TableProperties::default()
+        },
+        grid: widths
+            .iter()
+            .map(|width| GridCol {
+                width: Some(Twips(to_twips(*width))),
+            })
+            .collect(),
+        grid_change: None,
+        rows: vec![TableRow {
+            props: RowProperties::default(),
+            cells,
+            sdt: None,
+            location: location(),
+        }],
+        location: location(),
+    }
+}
+
 // A column count is small; its f64 is exact.
 #[allow(clippy::cast_precision_loss)]
 pub(crate) fn grid_table(width: f64, columns: usize, rows: Vec<Vec<Vec<Paragraph>>>) -> Table {

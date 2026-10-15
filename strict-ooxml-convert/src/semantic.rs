@@ -903,39 +903,67 @@ pub(crate) fn recovered_blocks(
     report: &mut ConversionReport,
     fit: Option<(f64, f64)>,
 ) -> Vec<Block> {
-    use crate::recover::RecoveredItem;
     let mut out = Vec::with_capacity(block.items.len());
     for item in &block.items {
-        match item {
-            RecoveredItem::Paragraph(paragraph) => {
-                out.push(Block::Paragraph(paragraph.as_ref().clone()));
+        out.extend(item_blocks(item, index, media, report, fit));
+    }
+    out
+}
+
+/// The blocks one recovered item places; `fit` is the room it has, in points.
+fn item_blocks(
+    item: &crate::recover::RecoveredItem,
+    index: usize,
+    media: &mut crate::media::MediaCollector,
+    report: &mut ConversionReport,
+    fit: Option<(f64, f64)>,
+) -> Vec<Block> {
+    use crate::recover::RecoveredItem;
+    match item {
+        RecoveredItem::Paragraph(paragraph) => vec![Block::Paragraph(paragraph.as_ref().clone())],
+        RecoveredItem::Table(table) => vec![Block::Table(table.as_ref().clone())],
+        RecoveredItem::Columns { widths, cells } => {
+            let height = fit.map(|(_, height)| height);
+            let contents = widths
+                .iter()
+                .zip(cells)
+                .map(|(width, items)| {
+                    // A cell's own margins take a few points of its width.
+                    let room = height.map(|height| ((width - 11.0).max(18.0), height));
+                    items
+                        .iter()
+                        .flat_map(|item| item_blocks(item, index, media, report, room))
+                        .collect()
+                })
+                .collect();
+            vec![Block::Table(tables::columns_table(widths, contents))]
+        }
+        RecoveredItem::Picture(picture) => match media.add(index, &picture.image) {
+            Ok(part) => {
+                // A picture cut from a scan is as large as the page it
+                // was on, and the page has margins: it is scaled to fit.
+                let shrink = fit.map_or(1.0, |(width, height)| {
+                    (width / picture.width)
+                        .min(height * 0.98 / picture.height)
+                        .min(1.0)
+                });
+                vec![Block::Paragraph(sized_image_paragraph(
+                    picture.width * shrink,
+                    picture.height * shrink,
+                    &part,
+                    picture.description.clone(),
+                ))]
             }
-            RecoveredItem::Table(table) => out.push(Block::Table(table.as_ref().clone())),
-            RecoveredItem::Picture(picture) => match media.add(index, &picture.image) {
-                Ok(part) => {
-                    // A picture cut from a scan is as large as the page it
-                    // was on, and the page has margins: it is scaled to fit.
-                    let shrink = fit.map_or(1.0, |(width, height)| {
-                        (width / picture.width)
-                            .min(height * 0.98 / picture.height)
-                            .min(1.0)
-                    });
-                    out.push(Block::Paragraph(sized_image_paragraph(
-                        picture.width * shrink,
-                        picture.height * shrink,
-                        &part,
-                        picture.description.clone(),
-                    )));
-                }
-                Err(reason) => report.record(
+            Err(reason) => {
+                report.record(
                     "image.lost",
                     Severity::Lost,
                     format!("page {}: a picture cut from the scan: {reason}", index + 1),
-                ),
-            },
-        }
+                );
+                Vec::new()
+            }
+        },
     }
-    out
 }
 
 /// A paragraph holding one picture of `width` x `height` points.

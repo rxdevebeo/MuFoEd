@@ -785,6 +785,161 @@ fn embolden(text: &str, bold: &[bool]) -> Option<String> {
     Some(out)
 }
 
+/// How a page's blocks sit: bands from top to bottom, a band of blocks side
+/// by side split into columns.
+struct Arrangement {
+    /// Per block, the frame (left, right pixels) its alignment and indent are
+    /// measured in: its column, or the page's text column.
+    frames: Vec<(usize, usize)>,
+    /// Bands, top to bottom: the blocks of each, and its columns when it has
+    /// two or more side by side (left, right pixels; blocks).
+    bands: Vec<(Vec<usize>, Vec<(usize, usize, Vec<usize>)>)>,
+    page: (usize, usize),
+}
+
+/// The bands and columns of a page's blocks. A block wider than 60% of the
+/// text column is a band of its own (a title across the page); the blocks
+/// between such are grouped by overlapping x-ranges, and a group of two or
+/// more columns whose blocks share some height is laid out side by side.
+fn arrange(areas: &[PixelBox], page: (usize, usize)) -> Arrangement {
+    let width = page.1.saturating_sub(page.0).max(1);
+    let mut order: Vec<usize> = (0..areas.len()).collect();
+    order.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.top));
+    let mut bands: Vec<Vec<usize>> = Vec::new();
+    let mut current: Vec<usize> = Vec::new();
+    for index in order {
+        let Some(area) = areas.get(index) else {
+            continue;
+        };
+        if area.width() * 10 > width * 6 {
+            if !current.is_empty() {
+                bands.push(std::mem::take(&mut current));
+            }
+            bands.push(vec![index]);
+        } else {
+            current.push(index);
+        }
+    }
+    if !current.is_empty() {
+        bands.push(current);
+    }
+    let mut frames = vec![page; areas.len()];
+    let mut out = Vec::with_capacity(bands.len());
+    for band in bands {
+        let mut by_left = band.clone();
+        by_left.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.left));
+        let mut columns: Vec<(usize, usize, Vec<usize>)> = Vec::new();
+        for index in by_left {
+            let Some(area) = areas.get(index) else {
+                continue;
+            };
+            match columns.last_mut() {
+                Some(column) if area.left < column.1 => {
+                    column.1 = column.1.max(area.right);
+                    column.2.push(index);
+                }
+                _ => columns.push((area.left, area.right, vec![index])),
+            }
+        }
+        let side_by_side = columns.len() >= 2
+            && columns.iter().enumerate().any(|(at, column)| {
+                columns.iter().skip(at + 1).any(|other| {
+                    column.2.iter().any(|a| {
+                        other
+                            .2
+                            .iter()
+                            .any(|b| match (areas.get(*a), areas.get(*b)) {
+                                (Some(a), Some(b)) => a.top < b.bottom && b.top < a.bottom,
+                                _ => false,
+                            })
+                    })
+                })
+            });
+        if side_by_side {
+            for column in &columns {
+                for index in &column.2 {
+                    if let Some(frame) = frames.get_mut(*index) {
+                        *frame = (column.0, column.1);
+                    }
+                }
+            }
+            out.push((band, columns));
+        } else {
+            out.push((band, Vec::new()));
+        }
+    }
+    Arrangement {
+        frames,
+        bands: out,
+        page,
+    }
+}
+
+impl Arrangement {
+    /// `items` (in the blocks' order, block `n`'s from `starts[n]`, then the
+    /// pictures no block claimed from `end`) put together band by band, a
+    /// band of columns as one `Columns` item.
+    fn apply(
+        &self,
+        items: Vec<RecoveredItem>,
+        starts: &[usize],
+        end: usize,
+        scale: f64,
+    ) -> Vec<RecoveredItem> {
+        let mut slots: Vec<Option<RecoveredItem>> = items.into_iter().map(Some).collect();
+        let mut take = |block: usize| -> Vec<RecoveredItem> {
+            let from = starts.get(block).copied().unwrap_or(end);
+            let to = starts.get(block + 1).copied().unwrap_or(end);
+            (from..to)
+                .filter_map(|index| slots.get_mut(index).and_then(Option::take))
+                .collect()
+        };
+        let mut out = Vec::new();
+        for (blocks, columns) in &self.bands {
+            if columns.is_empty() {
+                let mut ordered = blocks.clone();
+                ordered.sort_unstable();
+                for block in ordered {
+                    out.extend(take(block));
+                }
+                continue;
+            }
+            // Columns span the text column: each takes up to the middle of
+            // the gap to its neighbour.
+            let mut edges = vec![self.page.0];
+            for pair in columns.windows(2) {
+                if let [left, right] = pair {
+                    edges.push((left.1 + right.0) / 2);
+                }
+            }
+            edges.push(self.page.1.max(columns.last().map_or(0, |column| column.1)));
+            let widths: Vec<f64> = edges
+                .windows(2)
+                .map(|pair| match pair {
+                    [left, right] => right.saturating_sub(*left) as f64 / scale,
+                    _ => 0.0,
+                })
+                .collect();
+            let cells = columns
+                .iter()
+                .map(|column| {
+                    let mut ordered = column.2.clone();
+                    ordered.sort_unstable();
+                    ordered.into_iter().flat_map(&mut take).collect()
+                })
+                .collect();
+            out.push(RecoveredItem::Columns { widths, cells });
+        }
+        out.extend(
+            slots
+                .into_iter()
+                .skip(starts.first().copied().unwrap_or(end).min(end))
+                .flatten(),
+        );
+        out
+    }
+}
+
 /// What a page's blocks are measured on and asked about.
 struct Page<'a> {
     ink: &'a Ink,
@@ -825,7 +980,7 @@ fn build_items(
             .iter()
             .filter(|(block, _)| block.kind != BlockKind::Figure)
     };
-    let column = (
+    let page_column = (
         text_blocks()
             .map(|(_, measured)| measured.area.left)
             .min()
@@ -840,6 +995,10 @@ fn build_items(
         .filter_map(|(_, measured)| measured.stroke_ratio())
         .collect();
     let body_ratio = (!body_ratios.is_empty()).then(|| median(body_ratios));
+    // Blocks side by side on the scan stay side by side: each block is set
+    // in its own column's frame, and the bands are put together below.
+    let areas: Vec<PixelBox> = placed.iter().map(|(_, measured)| measured.area).collect();
+    let arrangement = arrange(&areas, page_column);
 
     // Running text on a page is one size; a single line measured off it is
     // the measure's noise (a line of capitals, a bold label, a box that took
@@ -959,7 +1118,15 @@ fn build_items(
         )));
         Some(region.bottom)
     };
+    // Where each block's items start in `items`.
+    let mut starts: Vec<usize> = Vec::with_capacity(placed.len());
     for (position, (block, measured)) in placed.iter().enumerate() {
+        starts.push(items.len());
+        let column = arrangement
+            .frames
+            .get(position)
+            .copied()
+            .unwrap_or(page_column);
         // Pictures no block fell into, above this block.
         for (index, region) in regions.iter().enumerate() {
             let unclaimed = region_text.get(index).is_none_or(Vec::is_empty);
@@ -1085,9 +1252,11 @@ fn build_items(
         }
         previous_bottom = Some(measured.area.bottom);
     }
+    let placed_end = items.len();
     for index in 0..regions.len() {
         let _ = emit(index, &mut items, &mut figures);
     }
+    let items = arrangement.apply(items, &starts, placed_end, frame.scale);
     report.record(
         "text.recovered",
         Severity::Recovered,
@@ -1527,6 +1696,37 @@ mod tests {
                 "{left}-{right}"
             );
         }
+    }
+
+    #[test]
+    fn blocks_side_by_side_become_columns() {
+        let area = |left, top, right, bottom| PixelBox {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        // A title across the page, then two columns, then a footer.
+        let areas = [
+            area(100, 50, 900, 90),
+            area(100, 120, 480, 300),
+            area(520, 120, 900, 260),
+            area(100, 320, 480, 400),
+            area(100, 900, 900, 930),
+        ];
+        let arrangement = super::arrange(&areas, (100, 900));
+        assert_eq!(arrangement.bands.len(), 3);
+        let columns = &arrangement.bands[1].1;
+        assert_eq!(columns.len(), 2);
+        assert_eq!(columns[0].2, vec![1, 3]);
+        assert_eq!(arrangement.frames[2], (520, 900));
+        assert_eq!(arrangement.frames[0], (100, 900));
+        // Indented blocks one under the other stay one column.
+        let stacked = [area(100, 100, 500, 140), area(200, 150, 520, 190)];
+        assert!(super::arrange(&stacked, (100, 900))
+            .bands
+            .iter()
+            .all(|band| band.1.is_empty()));
     }
 
     #[test]

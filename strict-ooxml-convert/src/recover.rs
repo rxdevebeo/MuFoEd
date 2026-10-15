@@ -131,6 +131,14 @@ pub(crate) enum RecoveredItem {
     Picture(RecoveredPicture),
     /// A table a model read.
     Table(Box<strict_ooxml_wml::model::block::Table>),
+    /// Columns set side by side on the scan: a borderless table, one cell a
+    /// column, `widths` in points.
+    Columns {
+        /// The columns' widths, in points.
+        widths: Vec<f64>,
+        /// Each column's items, top to bottom.
+        cells: Vec<Vec<RecoveredItem>>,
+    },
 }
 
 /// A picture cut out of a scanned page.
