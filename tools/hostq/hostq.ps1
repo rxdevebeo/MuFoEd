@@ -60,6 +60,9 @@ $script:GateStepOrder = @('fmt', 'clippy', 'test', 'deny', 'doc')
 # A wps-qa job that does not say how long it may run gets this many minutes.
 $script:WpsQaMinutes = 240
 $script:WpsQaMaxMinutes = 720
+# ocr-probe: pages per job and the default budget (a page is about a minute).
+$script:OcrProbeMaxPages = 50
+$script:OcrProbeMinutes = 120
 $script:XsdGates = @('xsd', 'opc', 'census')
 # Criterion benches a `bench` job may run, and the package each belongs to.
 $script:Benches = [ordered]@{
@@ -402,6 +405,7 @@ $script:AllowedFields = @{
     'wps'         = @('id', 'kind', 'sha')
     'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts', 'font_pack', 'font_packs')
     'rtf'         = @('id', 'kind', 'sha')
+    'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
 }
@@ -466,6 +470,7 @@ function Test-JobRecord {
         'wps' { $required = @('sha') }
         'wps-qa' { $required = @('sha') }
         'rtf' { $required = @('sha') }
+        'ocr-probe' { $required = @('sha', 'input', 'pages') }
         'commit' { $required = @('branch', 'paths', 'message') }
         'push' { $required = @('branch') }
     }
@@ -516,6 +521,45 @@ function Test-JobRecord {
                         return (& $reject ("steps entry '{0}' is duplicated" -f $text))
                     }
                     $seen += $text
+                }
+            }
+        }
+        'ocr-probe' {
+            # A scanned document of the owner's under testdata\, a short page
+            # span (a vision model takes a minute a page), and an optional model
+            # and prompt file (repo-relative, read from the worktree at `sha`).
+            if ($Job.input -isnot [string] -or [string]$Job.input -notmatch '^testdata/[^\\:*?"<>|]+\.pdf$' -or [string]$Job.input -match '(^|/)\.\.(/|$)') {
+                return (& $reject 'input must be testdata/<path>.pdf without ..')
+            }
+            if (-not (Test-Path -LiteralPath (Join-RepoPath -Root $Repo -Relative ([string]$Job.input)) -PathType Leaf)) {
+                return (& $reject ("input '{0}' does not exist" -f $Job.input))
+            }
+            if ($Job.pages -isnot [string] -or [string]$Job.pages -notmatch '^(\d{1,4})(-(\d{1,4}))?$') {
+                return (& $reject 'pages must be N or N-M')
+            }
+            $first = [int]$Matches[1]
+            $last = $first
+            if ($Matches[3]) { $last = [int]$Matches[3] }
+            if ($first -lt 1 -or $last -lt $first -or ($last - $first) -ge $script:OcrProbeMaxPages) {
+                return (& $reject ("pages must be 1-based, ascending, at most {0} pages" -f $script:OcrProbeMaxPages))
+            }
+            if ($fields -contains 'model' -and ($Job.model -isnot [string] -or [string]$Job.model -notmatch '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$')) {
+                return (& $reject 'model is not an Ollama model name')
+            }
+            if ($fields -contains 'prompt_file' -and ($Job.prompt_file -isnot [string] -or [string]$Job.prompt_file -notmatch '^[A-Za-z0-9_][A-Za-z0-9_./-]{0,200}\.txt$' -or [string]$Job.prompt_file -match '(^|/)\.\.(/|$)')) {
+                return (& $reject 'prompt_file must be a repo-relative .txt path without ..')
+            }
+            if ($fields -contains 'scale' -and (-not ($Job.scale -is [int] -or $Job.scale -is [long] -or $Job.scale -is [double] -or $Job.scale -is [decimal]) -or [double]$Job.scale -le 0 -or [double]$Job.scale -gt 6)) {
+                return (& $reject 'scale must be a number in (0, 6]')
+            }
+            foreach ($flag in @('convert', 'layout')) {
+                if ($fields -contains $flag -and $Job.$flag -isnot [bool]) {
+                    return (& $reject ("{0} must be true or false" -f $flag))
+                }
+            }
+            if ($fields -contains 'minutes') {
+                if (-not ($Job.minutes -is [int] -or $Job.minutes -is [long]) -or [long]$Job.minutes -lt 10 -or [long]$Job.minutes -gt $script:WpsQaMaxMinutes) {
+                    return (& $reject ("minutes must be an integer 10..{0}" -f $script:WpsQaMaxMinutes))
                 }
             }
         }
@@ -1244,6 +1288,87 @@ function Invoke-WpsQa {
     return (New-Result $status $reason $steps $artifacts)
 }
 
+# Recognition of a scanned PDF by the owner's local Ollama, for debugging:
+# `convert` (default on) runs `from-pdf --ocr --no-images` on the page span and
+# `to-pdf` on the result; `layout` (default on) runs the `layout_probe`
+# example, which keeps each page picture the model saw and its verbatim answer
+# to a layout prompt (blocks, boxes, kinds, Markdown). The model is `model`, or
+# OLLAMA_MODEL, or the library default. Everything lands in out\<id>\.
+function Invoke-OcrProbe {
+    param([string]$Repo, [string]$QueueDir, [string]$Sha, $Job, [string]$OutDir)
+    $minutes = $script:OcrProbeMinutes
+    if ($null -ne $Job.PSObject.Properties['minutes']) { $minutes = [int]$Job.minutes }
+    $deadline = (Get-Date).AddMinutes($minutes)
+    $wt = Join-Path $QueueDir 'wt'
+    $target = Join-Path $QueueDir 'target'
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Ensure-Worktree -Repo $Repo -Wt $wt -Sha $Sha
+    $inputPdf = Join-RepoPath -Root $Repo -Relative ([string]$Job.input)
+    $pages = [string]$Job.pages
+    $convert = $true
+    if ($null -ne $Job.PSObject.Properties['convert']) { $convert = [bool]$Job.convert }
+    $layout = $true
+    if ($null -ne $Job.PSObject.Properties['layout']) { $layout = [bool]$Job.layout }
+    $ocrEnv = @{}
+    if ($null -ne $Job.PSObject.Properties['model']) { $ocrEnv['OLLAMA_MODEL'] = [string]$Job.model }
+
+    $steps = @()
+    $artifacts = @()
+    if ($convert) {
+        $build = Invoke-Logged -Name 'build-cli' -Exe 'cargo' -Arguments @($script:Toolchain, 'build', '--release', '-p', 'strict-ooxml-cli', '--features', 'ocr-ollama') -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env (Get-CargoEnv -Target $target) -OutDir $OutDir
+        $steps += $build
+        if (-not $build.timedout -and $build.exit -eq 0) {
+            $cli = Join-Path $target 'release\strict-ooxml.exe'
+            $docx = Join-Path $OutDir 'ocr.docx'
+            $report = Join-Path $OutDir 'ocr-report.json'
+            $fromPdf = Invoke-Logged -Name 'from-pdf' -Exe $cli -Arguments @('from-pdf', $inputPdf, '--ocr', '--pages', $pages, '--no-images', '--out', $docx, '--report-out', $report) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $ocrEnv -OutDir $OutDir
+            # Exit 1 is a written document whose report has losses.
+            if ($fromPdf.exit -eq 1 -and (Test-Path -LiteralPath $docx)) { $fromPdf.exit = 0 }
+            $steps += $fromPdf
+            $p = Join-Path $OutDir 'from-pdf.txt'
+            Save-StepOutput -Step $fromPdf -Path $p
+            $artifacts += New-Artifact -QueueDir $QueueDir -Path $p
+            if (Test-Path -LiteralPath $docx) {
+                $artifacts += New-Artifact -QueueDir $QueueDir -Path $docx
+                $pdf = Join-Path $OutDir 'ocr.pdf'
+                $toPdf = Invoke-Logged -Name 'to-pdf' -Exe $cli -Arguments @('to-pdf', $docx, '--out', $pdf) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
+                if ($toPdf.exit -eq 1 -and (Test-Path -LiteralPath $pdf)) { $toPdf.exit = 0 }
+                $steps += $toPdf
+                if (Test-Path -LiteralPath $pdf) { $artifacts += New-Artifact -QueueDir $QueueDir -Path $pdf }
+            }
+            if (Test-Path -LiteralPath $report) { $artifacts += New-Artifact -QueueDir $QueueDir -Path $report }
+        }
+    }
+    if ($layout) {
+        $build = Invoke-Logged -Name 'build-layout-probe' -Exe 'cargo' -Arguments @($script:Toolchain, 'build', '--release', '-p', 'strict-ooxml-convert', '--features', 'raster,ocr-ollama', '--example', 'layout_probe') -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env (Get-CargoEnv -Target $target) -OutDir $OutDir
+        $steps += $build
+        if (-not $build.timedout -and $build.exit -eq 0) {
+            $probe = Join-Path $target 'release\examples\layout_probe.exe'
+            $dir = Join-Path $OutDir 'layout'
+            $probeArgs = @($inputPdf, '--out', $dir, '--pages', $pages)
+            if ($null -ne $Job.PSObject.Properties['scale']) { $probeArgs += @('--scale', ([string]([double]$Job.scale))) }
+            if ($null -ne $Job.PSObject.Properties['prompt_file']) {
+                $prompt = Join-RepoPath -Root $wt -Relative ([string]$Job.prompt_file)
+                if (-not (Test-Path -LiteralPath $prompt -PathType Leaf)) {
+                    return (New-Result 'error' ('ocr-probe: no prompt file {0} at {1}' -f $Job.prompt_file, $Sha) $steps $artifacts)
+                }
+                $probeArgs += @('--prompt-file', $prompt)
+            }
+            $run = Invoke-Logged -Name 'layout-probe' -Exe $probe -Arguments $probeArgs -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $ocrEnv -OutDir $OutDir
+            $steps += $run
+            $p = Join-Path $OutDir 'layout-probe.txt'
+            Save-StepOutput -Step $run -Path $p
+            $artifacts += New-Artifact -QueueDir $QueueDir -Path $p
+            $table = Join-Path $dir 'probe.tsv'
+            if (Test-Path -LiteralPath $table) { $artifacts += New-Artifact -QueueDir $QueueDir -Path $table }
+        }
+    }
+    $status = Get-StepsStatus $steps
+    $reason = ''
+    if ($status -ne 'ok') { $reason = ('ocr-probe: {0} step(s) non-zero' -f @($steps | Where-Object { $_.exit -ne 0 }).Count) }
+    return (New-Result $status $reason $steps $artifacts)
+}
+
 # The RTF harness (xtool/rtf) at a commit: its unit tests, then the census of
 # every discovered RTF set (integrity against its manifest.json and a bounded
 # lexical scan). A set without a manifest is reported, not censused.
@@ -1494,6 +1619,7 @@ function Invoke-JobFile {
                 'bench' { $r = Invoke-Bench -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
                 'wps' { $r = Invoke-Wps -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'wps-qa' { $r = Invoke-WpsQa -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
+                'ocr-probe' { $r = Invoke-OcrProbe -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
                 'rtf' { $r = Invoke-Rtf -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'commit' { $r = Invoke-Commit -Repo $Repo -Job $job -OutDir $outDir }
                 'push' { $r = Invoke-Push -Repo $Repo -Job $job -OutDir $outDir }
