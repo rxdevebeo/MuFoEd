@@ -240,4 +240,5 @@ fn an_answer_cut_off_at_the_token_limit_is_refused() {
     let _ = mock.seen.recv().expect("a request");
     let chat = mock.seen.recv().expect("a request");
     assert!(chat.body.contains("\"num_predict\":64"), "{}", chat.body);
+    assert!(chat.body.contains("\"num_ctx\":16384"), "{}", chat.body);
 }
