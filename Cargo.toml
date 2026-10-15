@@ -117,3 +117,13 @@ djvu-jb2 = { path = "vendor/djvu-jb2" }
 # WMF/EMF previews: logical sizes mapped to the canvas, text alignment, dx and
 # the Symbol font. See `vendor/README.md`.
 emfsdk = { path = "vendor/emfsdk" }
+
+# Debug info is most of a debug build's link time, memory and disk: dozens of
+# test binaries each link every dependency, and full PDBs made the Windows
+# host's gates heavy (and, after a crash, corrupt). Line tables keep
+# backtraces readable for our crates; dependencies carry none.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
