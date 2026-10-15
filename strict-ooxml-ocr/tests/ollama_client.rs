@@ -234,7 +234,7 @@ fn an_answer_cut_off_at_the_token_limit_is_refused() {
         .describe(&image(), "")
         .expect_err("half an answer is not an answer");
     assert!(
-        error.to_string().contains("cut off at 64 tokens"),
+        error.to_string().contains("cut off at the length limit"),
         "{error}"
     );
     let _ = mock.seen.recv().expect("a request");
