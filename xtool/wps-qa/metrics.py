@@ -640,3 +640,131 @@ def grade(score: float) -> str:
     if score >= 50:
         return "C"
     return "D"
+
+
+# ---------------------------------------------------------------------------
+# Readability: does the rendering carry the document's content to a reader?
+#
+# Measured against the source document, not against WPS: the words of the
+# document body, in order. It does not care where a word sits to the point;
+# it cares that every word is on the page and visible (not a missing-glyph
+# box), in reading order, not drawn over another word or off the page, and
+# that the pictures are there. WPS's own PDF is scored the same way, which
+# shows where WPS itself loses the text (its Tamil and Telugu text layers).
+# ---------------------------------------------------------------------------
+
+READABILITY_WEIGHTS = {"completeness": 0.40, "order": 0.25, "legibility": 0.20, "images": 0.15}
+_FALLBACK_RE = re.compile(r"<mc:Fallback\b.*?</mc:Fallback>", re.S)
+_TEXT_RE = re.compile(r"<w:t(?:\s[^>]*)?>([^<]*)</w:t>|<w:t\s*/>|</w:p>|<w:(?:tab|br|cr)\b[^>]*/>")
+
+
+def source_words(path: str) -> list[str]:
+    """The words of a DOCX body in document order (alternate-content
+    fallbacks dropped: they repeat the choice)."""
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(path) as z:
+            xml = z.read("word/document.xml").decode("utf-8", "ignore")
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return []
+    xml = _FALLBACK_RE.sub("", xml)
+    parts = []
+    for m in _TEXT_RE.finditer(xml):
+        parts.append(m.group(1) if m.group(1) is not None else " ")
+    text = "".join(parts)
+    import html
+
+    text = html.unescape(text)
+    return [_norm(m.group()) for m in WORD_RE.finditer(text)]
+
+
+def source_images(path: str) -> int:
+    """Pictures in a DOCX body: DrawingML pictures and VML image data."""
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(path) as z:
+            xml = z.read("word/document.xml").decode("utf-8", "ignore")
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return 0
+    xml = _FALLBACK_RE.sub("", xml)
+    return len(re.findall(r"<pic:pic\b", xml)) + len(re.findall(r"<v:imagedata\b", xml))
+
+
+def pdf_images(path: str) -> int:
+    """Image objects drawn on the pages of a PDF (form contents included)."""
+    doc = pdfium.PdfDocument(path)
+    count = 0
+    try:
+        for index in range(len(doc)):
+            page = doc[index]
+            count += sum(1 for _ in page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3))
+            page.close()
+    finally:
+        doc.close()
+    return count
+
+
+def _legibility(facts: PdfFacts) -> float:
+    """Share of words neither drawn over another word nor off the page."""
+    if not facts.words:
+        return 1.0
+    bad = 0
+    by_page: dict[int, list[Word]] = {}
+    for w in facts.words:
+        by_page.setdefault(w.page, []).append(w)
+    for page, words in by_page.items():
+        width, height = facts.sizes[page] if page < len(facts.sizes) else (1e9, 1e9)
+        words = sorted(words, key=lambda w: w.top)
+        flagged = [False] * len(words)
+        for i, a in enumerate(words):
+            if a.x0 < -2 or a.top < -2 or a.x1 > width + 2 or a.bottom > height + 2:
+                flagged[i] = True
+            for j in range(i + 1, len(words)):
+                b = words[j]
+                if b.top >= a.bottom:
+                    break
+                ix = min(a.x1, b.x1) - max(a.x0, b.x0)
+                iy = min(a.bottom, b.bottom) - max(a.top, b.top)
+                if ix <= 0 or iy <= 0:
+                    continue
+                smaller = min((a.x1 - a.x0) * a.height, (b.x1 - b.x0) * b.height)
+                if smaller > 0 and ix * iy >= 0.3 * smaller:
+                    flagged[i] = flagged[j] = True
+        bad += sum(flagged)
+    return 1.0 - bad / len(facts.words)
+
+
+def readability(src: list[str], facts: PdfFacts, missing: set[str], src_images: int, drawn_images: int) -> dict:
+    """Readability of one rendering of a document (0-100, see READABILITY_WEIGHTS).
+
+    `missing` are the characters the renderer drew as missing-glyph boxes:
+    they are in the text layer but nobody can read them."""
+    words = [w.text for w in facts.words]
+    if not src:
+        return {"score": None, "reason": "no source text"}
+    have = Counter(words)
+    want = Counter(src)
+    recall = sum((want & have).values()) / sum(want.values())
+    folded = {_norm(ch) for ch in missing}
+    chars = sum(len(w) for w in words)
+    hidden = sum(1 for w in words for ch in w if ch in folded) if folded else 0
+    visible = 1.0 - (hidden / chars if chars else 0.0)
+    completeness = recall * visible
+    order = len(align(src, words)) / len(src) if words else 0.0
+    # Words not drawn over each other count only for the words that are
+    # there: a page with none of the text is not legible for being empty.
+    legibility = _legibility(facts) * recall
+    images = 1.0 if src_images == 0 else min(drawn_images, src_images) / src_images
+    parts = {"completeness": completeness, "order": order, "legibility": legibility, "images": images}
+    score = 100 * sum(READABILITY_WEIGHTS[k] * v for k, v in parts.items())
+    return {
+        "score": round(score, 1),
+        **{k: round(v, 4) for k, v in parts.items()},
+        "recall": round(recall, 4),
+        "hidden_chars": hidden,
+        "source_words": len(src),
+        "source_images": src_images,
+        "drawn_images": drawn_images,
+    }

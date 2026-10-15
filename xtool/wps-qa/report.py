@@ -16,7 +16,14 @@ COLUMNS = [
     ("corpus", "corpus"),
     ("key", "document"),
     ("status", "status"),
-    ("score", "score"),
+    ("readability", "readability"),
+    ("ref_readability", "WPS readability"),
+    ("read_completeness", "complete & visible"),
+    ("read_order", "reading order"),
+    ("read_legibility", "no overlap"),
+    ("read_images", "pictures"),
+    ("readability_delta", "Δ readability vs baseline"),
+    ("score", "WPS fidelity"),
     ("grade", "grade"),
     ("pages_ref", "pages WPS"),
     ("pages_ours", "pages ours"),
@@ -97,6 +104,7 @@ def _group(rows: list[dict]) -> dict:
     scored = [r for r in rows if isinstance(r.get("score"), (int, float))]
     return {
         "documents": len(rows),
+        "mean_readability": _mean([r.get("readability") for r in rows]),
         "mean_score": _mean([r["score"] for r in scored]),
         "grades": {g: sum(r.get("grade") == g for r in scored) for g in "ABCDF"},
         "mean_delta": _mean([r.get("delta") for r in rows]),
@@ -153,6 +161,19 @@ def _row(doc: common.Doc, store: Path, label: str) -> dict:
             "sub": {k: cmp_[k]["score"] for k in ("pages", "text", "flow", "geometry", "raster") if k in cmp_},
         }
     )
+    read = cmp_.get("readability") or {}
+    if read.get("score") is not None:
+        row.update(
+            {
+                "readability": read["score"],
+                "read_completeness": read.get("completeness"),
+                "read_order": read.get("order"),
+                "read_legibility": read.get("legibility"),
+                "read_images": read.get("images"),
+            }
+        )
+    ref_read = cmp_.get("ref_readability") or {}
+    row["ref_readability"] = ref_read.get("score")
     return row
 
 
@@ -182,6 +203,8 @@ def build(store: Path, data_root: Path, label: str, baseline: str | None, corpor
             b = base.get(r["ident"], {})
             if isinstance(r.get("score"), (int, float)) and isinstance(b.get("score"), (int, float)):
                 r["delta"] = round(r["score"] - b["score"], 1)
+            if isinstance(r.get("readability"), (int, float)) and isinstance(b.get("readability"), (int, float)):
+                r["readability_delta"] = round(r["readability"] - b["readability"], 1)
 
     by_corpus: dict[str, dict] = {}
     for c in common.corpora(data_root):
@@ -196,6 +219,9 @@ def build(store: Path, data_root: Path, label: str, baseline: str | None, corpor
             "wps_failed": sum(r["status"].startswith("wps-") for r in rs),
             "ours_failed": sum(r["status"].startswith("ours-") for r in rs),
             "cmp_failed": sum(r["status"].startswith("cmp-") for r in rs),
+            "mean_readability": _mean([r.get("readability") for r in rs]),
+            "mean_ref_readability": _mean([r.get("ref_readability") for r in rs]),
+            "mean_readability_delta": _mean([r.get("readability_delta") for r in rs]),
             "mean_score": _mean([r["score"] for r in scored]),
             "median_score": round(statistics.median([r["score"] for r in scored]), 1) if scored else None,
             "page_count_exact": sum(r.get("pages_ref") == r.get("pages_ours") for r in ok),
@@ -222,6 +248,12 @@ def build(store: Path, data_root: Path, label: str, baseline: str | None, corpor
     total = {
         "documents": len(rows),
         "compared": sum(r["status"] == "ok" for r in rows),
+        # The headline: how well the rendering carries the document to a
+        # reader, scored against the source (see metrics.readability). The
+        # WPS fidelity score below says how close the pages are to WPS's.
+        "mean_readability": _mean([r.get("readability") for r in rows]),
+        "mean_ref_readability": _mean([r.get("ref_readability") for r in rows]),
+        "mean_readability_delta": _mean([r.get("readability_delta") for r in rows]),
         "mean_score": _mean([r["score"] for r in all_scored]),
         "grades": {g: sum(r.get("grade") == g for r in all_scored) for g in "ABCDF"},
         # References WPS drew mostly in its fallback face measure the host's
@@ -282,7 +314,8 @@ def _html(summary: dict, rows: list[dict]) -> str:
             "<tr>"
             + f"<td>{e(name)}</td><td>{s['documents']}</td><td>{s['compared']}</td>"
             + f"<td>{s['wps_failed']}</td><td>{s['ours_failed']}</td><td>{s['cmp_failed']}</td>"
-            + f"<td><b>{_fmt(s['mean_score'])}</b></td><td>{_fmt(s.get('mean_score_clean'))}</td><td>{s.get('ref_fallback_docs', 0)}</td><td>{_fmt(s['median_score'])}</td>"
+            + f"<td><b>{_fmt(s.get('mean_readability'))}</b></td><td>{_fmt(s.get('mean_ref_readability'))}</td>"
+            + f"<td>{_fmt(s['mean_score'])}</td><td>{_fmt(s.get('mean_score_clean'))}</td><td>{s.get('ref_fallback_docs', 0)}</td><td>{_fmt(s['median_score'])}</td>"
             + f"<td>{s['page_count_exact']}/{s['compared']}</td>"
             + f"<td>{_fmt(s['mean_text_f1'])}</td><td>{_fmt(s['mean_same_page'])}</td>"
             + f"<td>{_fmt(s['mean_line_break_f1'])}</td><td>{_fmt(s['mean_geom_abs'])}</td><td>{_fmt(s['mean_geom_advance'])}</td><td>{_fmt(s['mean_geom_leading'])}</td><td>{_fmt(s['mean_ssim'])}</td>"
@@ -291,7 +324,15 @@ def _html(summary: dict, rows: list[dict]) -> str:
             + "</tr>"
         )
     doc_rows = []
-    ordered = sorted(rows, key=lambda r: (r.get("score") if isinstance(r.get("score"), (int, float)) else 1e9, r["ident"]))
+    # Worst readability first: that is where a reader is let down.
+    ordered = sorted(
+        rows,
+        key=lambda r: (
+            r.get("readability") if isinstance(r.get("readability"), (int, float)) else 1e9,
+            r.get("score") if isinstance(r.get("score"), (int, float)) else 1e9,
+            r["ident"],
+        ),
+    )
     for r in ordered:
         cells = []
         for col, _ in COLUMNS:
@@ -326,12 +367,14 @@ td:first-child {{ text-align:left; }} .err {{ color:var(--muted); font-size:11px
 </style></head><body>
 <h1>WPS QA — {e(summary['label'])}</h1>
 <p class="muted">generated {e(summary['generated'])} · CLI {e(str(build.get('cli', '')))} · baseline {e(str(summary.get('baseline') or '—'))}</p>
-<p>Документов: <b>{t['documents']}</b>, сравнено: <b>{t['compared']}</b>, средний балл: <b>{_fmt(t['mean_score'])}</b>,
+<p style="font-size:16px">Читаемость: <b>{_fmt(t.get('mean_readability'))}</b> (WPS: {_fmt(t.get('mean_ref_readability'))}{', Δ ' + _fmt(t.get('mean_readability_delta')) if t.get('mean_readability_delta') is not None else ''})</p>
+<p class="muted">Читаемость 0–100 — главный показатель: насколько наш PDF доносит содержание документа читателю, сравнение с самим документом, а не с WPS. 40% полнота (доля слов документа на страницах, за вычетом символов, нарисованных квадратиком «нет глифа»), 25% порядок чтения (доля слов документа в правильном порядке), 20% разборчивость (слова не налезают друг на друга и не уходят за край страницы), 15% картинки (доля изображений документа на страницах). Тем же способом оценён PDF WPS.</p>
+<p>Документов: <b>{t['documents']}</b>, сравнено: <b>{t['compared']}</b>, сходство с WPS: <b>{_fmt(t['mean_score'])}</b>,
 оценки A/B/C/D/F: {t['grades']['A']}/{t['grades']['B']}/{t['grades']['C']}/{t['grades']['D']}/{t['grades']['F']}</p>
 {_split_html(t)}
-<p class="muted">Балл 0–100 = 15% страницы + 25% текст (F1 слов) + 25% поток (та же страница, F1 переносов строк) + 20% геометрия (среднее: абсолютное положение слов на той же странице ≤4 pt, шаг между словами в строке и шаг строк — оба ≤ max(1 pt, 5%)) + 15% растр (SSIM 36 dpi, корреляция профилей). F = наш рендер не отработал.</p>
+<p class="muted">Сходство с WPS 0–100 = 15% страницы + 25% текст (F1 слов) + 25% поток (та же страница, F1 переносов строк) + 20% геометрия (среднее: абсолютное положение слов на той же странице ≤4 pt, шаг между словами в строке и шаг строк — оба ≤ max(1 pt, 5%)) + 15% растр (SSIM 36 dpi, корреляция профилей). F = наш рендер не отработал.</p>
 <h2>По корпусам</h2>
-<table><tr><th>corpus</th><th>docs</th><th>compared</th><th>WPS fail</th><th>ours fail</th><th>cmp fail</th><th>mean</th><th title="без эталонов в шрифте-подмене">mean clean</th><th title="эталонов в шрифте-подмене">fallback refs</th><th>median</th><th>pages =</th><th>text F1</th><th>same page</th><th>line breaks</th><th>abs ≤4pt</th><th>advance</th><th>leading</th><th>SSIM</th><th>A/B/C/D/F</th><th>Δ</th><th title="RTF import: Clean/Degraded/Failed · import losses">RTF C/D/F · losses</th></tr>
+<table><tr><th>corpus</th><th>docs</th><th>compared</th><th>WPS fail</th><th>ours fail</th><th>cmp fail</th><th>readability</th><th>WPS readability</th><th>fidelity</th><th title="без эталонов в шрифте-подмене">fidelity clean</th><th title="эталонов в шрифте-подмене">fallback refs</th><th>median</th><th>pages =</th><th>text F1</th><th>same page</th><th>line breaks</th><th>abs ≤4pt</th><th>advance</th><th>leading</th><th>SSIM</th><th>A/B/C/D/F</th><th>Δ</th><th title="RTF import: Clean/Degraded/Failed · import losses">RTF C/D/F · losses</th></tr>
 {''.join(corp_rows)}</table>
 <h2>Документы (худшие сверху; ссылка — худшая страница: WPS | наш | наложение, красный = только WPS, синий = только наш)</h2>
 <table id="docs"><thead><tr>{head}</tr></thead><tbody>
