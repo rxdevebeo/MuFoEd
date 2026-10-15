@@ -87,6 +87,35 @@ fn orient_does_not_swap_the_written_page_size() {
     assert!(w < h, "{w}x{h}");
 }
 
+/// A section written without `w:pgMar` (pandoc's `<w:sectPr/>`) has Word's
+/// and WPS's 1.25 in side margins (CC0_DOCX/050: WPS sets the text 90 pt in).
+#[test]
+fn a_section_without_margins_has_the_wide_side_default() {
+    let left = |body: &str| {
+        let bytes = build_docx(&[
+            ("[Content_Types].xml", content_types().into_bytes()),
+            ("_rels/.rels", root_rels().into_bytes()),
+            ("word/document.xml", document(body).into_bytes()),
+        ]);
+        let (_package, parsed) = open_bytes(bytes);
+        let placed = strict_ooxml_render_svg::place_pages(&parsed, &RenderOptions::default(), None)
+            .expect("place");
+        placed[0]
+            .items
+            .iter()
+            .find_map(|item| match item {
+                strict_ooxml_render_svg::Item::Text(text) => Some(text.x),
+                _ => None,
+            })
+            .expect("text")
+    };
+    let with_empty = left("<w:p><w:r><w:t>Text</w:t></w:r></w:p><w:sectPr/>");
+    assert!((with_empty - 120.0).abs() < 0.01, "{with_empty}");
+    // No section properties at all keeps the 1 in default.
+    let without = left("<w:p><w:r><w:t>Text</w:t></w:r></w:p>");
+    assert!((without - 96.0).abs() < 0.01, "{without}");
+}
+
 #[test]
 fn odd_page_section_break_inserts_blank_page() {
     // AUD-74: oddPage after page 1 inserts an empty even page.

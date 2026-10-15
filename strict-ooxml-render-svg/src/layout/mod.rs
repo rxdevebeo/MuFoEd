@@ -638,6 +638,12 @@ const DEFAULT_PAGE_WIDTH: i32 = 12_240;
 const DEFAULT_PAGE_HEIGHT: i32 = 15_840;
 /// Default margin, in twips (1 inch).
 const DEFAULT_MARGIN: i32 = 1_440;
+/// Left and right margin of a section that is written without `w:pgMar`:
+/// Word's (and WPS's) 1.25 in, not the 1 in of its own template. Pandoc writes
+/// `<w:sectPr/>`, and WPS sets those books 18 pt narrower on each side than
+/// we did (`CC0_DOCX/050`: 343 pages against our 501). A document with no
+/// section properties at all keeps the 1 in default.
+const DEFAULT_SIDE_MARGIN: i32 = 1_800;
 
 /// Builds [`Geometry`] from optional section properties.
 ///
@@ -651,6 +657,11 @@ pub(crate) fn geometry_for(
     gutter_at_top: bool,
 ) -> Geometry {
     let page = section.and_then(|section| section.page_size);
+    let side_default = if section.is_some() {
+        DEFAULT_SIDE_MARGIN
+    } else {
+        DEFAULT_MARGIN
+    };
     let raw_w = page.and_then(|page| page.width).map(Twips::value);
     let raw_h = page.and_then(|page| page.height).map(Twips::value);
     let replaced = raw_w.is_none_or(|value| value <= 0) || raw_h.is_none_or(|value| value <= 0);
@@ -676,9 +687,9 @@ pub(crate) fn geometry_for(
         .and_then(|section| section.page_margins)
         .unwrap_or(PageMargins {
             top: Some(Twips(DEFAULT_MARGIN)),
-            right: Some(Twips(DEFAULT_MARGIN)),
+            right: Some(Twips(side_default)),
             bottom: Some(Twips(DEFAULT_MARGIN)),
-            left: Some(Twips(DEFAULT_MARGIN)),
+            left: Some(Twips(side_default)),
             header: None,
             footer: None,
             gutter: None,
@@ -719,8 +730,8 @@ pub(crate) fn geometry_for(
     } else {
         (gutter, 0.0)
     };
-    let left = value(margins.left, DEFAULT_MARGIN) + left_gutter;
-    let right = value(margins.right, DEFAULT_MARGIN) + right_gutter;
+    let left = value(margins.left, side_default) + left_gutter;
+    let right = value(margins.right, side_default) + right_gutter;
     let columns = ColumnLayout::from_columns(
         section.and_then(|section| section.columns.as_ref()),
         section.is_some_and(|section| section.bidi),
