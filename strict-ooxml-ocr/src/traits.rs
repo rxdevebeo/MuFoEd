@@ -103,6 +103,19 @@ pub trait TextRecovery: Send + Sync {
         let _ = page;
         Ok(None)
     }
+
+    /// A table cropped from a page, as a Markdown table.
+    ///
+    /// `Ok(None)` - the default - means this implementation cannot, and the
+    /// caller keeps the table's lines as text.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`VisionError`] when no usable answer could be obtained.
+    fn recover_table(&self, table: &Image) -> Result<Option<Recovered>, VisionError> {
+        let _ = table;
+        Ok(None)
+    }
 }
 
 /// Says what a graphic region is, and describes it in words.

@@ -820,6 +820,7 @@ pub(crate) fn recovered_blocks(
             RecoveredItem::Paragraph(paragraph) => {
                 out.push(Block::Paragraph(paragraph.as_ref().clone()));
             }
+            RecoveredItem::Table(table) => out.push(Block::Table(table.as_ref().clone())),
             RecoveredItem::Picture(picture) => match media.add(index, &picture.image) {
                 Ok(part) => out.push(Block::Paragraph(sized_image_paragraph(
                     picture.width,

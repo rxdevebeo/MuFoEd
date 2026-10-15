@@ -122,6 +122,8 @@ pub(crate) enum RecoveredItem {
     Paragraph(Box<Paragraph>),
     /// A part of the page cut out as a picture.
     Picture(RecoveredPicture),
+    /// A table a model read.
+    Table(Box<strict_ooxml_wml::model::block::Table>),
 }
 
 /// A picture cut out of a scanned page.
@@ -219,7 +221,7 @@ pub(crate) fn recover_pages(
                     report.record(
                         "text.recovery",
                         Severity::Lost,
-                        format!("page {} could not be rasterized: {error}", index + 1),
+                        format!("page {} could not be rasterized: {error}", page.number),
                     );
                     continue;
                 }
@@ -227,9 +229,27 @@ pub(crate) fn recover_pages(
             // A scan read block by block keeps its headings, alignment, sizes
             // and pictures; a model that gives no layout gets the plain ask.
             if ask == Ask::Page && options.recovery_layout {
+                // The same region at twice the scale, for the weight of single
+                // words: at the model's 144 dpi a stroke is 2-3 pixels.
+                let detail = rasterizer
+                    .region_pixels(
+                        page.number,
+                        strict_ooxml_pdf::raster::Region {
+                            x: region.left,
+                            y: region.top,
+                            width: region.width,
+                            height: region.height,
+                        },
+                        &strict_ooxml_pdf::raster::RasterOptions {
+                            scale: scale * 2.0,
+                            max_pixels: options.recovery_max_pixels.saturating_mul(4),
+                        },
+                    )
+                    .ok();
                 let frame = layout::Frame {
                     scale,
-                    page: index + 1,
+                    page: page.number,
+                    detail,
                 };
                 if let Some(items) = layout::rebuild(&*recovery, &pixels, &frame, options, report) {
                     report.recovered_pages += 1;
@@ -259,7 +279,7 @@ pub(crate) fn recover_pages(
                     );
                     policy::record_restored(
                         report,
-                        index + 1,
+                        page.number,
                         restored,
                         options.recovery_lexicon.as_deref(),
                     );
@@ -271,7 +291,7 @@ pub(crate) fn recover_pages(
                         format!(
                             "page {}: {} paragraph(s) read by model {} {} from {}, {:.0}x{:.0} pt at \
                              ({:.0},{:.0}); the paragraph breaks are the model's",
-                            index + 1,
+                            page.number,
                             paragraphs.len(),
                             answer.model,
                             answer.version,
@@ -294,14 +314,14 @@ pub(crate) fn recover_pages(
                     Severity::Lost,
                     format!(
                         "page {}: the model found no text in {}, which has ink on the page",
-                        index + 1,
+                        page.number,
                         region.origin.name()
                     ),
                 ),
                 Err(error) => report.record(
                     "text.recovery",
                     Severity::Lost,
-                    format!("page {}: {error}", index + 1),
+                    format!("page {}: {error}", page.number),
                 ),
             }
         }
