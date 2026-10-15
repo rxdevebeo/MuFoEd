@@ -785,6 +785,9 @@ fn embolden(text: &str, bold: &[bool]) -> Option<String> {
     Some(out)
 }
 
+/// One column of a band: left and right pixels, and its blocks.
+type Column = (usize, usize, Vec<usize>);
+
 /// How a page's blocks sit: bands from top to bottom, a band of blocks side
 /// by side split into columns.
 struct Arrangement {
@@ -793,7 +796,7 @@ struct Arrangement {
     frames: Vec<(usize, usize)>,
     /// Bands, top to bottom: the blocks of each, and its columns when it has
     /// two or more side by side (left, right pixels; blocks).
-    bands: Vec<(Vec<usize>, Vec<(usize, usize, Vec<usize>)>)>,
+    bands: Vec<(Vec<usize>, Vec<Column>)>,
     page: (usize, usize),
 }
 
@@ -828,7 +831,7 @@ fn arrange(areas: &[PixelBox], page: (usize, usize)) -> Arrangement {
     for band in bands {
         let mut by_left = band.clone();
         by_left.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.left));
-        let mut columns: Vec<(usize, usize, Vec<usize>)> = Vec::new();
+        let mut columns: Vec<Column> = Vec::new();
         for index in by_left {
             let Some(area) = areas.get(index) else {
                 continue;
@@ -909,7 +912,7 @@ impl Arrangement {
             let mut edges = vec![self.page.0];
             for pair in columns.windows(2) {
                 if let [left, right] = pair {
-                    edges.push((left.1 + right.0) / 2);
+                    edges.push(usize::midpoint(left.1, right.0));
                 }
             }
             edges.push(self.page.1.max(columns.last().map_or(0, |column| column.1)));

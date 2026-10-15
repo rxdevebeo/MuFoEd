@@ -143,7 +143,7 @@ pub(crate) fn build(
         let mut section = section_for(page, false);
         let rebuilt = recovered.page(index).iter().any(|block| block.whole_page);
         if let (true, Some(margins)) = (rebuilt, scan_margins.as_ref()) {
-            section.page_margins = Some(margins.clone());
+            section.page_margins = Some(*margins);
         }
         let text_area = text_area(&section);
         sections.begin_page(&mut blocks, section, false);
@@ -846,9 +846,7 @@ fn scan_margins(
     let twips = |points: Option<f64>| -> Option<Twips> {
         points.map(|points| Twips(to_twips(points.clamp(18.0, 108.0).floor())))
     };
-    if left.is_none() {
-        return None;
-    }
+    left?;
     Some(strict_ooxml_wml::model::props::PageMargins {
         top: twips(top),
         right: twips(right),
