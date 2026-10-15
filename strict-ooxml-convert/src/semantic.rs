@@ -229,7 +229,11 @@ pub(crate) fn build(
         // Text a model read off a picture-only region comes after the page's
         // own content, indented to the region's left edge.
         for block in recovered.page(index) {
-            blocks.extend(recovered_blocks(block, index, &mut media, report));
+            let mut placed = recovered_blocks(block, index, &mut media, report);
+            if block.whole_page && !blocks.is_empty() {
+                start_page(&mut placed);
+            }
+            blocks.extend(placed);
         }
     }
 
@@ -803,6 +807,30 @@ fn image_paragraph(
     description: Option<String>,
 ) -> Paragraph {
     sized_image_paragraph(image.width, image.height, part, description)
+}
+
+/// Makes `blocks` begin a new page: the first paragraph breaks before
+/// itself, or an empty paragraph that does is put in front of a table.
+fn start_page(blocks: &mut Vec<Block>) {
+    if let Some(Block::Paragraph(first)) = blocks.first_mut() {
+        first.props.page_break_before = strict_ooxml_wml::model::values::TriState::On;
+        return;
+    }
+    blocks.insert(
+        0,
+        Block::Paragraph(Paragraph {
+            props: ParagraphProperties {
+                page_break_before: strict_ooxml_wml::model::values::TriState::On,
+                ..ParagraphProperties::default()
+            },
+            inlines: Vec::new(),
+            rsids: Rsids::default(),
+            para_id: None,
+            text_id: None,
+            revision: None,
+            location: strict_ooxml_core::error::SourceLocation::unknown(),
+        }),
+    );
 }
 
 /// The blocks a recovered block places: its paragraphs, and its pictures

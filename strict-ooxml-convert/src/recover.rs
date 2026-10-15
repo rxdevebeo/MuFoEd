@@ -113,6 +113,10 @@ pub(crate) struct RecoveredBlock {
     /// What the model said - one paragraph per line it gave, or, from a
     /// page's layout, its paragraphs and pictures in reading order.
     pub items: Vec<RecoveredItem>,
+    /// The whole page, rebuilt from its layout: it starts a page of its own,
+    /// so page 37 of a scanned book is page 37 of the document and a page
+    /// whose content overflows shows as an extra page.
+    pub whole_page: bool,
 }
 
 /// One thing a recovered block places.
@@ -257,10 +261,10 @@ pub(crate) fn recover_pages(
                         .iter()
                         .filter(|item| matches!(item, RecoveredItem::Paragraph(_)))
                         .count();
-                    out.blocks
-                        .entry(index)
-                        .or_default()
-                        .push(RecoveredBlock { items });
+                    out.blocks.entry(index).or_default().push(RecoveredBlock {
+                        items,
+                        whole_page: true,
+                    });
                     continue;
                 }
             }
@@ -307,6 +311,7 @@ pub(crate) fn recover_pages(
                             .into_iter()
                             .map(|paragraph| RecoveredItem::Paragraph(Box::new(paragraph)))
                             .collect(),
+                        whole_page: false,
                     });
                 }
                 Ok(None) => report.record(
