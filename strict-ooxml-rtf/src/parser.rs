@@ -2769,7 +2769,15 @@ impl Parser<'_> {
             }
             props
         } else {
-            self.paragraph_props.clone()
+            // The paragraph mark takes the character formatting in effect at
+            // `\par`, as for an empty paragraph, rather than the 12 pt
+            // default: a DOCX reader that sizes lines by the mark (a 9 pt
+            // changelog, CC0_RTF/066) then sees the document's own size.
+            let mut props = self.paragraph_props.clone();
+            if props.run_props.is_none() && self.state.run != RunProperties::default() {
+                props.run_props = Some(self.state.run.clone());
+            }
+            props
         };
         let mut inlines = std::mem::take(&mut self.inlines);
         split_mixed_directional_runs(&mut inlines);
@@ -5921,6 +5929,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
                 ..Default::default()
             }
         });
+    explicit_style_formatting(&mut p.blocks, &p.styles);
     p.styles
         .set_defaults(strict_ooxml_wml::model::styles::DocDefaults {
             run: RunProperties {
@@ -5990,3 +5999,173 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
 }
 // The control dispatch mirrors the RTF vocabulary. Independent group-state
 // flags describe syntax, inherited skipping and Unicode alternate selection.
+
+/// An RTF paragraph shows only the formatting written in it: `\sN` names its
+/// style, and the writer repeats the style's formatting after it. WPS sets
+/// `{\s1 text\par}` without the stylesheet's `\sb480\sa480` (probes
+/// `PROBE_RTF_GROUP` 02, 07 and 09). The DOCX
+/// style keeps its definition for editing, so the properties the style chain
+/// sets and the paragraph or run does not are written back at their defaults
+/// (`CC0_RTF/005`: two empty paragraphs tagged `heading 1` took its spacing and
+/// pushed the page down 58 pt).
+fn explicit_style_formatting(blocks: &mut [Block], styles: &StyleTable) {
+    for block in blocks {
+        match block {
+            Block::Paragraph(paragraph) => explicit_paragraph(paragraph, styles),
+            Block::Table(table) => {
+                for row in &mut table.rows {
+                    for cell in &mut row.cells {
+                        explicit_style_formatting(&mut cell.blocks, styles);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The styles of `id`'s chain, nearest first.
+fn style_chain<'s>(styles: &'s StyleTable, id: &StyleId) -> Vec<&'s Style> {
+    let mut chain: Vec<&Style> = Vec::new();
+    let mut next = Some(id.clone());
+    while let Some(id) = next.take() {
+        let Some(style) = styles.get(&id) else { break };
+        if chain.len() >= 32 || chain.iter().any(|seen| seen.id == style.id) {
+            break;
+        }
+        chain.push(style);
+        next.clone_from(&style.based_on);
+    }
+    chain
+}
+
+fn explicit_paragraph(paragraph: &mut Paragraph, styles: &StyleTable) {
+    // A paragraph without `\sN` is in style 0, the DOCX default style: its
+    // stylesheet formatting is not applied either (probe 09).
+    let id = paragraph
+        .props
+        .style
+        .clone()
+        .unwrap_or_else(|| StyleId::new("rtf-s0"));
+    let chain = style_chain(styles, &id);
+    if chain.is_empty() {
+        return;
+    }
+    let props = &mut paragraph.props;
+    if props.alignment.is_none() && chain.iter().any(|s| s.paragraph.alignment.is_some()) {
+        props.alignment = Some(if props.bidi == TriState::On {
+            Justification::End
+        } else {
+            Justification::Start
+        });
+    }
+    let spaced = |get: fn(&strict_ooxml_wml::model::Spacing) -> bool| {
+        chain
+            .iter()
+            .any(|s| s.paragraph.spacing.as_ref().is_some_and(get))
+    };
+    let spacing = props.spacing.get_or_insert_with(Default::default);
+    if spacing.before.is_none() && spaced(|s| s.before.is_some()) {
+        spacing.before = Some(Twips(0));
+    }
+    if spacing.after.is_none() && spaced(|s| s.after.is_some()) {
+        spacing.after = Some(Twips(0));
+    }
+    if spacing.before_lines.is_none() && spaced(|s| s.before_lines.is_some()) {
+        spacing.before_lines = Some(0);
+    }
+    if spacing.after_lines.is_none() && spaced(|s| s.after_lines.is_some()) {
+        spacing.after_lines = Some(0);
+    }
+    if spacing.line.is_none() && spaced(|s| s.line.is_some()) {
+        spacing.line = Some(Twips(240));
+        spacing.line_rule = Some(LineSpacingRule::Auto);
+    }
+    if *spacing == strict_ooxml_wml::model::Spacing::default() {
+        props.spacing = None;
+    }
+    let indented = |get: fn(&strict_ooxml_wml::model::Indentation) -> bool| {
+        chain
+            .iter()
+            .any(|s| s.paragraph.indentation.as_ref().is_some_and(get))
+    };
+    let indentation = props.indentation.get_or_insert_with(Default::default);
+    if indentation.start.is_none() && indented(|i| i.start.is_some()) {
+        indentation.start = Some(Twips(0));
+    }
+    if indentation.end.is_none() && indented(|i| i.end.is_some()) {
+        indentation.end = Some(Twips(0));
+    }
+    if indentation.first_line.is_none()
+        && indentation.hanging.is_none()
+        && indented(|i| i.first_line.is_some() || i.hanging.is_some())
+    {
+        indentation.first_line = Some(Twips(0));
+    }
+    if *indentation == strict_ooxml_wml::model::Indentation::default() {
+        props.indentation = None;
+    }
+    let flags: [fn(&mut ParagraphProperties) -> &mut TriState; 4] = [
+        |p| &mut p.keep_next,
+        |p| &mut p.keep_lines,
+        |p| &mut p.page_break_before,
+        |p| &mut p.contextual_spacing,
+    ];
+    for flag in flags {
+        let in_chain = chain.iter().any(|s| {
+            let mut copy = s.paragraph.clone();
+            *flag(&mut copy) != TriState::Absent
+        });
+        let own = flag(props);
+        if *own == TriState::Absent && in_chain {
+            *own = TriState::Off;
+        }
+    }
+    let runs: Vec<&RunProperties> = chain.iter().map(|s| &s.run).collect();
+    if let Some(mark) = props.run_props.as_mut() {
+        explicit_run(mark, &runs);
+    }
+    for inline in &mut paragraph.inlines {
+        if let Inline::Run(run) = inline {
+            explicit_run(&mut run.props, &runs);
+        }
+    }
+}
+
+/// A run in a styled paragraph: what the paragraph style's character
+/// formatting sets and the run does not, at the document default. The
+/// style's font is the exception: WPS draws `\pard\plain\s1 text` in the
+/// style's `\f1` (probe 07), though not its size or weight.
+fn explicit_run(run: &mut RunProperties, styled: &[&RunProperties]) {
+    let flags: [fn(&RunProperties) -> TriState; 8] = [
+        |r| r.bold,
+        |r| r.bold_cs,
+        |r| r.italic,
+        |r| r.italic_cs,
+        |r| r.caps,
+        |r| r.small_caps,
+        |r| r.strike,
+        |r| r.vanish,
+    ];
+    let slots: [&mut TriState; 8] = [
+        &mut run.bold,
+        &mut run.bold_cs,
+        &mut run.italic,
+        &mut run.italic_cs,
+        &mut run.caps,
+        &mut run.small_caps,
+        &mut run.strike,
+        &mut run.vanish,
+    ];
+    for (get, own) in flags.into_iter().zip(slots) {
+        if *own == TriState::Absent && styled.iter().any(|s| get(s) != TriState::Absent) {
+            *own = TriState::Off;
+        }
+    }
+    if run.size.is_none() && styled.iter().any(|s| s.size.is_some()) {
+        run.size = Some(HalfPoints(24));
+    }
+    if run.size_cs.is_none() && styled.iter().any(|s| s.size_cs.is_some()) {
+        run.size_cs = Some(HalfPoints(24));
+    }
+}
