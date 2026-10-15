@@ -683,9 +683,9 @@ fn install(pack: &Pack, _root: &Path) -> Result<(), String> {
 
 #[cfg(feature = "font-download")]
 fn sha256_file(path: &Path) -> Result<String, String> {
+    use sha2::Digest as _;
     let mut file = std::fs::File::open(path)
         .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
-    use sha2::Digest as _;
     let mut hasher = sha2::Sha256::new();
     let mut buffer = vec![0u8; 1 << 16];
     loop {

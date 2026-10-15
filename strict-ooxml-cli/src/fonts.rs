@@ -60,6 +60,8 @@ struct ManifestAsset {
 }
 
 /// The font options of a render command.
+// Each bool is an independent command-line switch.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Default)]
 pub(super) struct FontArgs {
     manifest: Option<String>,
