@@ -114,9 +114,11 @@ fn exact_family(name: &str) -> Option<&'static str> {
 
 /// Bundled face that draws `ch` when the `base` face has no glyph for it.
 ///
-/// The metric-compatible faces cover Latin, Greek and Cyrillic; Arimo, Tinos
-/// and Cousine cover Hebrew too, Carlito and Caladea do not, though the
-/// Calibri and Cambria they stand for do. Word and WPS draw Arabic and Tibetan
+/// Carlito, Arimo, Tinos and Cousine cover Latin, Greek and Cyrillic; Arimo,
+/// Tinos and Cousine cover Hebrew too, Carlito and Caladea do not, though the
+/// Calibri and Cambria they stand for do. Caladea covers Latin only, so the
+/// Greek and Cyrillic of Cambria - every Russian heading in Word's default
+/// theme - come from Tinos, as the Hebrew does. Word and WPS draw Arabic and Tibetan
 /// from a font that has them (WQ-004), and Hebrew in Calibri from Calibri:
 /// here it comes from Arimo's or Tinos' Hebrew. Gelasio and Selawik (Georgia,
 /// Segoe UI) cover Latin only: the rest of the Latin-Greek-Cyrillic range
@@ -130,6 +132,11 @@ fn exact_family(name: &str) -> Option<&'static str> {
 pub fn script_fallback(base: &str, ch: char) -> Option<&'static str> {
     // A profiled family falls back the way the face that draws it does.
     let base = super::profiles::for_family(base).map_or(base, |profile| profile.substitute);
+    if is_default_ignorable(ch) {
+        // Invisible: a ZWNJ inside Tamil set in Cambria must not send the
+        // whole run to Tinos, which has no Tamil.
+        return None;
+    }
     match ch {
         '\u{0600}'..='\u{06FF}'
         | '\u{0750}'..='\u{077F}'
@@ -147,7 +154,7 @@ pub fn script_fallback(base: &str, ch: char) -> Option<&'static str> {
             "Arimo Fallback"
         }),
         '\u{0000}'..='\u{052F}' | '\u{1E00}'..='\u{1FFF}' | '\u{2000}'..='\u{2BFF}'
-            if base == "Gelasio" =>
+            if base == "Gelasio" || base == "Caladea" =>
         {
             Some("Tinos Fallback")
         }
@@ -158,6 +165,30 @@ pub fn script_fallback(base: &str, ch: char) -> Option<&'static str> {
         }
         _ => None,
     }
+}
+
+/// Unicode's default-ignorable code points: joiners, directional marks,
+/// variation selectors, the soft hyphen and the like. They have no glyph to
+/// draw and choose no face.
+fn is_default_ignorable(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{00AD}'
+            | '\u{034F}'
+            | '\u{061C}'
+            | '\u{115F}'..='\u{1160}'
+            | '\u{17B4}'..='\u{17B5}'
+            | '\u{180B}'..='\u{180F}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{206F}'
+            | '\u{3164}'
+            | '\u{FE00}'..='\u{FE0F}'
+            | '\u{FEFF}'
+            | '\u{FFA0}'
+            | '\u{1BCA0}'..='\u{1BCA3}'
+            | '\u{E0000}'..='\u{E0FFF}'
+    )
 }
 
 /// Whether a fallback for `base` takes the serif design.
@@ -242,6 +273,13 @@ mod tests {
         assert_eq!(script_fallback("Carlito", 'ﻻ'), Some("Noto Naskh Arabic"));
         assert_eq!(script_fallback("Arimo", 'ب'), Some("Noto Sans Arabic"));
         assert_eq!(script_fallback("Carlito", 'ཀ'), Some("Jomolhari"));
+        // Cambria's Cyrillic and Greek: Caladea has neither.
+        assert_eq!(script_fallback("Caladea", 'Ж'), Some("Tinos Fallback"));
+        assert_eq!(script_fallback("Caladea", 'Ω'), Some("Tinos Fallback"));
+        assert!(!crate::font::builtin::bundled_has_glyph("Caladea", 'Ж'));
+        // A joiner in Tamil text chooses no face (CC0_DOCX_1/005).
+        assert_eq!(script_fallback("Caladea", '\u{200C}'), None);
+        assert_eq!(script_fallback("Gelasio", '\u{200D}'), None);
         assert_eq!(script_fallback("Carlito", 'a'), None);
         // Hebrew: offered for any face, taken only where the face lacks it
         // (`chosen_family` checks the glyph): Carlito and Caladea, not Tinos.
