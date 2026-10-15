@@ -516,7 +516,9 @@ fn mixed_regions_of(
     regions.truncate(options.recovery_max_regions);
     if let Some(classifier) = options.figure_classifier.clone() {
         regions.retain(|region| {
-            let image = match rasterize(rasterizer, page, region, options) {
+            let png = rasterize(rasterizer, page, region, options)
+                .and_then(|(pixels, _)| pixels.to_png());
+            let image = match png {
                 Ok(png) => strict_ooxml_ocr::Image::png(png),
                 Err(error) => {
                     report.record(
