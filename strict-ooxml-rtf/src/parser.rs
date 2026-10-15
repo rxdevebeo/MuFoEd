@@ -2770,9 +2770,9 @@ impl Parser<'_> {
             props
         } else {
             // The paragraph mark takes the character formatting in effect at
-            // `\par`, as for an empty paragraph: it sets the last line's box
-            // (a 9 pt changelog line had a 12 pt default mark and stood 3.5 pt
-            // taller, CC0_RTF/066).
+            // `\par`, as for an empty paragraph, rather than the 12 pt
+            // default: a DOCX reader that sizes lines by the mark (a 9 pt
+            // changelog, CC0_RTF/066) then sees the document's own size.
             let mut props = self.paragraph_props.clone();
             if props.run_props.is_none() && self.state.run != RunProperties::default() {
                 props.run_props = Some(self.state.run.clone());
@@ -6006,7 +6006,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
 /// `PROBE_RTF_GROUP` 02, 07 and 09). The DOCX
 /// style keeps its definition for editing, so the properties the style chain
 /// sets and the paragraph or run does not are written back at their defaults
-/// (CC0_RTF/005: two empty paragraphs tagged `heading 1` took its spacing and
+/// (`CC0_RTF/005`: two empty paragraphs tagged `heading 1` took its spacing and
 /// pushed the page down 58 pt).
 fn explicit_style_formatting(blocks: &mut [Block], styles: &StyleTable) {
     for block in blocks {
@@ -6112,12 +6112,12 @@ fn explicit_paragraph(paragraph: &mut Paragraph, styles: &StyleTable) {
         |p| &mut p.contextual_spacing,
     ];
     for flag in flags {
-        let styled = chain.iter().any(|s| {
+        let in_chain = chain.iter().any(|s| {
             let mut copy = s.paragraph.clone();
             *flag(&mut copy) != TriState::Absent
         });
         let own = flag(props);
-        if *own == TriState::Absent && styled {
+        if *own == TriState::Absent && in_chain {
             *own = TriState::Off;
         }
     }
