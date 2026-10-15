@@ -292,6 +292,16 @@ and *italic*, joining the lines of a paragraph; a table as a Markdown table; for
 the text written inside it, or an empty string. Transcribe exactly: do not translate, \
 correct or summarise.";
 
+/// The prompt that asks for a cropped table as Markdown.
+///
+/// The layout answer gives a table's text as lines (`jutro Dobro jutro.`),
+/// which says nothing about where one cell ends; the crop asked on its own,
+/// as a table, comes back with its cells.
+pub const TABLE_PROMPT: &str = "This image is a table cropped from a scanned page. Transcribe \
+it as a Markdown table: one line per row, cells separated by |, and a |---| rule after the \
+first row. Keep empty cells empty and keep every row. Transcribe exactly: do not translate, \
+correct or summarise. Reply with the table only.";
+
 /// The blocks of a model's layout answer: a JSON array, perhaps inside a
 /// Markdown code fence. Blocks without a usable box are dropped.
 ///
@@ -388,6 +398,10 @@ impl TextRecovery for OllamaVision {
 
     fn recover_region(&self, region: &Image) -> Result<Option<Recovered>, VisionError> {
         self.ask_for_text(REGION_PROMPT, region)
+    }
+
+    fn recover_table(&self, table: &Image) -> Result<Option<Recovered>, VisionError> {
+        self.ask_for_text(TABLE_PROMPT, table)
     }
 
     fn recover_layout(&self, page: &Image) -> Result<Option<crate::Layout>, VisionError> {

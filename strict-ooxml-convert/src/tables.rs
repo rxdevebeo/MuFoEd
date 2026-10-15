@@ -384,6 +384,46 @@ pub(crate) fn plan(
 /// `paragraphs` is `row -> cell`: the paragraphs of each cell, built by the
 /// caller with the page's own rules. The geometry of a cell is not the geometry
 /// of the page, and only the text is the text.
+/// A table of `columns` equal columns across `width` points, thin grey rules,
+/// from rows of cell paragraphs: what a model read as a table on a scan,
+/// which states its cells and not their geometry. A short row is padded.
+pub(crate) fn grid_table(width: f64, columns: usize, rows: Vec<Vec<Vec<Paragraph>>>) -> Table {
+    let columns = columns.max(1);
+    let column_width = width / columns as f64;
+    let planned = PlannedTable {
+        first_line: 0,
+        width,
+        columns: vec![to_twips(column_width); columns],
+        color: [0x80, 0x80, 0x80],
+        thickness: 0.5,
+        rows: rows
+            .iter()
+            .map(|_| PlannedRow {
+                cells: (0..columns)
+                    .map(|column| PlannedCell {
+                        column,
+                        span: 1,
+                        merge: None,
+                        left: column as f64 * column_width,
+                        width: column_width,
+                        lines: Vec::new(),
+                    })
+                    .collect(),
+                height: 0.0,
+            })
+            .collect(),
+        merged: 0,
+    };
+    let rows = rows
+        .into_iter()
+        .map(|mut row| {
+            row.resize_with(columns, Vec::new);
+            row
+        })
+        .collect();
+    table_of(&planned, rows)
+}
+
 pub(crate) fn table_of(planned: &PlannedTable, paragraphs: Vec<Vec<Vec<Paragraph>>>) -> Table {
     let border = Border {
         style: Some(BorderStyle::Single),

@@ -47,6 +47,10 @@ use crate::PdfOptions;
 /// Share of a page that is not paper past which the page is kept as a picture.
 const PICTURE_PAGE_RATIO: f64 = 0.5;
 
+/// Stroke over the page's typical word stroke, at twice the model's scale,
+/// past which a word of running text is bold.
+const WORD_BOLD_RATIO: f64 = 1.3;
+
 /// Stroke-to-band ratio over the page's body text past which a heading is
 /// bold. Only headings: at the 144 dpi a model reads, a body stroke is 2-3
 /// pixels, and a paragraph with a few bold words measures like a bold one.
@@ -499,6 +503,9 @@ pub(crate) struct Frame {
     pub(crate) scale: f64,
     /// 1-based page number, for the report.
     pub(crate) page: usize,
+    /// The same pixels at twice the scale, when they could be had: what the
+    /// weight of single words is measured on.
+    pub(crate) detail: Option<Pixels>,
 }
 
 /// The page rebuilt from the model's layout, or `None` when the model gave
@@ -559,27 +566,147 @@ pub(crate) fn rebuild(
             (!description.is_empty()).then_some(description),
         ))]);
     }
-    Some(build_items(
-        &layout.blocks,
-        &ink,
+    let detail = frame.detail.as_ref().map(Ink::of);
+    let page = Page {
+        ink: &ink,
         pixels,
         frame,
-        options,
-        report,
-        &source,
-    ))
+        recovery,
+        detail: detail.as_ref(),
+    };
+    Some(build_items(&layout.blocks, &page, options, report, &source))
+}
+
+/// The stroke thickness of each word of a line, measured on `detail` (the
+/// page at `factor` times the scale `line` was found at). Words are runs of
+/// ink columns split by gaps of a third of the main band or more.
+fn line_word_strokes(detail: &Ink, line: &Line, factor: f64) -> Vec<f64> {
+    let scale = |value: usize| (value as f64 * factor).round() as usize;
+    let (top, bottom) = (scale(line.top), scale(line.bottom).min(detail.height));
+    let (left, right) = (scale(line.left), scale(line.right).min(detail.width));
+    let gap = ((line.core as f64 * factor) / 3.0).max(2.0) as usize;
+    let inked: Vec<bool> = (left..right)
+        .map(|x| detail.column_ink(x, top, bottom) > 0)
+        .collect();
+    let mut words: Vec<(usize, usize)> = Vec::new();
+    let mut start: Option<usize> = None;
+    let mut blank = 0usize;
+    for (offset, ink) in inked.iter().enumerate() {
+        if *ink {
+            if start.is_none() {
+                start = Some(offset);
+            } else if blank >= gap {
+                if let (Some(begin), Some(end)) = (start, offset.checked_sub(blank)) {
+                    words.push((begin, end));
+                }
+                start = Some(offset);
+            }
+            blank = 0;
+        } else {
+            blank += 1;
+        }
+    }
+    if let Some(begin) = start {
+        words.push((begin, inked.len().saturating_sub(blank)));
+    }
+    words
+        .into_iter()
+        .map(|(begin, end)| {
+            let (mut pixels, mut runs) = (0usize, 0usize);
+            for y in top..bottom {
+                let mut previous = false;
+                for x in left + begin..left + end {
+                    let dark = detail.is_dark(x, y);
+                    if dark {
+                        pixels += 1;
+                        if !previous {
+                            runs += 1;
+                        }
+                    }
+                    previous = dark;
+                }
+            }
+            if runs == 0 {
+                0.0
+            } else {
+                pixels as f64 / runs as f64
+            }
+        })
+        .collect()
+}
+
+/// `text` with its words marked `**bold**` where `bold` says, when the text
+/// has exactly as many words as the pixels did; `None` otherwise (a word
+/// hyphenated across lines, a mark the model read as a word).
+fn embolden(text: &str, bold: &[bool]) -> Option<String> {
+    if text.split_whitespace().count() != bold.len() || !bold.iter().any(|bold| *bold) {
+        return None;
+    }
+    let mut out = String::with_capacity(text.len() + 16);
+    let mut flags = bold.iter();
+    let mut open = false;
+    let mut word = String::new();
+    let mut flush = |word: &mut String, out: &mut String, open: &mut bool, next: Option<char>| {
+        if word.is_empty() {
+            return;
+        }
+        let bold = flags.next().copied().unwrap_or(false);
+        if bold && !*open {
+            out.push_str("**");
+            *open = true;
+        }
+        if !bold && *open {
+            // Close before the space that led here.
+            let trimmed = out.trim_end().len();
+            let tail = out.split_off(trimmed);
+            out.push_str("**");
+            out.push_str(&tail);
+            *open = false;
+        }
+        out.push_str(word);
+        word.clear();
+        if *open && next.is_some_and(|ch| ch == '\n') {
+            out.push_str("**");
+            *open = false;
+        }
+    };
+    let chars: Vec<char> = text.chars().collect();
+    for (index, ch) in chars.iter().enumerate() {
+        if ch.is_whitespace() {
+            flush(&mut word, &mut out, &mut open, Some(*ch));
+            out.push(*ch);
+        } else {
+            word.push(*ch);
+            if index + 1 == chars.len() {
+                flush(&mut word, &mut out, &mut open, None);
+            }
+        }
+    }
+    if open {
+        out.push_str("**");
+    }
+    Some(out)
+}
+
+/// What a page's blocks are measured on and asked about.
+struct Page<'a> {
+    ink: &'a Ink,
+    pixels: &'a Pixels,
+    frame: &'a Frame,
+    recovery: &'a dyn TextRecovery,
+    /// The ink at twice the scale, for single words.
+    detail: Option<&'a Ink>,
 }
 
 /// The items of a page from its blocks.
 fn build_items(
     blocks: &[LayoutBlock],
-    ink: &Ink,
-    pixels: &Pixels,
-    frame: &Frame,
+    page: &Page<'_>,
     options: &PdfOptions,
     report: &mut ConversionReport,
     source: &str,
 ) -> Vec<RecoveredItem> {
+    let (ink, pixels, frame) = (page.ink, page.pixels, page.frame);
     let mut placed: Vec<(&LayoutBlock, Measured)> = Vec::new();
     let mut dropped = 0usize;
     let mut page_numbers = 0usize;
@@ -617,9 +744,10 @@ fn build_items(
         .collect();
     let body_ratio = (!body_ratios.is_empty()).then(|| median(body_ratios));
 
-    // Running text on a page is one size; a single line measured a point or
-    // two off it is the measure's noise (a line of capitals, a bold label),
-    // not a different size. Headings keep theirs.
+    // Running text on a page is one size; a single line measured off it is
+    // the measure's noise (a line of capitals, a bold label, a box that took
+    // a neighbouring cell), not a different size - unless it is far off.
+    // Headings keep theirs.
     let measured_sizes: Vec<Option<f64>> = placed
         .iter()
         .map(|(block, measured)| measured.size_pt(frame.scale, capitals(&block.text)))
@@ -648,9 +776,37 @@ fn build_items(
         let size = measured_sizes.get(index).copied().flatten()?;
         let running = !matches!(kind, BlockKind::Title | BlockKind::Heading);
         match body_size {
-            Some(body) if running && size > body * 0.75 && size < body * 1.33 => Some(body),
+            Some(body) if running && size > body * 0.6 && size < body * 1.6 => Some(body),
             _ => Some(size),
         }
+    };
+
+    // The weight of single words, measured at twice the scale: running text
+    // with a few bold words keeps them bold.
+    let word_strokes: Vec<Option<Vec<f64>>> = placed
+        .iter()
+        .map(|(block, measured)| {
+            let detail = page.detail?;
+            let running = matches!(
+                block.kind,
+                BlockKind::Paragraph
+                    | BlockKind::ListItem
+                    | BlockKind::Caption
+                    | BlockKind::Header
+                    | BlockKind::Footer
+            );
+            running.then(|| {
+                measured
+                    .lines
+                    .iter()
+                    .flat_map(|line| line_word_strokes(detail, line, 2.0))
+                    .collect()
+            })
+        })
+        .collect();
+    let word_body = {
+        let all: Vec<f64> = word_strokes.iter().flatten().flatten().copied().collect();
+        (all.len() >= 20).then(|| median(all))
     };
 
     // Solid areas of colour are pictures whatever the model called the blocks
@@ -678,7 +834,8 @@ fn build_items(
     let mut items = Vec::new();
     let mut restored = 0usize;
     let mut previous_bottom: Option<usize> = None;
-    let (mut headings, mut figures, mut bold_blocks) = (0usize, 0usize, 0usize);
+    let (mut headings, mut figures, mut bold_blocks, mut tables) = (0usize, 0usize, 0usize, 0usize);
+    let mut bold_words = 0usize;
     let mut emit = |index: usize, items: &mut Vec<RecoveredItem>, figures: &mut usize| {
         let (Some(region), Some(done)) = (regions.get(index), emitted.get_mut(index)) else {
             return None;
@@ -736,6 +893,22 @@ fn build_items(
             }
             None => block.text.clone(),
         };
+        let text = match (word_strokes.get(position).cloned().flatten(), word_body) {
+            (Some(strokes), Some(body)) if !text.contains('*') => {
+                let bold: Vec<bool> = strokes
+                    .iter()
+                    .map(|stroke| *stroke > body * WORD_BOLD_RATIO)
+                    .collect();
+                match embolden(&text, &bold) {
+                    Some(marked) => {
+                        bold_words += bold.iter().filter(|bold| **bold).count();
+                        marked
+                    }
+                    None => text,
+                }
+            }
+            _ => text,
+        };
         let heading = match block.kind {
             BlockKind::Title => Some(block.level.unwrap_or(1)),
             BlockKind::Heading => Some(block.level.unwrap_or(2)),
@@ -766,6 +939,45 @@ fn build_items(
             first_line: measured.first_line_indent() as f64 / frame.scale,
             language: options.recovery_language.clone(),
         };
+        let rows = markdown_table(&text).or_else(|| {
+            (block.kind == BlockKind::Table)
+                .then(|| table_from_crop(page, measured.area, frame.page, report))
+                .flatten()
+        });
+        if let Some(rows) = rows {
+            tables += 1;
+            let cell_style = Style {
+                align: Align::Left,
+                before: None,
+                indent: 0.0,
+                first_line: 0.0,
+                heading: None,
+                ..style
+            };
+            let columns = rows.iter().map(Vec::len).max().unwrap_or(1);
+            let cells = rows
+                .iter()
+                .enumerate()
+                .map(|(row, cells)| {
+                    cells
+                        .iter()
+                        .map(|cell| {
+                            let header = Style {
+                                bold: row == 0,
+                                ..cell_style.clone()
+                            };
+                            vec![paragraph(cell, &header)]
+                        })
+                        .collect()
+                })
+                .collect();
+            let width = (measured.area.width() as f64 / frame.scale).max(72.0);
+            items.push(RecoveredItem::Table(Box::new(crate::tables::grid_table(
+                width, columns, cells,
+            ))));
+            previous_bottom = Some(measured.area.bottom);
+            continue;
+        }
         for paragraph_text in paragraph_texts(block.kind, &text) {
             items.push(RecoveredItem::Paragraph(Box::new(paragraph(
                 &paragraph_text,
@@ -782,7 +994,8 @@ fn build_items(
         Severity::Recovered,
         format!(
             "page {}: {} block(s) read by model {source} from its layout ({headings} heading(s), \
-             {figures} figure(s), {bold_blocks} bold); boxes checked against the page's ink{}{}",
+             {figures} figure(s), {tables} table(s), {bold_blocks} bold heading(s), {bold_words} \
+             bold word(s)); boxes checked against the page's ink{}{}",
             frame.page,
             placed.len(),
             if dropped > 0 {
@@ -809,7 +1022,102 @@ fn capitals(text: &str) -> bool {
     letters.len() >= 2 && !letters.iter().any(|ch| ch.is_lowercase())
 }
 
+/// A table's cells, asked of the model on the table's own crop: the layout
+/// gives a table as lines, which do not say where a cell ends.
+fn table_from_crop(
+    page: &Page<'_>,
+    area: PixelBox,
+    number: usize,
+    report: &mut ConversionReport,
+) -> Option<Vec<Vec<String>>> {
+    let png = crop(page.pixels, area).to_png().ok()?;
+    match page
+        .recovery
+        .recover_table(&strict_ooxml_ocr::Image::png(png))
+    {
+        Ok(Some(answer)) => {
+            let rows = markdown_table(&answer.text);
+            if rows.is_none() {
+                report.record(
+                    "text.recovery.layout",
+                    Severity::Unsupported,
+                    format!(
+                        "page {number}: a table's crop came back without cells; its lines are \
+                         kept as text"
+                    ),
+                );
+            }
+            rows
+        }
+        Ok(None) => None,
+        Err(error) => {
+            report.record(
+                "text.recovery.layout",
+                Severity::Unsupported,
+                format!(
+                    "page {number}: a table's crop was not read ({error}); its lines are kept \
+                     as text"
+                ),
+            );
+            None
+        }
+    }
+}
+
+/// The pixels inside `area`.
+fn crop(pixels: &Pixels, area: PixelBox) -> Pixels {
+    let stride = pixels.size.width as usize * 4;
+    let mut rgba = Vec::with_capacity(area.width() * area.height() * 4);
+    for y in area.top..area.bottom {
+        let start = y * stride + area.left * 4;
+        rgba.extend_from_slice(
+            pixels
+                .rgba
+                .get(start..start + area.width() * 4)
+                .unwrap_or_default(),
+        );
+    }
+    Pixels {
+        size: strict_ooxml_pdf::raster::Size {
+            width: u32::try_from(area.width()).unwrap_or(u32::MAX),
+            height: u32::try_from(area.height()).unwrap_or(u32::MAX),
+        },
+        rgba,
+    }
+}
+
+/// The rows and cells of a Markdown table (`| a | b |` lines; the `|---|`
+/// rule is skipped), when the text is one: two rows or more, one with two
+/// cells or more.
+fn markdown_table(text: &str) -> Option<Vec<Vec<String>>> {
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    if lines.len() < 2 || !lines.iter().all(|line| line.starts_with('|')) {
+        return None;
+    }
+    let rows: Vec<Vec<String>> = lines
+        .iter()
+        .map(|line| {
+            let inner = line.trim_start_matches('|').trim_end_matches('|');
+            inner
+                .split('|')
+                .map(|cell| cell.trim().to_owned())
+                .collect::<Vec<_>>()
+        })
+        .filter(|cells| {
+            !cells.iter().all(|cell| {
+                !cell.is_empty() && cell.chars().all(|ch| matches!(ch, '-' | ':' | ' '))
+            })
+        })
+        .collect();
+    (rows.len() >= 2 && rows.iter().any(|cells| cells.len() >= 2)).then_some(rows)
+}
+
 /// How a block's paragraphs are set.
+#[derive(Clone)]
 struct Style {
     align: Align,
     size: Option<f64>,
@@ -1119,6 +1427,41 @@ mod tests {
                 "{left}-{right}"
             );
         }
+    }
+
+    #[test]
+    fn bold_words_are_marked_when_the_counts_agree() {
+        assert_eq!(
+            super::embolden(
+                "sastoji od dvanaest lekcija, vežbanke",
+                &[false, false, true, true, false]
+            )
+            .as_deref(),
+            Some("sastoji od **dvanaest lekcija,** vežbanke")
+        );
+        assert_eq!(
+            super::embolden("Lektura:\nNataša", &[true, false]).as_deref(),
+            Some("**Lektura:**\nNataša")
+        );
+        assert_eq!(super::embolden("dva reči", &[true]), None);
+        assert_eq!(super::embolden("dva reči", &[false, false]), None);
+    }
+
+    #[test]
+    fn a_markdown_table_becomes_rows() {
+        let rows = super::markdown_table(
+            "| Lekcija | Gramatika |\n|---|:---:|\n| Dobar dan | prezent jesam |\n| Moja zemlja |",
+        )
+        .expect("a table");
+        assert_eq!(
+            rows,
+            vec![
+                vec!["Lekcija".to_owned(), "Gramatika".to_owned()],
+                vec!["Dobar dan".to_owned(), "prezent jesam".to_owned()],
+                vec!["Moja zemlja".to_owned()],
+            ]
+        );
+        assert!(super::markdown_table("plain\ntext").is_none());
     }
 
     #[test]
