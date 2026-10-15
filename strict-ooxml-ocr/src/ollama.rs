@@ -36,6 +36,10 @@ pub const MODEL_VARIABLE: &str = "OLLAMA_MODEL";
 /// nobody has is a default that always fails.
 pub const DEFAULT_MODEL: &str = "qwen3-vl:8b-instruct-ctx16k";
 
+/// Tokens an answer may take when nothing says otherwise: a dense page as
+/// layout JSON is about 3 000; the image and the answer fit a 16k context.
+pub const DEFAULT_MAX_ANSWER_TOKENS: u32 = 8192;
+
 /// How the client talks to a daemon.
 #[derive(Clone, Debug, PartialEq)]
 pub struct OllamaConfig {
@@ -49,6 +53,12 @@ pub struct OllamaConfig {
     pub max_response_bytes: usize,
     /// `options.temperature`, recorded in the report.
     pub temperature: f64,
+    /// `options.num_predict`: the most tokens one answer may have.
+    ///
+    /// Stated, because a model's own default cut the layout of a dense page
+    /// off mid-string at about 4 500 characters. An answer that reaches the
+    /// limit (`done_reason: "length"`) is refused, not used truncated.
+    pub max_answer_tokens: u32,
 }
 
 impl Default for OllamaConfig {
@@ -59,6 +69,7 @@ impl Default for OllamaConfig {
             timeout: Duration::from_secs(DEFAULT_TIMEOUT_SECS),
             max_response_bytes: MAX_RESPONSE_BYTES,
             temperature: 0.0,
+            max_answer_tokens: DEFAULT_MAX_ANSWER_TOKENS,
         }
     }
 }
@@ -158,14 +169,25 @@ impl OllamaVision {
             format!("{prompt}\n\nContext: {context}")
         };
         let body = format!(
-            "{{\"model\":{},\"stream\":false,\"options\":{{\"temperature\":{}}},\"messages\":[\
-             {{\"role\":\"user\",\"content\":{},\"images\":[{}]}}]}}",
+            "{{\"model\":{},\"stream\":false,\"options\":{{\"temperature\":{},\"num_predict\":{}}},\
+             \"messages\":[{{\"role\":\"user\",\"content\":{},\"images\":[{}]}}]}}",
             json_string(&self.config.model),
             self.config.temperature,
+            self.config.max_answer_tokens,
             json_string(&user),
             json_string(&image.to_base64()),
         );
         let response = self.post(&self.config.chat_url(), &body)?;
+        if response
+            .get("done_reason")
+            .and_then(|reason| reason.as_str())
+            == Some("length")
+        {
+            return Err(VisionError::Unusable(format!(
+                "the answer was cut off at {} tokens",
+                self.config.max_answer_tokens
+            )));
+        }
         let text = response
             .get("message")
             .and_then(|message| message.get("content"))

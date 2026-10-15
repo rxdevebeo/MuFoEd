@@ -220,3 +220,24 @@ fn the_client_does_not_depend_on_a_model_being_installed() {
     assert!(!client.model_name().is_empty());
     assert!(client.config().chat_url().ends_with("/api/chat"));
 }
+
+#[test]
+fn an_answer_cut_off_at_the_token_limit_is_refused() {
+    let mock = Mock::start(
+        r#"{"message":{"content":"[{\"type\": \"paragraph\", \"text\": \"Ovo je"},"done_reason":"length"}"#,
+    );
+    let client = OllamaVision::new(OllamaConfig {
+        max_answer_tokens: 64,
+        ..config(&mock.endpoint)
+    });
+    let error = client
+        .describe(&image(), "")
+        .expect_err("half an answer is not an answer");
+    assert!(
+        error.to_string().contains("cut off at 64 tokens"),
+        "{error}"
+    );
+    let _ = mock.seen.recv().expect("a request");
+    let chat = mock.seen.recv().expect("a request");
+    assert!(chat.body.contains("\"num_predict\":64"), "{}", chat.body);
+}
