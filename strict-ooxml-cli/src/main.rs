@@ -750,13 +750,11 @@ fn run_from_pdf(args: &[String]) -> ExitCode {
         match args[index].as_str() {
             "--pages" => {
                 index += 1;
-                pages = match args.get(index).map(String::as_str).map(parse_page_span) {
-                    Some(Some(span)) => Some(span),
-                    _ => {
-                        eprintln!("error: '--pages' expects 1-based N or N-M");
-                        return ExitCode::from(EXIT_ERROR);
-                    }
+                let Some(span) = args.get(index).and_then(|value| parse_page_span(value)) else {
+                    eprintln!("error: '--pages' expects 1-based N or N-M");
+                    return ExitCode::from(EXIT_ERROR);
                 };
+                pages = Some(span);
             }
             "--mode" => {
                 index += 1;
