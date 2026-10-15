@@ -229,9 +229,7 @@ pub(crate) fn build(
         // Text a model read off a picture-only region comes after the page's
         // own content, indented to the region's left edge.
         for block in recovered.page(index) {
-            for paragraph in &block.paragraphs {
-                blocks.push(Block::Paragraph(paragraph.clone()));
-            }
+            blocks.extend(recovered_blocks(block, index, &mut media, report));
         }
     }
 
@@ -804,10 +802,51 @@ fn image_paragraph(
     part: &strict_ooxml_core::part::PartId,
     description: Option<String>,
 ) -> Paragraph {
+    sized_image_paragraph(image.width, image.height, part, description)
+}
+
+/// The blocks a recovered block places: its paragraphs, and its pictures
+/// stored as media (a picture that cannot be stored is reported lost).
+pub(crate) fn recovered_blocks(
+    block: &crate::recover::RecoveredBlock,
+    index: usize,
+    media: &mut crate::media::MediaCollector,
+    report: &mut ConversionReport,
+) -> Vec<Block> {
+    use crate::recover::RecoveredItem;
+    let mut out = Vec::with_capacity(block.items.len());
+    for item in &block.items {
+        match item {
+            RecoveredItem::Paragraph(paragraph) => out.push(Block::Paragraph(paragraph.clone())),
+            RecoveredItem::Picture(picture) => match media.add(index, &picture.image) {
+                Ok(part) => out.push(Block::Paragraph(sized_image_paragraph(
+                    picture.width,
+                    picture.height,
+                    &part,
+                    picture.description.clone(),
+                ))),
+                Err(reason) => report.record(
+                    "image.lost",
+                    Severity::Lost,
+                    format!("page {}: a picture cut from the scan: {reason}", index + 1),
+                ),
+            },
+        }
+    }
+    out
+}
+
+/// A paragraph holding one picture of `width` x `height` points.
+fn sized_image_paragraph(
+    width: f64,
+    height: f64,
+    part: &strict_ooxml_core::part::PartId,
+    description: Option<String>,
+) -> Paragraph {
     let emu = |points: f64| Emu((points * 12_700.0).round() as i64);
     let extent = Extent {
-        cx: emu(image.width),
-        cy: emu(image.height),
+        cx: emu(width),
+        cy: emu(height),
     };
     let location = strict_ooxml_core::error::SourceLocation::unknown();
     Paragraph {

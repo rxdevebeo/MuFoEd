@@ -217,6 +217,23 @@ impl Rasterizer {
         region: Region,
         options: &RasterOptions,
     ) -> Result<Vec<u8>> {
+        let pixels = self.region_pixels(number, region, options)?;
+        encode(&pixels.rgba, pixels.size)
+    }
+
+    /// The RGBA pixels of a region, rows top-down, composited onto white: what
+    /// [`Self::region_png`] encodes, for a caller that measures the ink itself
+    /// (where text lines run, how thick strokes are) or cuts a figure out.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::region_png`].
+    pub fn region_pixels(
+        &self,
+        number: usize,
+        region: Region,
+        options: &RasterOptions,
+    ) -> Result<Pixels> {
         if !region.width.is_finite()
             || region.width <= 0.0
             || !region.height.is_finite()
@@ -248,7 +265,10 @@ impl Rasterizer {
             let start = start.min(source.len());
             out.extend_from_slice(source.get(start..end).unwrap_or_default());
         }
-        encode(&out, Size { width, height })
+        Ok(Pixels {
+            size: Size { width, height },
+            rgba: out,
+        })
     }
 
     /// Renders a page, refusing before the work if the picture is over budget.
@@ -315,6 +335,26 @@ fn clamp_pixel(value: f64, limit: u32) -> u32 {
         return 0;
     }
     value.round().clamp(0.0, f64::from(limit)) as u32
+}
+
+/// RGBA pixels, rows top-down.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pixels {
+    /// Width and height in pixels.
+    pub size: Size,
+    /// Four bytes a pixel, `size.width` pixels a row.
+    pub rgba: Vec<u8>,
+}
+
+impl Pixels {
+    /// The pixels as a PNG.
+    ///
+    /// # Errors
+    ///
+    /// The encoder refused them (a buffer that does not match the size).
+    pub fn to_png(&self) -> Result<Vec<u8>> {
+        encode(&self.rgba, self.size)
+    }
 }
 
 /// Encodes RGBA as a PNG.

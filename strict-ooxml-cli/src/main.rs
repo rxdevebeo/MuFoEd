@@ -187,7 +187,7 @@ fn print_usage() {
     eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
     eprintln!("  from-djvu       import DjVu to Strict DOCX --out <file.docx> [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr]");
     eprintln!("  djvu-dump       inspect DjVu chunk headers and text-layer states");
-    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr [--ocr-model <name>] [--ocr-endpoint <url>] [--ocr-lang <tag>] [--fetch-lexicon] [--no-lexicon]] [--report-out <json>] (--out is required)");
+    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr [--ocr-model <name>] [--ocr-endpoint <url>] [--ocr-lang <tag>] [--fetch-lexicon] [--no-lexicon] [--ocr-layout]] [--report-out <json>] (--out is required)");
     eprintln!("  lexicons        word lists that restore diacritics in recognised text: list | install <id...|all> | remove <id...|all> | path");
     eprintln!("  import-rtf      import .rtf to Strict .docx (--out required); writes .rtf-report.json beside output; --wps-text --allow-unsigned-unicode --drop-nul --reject-unsupported are explicit opt-ins");
     eprintln!("  write           serialize the model back to a Strict .docx [--report-out <json>] (--out is required)");
@@ -1263,6 +1263,8 @@ fn parse_page_span(value: &str) -> Option<(usize, usize)> {
 /// `from-pdf --ocr [--ocr-model <name>] [--ocr-endpoint <url>]`: scanned pages
 /// are read by a local Ollama vision model. Without `--ocr` nothing is asked
 /// and a page with no text is reported as lost.
+// Each bool is an independent command-line switch.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Default)]
 struct OcrArgs {
     enabled: bool,
@@ -1274,6 +1276,8 @@ struct OcrArgs {
     fetch_lexicon: bool,
     /// `--no-lexicon`: leave recognised words as the model read them.
     no_lexicon: bool,
+    /// `--ocr-layout`: rebuild scanned pages block by block.
+    layout: bool,
 }
 
 impl OcrArgs {
@@ -1284,6 +1288,7 @@ impl OcrArgs {
             "--ocr" => self.enabled = true,
             "--fetch-lexicon" => self.fetch_lexicon = true,
             "--no-lexicon" => self.no_lexicon = true,
+            "--ocr-layout" => self.layout = true,
             "--ocr-model" | "--ocr-endpoint" | "--ocr-lang" => {
                 *index += 1;
                 let value = args
@@ -1322,6 +1327,7 @@ impl OcrArgs {
         let vision = Arc::new(strict_ooxml::OllamaVision::new(config));
         options.text_recovery = Some(vision.clone());
         options.figure_classifier = Some(vision);
+        options.recovery_layout = self.layout;
         if let Some(language) = self.language {
             if !self.no_lexicon {
                 options.recovery_lexicon =
@@ -1349,7 +1355,8 @@ impl OcrArgs {
             || self.endpoint.is_some()
             || self.language.is_some()
             || self.fetch_lexicon
-            || self.no_lexicon;
+            || self.no_lexicon
+            || self.layout;
         if !self.enabled && configured {
             return Err("OCR configuration requires --ocr".to_owned());
         }

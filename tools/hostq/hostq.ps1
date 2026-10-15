@@ -405,7 +405,7 @@ $script:AllowedFields = @{
     'wps'         = @('id', 'kind', 'sha')
     'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts', 'font_pack', 'font_packs')
     'rtf'         = @('id', 'kind', 'sha')
-    'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes', 'lang', 'lexicon')
+    'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes', 'lang', 'lexicon', 'ocr_layout')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
 }
@@ -555,7 +555,7 @@ function Test-JobRecord {
             if ($fields -contains 'lang' -and ($Job.lang -isnot [string] -or [string]$Job.lang -notmatch '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$')) {
                 return (& $reject 'lang is not a BCP 47 tag')
             }
-            foreach ($flag in @('convert', 'layout', 'lexicon')) {
+            foreach ($flag in @('convert', 'layout', 'lexicon', 'ocr_layout')) {
                 if ($fields -contains $flag -and $Job.$flag -isnot [bool]) {
                     return (& $reject ("{0} must be true or false" -f $flag))
                 }
@@ -1334,6 +1334,7 @@ function Invoke-OcrProbe {
                 if ($null -ne $Job.PSObject.Properties['lexicon']) { $useLexicon = [bool]$Job.lexicon }
                 if ($useLexicon) { $convertArgs += @('--fetch-lexicon') } else { $convertArgs += @('--no-lexicon') }
             }
+            if ($null -ne $Job.PSObject.Properties['ocr_layout'] -and [bool]$Job.ocr_layout) { $convertArgs += @('--ocr-layout') }
             $fromPdf = Invoke-Logged -Name 'from-pdf' -Exe $cli -Arguments $convertArgs -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $ocrEnv -OutDir $OutDir
             # Exit 1 is a written document whose report has losses.
             if ($fromPdf.exit -eq 1 -and (Test-Path -LiteralPath $docx)) { $fromPdf.exit = 0 }

@@ -17,18 +17,9 @@
 //!
 //! The model is `OLLAMA_MODEL` at `OLLAMA_HOST` (`OllamaConfig::from_env`).
 
-/// The layout request: blocks in reading order, boxes on Qwen-VL's 0-1000 grid.
+/// The layout request the converter uses.
 #[cfg(all(feature = "raster", feature = "ocr-ollama"))]
-const LAYOUT_PROMPT: &str = "You are a document layout parser. Return the layout of this \
-scanned page as a JSON array with one object per block, in reading order, and nothing else. \
-Each object has: \"type\": one of \"title\", \"heading\", \"paragraph\", \"list_item\", \
-\"table\", \"figure\", \"caption\", \"header\", \"footer\", \"page_number\"; \"bbox\": \
-[x1, y1, x2, y2], the block's box in coordinates from 0 to 1000 relative to the page's \
-width and height; \"level\": 1 to 3 for a title or heading; \"align\": \"left\", \"center\", \
-\"right\" or \"justify\"; \"text\": the exact text of the block in Markdown, keeping **bold** \
-and *italic*, joining the lines of a paragraph; a table as a Markdown table; for a figure, \
-the text written inside it, or an empty string. Transcribe exactly: do not translate, \
-correct or summarise.";
+use strict_ooxml_ocr::ollama::LAYOUT_PROMPT;
 
 /// Prints `message` and exits as a usage or environment error.
 #[cfg(all(feature = "raster", feature = "ocr-ollama"))]

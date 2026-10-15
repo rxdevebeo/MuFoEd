@@ -121,9 +121,9 @@ pub(crate) fn build(
         // nothing else: a model returns words, not baselines, so a fabricated
         // leading would be a lie about where the lines sat.
         for block in recovered.page(index) {
-            for paragraph in &block.paragraphs {
-                blocks.push(Block::Paragraph(paragraph.clone()));
-            }
+            blocks.extend(crate::semantic::recovered_blocks(
+                block, index, &mut media, report,
+            ));
         }
     }
 

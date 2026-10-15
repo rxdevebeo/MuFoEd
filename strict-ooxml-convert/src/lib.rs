@@ -274,6 +274,13 @@ pub struct PdfOptions {
     /// processor checks their spelling and hyphenates them. For a language
     /// written in two scripts (`sr`) each paragraph gets the script it is in.
     pub recovery_language: Option<String>,
+    /// Read a scanned page block by block: the model is asked for the page's
+    /// layout, every box is checked against the page's ink, and the page is
+    /// rebuilt with its headings, alignment, type sizes, bold blocks and
+    /// pictures (`recover::layout`). Off by default: one longer request a
+    /// page, and a model that gives no layout falls back to plain lines.
+    #[cfg(feature = "raster")]
+    pub recovery_layout: bool,
     /// Correct word forms of that language: a recovered word that is not one,
     /// but is one with the diacritics a model dropped restored, is restored
     /// ([`strict_ooxml_ocr::Lexicon`]). The report counts the repairs.
@@ -312,6 +319,8 @@ impl Default for PdfOptions {
             #[cfg(feature = "raster")]
             recovery_mixed_min_area_ratio: 0.25,
             recovery_language: None,
+            #[cfg(feature = "raster")]
+            recovery_layout: false,
             recovery_lexicon: None,
         }
     }
