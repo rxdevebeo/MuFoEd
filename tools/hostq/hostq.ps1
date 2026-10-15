@@ -741,9 +741,11 @@ function Save-StepOutput {
     Write-Utf8NoBom -Path $Path -Text ([string]$Step.stdout + "`n" + [string]$Step.stderr)
 }
 
-# Half the logical processors for rustc jobs and test threads unless the
-# owner set CARGO_BUILD_JOBS / RUST_TEST_THREADS: a full-width build left the
-# machine unusable while a gate ran.
+# Parallel rustc/link jobs and test threads unless the owner set
+# CARGO_BUILD_JOBS / RUST_TEST_THREADS: at most half the logical processors,
+# and at most one per 2.5 GB of the memory the job object allows (see
+# Enable-ResourceLimits): parallel link.exe runs of debug test binaries took
+# gigabytes each and hung the machine. Set again once the limits are known.
 $script:HalfCores = [Math]::Max(1, [int][Math]::Floor([Environment]::ProcessorCount / 2))
 
 function Get-CargoEnv {
@@ -1953,6 +1955,106 @@ function Invoke-SelfTest {
 # ---------------------------------------------------------------------------
 # Entry point.
 # ---------------------------------------------------------------------------
+# Resource limits. The executor puts itself into a Windows job object before
+# it starts any step, so every process it launches - cargo, rustc, link.exe,
+# test binaries, Python, the CLI, WPS automation - is in the job and cannot
+# take the machine: the job's committed memory has a hard ceiling (an
+# allocation past it fails and the step reports an error instead of the host
+# paging itself to a standstill), CPU time has a hard cap, and every process
+# runs below normal priority. HOSTQ_MEMORY_PERCENT (default 50) and
+# HOSTQ_CPU_PERCENT (default 60) override the shares.
+# ---------------------------------------------------------------------------
+
+function Enable-ResourceLimits {
+    $memoryPercent = 50
+    if ($env:HOSTQ_MEMORY_PERCENT -match '^\d+$') { $memoryPercent = [Math]::Min(90, [Math]::Max(10, [int]$env:HOSTQ_MEMORY_PERCENT)) }
+    $cpuPercent = 60
+    if ($env:HOSTQ_CPU_PERCENT -match '^\d+$') { $cpuPercent = [Math]::Min(100, [Math]::Max(10, [int]$env:HOSTQ_CPU_PERCENT)) }
+    $totalBytes = [double](Get-CimInstance -ClassName Win32_ComputerSystem).TotalPhysicalMemory
+    $limitBytes = [uint64]($totalBytes * $memoryPercent / 100)
+    $limitGb = $limitBytes / 1GB
+    $script:HalfCores = [Math]::Max(1, [Math]::Min($script:HalfCores, [int][Math]::Floor($limitGb / 2.5)))
+    if (-not ('HostqJob' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class HostqJob {
+    [StructLayout(LayoutKind.Sequential)]
+    struct BasicLimits {
+        public long PerProcessUserTimeLimit;
+        public long PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public UIntPtr MinimumWorkingSetSize;
+        public UIntPtr MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public UIntPtr Affinity;
+        public uint PriorityClass;
+        public uint SchedulingClass;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct IoCounters {
+        public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount;
+        public ulong ReadTransferCount, WriteTransferCount, OtherTransferCount;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct ExtendedLimits {
+        public BasicLimits Basic;
+        public IoCounters Io;
+        public UIntPtr ProcessMemoryLimit;
+        public UIntPtr JobMemoryLimit;
+        public UIntPtr PeakProcessMemoryUsed;
+        public UIntPtr PeakJobMemoryUsed;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct CpuRate {
+        public uint ControlFlags;
+        public uint Rate;
+    }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr CreateJobObject(IntPtr attributes, string name);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool SetInformationJobObject(IntPtr job, int infoClass, IntPtr info, uint length);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    [DllImport("kernel32.dll")]
+    static extern IntPtr GetCurrentProcess();
+    // Kept open for the life of the executor: closing it would end the job.
+    static IntPtr job = IntPtr.Zero;
+    static bool Set<T>(int infoClass, T value) {
+        int size = Marshal.SizeOf(typeof(T));
+        IntPtr buffer = Marshal.AllocHGlobal(size);
+        try {
+            Marshal.StructureToPtr(value, buffer, false);
+            return SetInformationJobObject(job, infoClass, buffer, (uint)size);
+        } finally {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+    public static string Apply(ulong memoryBytes, uint cpuPercent) {
+        job = CreateJobObject(IntPtr.Zero, null);
+        if (job == IntPtr.Zero) return "CreateJobObject failed: " + Marshal.GetLastWin32Error();
+        ExtendedLimits limits = new ExtendedLimits();
+        // JOB_OBJECT_LIMIT_PRIORITY_CLASS | JOB_OBJECT_LIMIT_JOB_MEMORY
+        limits.Basic.LimitFlags = 0x20 | 0x200;
+        limits.Basic.PriorityClass = 0x4000; // BELOW_NORMAL_PRIORITY_CLASS
+        limits.JobMemoryLimit = new UIntPtr(memoryBytes);
+        if (!Set(9, limits)) return "memory limit failed: " + Marshal.GetLastWin32Error();
+        string cpu = "";
+        if (cpuPercent < 100) {
+            CpuRate rate = new CpuRate();
+            rate.ControlFlags = 0x1 | 0x4; // ENABLE | HARD_CAP
+            rate.Rate = cpuPercent * 100;
+            if (!Set(15, rate)) cpu = "; cpu cap failed: " + Marshal.GetLastWin32Error();
+        }
+        if (!AssignProcessToJobObject(job, GetCurrentProcess())) return "assign failed: " + Marshal.GetLastWin32Error();
+        return "ok" + cpu;
+    }
+}
+'@
+    }
+    $result = [HostqJob]::Apply($limitBytes, [uint32]$cpuPercent)
+    Write-Host ("hostq: limits {0} (memory {1:N1} GB = {2}% of {3:N1} GB, cpu {4}%, below normal, cargo jobs {5})" -f $result, $limitGb, $memoryPercent, ($totalBytes / 1GB), $cpuPercent, $script:HalfCores)
+}
 
 $repoPath = [System.IO.Path]::GetFullPath($Repo)
 
@@ -1983,5 +2085,6 @@ if ($null -eq $script:LockStream) {
 Write-CurrentJob -QueueDir $queue -Id ''
 Write-Utf8NoBom -Path (Join-Path $queue 'heartbeat.json') -Text (ConvertTo-Json -InputObject ([ordered]@{ pid = $PID; time_utc = (Get-Date).ToUniversalTime().ToString('o'); job = $null }) -Compress)
 Write-StaleRunningHint -QueueDir $queue
+Enable-ResourceLimits
 
 Start-Executor -Repo $repoPath -QueueDir $queue -AllowPush:$AllowPush

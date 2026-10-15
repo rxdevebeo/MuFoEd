@@ -244,9 +244,19 @@ The full stdout+stderr of every step is in `out\<id>.log`. Artifacts are in
 
 ## Load on the host
 
-Every step runs at below-normal priority (cargo's rustc, the linker and the
-test binaries inherit it), and cargo gets half the logical processors for
-`CARGO_BUILD_JOBS` and `RUST_TEST_THREADS` unless the executor's environment
-sets them. The workspace's dev profile carries line tables only for its own
-crates and no debug info for dependencies, which keeps the test binaries'
-links and PDBs small.
+On start the executor puts itself into a Windows job object, so every process
+it launches (cargo, rustc, link.exe, test binaries, Python, the CLI) is held by
+the job's limits and cannot hang the machine:
+
+- **memory**: the job's committed memory is capped at `HOSTQ_MEMORY_PERCENT`
+  of physical memory (default 50). An allocation past the cap fails, so a step
+  ends with an out-of-memory error instead of the host paging to a standstill;
+- **CPU**: a hard cap of `HOSTQ_CPU_PERCENT` of total CPU time (default 60);
+- **priority**: every process in the job runs below normal.
+
+cargo gets `CARGO_BUILD_JOBS` and `RUST_TEST_THREADS` of at most half the
+logical processors and at most one per 2.5 GB of the capped memory, unless the
+executor's environment sets them. The startup line prints the limits taken.
+The workspace's dev profile carries line tables only for its own crates and no
+debug info for dependencies, which keeps the test binaries' links and PDBs
+small.
