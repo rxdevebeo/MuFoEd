@@ -1350,6 +1350,20 @@ function Invoke-OcrProbe {
                 if ($toPdf.exit -eq 1 -and (Test-Path -LiteralPath $pdf)) { $toPdf.exit = 0 }
                 $steps += $toPdf
                 if (Test-Path -LiteralPath $pdf) { $artifacts += New-Artifact -QueueDir $QueueDir -Path $pdf }
+                # Scan beside result, page by page (xtool/ocr-qa/compare.py):
+                # a page rebuilt from its layout starts a page of its own, so the
+                # DOCX is cut there and each part rendered next to its scan.
+                if ($null -ne $Job.PSObject.Properties['ocr_layout'] -and [bool]$Job.ocr_layout) {
+                    $first = [string]([int](([string]$Job.pages) -split '-')[0])
+                    $compareDir = Join-Path $OutDir 'compare'
+                    $compare = Invoke-Logged -Name 'compare' -Exe $script:Python -Arguments @('-X', 'utf8', 'xtool/ocr-qa/compare.py', '--source', $inputPdf, '--first', $first, '--docx', $docx, '--cli', $cli, '--out', $compareDir) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
+                    $steps += $compare
+                    $p = Join-Path $OutDir 'compare.txt'
+                    Save-StepOutput -Step $compare -Path $p
+                    $artifacts += New-Artifact -QueueDir $QueueDir -Path $p
+                    $summary = Join-Path $compareDir 'summary.json'
+                    if (Test-Path -LiteralPath $summary) { $artifacts += New-Artifact -QueueDir $QueueDir -Path $summary }
+                }
             }
             if (Test-Path -LiteralPath $report) { $artifacts += New-Artifact -QueueDir $QueueDir -Path $report }
         }
