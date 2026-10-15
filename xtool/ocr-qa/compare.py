@@ -72,9 +72,20 @@ def split_docx(docx: Path, out: Path) -> list[Path]:
     for index, part in enumerate(parts, start=1):
         for child in list(body):
             body.remove(child)
+        # A part that ends a section keeps that section as its own last one;
+        # left in the paragraph it would start an empty page after the part.
+        own_section = None
+        if part:
+            properties = part[-1].find(f"{{{w}}}pPr")
+            inner = properties.find(f"{{{w}}}sectPr") if properties is not None else None
+            if inner is not None:
+                properties.remove(inner)
+                own_section = inner
         for child in part:
             body.append(child)
-        if section is not None:
+        if own_section is not None:
+            body.append(own_section)
+        elif section is not None:
             body.append(section)
         data = (
             b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'

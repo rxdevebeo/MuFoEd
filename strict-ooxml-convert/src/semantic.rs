@@ -136,13 +136,15 @@ pub(crate) fn build(
     // and the `numbering.xml` that defines its marker have to arrive together.
     let mut numbering = strict_ooxml_wml::model::numbering::NumberingTable::new();
 
-    let scan_margins = scan_margins(pages, recovered);
+    let scan_frame =
+        scan_margins(pages, recovered).map(|margins| (scan_size(pages, recovered), margins));
     for (index, page) in pages.iter().enumerate() {
         // A size or margin change closes the previous page before these blocks
         // are appended. Identical neighbours stay in the open section.
         let mut section = section_for(page, false);
         let rebuilt = recovered.page(index).iter().any(|block| block.whole_page);
-        if let (true, Some(margins)) = (rebuilt, scan_margins.as_ref()) {
+        if let (true, Some((size, margins))) = (rebuilt, scan_frame.as_ref()) {
+            section.page_size = Some(*size);
             section.page_margins = Some(*margins);
         }
         let text_area = text_area(&section);
@@ -856,6 +858,33 @@ fn scan_margins(
         footer: None,
         gutter: None,
     })
+}
+
+/// The page size of a scanned book's rebuilt pages: the medians of their
+/// shown sizes. Scans of one book differ by a point or two, and each
+/// difference would be a section break.
+fn scan_size(
+    pages: &[PdfPage],
+    recovered: &crate::recover::Recovered,
+) -> strict_ooxml_wml::model::props::PageSize {
+    let (mut widths, mut heights) = (Vec::new(), Vec::new());
+    for (index, page) in pages.iter().enumerate() {
+        if recovered.page(index).iter().any(|block| block.whole_page) {
+            let (width, height) = page.geometry.displayed();
+            widths.push(width);
+            heights.push(height);
+        }
+    }
+    let median = |mut values: Vec<f64>| {
+        values.sort_by(f64::total_cmp);
+        values.get(values.len() / 2).copied().unwrap_or(0.0)
+    };
+    strict_ooxml_wml::model::props::PageSize {
+        width: Some(Twips(to_twips(median(widths).round()))),
+        height: Some(Twips(to_twips(median(heights).round()))),
+        orientation: None,
+        code: None,
+    }
 }
 
 /// The width and height between a section's margins, in points.
