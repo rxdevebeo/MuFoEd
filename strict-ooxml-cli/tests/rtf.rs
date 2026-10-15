@@ -6,9 +6,13 @@ use std::{
 struct Temp(PathBuf);
 impl Temp {
     fn new() -> Self {
+        // Two tests may ask in the same clock tick (Windows' timer is coarse):
+        // a per-process counter keeps the names apart.
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let p = std::env::temp_dir().join(format!(
-            "strictlib-rtf-cli-{}-{}",
+            "strictlib-rtf-cli-{}-{}-{}",
             std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

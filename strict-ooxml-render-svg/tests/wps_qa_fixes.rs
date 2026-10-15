@@ -509,3 +509,76 @@ relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverla
         .fold(0.0_f64, f64::max);
     assert!(widest < 60.0, "gap of {widest} px between lines {lines:?}");
 }
+
+/// A line's baseline and its `(x, width, text)` items.
+type PlacedLine = (f64, Vec<(f64, f64, String)>);
+
+/// Spaces after the last word hang past the margin: a justified line's last
+/// letter meets the margin (WPS ends its lines there; ours stopped a space
+/// short), and spaces alone at the end of a paragraph add no line.
+#[test]
+fn trailing_spaces_hang_past_the_margin() {
+    fn walk(items: &[Item], out: &mut Vec<(f64, f64, f64, String)>) {
+        for item in items {
+            match item {
+                Item::Text(text) => {
+                    out.push((text.baseline, text.x, text.width, text.text.clone()));
+                }
+                Item::Group(group) => walk(&group.items, out),
+                _ => {}
+            }
+        }
+    }
+    let words = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do ".repeat(6);
+    let body = format!(
+        "<w:p><w:pPr><w:jc w:val=\"both\"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>\
+<w:sz w:val=\"22\"/></w:rPr><w:t xml:space=\"preserve\">{words}</w:t></w:r></w:p>{NARROW}"
+    );
+    let placed = pages(&body, &RenderOptions::default());
+    let mut lines: Vec<PlacedLine> = Vec::new();
+    let mut items = Vec::new();
+    walk(&placed[0].items, &mut items);
+    for (baseline, x, width, text) in items {
+        match lines.iter_mut().find(|(y, _)| (*y - baseline).abs() < 0.5) {
+            Some((_, line)) => line.push((x, width, text)),
+            None => lines.push((baseline, vec![(x, width, text)])),
+        }
+    }
+    lines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    assert!(lines.len() > 3, "{lines:?}");
+    // Arimo's space at 11 pt (96 dpi): 569/2048 em.
+    let space = 569.0 / 2048.0 * 11.0 * 96.0 / 72.0;
+    let margin = 48.0 + 288.0;
+    for (_, line) in &lines[..lines.len() - 1] {
+        let (x, width, text) = line
+            .iter()
+            .max_by(|a, b| (a.0 + a.1).total_cmp(&(b.0 + b.1)))
+            .expect("item");
+        let ink_end = if text.ends_with(' ') {
+            x + width - space
+        } else {
+            x + width
+        };
+        assert!(
+            (ink_end - margin).abs() < 0.6,
+            "{ink_end} vs {margin}: {line:?}"
+        );
+    }
+
+    let spaces = " ".repeat(120);
+    let body = format!(
+        "<w:p><w:r><w:t xml:space=\"preserve\">Hello{spaces}</w:t></w:r></w:p>\
+<w:p><w:r><w:t>Next</w:t></w:r></w:p>{NARROW}"
+    );
+    let placed = pages(&body, &RenderOptions::default());
+    let lines = baselines(&placed[0]);
+    let next = texts(&placed[0])
+        .into_iter()
+        .find(|(_, _, text)| text.starts_with("Next"))
+        .expect("Next");
+    assert_eq!(
+        lines.iter().position(|y| (*y - next.1).abs() < 0.5),
+        Some(1),
+        "{lines:?}"
+    );
+}
