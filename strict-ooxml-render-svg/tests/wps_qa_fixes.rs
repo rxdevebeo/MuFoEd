@@ -529,7 +529,8 @@ fn the_tallest_run_sets_the_line_box() {
     };
     let even = gap(20);
     let tall = gap(56);
-    // The second line's baseline moves down by about the larger run's descent,
-    // the first line's by its ascent: well over the 10 pt line.
-    assert!(tall > even + 10.0, "{even} vs {tall}");
+    // The gap between the baselines is the first line's descent plus the
+    // second's ascent: the 28 pt run deepens the first line by its larger
+    // descent (Carlito 0.269 em: 10.0 px against 3.6 px at 10 pt).
+    assert!(tall > even + 5.0, "{even} vs {tall}");
 }
