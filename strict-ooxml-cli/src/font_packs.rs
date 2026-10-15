@@ -35,12 +35,13 @@ pub(super) struct Pack {
     faces: &'static [PackFace],
 }
 
-/// One file of a pack, pinned.
-struct PackFile {
-    name: &'static str,
-    url: &'static str,
-    size: u64,
-    sha256: &'static str,
+/// One file of a pack, pinned. `size` 0 is a licence text of any size up to
+/// 64 KiB; the hash decides.
+pub(super) struct PackFile {
+    pub(super) name: &'static str,
+    pub(super) url: &'static str,
+    pub(super) size: u64,
+    pub(super) sha256: &'static str,
 }
 
 /// One face a pack delivers.
@@ -377,11 +378,7 @@ impl Pack {
     /// Whether every file is in `dir` with its pinned size (the hash is
     /// checked when the fonts are used).
     pub(super) fn is_installed(&self, root: &Path) -> bool {
-        let dir = root.join(self.id);
-        self.files.iter().all(|file| {
-            std::fs::metadata(dir.join(file.name))
-                .is_ok_and(|meta| meta.is_file() && (file.size == 0 || meta.len() == file.size))
-        })
+        files_present(&root.join(self.id), self.files)
     }
 
     /// The pack's faces from `root`, pinned and marked as fallbacks.
@@ -414,7 +411,15 @@ impl Pack {
     }
 }
 
-fn read_capped(path: &Path, cap: usize) -> Result<Vec<u8>, String> {
+/// Whether every one of `files` is in `dir` with its pinned size.
+pub(super) fn files_present(dir: &Path, files: &[PackFile]) -> bool {
+    files.iter().all(|file| {
+        std::fs::metadata(dir.join(file.name))
+            .is_ok_and(|meta| meta.is_file() && (file.size == 0 || meta.len() == file.size))
+    })
+}
+
+pub(super) fn read_capped(path: &Path, cap: usize) -> Result<Vec<u8>, String> {
     let file = std::fs::File::open(path)
         .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
     let mut bytes = Vec::new();
@@ -437,13 +442,19 @@ pub(super) fn pack(id: &str) -> Option<&'static Pack> {
 
 /// The cache directory.
 pub(super) fn cache_dir() -> Option<PathBuf> {
-    if let Some(dir) = std::env::var_os("STRICTLIB_FONT_DIR").filter(|dir| !dir.is_empty()) {
+    cache_root("STRICTLIB_FONT_DIR", "fonts")
+}
+
+/// `env` when set, else `<local cache>/StrictLib/<leaf>` on Windows and
+/// `$XDG_CACHE_HOME/strictlib/<leaf>` (`~/.cache/strictlib/<leaf>`) elsewhere.
+pub(super) fn cache_root(env: &str, leaf: &str) -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os(env).filter(|dir| !dir.is_empty()) {
         return Some(PathBuf::from(dir));
     }
     if cfg!(windows) {
         return std::env::var_os("LOCALAPPDATA")
             .filter(|dir| !dir.is_empty())
-            .map(|dir| PathBuf::from(dir).join("StrictLib").join("fonts"));
+            .map(|dir| PathBuf::from(dir).join("StrictLib").join(leaf));
     }
     std::env::var_os("XDG_CACHE_HOME")
         .filter(|dir| !dir.is_empty())
@@ -453,7 +464,7 @@ pub(super) fn cache_dir() -> Option<PathBuf> {
                 .filter(|dir| !dir.is_empty())
                 .map(|home| PathBuf::from(home).join(".cache"))
         })
-        .map(|dir| dir.join("strictlib").join("fonts"))
+        .map(|dir| dir.join("strictlib").join(leaf))
 }
 
 /// The packs the text of `document` needs, in catalog order: the character
@@ -551,7 +562,7 @@ pub(super) fn assets_for(
     Ok(assets)
 }
 
-fn megabytes(bytes: u64) -> String {
+pub(super) fn megabytes(bytes: u64) -> String {
     // Display only: the precision lost converting to f64 is far below 0.1 MB.
     #[allow(clippy::cast_precision_loss)]
     let mb = bytes as f64 / 1_000_000.0;
@@ -648,19 +659,28 @@ fn selected(ids: &[String]) -> Result<Vec<&'static Pack>, String> {
 }
 
 /// Downloads the files of `pack` that are not in place into `root/<id>`.
-#[cfg(feature = "font-download")]
 fn install(pack: &Pack, root: &Path) -> Result<(), String> {
-    let dir = root.join(pack.id);
-    std::fs::create_dir_all(&dir)
+    install_files("fonts", pack.id, pack.files, &root.join(pack.id))
+}
+
+/// Downloads the `files` of pack `id` that are not in place into `dir`.
+#[cfg(feature = "font-download")]
+pub(super) fn install_files(
+    what: &str,
+    id: &str,
+    files: &[PackFile],
+    dir: &Path,
+) -> Result<(), String> {
+    std::fs::create_dir_all(dir)
         .map_err(|error| format!("cannot create {}: {error}", dir.display()))?;
+    let size: u64 = files.iter().map(|file| file.size).sum();
     eprintln!(
-        "fonts: installing {} ({}) into {}",
-        pack.id,
-        megabytes(pack.size()),
+        "{what}: installing {id} ({}) into {}",
+        megabytes(size),
         dir.display()
     );
     let agent = download::agent();
-    for file in pack.files {
+    for file in files {
         let path = dir.join(file.name);
         if std::fs::metadata(&path).is_ok_and(|meta| file.size == 0 || meta.len() == file.size)
             && sha256_file(&path).is_ok_and(|hash| hash == file.sha256)
@@ -669,20 +689,23 @@ fn install(pack: &Pack, root: &Path) -> Result<(), String> {
         }
         download::fetch(&agent, file, &path)?;
     }
-    println!("{}: installed", pack.id);
+    println!("{id}: installed");
     Ok(())
 }
 
 #[cfg(not(feature = "font-download"))]
-fn install(pack: &Pack, _root: &Path) -> Result<(), String> {
+pub(super) fn install_files(
+    what: &str,
+    id: &str,
+    _files: &[PackFile],
+    _dir: &Path,
+) -> Result<(), String> {
     Err(format!(
-        "font pack '{}' cannot be downloaded: this build has no download support (feature font-download)",
-        pack.id
+        "{what} pack '{id}' cannot be downloaded: this build has no download support (feature font-download)"
     ))
 }
 
-#[cfg(feature = "font-download")]
-fn sha256_file(path: &Path) -> Result<String, String> {
+pub(super) fn sha256_file(path: &Path) -> Result<String, String> {
     use sha2::Digest as _;
     let mut file = std::fs::File::open(path)
         .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
@@ -700,7 +723,6 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(hex(&hasher.finalize()))
 }
 
-#[cfg(feature = "font-download")]
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     bytes

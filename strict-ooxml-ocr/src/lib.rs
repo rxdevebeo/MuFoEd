@@ -43,11 +43,13 @@
 )]
 
 pub mod base64;
+pub mod lexicon;
 #[cfg(feature = "ocr-ollama")]
 pub mod ollama;
 pub mod report;
 pub mod traits;
 
+pub use lexicon::{Lexicon, LexiconError};
 pub use report::{OcrLoss, OcrReport, Severity};
 pub use traits::{FigureClassifier, FigureKind, Recovered, TextRecovery, VisionError};
 

@@ -405,7 +405,7 @@ $script:AllowedFields = @{
     'wps'         = @('id', 'kind', 'sha')
     'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts', 'font_pack', 'font_packs')
     'rtf'         = @('id', 'kind', 'sha')
-    'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes')
+    'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes', 'lang', 'lexicon')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
 }
@@ -552,7 +552,10 @@ function Test-JobRecord {
             if ($fields -contains 'scale' -and (-not ($Job.scale -is [int] -or $Job.scale -is [long] -or $Job.scale -is [double] -or $Job.scale -is [decimal]) -or [double]$Job.scale -le 0 -or [double]$Job.scale -gt 6)) {
                 return (& $reject 'scale must be a number in (0, 6]')
             }
-            foreach ($flag in @('convert', 'layout')) {
+            if ($fields -contains 'lang' -and ($Job.lang -isnot [string] -or [string]$Job.lang -notmatch '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$')) {
+                return (& $reject 'lang is not a BCP 47 tag')
+            }
+            foreach ($flag in @('convert', 'layout', 'lexicon')) {
                 if ($fields -contains $flag -and $Job.$flag -isnot [bool]) {
                     return (& $reject ("{0} must be true or false" -f $flag))
                 }
@@ -1309,7 +1312,7 @@ function Invoke-OcrProbe {
     if ($null -ne $Job.PSObject.Properties['convert']) { $convert = [bool]$Job.convert }
     $layout = $true
     if ($null -ne $Job.PSObject.Properties['layout']) { $layout = [bool]$Job.layout }
-    $ocrEnv = @{}
+    $ocrEnv = @{ STRICTLIB_LEXICON_DIR = (Join-Path $QueueDir 'lexicons') }
     if ($null -ne $Job.PSObject.Properties['model']) { $ocrEnv['OLLAMA_MODEL'] = [string]$Job.model }
 
     $steps = @()
@@ -1321,7 +1324,17 @@ function Invoke-OcrProbe {
             $cli = Join-Path $target 'release\strict-ooxml.exe'
             $docx = Join-Path $OutDir 'ocr.docx'
             $report = Join-Path $OutDir 'ocr-report.json'
-            $fromPdf = Invoke-Logged -Name 'from-pdf' -Exe $cli -Arguments @('from-pdf', $inputPdf, '--ocr', '--pages', $pages, '--no-images', '--out', $docx, '--report-out', $report) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $ocrEnv -OutDir $OutDir
+            $convertArgs = @('from-pdf', $inputPdf, '--ocr', '--pages', $pages, '--no-images', '--out', $docx, '--report-out', $report)
+            # `lang` names the text's language; its word list (the executor's
+            # own cache, fetched on first use) restores dropped diacritics
+            # unless `lexicon` is false.
+            if ($null -ne $Job.PSObject.Properties['lang']) {
+                $convertArgs += @('--ocr-lang', [string]$Job.lang)
+                $useLexicon = $true
+                if ($null -ne $Job.PSObject.Properties['lexicon']) { $useLexicon = [bool]$Job.lexicon }
+                if ($useLexicon) { $convertArgs += @('--fetch-lexicon') } else { $convertArgs += @('--no-lexicon') }
+            }
+            $fromPdf = Invoke-Logged -Name 'from-pdf' -Exe $cli -Arguments $convertArgs -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $ocrEnv -OutDir $OutDir
             # Exit 1 is a written document whose report has losses.
             if ($fromPdf.exit -eq 1 -and (Test-Path -LiteralPath $docx)) { $fromPdf.exit = 0 }
             $steps += $fromPdf

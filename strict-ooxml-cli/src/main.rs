@@ -68,6 +68,7 @@ macro_rules! eprintln {
 mod djvu;
 mod font_packs;
 mod fonts;
+mod lexicon_packs;
 mod rtf;
 
 use std::fmt::Write as _;
@@ -137,6 +138,13 @@ fn run_command() -> ExitCode {
         Some("import-rtf") => rtf::run(&args.collect::<Vec<_>>()),
         Some("write") => run_write(&args.collect::<Vec<_>>()),
         Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
+        Some("lexicons") => match lexicon_packs::run(&args.collect::<Vec<_>>()) {
+            Ok(()) => ExitCode::from(EXIT_OK),
+            Err(error) => {
+                eprintln!("error: {error}");
+                ExitCode::from(EXIT_ERROR)
+            }
+        },
         Some("fonts") => match font_packs::run(&args.collect::<Vec<_>>()) {
             Ok(()) => ExitCode::from(EXIT_OK),
             Err(error) => {
@@ -162,7 +170,7 @@ fn run_command() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|import-rtf|write|normalize|fonts> <file> \
+        "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|import-rtf|write|normalize|fonts|lexicons> <file> \
          [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
          [--no-floating] [--no-math] [--wps-times] [--cell-nowrap=spec|always] [--transitional] \
          [--fonts <manifest.json>] [--system-fonts] [--strict-fonts] [--fetch-fonts] [--no-font-packs]"
@@ -179,7 +187,8 @@ fn print_usage() {
     eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
     eprintln!("  from-djvu       import DjVu to Strict DOCX --out <file.docx> [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr]");
     eprintln!("  djvu-dump       inspect DjVu chunk headers and text-layer states");
-    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr [--ocr-model <name>] [--ocr-endpoint <url>]] [--report-out <json>] (--out is required)");
+    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr [--ocr-model <name>] [--ocr-endpoint <url>] [--ocr-lang <tag>] [--fetch-lexicon] [--no-lexicon]] [--report-out <json>] (--out is required)");
+    eprintln!("  lexicons        word lists that restore diacritics in recognised text: list | install <id...|all> | remove <id...|all> | path");
     eprintln!("  import-rtf      import .rtf to Strict .docx (--out required); writes .rtf-report.json beside output; --wps-text --allow-unsigned-unicode --drop-nul --reject-unsupported are explicit opt-ins");
     eprintln!("  write           serialize the model back to a Strict .docx [--report-out <json>] (--out is required)");
 }
@@ -1259,6 +1268,12 @@ struct OcrArgs {
     enabled: bool,
     model: Option<String>,
     endpoint: Option<String>,
+    /// `--ocr-lang`: the language of the scanned text.
+    language: Option<String>,
+    /// `--fetch-lexicon`: download the language's word list if missing.
+    fetch_lexicon: bool,
+    /// `--no-lexicon`: leave recognised words as the model read them.
+    no_lexicon: bool,
 }
 
 impl OcrArgs {
@@ -1267,17 +1282,19 @@ impl OcrArgs {
         let flag = args.get(*index).map_or("", String::as_str);
         match flag {
             "--ocr" => self.enabled = true,
-            "--ocr-model" | "--ocr-endpoint" => {
+            "--fetch-lexicon" => self.fetch_lexicon = true,
+            "--no-lexicon" => self.no_lexicon = true,
+            "--ocr-model" | "--ocr-endpoint" | "--ocr-lang" => {
                 *index += 1;
                 let value = args
                     .get(*index)
                     .filter(|value| !value.is_empty() && !value.starts_with("--"))
                     .ok_or_else(|| format!("'{flag}' requires a value"))?
                     .clone();
-                if flag == "--ocr-model" {
-                    self.model = Some(value);
-                } else {
-                    self.endpoint = Some(value);
+                match flag {
+                    "--ocr-model" => self.model = Some(value),
+                    "--ocr-lang" => self.language = Some(value),
+                    _ => self.endpoint = Some(value),
                 }
             }
             _ => return Ok(false),
@@ -1305,6 +1322,13 @@ impl OcrArgs {
         let vision = Arc::new(strict_ooxml::OllamaVision::new(config));
         options.text_recovery = Some(vision.clone());
         options.figure_classifier = Some(vision);
+        if let Some(language) = self.language {
+            if !self.no_lexicon {
+                options.recovery_lexicon =
+                    lexicon_packs::lexicon_for(&language, self.fetch_lexicon)?;
+            }
+            options.recovery_language = Some(language);
+        }
         Ok(())
     }
 
@@ -1321,7 +1345,12 @@ impl OcrArgs {
 
     /// Model settings without `--ocr` are a mistake, not a no-op.
     fn check_unused(&self) -> Result<(), String> {
-        if !self.enabled && (self.model.is_some() || self.endpoint.is_some()) {
+        let configured = self.model.is_some()
+            || self.endpoint.is_some()
+            || self.language.is_some()
+            || self.fetch_lexicon
+            || self.no_lexicon;
+        if !self.enabled && configured {
             return Err("OCR configuration requires --ocr".to_owned());
         }
         Ok(())

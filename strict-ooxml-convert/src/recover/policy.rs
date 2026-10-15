@@ -53,6 +53,95 @@ pub(crate) fn paragraphs_of(text: &str, left: f64) -> Vec<Paragraph> {
         .collect()
 }
 
+/// A model's answer as paragraphs: its words repaired by `lexicon`, its
+/// paragraphs tagged with `language`, and how many words were repaired.
+pub(crate) fn recovered_paragraphs(
+    text: &str,
+    left: f64,
+    lexicon: Option<&strict_ooxml_ocr::Lexicon>,
+    language: Option<&str>,
+) -> (Vec<Paragraph>, usize) {
+    let (text, restored) = match lexicon {
+        Some(lexicon) => lexicon.restore_text(text),
+        None => (text.to_owned(), 0),
+    };
+    let mut paragraphs = paragraphs_of(&text, left);
+    if let Some(language) = language.map(str::trim).filter(|tag| !tag.is_empty()) {
+        for paragraph in &mut paragraphs {
+            let tag = language_of(language, &paragraph_text(paragraph));
+            for inline in &mut paragraph.inlines {
+                if let Inline::Run(run) = inline {
+                    run.props.language = Some(strict_ooxml_wml::model::props::Language {
+                        val: Some(std::sync::Arc::from(tag.as_str())),
+                        ..strict_ooxml_wml::model::props::Language::default()
+                    });
+                }
+            }
+        }
+    }
+    (paragraphs, restored)
+}
+
+/// Records how many words of a page the lexicon repaired.
+pub(crate) fn record_restored(
+    report: &mut crate::report::ConversionReport,
+    page: usize,
+    restored: usize,
+    lexicon: Option<&strict_ooxml_ocr::Lexicon>,
+) {
+    let Some(lexicon) = lexicon.filter(|_| restored > 0) else {
+        return;
+    };
+    report.record(
+        "text.recovery.lexicon",
+        crate::report::Severity::Recovered,
+        format!(
+            "page {page}: {restored} recovered word(s) given back diacritics the model dropped, \
+             from the {} word list",
+            lexicon.language()
+        ),
+    );
+}
+
+/// The tag a paragraph of `language` gets: for Serbian, which is printed in
+/// Cyrillic and in Latin, the script the paragraph's letters are in
+/// (`sr-Cyrl-RS`, `sr-Latn-RS`); otherwise the tag as given.
+pub(crate) fn language_of(language: &str, text: &str) -> String {
+    let lower = language.to_ascii_lowercase();
+    let serbian = lower == "sr" || lower == "sr-rs";
+    if !serbian {
+        return language.to_owned();
+    }
+    let (mut cyrillic, mut latin) = (0usize, 0usize);
+    for ch in text.chars().filter(|ch| ch.is_alphabetic()) {
+        if ('\u{0400}'..='\u{04FF}').contains(&ch) {
+            cyrillic += 1;
+        } else if ch.is_ascii_alphabetic() || ('\u{00C0}'..='\u{024F}').contains(&ch) {
+            latin += 1;
+        }
+    }
+    if cyrillic > latin {
+        "sr-Cyrl-RS".to_owned()
+    } else {
+        "sr-Latn-RS".to_owned()
+    }
+}
+
+fn paragraph_text(paragraph: &Paragraph) -> String {
+    paragraph
+        .inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Run(run) => Some(run.content.iter().filter_map(|content| match content {
+                RunContent::Text(node) => Some(node.text.as_str()),
+                _ => None,
+            })),
+            _ => None,
+        })
+        .flatten()
+        .collect()
+}
+
 /// Declares the recovered-paragraph style in a converted document.
 ///
 /// A style with no formatting of its own, so marking a paragraph costs nothing

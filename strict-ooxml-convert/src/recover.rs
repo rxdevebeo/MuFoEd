@@ -72,7 +72,7 @@ use crate::PdfOptions;
 #[cfg(any(feature = "raster", feature = "djvu-image"))]
 pub(crate) mod policy;
 #[cfg(feature = "raster")]
-pub(crate) use policy::{declare_style, paragraphs_of};
+pub(crate) use policy::declare_style;
 
 /// How a region was chosen, which is a fact about the document a caller may want
 /// to filter on.
@@ -204,7 +204,18 @@ pub(crate) fn recover_pages(
             };
             match answer {
                 Ok(Some(answer)) => {
-                    let paragraphs = paragraphs_of(&answer.text, region.left);
+                    let (paragraphs, restored) = policy::recovered_paragraphs(
+                        &answer.text,
+                        region.left,
+                        options.recovery_lexicon.as_deref(),
+                        options.recovery_language.as_deref(),
+                    );
+                    policy::record_restored(
+                        report,
+                        index + 1,
+                        restored,
+                        options.recovery_lexicon.as_deref(),
+                    );
                     report.recovered_pages += 1;
                     report.recovered_paragraphs += paragraphs.len();
                     report.record(
@@ -599,7 +610,42 @@ fn rasterize(
 
 #[cfg(all(test, feature = "raster"))]
 mod tests {
-    use super::{displayed_rect, paragraphs_of};
+    use super::displayed_rect;
+    use super::policy::paragraphs_of;
+
+    #[test]
+    fn recovered_words_are_repaired_and_tagged_by_script() {
+        use strict_ooxml_wml::model::inline::Inline;
+        let lexicon = strict_ooxml_ocr::Lexicon::from_hunspell(
+            "sr-Latn",
+            "2\nnemački\nčovek\n",
+            "SET UTF-8\n",
+            None,
+        )
+        .expect("parses");
+        let (paragraphs, restored) = super::policy::recovered_paragraphs(
+            "Prevod: nemacki covek\nПревод речника",
+            0.0,
+            Some(&lexicon),
+            Some("sr"),
+        );
+        assert_eq!(restored, 2);
+        let tags: Vec<String> = paragraphs
+            .iter()
+            .map(|paragraph| match paragraph.inlines.first() {
+                Some(Inline::Run(run)) => run
+                    .props
+                    .language
+                    .as_ref()
+                    .and_then(|language| language.val.as_deref())
+                    .unwrap_or("")
+                    .to_owned(),
+                _ => String::new(),
+            })
+            .collect();
+        assert_eq!(tags, ["sr-Latn-RS", "sr-Cyrl-RS"]);
+        assert_eq!(super::policy::language_of("en-GB", "Hello"), "en-GB");
+    }
 
     #[test]
     fn a_rotated_page_is_cropped_where_it_is_displayed() {
