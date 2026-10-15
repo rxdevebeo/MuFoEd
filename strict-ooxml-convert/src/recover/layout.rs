@@ -127,18 +127,18 @@ impl Ink {
         let paper_chroma =
             paper.iter().copied().max().unwrap_or(255) - paper.iter().copied().min().unwrap_or(255);
         let coloured_paper = paper_chroma > 60;
+        let [red, green, blue] = paper;
+        let paper_luma =
+            (0.299 * f64::from(red) + 0.587 * f64::from(green) + 0.114 * f64::from(blue)).round()
+                as i32;
         let mut dark = Vec::with_capacity(width * height);
         let mut unpaper = Vec::with_capacity(width * height);
         for pixel in pixels.rgba.chunks_exact(4) {
             let (luma, chroma) = tone(pixel);
             dark.push(luma < threshold || (chroma > 60 && luma < median - 20));
-            let distance = pixel
-                .iter()
-                .zip(paper.iter())
-                .map(|(value, paper)| (i32::from(*value) - paper).abs())
-                .max()
-                .unwrap_or(0);
-            unpaper.push(coloured_paper || distance > 40);
+            // Lighter than the paper is never ink or fill: white panels on
+            // cream stock are paper too. Darker, or more coloured, is not.
+            unpaper.push(coloured_paper || luma < paper_luma - 40 || chroma > paper_chroma + 40);
         }
         Self {
             width,
@@ -1875,6 +1875,21 @@ mod tests {
         let region = regions[0];
         assert!(region.left <= 112 && region.right >= 352, "{region:?}");
         assert!(region.top <= 400 && region.bottom >= 752, "{region:?}");
+    }
+
+    #[test]
+    fn white_panels_on_cream_stock_are_paper() {
+        let mut pixels = page(100, 100, &[]);
+        for (index, pixel) in pixels.rgba.chunks_exact_mut(4).enumerate() {
+            // The left 40% cream, the rest white panels.
+            let colour = if index % 100 < 40 {
+                [235, 225, 200]
+            } else {
+                [255, 255, 255]
+            };
+            pixel[..3].copy_from_slice(&colour);
+        }
+        assert!(Ink::of(&pixels).unpaper_ratio() < 0.05);
     }
 
     #[test]
