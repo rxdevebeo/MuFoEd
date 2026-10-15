@@ -460,22 +460,22 @@ impl Measured {
                 fallback.unwrap_or(Align::Left)
             };
         }
+        // One line: where it sits in the page's text column.
         let (column_left, column_right) = column;
         let column_width = column_right.saturating_sub(column_left).max(1) as f64;
-        let centre = (self.area.left + self.area.right) as f64 / 2.0;
-        let column_centre = (column_left + column_right) as f64 / 2.0;
-        let narrow = (self.area.width() as f64) < column_width * 0.85;
-        if narrow && (centre - column_centre).abs() < column_width * 0.04 {
+        let tolerance = (column_width * 0.02).max(6.0);
+        let left_gap = self.area.left as f64 - column_left as f64;
+        let right_gap = column_right as f64 - self.area.right as f64;
+        if left_gap <= tolerance && right_gap <= tolerance {
+            fallback
+                .filter(|align| *align != Align::Center)
+                .unwrap_or(Align::Left)
+        } else if (left_gap - right_gap).abs() <= tolerance * 2.0 {
             Align::Center
-        } else if narrow
-            && (column_right as f64 - self.area.right as f64).abs() < column_width * 0.03
-            && (self.area.left as f64 - column_left as f64) > column_width * 0.2
-        {
+        } else if right_gap <= tolerance {
             Align::Right
         } else {
-            fallback
-                .filter(|align| *align != Align::Justify)
-                .unwrap_or(Align::Left)
+            Align::Left
         }
     }
 
@@ -617,6 +617,42 @@ fn build_items(
         .collect();
     let body_ratio = (!body_ratios.is_empty()).then(|| median(body_ratios));
 
+    // Running text on a page is one size; a single line measured a point or
+    // two off it is the measure's noise (a line of capitals, a bold label),
+    // not a different size. Headings keep theirs.
+    let measured_sizes: Vec<Option<f64>> = placed
+        .iter()
+        .map(|(block, measured)| measured.size_pt(frame.scale, capitals(&block.text)))
+        .collect();
+    let body_size = {
+        let running = |multi: bool| -> Vec<f64> {
+            placed
+                .iter()
+                .zip(&measured_sizes)
+                .filter(|((block, measured), _)| {
+                    matches!(block.kind, BlockKind::Paragraph | BlockKind::ListItem)
+                        && (measured.lines.len() >= 2) == multi
+                })
+                .filter_map(|(_, size)| *size)
+                .collect()
+        };
+        let multi = running(true);
+        let sizes = if multi.is_empty() {
+            running(false)
+        } else {
+            multi
+        };
+        (!sizes.is_empty()).then(|| median(sizes))
+    };
+    let size_of = |index: usize, kind: BlockKind| -> Option<f64> {
+        let size = measured_sizes.get(index).copied().flatten()?;
+        let running = !matches!(kind, BlockKind::Title | BlockKind::Heading);
+        match body_size {
+            Some(body) if running && size > body * 0.75 && size < body * 1.33 => Some(body),
+            _ => Some(size),
+        }
+    };
+
     // Solid areas of colour are pictures whatever the model called the blocks
     // inside them: a sticker read as five headings is still a sticker.
     let regions = ink.filled_regions();
@@ -664,7 +700,7 @@ fn build_items(
         )));
         Some(region.bottom)
     };
-    for (block, measured) in &placed {
+    for (position, (block, measured)) in placed.iter().enumerate() {
         // Pictures no block fell into, above this block.
         for (index, region) in regions.iter().enumerate() {
             let unclaimed = region_text.get(index).is_none_or(Vec::is_empty);
@@ -714,7 +750,7 @@ fn build_items(
         bold_blocks += usize::from(bold);
         let style = Style {
             align: measured.alignment(column, block.align),
-            size: measured.size_pt(frame.scale, capitals(&text)),
+            size: size_of(position, block.kind),
             bold,
             heading,
             before: previous_bottom
@@ -1059,6 +1095,30 @@ mod tests {
             lines: lines_of(&ink, area),
         };
         assert_eq!(measured.alignment((100, 900), None), Align::Center);
+        // One line: its gaps to the text column.
+        for (left, right, expected) in [
+            (150, 850, Align::Center),
+            (100, 600, Align::Left),
+            (400, 900, Align::Right),
+        ] {
+            let pixels = page(1000, 400, &[(left, 100, right, 116)]);
+            let ink = Ink::of(&pixels);
+            let area = PixelBox {
+                left: left as usize,
+                top: 100,
+                right: right as usize,
+                bottom: 116,
+            };
+            let measured = Measured {
+                area,
+                lines: lines_of(&ink, area),
+            };
+            assert_eq!(
+                measured.alignment((100, 900), None),
+                expected,
+                "{left}-{right}"
+            );
+        }
     }
 
     #[test]
