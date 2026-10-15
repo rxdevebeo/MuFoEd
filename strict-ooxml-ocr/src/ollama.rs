@@ -278,6 +278,22 @@ impl TextRecovery for OllamaVision {
 }
 
 impl OllamaVision {
+    /// The model's answer to `prompt` about `image`, and the model's digest.
+    ///
+    /// For probes that try a prompt of their own (`layout_probe`); the
+    /// converter goes through [`TextRecovery`] and [`FigureClassifier`].
+    ///
+    /// # Errors
+    ///
+    /// The daemon is unreachable, timed out or answered nothing usable.
+    pub fn ask_with_prompt(
+        &self,
+        prompt: &str,
+        image: &Image,
+    ) -> Result<(String, String), VisionError> {
+        self.ask(prompt, image, "")
+    }
+
     /// Asks for a transcription and turns «NO TEXT» into the answer it is.
     fn ask_for_text(&self, prompt: &str, image: &Image) -> Result<Option<Recovered>, VisionError> {
         let (text, version) = self.ask(prompt, image, "")?;
