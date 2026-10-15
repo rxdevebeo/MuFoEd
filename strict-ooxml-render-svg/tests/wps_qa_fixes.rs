@@ -582,3 +582,28 @@ fn trailing_spaces_hang_past_the_margin() {
         "{lines:?}"
     );
 }
+
+/// A line is as tall as its tallest run, not its first: a 28 pt word after a
+/// 10 pt one lowers the line (CC0_RTF/075 set 28 pt spaces in a 14 pt line,
+/// and WPS put the line 7 pt lower than we did).
+#[test]
+fn the_tallest_run_sets_the_line_box() {
+    let line = |second: u32| {
+        format!(
+            "<w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr><w:r><w:rPr><w:sz w:val=\"20\"/></w:rPr><w:t xml:space=\"preserve\">small </w:t></w:r>\
+<w:r><w:rPr><w:sz w:val=\"{second}\"/></w:rPr><w:t>word</w:t></w:r></w:p>\
+<w:p><w:pPr><w:spacing w:after=\"0\"/></w:pPr><w:r><w:rPr><w:sz w:val=\"20\"/></w:rPr><w:t>next</w:t></w:r></w:p>{NARROW}"
+        )
+    };
+    let gap = |second: u32| {
+        let placed = pages(&line(second), &RenderOptions::default());
+        let ys = baselines(&placed[0]);
+        ys[1] - ys[0]
+    };
+    let even = gap(20);
+    let tall = gap(56);
+    // The gap between the baselines is the first line's descent plus the
+    // second's ascent: the 28 pt run deepens the first line by its larger
+    // descent (Carlito 0.269 em: 10.0 px against 3.6 px at 10 pt).
+    assert!(tall > even + 5.0, "{even} vs {tall}");
+}
