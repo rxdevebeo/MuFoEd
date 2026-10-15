@@ -646,7 +646,15 @@ mod tests {
             italic: false,
         };
         let font = collector.build(&key, &source).expect("subset .notdef");
-        assert!(font.chars.is_empty());
+        // It draws `.notdef` under a CID of its own that extracts as the
+        // character, and is marked as such for the loss report.
+        let cid = *font
+            .chars
+            .get(&'\u{10FFFD}')
+            .expect("a CID for the character");
+        assert_eq!(font.cid_to_gid.get(usize::from(cid)), Some(&0));
+        assert_eq!(font.to_unicode.get(&cid), Some(&'\u{10FFFD}'));
+        assert!(font.notdef_chars.contains(&'\u{10FFFD}'));
     }
 
     #[test]
