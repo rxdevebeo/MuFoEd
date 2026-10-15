@@ -621,8 +621,8 @@ fn build_items(
     // inside them: a sticker read as five headings is still a sticker.
     let regions = ink.filled_regions();
     let region_of = |block: &LayoutBlock| {
-        let x = (block.bbox[0] + block.bbox[2]) / 2.0 * ink.width as f64;
-        let y = (block.bbox[1] + block.bbox[3]) / 2.0 * ink.height as f64;
+        let x = f64::midpoint(block.bbox[0], block.bbox[2]) * ink.width as f64;
+        let y = f64::midpoint(block.bbox[1], block.bbox[3]) * ink.height as f64;
         regions.iter().position(|region| {
             (region.left as f64..region.right as f64).contains(&x)
                 && (region.top as f64..region.bottom as f64).contains(&y)
