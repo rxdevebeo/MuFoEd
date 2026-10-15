@@ -37,6 +37,9 @@ convert = ["dep:strict-ooxml-pdf", "dep:strict-ooxml-convert"]
 djvu = ["convert", "dep:strict-ooxml-djvu", "strict-ooxml-convert/djvu"]
 djvu-image = ["djvu", "strict-ooxml-convert/djvu-image"]
 ocr-ollama = ["dep:strict-ooxml-ocr", "strict-ooxml-convert?/ocr-ollama"]
+# Reading scanned PDF pages: the converter rasterizes a page with no text and
+# shows it to a `TextRecovery` (`PdfOptions::text_recovery`).
+pdf-raster = ["convert", "strict-ooxml-convert/raster"]
 # Parallel parsing of independent parts.
 parallel = ["strict-ooxml-wml/parallel"]
 # Transactional editing with source-aware save and shared visual geometry.

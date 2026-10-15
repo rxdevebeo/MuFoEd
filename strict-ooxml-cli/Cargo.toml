@@ -23,7 +23,9 @@ doc = false
 # the feature the CLI stays offline and uses only packs already in the cache.
 default = ["font-download"]
 font-download = ["dep:ureq"]
-ocr-ollama = ["strict-ooxml/ocr-ollama"]
+# `from-djvu --ocr` and `from-pdf --ocr`: a local Ollama vision model reads
+# scanned pages; PDF pages are rasterized for it first.
+ocr-ollama = ["strict-ooxml/ocr-ollama", "strict-ooxml/pdf-raster"]
 
 [dependencies]
 sha2 = "0.11"
