@@ -271,6 +271,55 @@ struct Region {
     origin: Origin,
 }
 
+/// Where a picture lies on the page as it is displayed - the page the
+/// rasterizer draws and the crop is cut from.
+///
+/// A placed image keeps PDF's frame: unrotated, with `y` its lower edge measured
+/// up from the bottom. A scanned book stored as landscape pages turned by
+/// `/Rotate 90` was cropped to its unrotated 842x595 box on a 595x842 page, and
+/// the bottom third of every page never reached the model.
+#[cfg(feature = "raster")]
+fn picture_region(page: &PdfPage, image: &strict_ooxml_pdf::PlacedImage) -> Region {
+    let (left, top, width, height) = displayed_rect(
+        page.geometry,
+        image.x,
+        page.geometry.height - (image.y + image.height),
+        image.width,
+        image.height,
+    );
+    Region {
+        left,
+        top,
+        width,
+        height,
+        origin: Origin::Picture,
+    }
+}
+
+/// A rectangle given from the unrotated page's top-left corner, as it lands
+/// once `/Rotate` (clockwise) turns the page: `(left, top, width, height)`.
+#[cfg(feature = "raster")]
+fn displayed_rect(
+    geometry: strict_ooxml_pdf::PageGeometry,
+    left: f64,
+    top: f64,
+    width: f64,
+    height: f64,
+) -> (f64, f64, f64, f64) {
+    let (page_width, page_height) = (geometry.width, geometry.height);
+    match geometry.rotation {
+        90 => (page_height - (top + height), left, height, width),
+        180 => (
+            page_width - (left + width),
+            page_height - (top + height),
+            width,
+            height,
+        ),
+        270 => (top, page_width - (left + width), height, width),
+        _ => (left, top, width, height),
+    }
+}
+
 /// The regions of a page that a model should be asked about, in the order they
 /// will be sent.
 ///
@@ -285,13 +334,7 @@ fn regions_of(page: &PdfPage, options: &PdfOptions) -> Vec<Region> {
         .items()
         .iter()
         .filter_map(|item| match item {
-            strict_ooxml_pdf::Item::Image(image) => Some(Region {
-                left: image.x,
-                top: image.y,
-                width: image.width,
-                height: image.height,
-                origin: Origin::Picture,
-            }),
+            strict_ooxml_pdf::Item::Image(image) => Some(picture_region(page, image)),
             _ => None,
         })
         .filter(|region| {
@@ -385,13 +428,9 @@ fn mixed_regions_of(
         .items()
         .iter()
         .filter_map(|item| match item {
-            strict_ooxml_pdf::Item::Image(image) if image.image.is_some() => Some(Region {
-                left: image.x,
-                top: image.y,
-                width: image.width,
-                height: image.height,
-                origin: Origin::Picture,
-            }),
+            strict_ooxml_pdf::Item::Image(image) if image.image.is_some() => {
+                Some(picture_region(page, image))
+            }
             _ => None,
         })
         .filter(|region| {
@@ -560,7 +599,38 @@ fn rasterize(
 
 #[cfg(all(test, feature = "raster"))]
 mod tests {
-    use super::paragraphs_of;
+    use super::{displayed_rect, paragraphs_of};
+
+    #[test]
+    fn a_rotated_page_is_cropped_where_it_is_displayed() {
+        let geometry = |rotation| strict_ooxml_pdf::PageGeometry {
+            width: 842.0,
+            height: 595.0,
+            rotation,
+        };
+        // The whole landscape box of a page turned upright covers the upright page.
+        assert_eq!(
+            displayed_rect(geometry(90), 0.0, 0.0, 842.0, 595.0),
+            (0.0, 0.0, 595.0, 842.0)
+        );
+        // The unrotated top-left corner turns to the top-right.
+        assert_eq!(
+            displayed_rect(geometry(90), 0.0, 0.0, 100.0, 50.0),
+            (545.0, 0.0, 50.0, 100.0)
+        );
+        assert_eq!(
+            displayed_rect(geometry(270), 0.0, 0.0, 100.0, 50.0),
+            (0.0, 742.0, 50.0, 100.0)
+        );
+        assert_eq!(
+            displayed_rect(geometry(180), 0.0, 0.0, 100.0, 50.0),
+            (742.0, 545.0, 100.0, 50.0)
+        );
+        assert_eq!(
+            displayed_rect(geometry(0), 10.0, 20.0, 100.0, 50.0),
+            (10.0, 20.0, 100.0, 50.0)
+        );
+    }
     use super::policy::RECOVERED_STYLE_ID;
 
     #[test]
