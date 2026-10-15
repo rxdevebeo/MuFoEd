@@ -11,12 +11,25 @@ pub mod embedded;
 pub mod face;
 pub mod family;
 pub mod metrics;
+mod profiles;
 pub mod shape;
 mod symbol;
 #[cfg(feature = "system-fonts")]
 pub mod system;
 
 pub use symbol::present_text;
+
+/// The advance `family` measures `ch` at when it is a metric profile
+/// (`profiles`): the face drawing it is narrower or wider, and a PDF records
+/// this width so its glyphs sit where layout put them without gaps a text
+/// extractor reads as spaces (pdfium read "1 . Cover" where Caladea drew
+/// Cambria's tabular digits).
+#[must_use]
+pub fn profile_advance_em(family: &str, bold: bool, italic: bool, ch: char) -> Option<f64> {
+    profiles::for_family(family)?
+        .face(bold, italic)?
+        .advance_em(ch)
+}
 
 pub use assets::{FontAsset, FontAssetError, FontAssetLimits, FontAssets, ScriptFallback};
 pub use builtin::{bundled_families, face_source, BuiltinFontProvider, FaceSource};

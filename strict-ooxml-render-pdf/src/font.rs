@@ -299,7 +299,21 @@ impl FaceCollector {
             };
             let cid = u16::try_from(cid_to_gid.len()).unwrap_or(u16::MAX);
             cid_to_gid.push(new_gid);
-            widths.insert(cid, *gid_widths.get(&new_gid).unwrap_or(&0));
+            // A metric profile's face advances by the profiled family's
+            // widths, not the drawing face's (`profile_advance_em`).
+            let profiled = glyph.character.and_then(|ch| {
+                strict_ooxml_render_svg::font::profile_advance_em(
+                    &key.family,
+                    key.bold,
+                    key.italic,
+                    ch,
+                )
+            });
+            let width = profiled.map_or_else(
+                || *gid_widths.get(&new_gid).unwrap_or(&0),
+                |em| (em * 1000.0).round().clamp(0.0, f64::from(u16::MAX)) as u16,
+            );
+            widths.insert(cid, width);
             cluster_cids.insert((source_gid, glyph.cluster_text.clone()), cid);
             if !glyph.cluster_text.is_empty() {
                 cluster_unicode.insert(cid, glyph.cluster_text.clone());
@@ -518,6 +532,25 @@ mod tests {
         assert!(font.data.len() < 20_000, "{}", font.data.len());
         assert!(!font.is_cff, "Carlito carries glyf outlines");
         assert!(font.ascent > 0.0 && font.descent < 0.0);
+    }
+
+    /// A metric profile's glyphs advance by the profiled family's widths:
+    /// Verdana's `a` is 1230/2048 (601/1000), Arimo's own glyph 1139/2048.
+    #[test]
+    fn a_profiled_face_records_the_profile_widths() {
+        let source = face_source("Verdana", false, false).expect("Arimo for Verdana");
+        assert_eq!(source.family, "Arimo for Verdana");
+        let mut collector = FaceCollector::new();
+        collector.add(&source, false, false, 'a');
+        collector.add_notdef();
+        let key = FaceKey {
+            family: source.family.to_owned(),
+            bold: false,
+            italic: false,
+        };
+        let font = collector.build(&key, &source).expect("subset");
+        let a = font.chars.get(&'a').expect("cid of a");
+        assert_eq!(font.widths.get(a), Some(&601), "{:?}", font.widths);
     }
 
     #[test]

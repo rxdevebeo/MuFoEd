@@ -558,7 +558,7 @@ fn shape_with_program_configured(
         return None;
     }
 
-    let mut pieces = Vec::new();
+    let mut pieces: Vec<RawGlyph> = Vec::new();
     for (info, pos) in infos.iter().zip(positions.iter()) {
         let byte_start = info.cluster as usize;
         if byte_start > text.len() || !text.is_char_boundary(byte_start) {
@@ -572,9 +572,50 @@ fn shape_with_program_configured(
             glyph_id: u16::try_from(info.glyph_id).unwrap_or(0),
         });
     }
+    if program.is_none() {
+        apply_profile(&resolved, text, &mut pieces);
+    }
     let mut shaped = assemble_shaped(resolved, text, pieces);
     shaped.program = program;
     Some(shaped)
+}
+
+/// A profiled family (`profiles`) advances each one-character cluster by the
+/// family's own width; the substitute's glyph is drawn there. Ligatures and
+/// marks keep the substitute's advances.
+fn apply_profile(resolved: &ResolvedFace, text: &str, pieces: &mut [RawGlyph]) {
+    let Some(face) = super::profiles::for_family(resolved.family)
+        .and_then(|profile| profile.face(resolved.bold, resolved.italic))
+    else {
+        return;
+    };
+    let mut starts: Vec<usize> = pieces.iter().map(|piece| piece.byte_start).collect();
+    starts.sort_unstable();
+    let glyphs_at = |byte: usize| {
+        starts.partition_point(|start| *start <= byte)
+            - starts.partition_point(|start| *start < byte)
+    };
+    let mut bounds = starts.clone();
+    bounds.dedup();
+    for piece in pieces.iter_mut() {
+        if glyphs_at(piece.byte_start) != 1 {
+            continue;
+        }
+        let end = bounds
+            .get(bounds.partition_point(|start| *start <= piece.byte_start))
+            .copied()
+            .unwrap_or(text.len());
+        let Some(slice) = text.get(piece.byte_start..end) else {
+            continue;
+        };
+        let mut chars = slice.chars();
+        let (Some(ch), None) = (chars.next(), chars.next()) else {
+            continue;
+        };
+        if let Some(advance) = face.advance_em(ch) {
+            piece.advance_em = advance;
+        }
+    }
 }
 
 struct RawGlyph {

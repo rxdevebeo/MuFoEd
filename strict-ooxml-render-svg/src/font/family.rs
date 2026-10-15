@@ -74,10 +74,11 @@ fn exact_family(name: &str) -> Option<&'static str> {
         // names (STAGE-5C-REWORK-1 D1).
         // Regular PostScript names used by Cocoa RTF producers (name ID 6).
         // Font style still comes from the run's bold/italic properties.
-        // Verdana, Tahoma and Helvetica Neue: WPS sets them at Arial-metric line
-        // height (RTF 072: 16.1 pt against Carlito's 17.1 pt).
-        "arial" | "arialmt" | "helvetica" | "helvetica neue" | "helveticaneue" | "verdana"
-        | "tahoma" | "liberation sans" | "arimo" => "Arimo",
+        // Helvetica Neue: WPS sets it at Arial-metric line height (RTF 072:
+        // 16.1 pt against Carlito's 17.1 pt). Verdana and Tahoma have metric
+        // profiles of their own (`profiles`).
+        "arial" | "arialmt" | "helvetica" | "helvetica neue" | "helveticaneue"
+        | "liberation sans" | "arimo" => "Arimo",
         "times new roman" | "timesnewromanpsmt" | "liberation serif" | "tinos" => "Tinos",
         "courier new" | "liberation mono" | "cousine" => "Cousine",
         // Gelasio and Selawik are drawn to Georgia's and Segoe UI's metrics;
@@ -102,10 +103,12 @@ fn exact_family(name: &str) -> Option<&'static str> {
         "jomolhari" => "Jomolhari",
         "arimo fallback" => "Arimo Fallback",
         "tinos fallback" => "Tinos Fallback",
-        // An unknown CSS family is measured and delivered as Carlito, the bundled
-        // Calibri-metric face. Leaving the request unchanged made layout use the
-        // fallback model while the SVG named a face the viewer does not have.
-        _ => return None,
+        // A family with a metric profile is drawn by a bundled face at the
+        // family's own advances and line box (`profiles`). An unknown CSS
+        // family is measured and delivered as Carlito, the bundled
+        // Calibri-metric face. Leaving the request unchanged made layout use
+        // the fallback model while the SVG named a face the viewer does not have.
+        _ => return super::profiles::for_name(name).map(|profile| profile.family),
     })
 }
 
@@ -125,6 +128,8 @@ fn exact_family(name: &str) -> Option<&'static str> {
 /// face needs a line box twice as tall, and the requested font's box is unknown.
 #[must_use]
 pub fn script_fallback(base: &str, ch: char) -> Option<&'static str> {
+    // A profiled family falls back the way the face that draws it does.
+    let base = super::profiles::for_family(base).map_or(base, |profile| profile.substitute);
     match ch {
         '\u{0600}'..='\u{06FF}'
         | '\u{0750}'..='\u{077F}'
@@ -262,6 +267,9 @@ mod tests {
     #[test]
     fn unknown_families_use_the_bundled_fallback() {
         assert_eq!(map_family("Segoe UI Black"), "Carlito");
+        // A metric profile answers to its own delivered name too.
+        assert_eq!(map_family("Verdana"), "Arimo for Verdana");
+        assert_eq!(map_family("Arimo for Verdana"), "Arimo for Verdana");
         assert_eq!(map_family(""), "Carlito");
         assert_eq!(map_family("Not A Real Font"), "Carlito");
         // Mapping is idempotent: a second pass must not send Arimo through the
@@ -288,7 +296,7 @@ mod tests {
 
     #[test]
     fn maps_the_common_sans_families_to_arimo() {
-        for family in ["Verdana", "Tahoma", "Helvetica Neue", "HelveticaNeue"] {
+        for family in ["Helvetica Neue", "HelveticaNeue"] {
             assert_eq!(map_family(family), "Arimo", "{family}");
         }
     }
