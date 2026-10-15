@@ -2319,6 +2319,7 @@ dependencies = [
  "strict-ooxml-core",
  "strict-ooxml-djvu",
  "strict-ooxml-testkit",
+ "ureq",
 ]
 
 [[package]]

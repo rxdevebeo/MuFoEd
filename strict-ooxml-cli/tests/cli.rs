@@ -667,3 +667,116 @@ fn version_and_help_exit_zero() {
     assert_eq!(code, 0);
     assert!(stderr.contains("usage:"), "{stderr}");
 }
+
+/// Runs the binary with its font-pack cache at `cache`.
+fn run_with_font_cache(cache: &std::path::Path, args: &[&str]) -> (i32, String, String) {
+    let output = Command::new(env!("CARGO_BIN_EXE_strict-ooxml"))
+        .args(args)
+        .env("STRICTLIB_FONT_DIR", cache)
+        .output()
+        .expect("run binary");
+    (
+        output.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+fn empty_font_cache(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "strict-ooxml-cli-{}-fonts-{name}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("cache dir");
+    dir
+}
+
+/// Devanagari text in a run whose East Asian font is named in Han: only the
+/// text decides which packs a document needs.
+fn devanagari_docx() -> Vec<u8> {
+    strict_docx_with_body(
+        "<w:p><w:r><w:rPr><w:rFonts w:eastAsia=\"\u{5B8B}\u{4F53}\"/></w:rPr>\
+         <w:t>\u{928}\u{92E}\u{938}\u{94D}\u{924}\u{947}</w:t></w:r></w:p>",
+    )
+}
+
+#[test]
+fn fonts_list_shows_the_catalog_and_the_cache() {
+    let cache = empty_font_cache("list");
+    let (code, stdout, stderr) = run_with_font_cache(&cache, &["fonts", "list"]);
+    assert_eq!(code, 0, "{stderr}");
+    for id in ["cjk", "devanagari", "thai", "ethiopic"] {
+        assert!(stdout.lines().any(|line| line.starts_with(id)), "{stdout}");
+    }
+    assert!(!stdout.contains("installed"), "{stdout}");
+    assert!(stdout.contains(&cache.display().to_string()), "{stdout}");
+    let (code, _, stderr) = run_with_font_cache(&cache, &["fonts", "install", "klingon"]);
+    assert_eq!(code, 2);
+    assert!(stderr.contains("no font pack 'klingon'"), "{stderr}");
+    let _ = std::fs::remove_dir_all(&cache);
+}
+
+#[test]
+fn a_document_names_the_packs_its_text_needs() {
+    let cache = empty_font_cache("needed");
+    let path = write_temp("devanagari.docx", &devanagari_docx());
+    let file = path.to_str().unwrap();
+    let (code, stdout, stderr) = run_with_font_cache(&cache, &["fonts", "needed", file]);
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stdout.trim(), "devanagari  not installed");
+    // Nothing is downloaded without being asked: the render says what to run.
+    let pdf = cache.join("out.pdf");
+    let (code, stdout, stderr) =
+        run_with_font_cache(&cache, &["to-pdf", file, "--out", pdf.to_str().unwrap()]);
+    assert!(code < 2, "{stdout}\n{stderr}");
+    assert!(
+        stderr.contains("strict-ooxml fonts install devanagari"),
+        "{stderr}"
+    );
+    assert!(!cache.join("devanagari").exists());
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir_all(&cache);
+}
+
+#[test]
+fn a_tampered_font_pack_is_refused() {
+    let cache = empty_font_cache("tampered");
+    let pack = cache.join("devanagari");
+    std::fs::create_dir_all(&pack).unwrap();
+    // The pinned size, not the pinned bytes.
+    std::fs::write(
+        pack.join("NotoSansDevanagari[wdth,wght].ttf"),
+        vec![0u8; 641_944],
+    )
+    .unwrap();
+    std::fs::write(pack.join("OFL.txt"), b"licence").unwrap();
+    let path = write_temp("devanagari-tampered.docx", &devanagari_docx());
+    let pdf = cache.join("out.pdf");
+    let (code, stdout, stderr) = run_with_font_cache(
+        &cache,
+        &[
+            "to-pdf",
+            path.to_str().unwrap(),
+            "--out",
+            pdf.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(code, 2, "{stdout}\n{stderr}");
+    assert!(stderr.contains("pinned SHA-256"), "{stderr}");
+    assert!(!pdf.exists());
+    // `--no-font-packs` renders without it.
+    let (code, stdout, stderr) = run_with_font_cache(
+        &cache,
+        &[
+            "to-pdf",
+            path.to_str().unwrap(),
+            "--out",
+            pdf.to_str().unwrap(),
+            "--no-font-packs",
+        ],
+    );
+    assert!(code < 2, "{stdout}\n{stderr}");
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir_all(&cache);
+}

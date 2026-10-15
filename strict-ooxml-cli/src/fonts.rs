@@ -5,7 +5,10 @@
 //! [`FontAssets`]. `--system-fonts` adds the installed fonts the document
 //! names (a manifest's binding wins over an installed one). `--strict-fonts`
 //! refuses a rendering in which a font the document names is not available
-//! ([`FontPolicy::Reject`]). The set used is printed with its hash.
+//! ([`FontPolicy::Reject`]). Installed font packs (`font_packs`) the document
+//! needs are added as script fallbacks unless `--no-font-packs` is given;
+//! `--fetch-fonts` downloads the missing ones first. The set used is printed
+//! with its hash.
 
 use std::io::Read as _;
 use std::path::Path;
@@ -62,11 +65,14 @@ pub(super) struct FontArgs {
     manifest: Option<String>,
     system: bool,
     strict: bool,
+    no_packs: bool,
+    fetch: bool,
 }
 
 impl FontArgs {
-    /// Takes `--fonts <path>` or `--strict-fonts` at `args[*index]`; whether
-    /// the argument was one of them.
+    /// Takes `--fonts <path>`, `--system-fonts`, `--strict-fonts`,
+    /// `--no-font-packs` or `--fetch-fonts` at `args[*index]`; whether the
+    /// argument was one of them.
     pub(super) fn take(&mut self, args: &[String], index: &mut usize) -> Result<bool, String> {
         match args.get(*index).map(String::as_str) {
             Some("--fonts") => {
@@ -86,13 +92,21 @@ impl FontArgs {
                 self.system = true;
                 Ok(true)
             }
+            Some("--no-font-packs") => {
+                self.no_packs = true;
+                Ok(true)
+            }
+            Some("--fetch-fonts") => {
+                self.fetch = true;
+                Ok(true)
+            }
             _ => Ok(false),
         }
     }
 
     /// Whether any font option was given.
     pub(super) fn is_set(&self) -> bool {
-        self.manifest.is_some() || self.system || self.strict
+        self.manifest.is_some() || self.system || self.strict || self.no_packs || self.fetch
     }
 
     /// `options` with the fonts and the policy these arguments ask for, for
@@ -114,6 +128,15 @@ impl FontArgs {
             let pinned: Vec<_> = assets.iter().map(FontAsset::key).collect();
             assets.extend(
                 installed
+                    .into_iter()
+                    .filter(|asset| !pinned.contains(&asset.key())),
+            );
+        }
+        if !self.no_packs {
+            let packs = super::font_packs::assets_for(document, self.fetch, limits)?;
+            let pinned: Vec<_> = assets.iter().map(FontAsset::key).collect();
+            assets.extend(
+                packs
                     .into_iter()
                     .filter(|asset| !pinned.contains(&asset.key())),
             );
@@ -192,7 +215,7 @@ fn load(manifest_path: &str) -> Result<Vec<FontAsset>, String> {
     Ok(assets)
 }
 
-fn decode_sha256(text: &str) -> Option<[u8; 32]> {
+pub(super) fn decode_sha256(text: &str) -> Option<[u8; 32]> {
     let text = text.trim();
     if text.len() != 64 || !text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
