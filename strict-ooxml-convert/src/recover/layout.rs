@@ -565,7 +565,10 @@ fn build_items(
             language: options.recovery_language.clone(),
         };
         for paragraph_text in paragraph_texts(block.kind, &text) {
-            items.push(RecoveredItem::Paragraph(paragraph(&paragraph_text, &style)));
+            items.push(RecoveredItem::Paragraph(Box::new(paragraph(
+                &paragraph_text,
+                &style,
+            ))));
         }
         previous_bottom = Some(measured.area.bottom);
     }

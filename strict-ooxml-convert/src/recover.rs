@@ -119,7 +119,7 @@ pub(crate) struct RecoveredBlock {
 #[derive(Clone, Debug)]
 pub(crate) enum RecoveredItem {
     /// A paragraph of text a model read.
-    Paragraph(Paragraph),
+    Paragraph(Box<Paragraph>),
     /// A part of the page cut out as a picture.
     Picture(RecoveredPicture),
 }
@@ -211,10 +211,10 @@ pub(crate) fn recover_pages(
             (regions_of(page, options), Ask::Page)
         };
         for region in regions {
-            let rasterized = rasterize(&rasterizer, page, &region, options)
+            let raster_result = rasterize(&rasterizer, page, &region, options)
                 .and_then(|(pixels, scale)| pixels.to_png().map(|png| (pixels, scale, png)));
-            let (pixels, scale, request) = match rasterized {
-                Ok(rasterized) => rasterized,
+            let (pixels, scale, request) = match raster_result {
+                Ok(raster) => raster,
                 Err(error) => {
                     report.record(
                         "text.recovery",
@@ -285,7 +285,7 @@ pub(crate) fn recover_pages(
                     out.blocks.entry(index).or_default().push(RecoveredBlock {
                         items: paragraphs
                             .into_iter()
-                            .map(RecoveredItem::Paragraph)
+                            .map(|paragraph| RecoveredItem::Paragraph(Box::new(paragraph)))
                             .collect(),
                     });
                 }

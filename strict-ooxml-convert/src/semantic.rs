@@ -817,7 +817,9 @@ pub(crate) fn recovered_blocks(
     let mut out = Vec::with_capacity(block.items.len());
     for item in &block.items {
         match item {
-            RecoveredItem::Paragraph(paragraph) => out.push(Block::Paragraph(paragraph.clone())),
+            RecoveredItem::Paragraph(paragraph) => {
+                out.push(Block::Paragraph(paragraph.as_ref().clone()));
+            }
             RecoveredItem::Picture(picture) => match media.add(index, &picture.image) {
                 Ok(part) => out.push(Block::Paragraph(sized_image_paragraph(
                     picture.width,
