@@ -46,7 +46,7 @@ strict-ooxml report    <file.docx> [--json|--text] [--out <path>] [--transitiona
 strict-ooxml render    <file.docx> [--out <dir|page.svg>] [--pages 1-3] [--scale 96] [--wps-times]
 strict-ooxml normalize <file.docx>                       # Loss Report for Transitional
 strict-ooxml to-pdf    <file.docx> --out <file.pdf>      # Stage 8B
-strict-ooxml from-pdf  <file.pdf>  --out <file.docx>     # Stage 8C+
+strict-ooxml from-pdf  <file.pdf>  --out <file.docx> [--pages 1-10] [--ocr]  # Stage 8C+
 strict-ooxml write     <file.docx> --out <file.docx>     # Stage 8A
 strict-ooxml fonts     list | install <pack...> | needed <file.docx>
 ```
@@ -69,6 +69,12 @@ packs into a local cache, with every file pinned by SHA-256, and `render` and
 `to-pdf` then use the installed packs that a document's text needs. Nothing is
 downloaded unless asked; `--fetch-fonts` on a render fetches the missing packs
 first, and `--no-font-packs` renders without them.
+
+A scanned PDF has no text to convert. `from-pdf --ocr` (a build with
+`--features ocr-ollama`) shows each page with no text to a local Ollama vision
+model (`OLLAMA_HOST`, `OLLAMA_MODEL`, or `--ocr-endpoint` and `--ocr-model`) and
+writes what it reads as paragraphs in the `Recovered` style, each one named in
+the report. `to-pdf` then turns that DOCX into a PDF with real text.
 
 Every line the CLI prints passes through one escaping step: C0/C1 control
 characters from document text (part names, relationship targets, loss details)

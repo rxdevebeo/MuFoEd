@@ -179,7 +179,7 @@ fn print_usage() {
     eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
     eprintln!("  from-djvu       import DjVu to Strict DOCX --out <file.docx> [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr]");
     eprintln!("  djvu-dump       inspect DjVu chunk headers and text-layer states");
-    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--no-images] [--report-out <json>] (--out is required)");
+    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr [--ocr-model <name>] [--ocr-endpoint <url>]] [--report-out <json>] (--out is required)");
     eprintln!("  import-rtf      import .rtf to Strict .docx (--out required); writes .rtf-report.json beside output; --wps-text --allow-unsigned-unicode --drop-nul --reject-unsupported are explicit opt-ins");
     eprintln!("  write           serialize the model back to a Strict .docx [--report-out <json>] (--out is required)");
 }
@@ -732,9 +732,32 @@ fn run_from_pdf(args: &[String]) -> ExitCode {
     let mut report_out: Option<&str> = None;
     let mut mode = strict_ooxml::Mode::Semantic;
     let mut no_images = false;
+    let mut pages: Option<(usize, usize)> = None;
+    let mut ocr = OcrArgs::default();
     let mut index = 0;
     while index < args.len() {
+        match ocr.take(args, &mut index) {
+            Ok(true) => {
+                index += 1;
+                continue;
+            }
+            Ok(false) => {}
+            Err(error) => {
+                eprintln!("error: {error}");
+                return ExitCode::from(EXIT_ERROR);
+            }
+        }
         match args[index].as_str() {
+            "--pages" => {
+                index += 1;
+                pages = match args.get(index).map(String::as_str).map(parse_page_span) {
+                    Some(Some(span)) => Some(span),
+                    _ => {
+                        eprintln!("error: '--pages' expects 1-based N or N-M");
+                        return ExitCode::from(EXIT_ERROR);
+                    }
+                };
+            }
             "--mode" => {
                 index += 1;
                 let Some(value) = args.get(index).map(String::as_str) else {
@@ -785,6 +808,10 @@ fn run_from_pdf(args: &[String]) -> ExitCode {
         eprintln!("error: 'from-pdf' requires a PDF path and --out <file.docx>");
         return ExitCode::from(EXIT_ERROR);
     };
+    if let Err(error) = ocr.check_unused() {
+        eprintln!("error: {error}");
+        return ExitCode::from(EXIT_ERROR);
+    }
 
     let bytes = match std::fs::read(file) {
         Ok(bytes) => bytes,
@@ -801,9 +828,14 @@ fn run_from_pdf(args: &[String]) -> ExitCode {
                 return ExitCode::from(EXIT_ERROR);
             }
         };
-    let options = strict_ooxml::PdfOptions::default()
+    let mut options = strict_ooxml::PdfOptions::default()
         .mode(mode)
         .embed_images(!no_images);
+    options.pages = pages;
+    if let Err(error) = ocr.apply(&mut options) {
+        eprintln!("error: {error}");
+        return ExitCode::from(EXIT_ERROR);
+    }
     let converted = match strict_ooxml::convert_pdf(&mut reader, &options) {
         Ok(converted) => converted,
         Err(error) => {
@@ -1212,4 +1244,88 @@ fn terminal_safe(text: &str) -> std::borrow::Cow<'_, str> {
 
 fn is_unsafe_control(ch: char) -> bool {
     ch.is_control() && ch != '\n' && ch != '\t'
+}
+
+/// `--pages N` or `--pages N-M`, 1-based and ascending.
+fn parse_page_span(value: &str) -> Option<(usize, usize)> {
+    let (first, last) = value.split_once('-').unwrap_or((value, value));
+    let (first, last) = (first.trim().parse().ok()?, last.trim().parse().ok()?);
+    (first >= 1 && first <= last).then_some((first, last))
+}
+
+/// `from-pdf --ocr [--ocr-model <name>] [--ocr-endpoint <url>]`: scanned pages
+/// are read by a local Ollama vision model. Without `--ocr` nothing is asked
+/// and a page with no text is reported as lost.
+#[derive(Default)]
+struct OcrArgs {
+    enabled: bool,
+    model: Option<String>,
+    endpoint: Option<String>,
+}
+
+impl OcrArgs {
+    /// Takes an OCR option at `args[*index]`; whether it was one.
+    fn take(&mut self, args: &[String], index: &mut usize) -> Result<bool, String> {
+        let flag = args.get(*index).map_or("", String::as_str);
+        match flag {
+            "--ocr" => self.enabled = true,
+            "--ocr-model" | "--ocr-endpoint" => {
+                *index += 1;
+                let value = args
+                    .get(*index)
+                    .filter(|value| !value.is_empty() && !value.starts_with("--"))
+                    .ok_or_else(|| format!("'{flag}' requires a value"))?
+                    .clone();
+                if flag == "--ocr-model" {
+                    self.model = Some(value);
+                } else {
+                    self.endpoint = Some(value);
+                }
+            }
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
+    /// Installs the model on `options` when `--ocr` was given.
+    #[cfg(feature = "ocr-ollama")]
+    fn apply(self, options: &mut strict_ooxml::PdfOptions) -> Result<(), String> {
+        if !self.enabled {
+            return self.check_unused();
+        }
+        let mut config = strict_ooxml::OllamaConfig::from_env();
+        if let Some(model) = self.model {
+            config.model = model;
+        }
+        if let Some(endpoint) = self.endpoint {
+            config.endpoint = endpoint;
+        }
+        eprintln!(
+            "ocr: scanned pages go to {} at {}",
+            config.model, config.endpoint
+        );
+        let vision = Arc::new(strict_ooxml::OllamaVision::new(config));
+        options.text_recovery = Some(vision.clone());
+        options.figure_classifier = Some(vision);
+        Ok(())
+    }
+
+    #[cfg(not(feature = "ocr-ollama"))]
+    fn apply(self, _options: &mut strict_ooxml::PdfOptions) -> Result<(), String> {
+        if self.enabled {
+            return Err(
+                "--ocr requires a build with --features ocr-ollama (no model request was made)"
+                    .to_owned(),
+            );
+        }
+        self.check_unused()
+    }
+
+    /// Model settings without `--ocr` are a mistake, not a no-op.
+    fn check_unused(&self) -> Result<(), String> {
+        if !self.enabled && (self.model.is_some() || self.endpoint.is_some()) {
+            return Err("OCR configuration requires --ocr".to_owned());
+        }
+        Ok(())
+    }
 }

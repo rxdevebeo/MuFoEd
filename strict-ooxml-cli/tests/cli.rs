@@ -780,3 +780,29 @@ fn a_tampered_font_pack_is_refused() {
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_dir_all(&cache);
 }
+
+#[test]
+fn from_pdf_checks_its_ocr_and_page_options() {
+    let (code, _, stderr) = run(&[
+        "from-pdf",
+        "missing.pdf",
+        "--out",
+        "out.docx",
+        "--ocr-model",
+        "some-model",
+    ]);
+    assert_eq!(code, 2);
+    assert!(stderr.contains("requires --ocr"), "{stderr}");
+    for pages in ["0", "3-2", "x"] {
+        let (code, _, stderr) = run(&[
+            "from-pdf",
+            "missing.pdf",
+            "--out",
+            "out.docx",
+            "--pages",
+            pages,
+        ]);
+        assert_eq!(code, 2, "{pages}");
+        assert!(stderr.contains("'--pages'"), "{pages}: {stderr}");
+    }
+}
