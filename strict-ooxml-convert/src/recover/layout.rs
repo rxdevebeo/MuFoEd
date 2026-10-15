@@ -241,7 +241,10 @@ impl Ink {
                 }
             }
             let thin = (right - left) * 100 < columns * 6 || (bottom - top) * 100 < rows * 6;
-            if cells * 100 >= columns * rows && !thin {
+            // A ring (tinted margins around white panels, a scan's shadow on
+            // three sides) is no picture: its box would hold the whole page.
+            let solid = cells * 2 >= (right - left) * (bottom - top);
+            if cells * 100 >= columns * rows && !thin && solid {
                 regions.push(PixelBox {
                     left: left * CELL,
                     top: top * CELL,
@@ -1951,6 +1954,23 @@ mod tests {
         let region = regions[0];
         assert!(region.left <= 112 && region.right >= 352, "{region:?}");
         assert!(region.top <= 400 && region.bottom >= 752, "{region:?}");
+    }
+
+    #[test]
+    fn a_ring_of_colour_is_not_a_picture() {
+        // Tinted margins around a white page: a frame, not a picture.
+        let pixels = coloured(
+            800,
+            800,
+            [190, 180, 160],
+            &[
+                (0, 0, 800, 80),
+                (0, 720, 800, 800),
+                (0, 0, 80, 800),
+                (720, 0, 800, 800),
+            ],
+        );
+        assert!(Ink::of(&pixels).filled_regions().is_empty());
     }
 
     #[test]
