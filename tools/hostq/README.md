@@ -241,3 +241,12 @@ The full stdout+stderr of every step is in `out\<id>.log`. Artifacts are in
 - **`corpus-scan` errors "absent in the main copy"**: the set is gitignored
   and must exist under `testdata\` in the main copy; `ping` lists which
   corpora are present.
+
+## Load on the host
+
+Every step runs at below-normal priority (cargo's rustc, the linker and the
+test binaries inherit it), and cargo gets half the logical processors for
+`CARGO_BUILD_JOBS` and `RUST_TEST_THREADS` unless the executor's environment
+sets them. The workspace's dev profile carries line tables only for its own
+crates and no debug info for dependencies, which keeps the test binaries'
+links and PDBs small.

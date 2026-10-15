@@ -255,6 +255,9 @@ function Invoke-Logged {
     $errText = ''
     try {
         $proc = [System.Diagnostics.Process]::Start($psi)
+        # Below normal: a gate shares the machine with its owner. Children
+        # (cargo -> rustc, link.exe, test binaries) inherit the class.
+        try { $proc.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch { }
         $outTask = $proc.StandardOutput.ReadToEndAsync()
         $errTask = $proc.StandardError.ReadToEndAsync()
         if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
@@ -738,11 +741,19 @@ function Save-StepOutput {
     Write-Utf8NoBom -Path $Path -Text ([string]$Step.stdout + "`n" + [string]$Step.stderr)
 }
 
+# Half the logical processors for rustc jobs and test threads unless the
+# owner set CARGO_BUILD_JOBS / RUST_TEST_THREADS: a full-width build left the
+# machine unusable while a gate ran.
+$script:HalfCores = [Math]::Max(1, [int][Math]::Floor([Environment]::ProcessorCount / 2))
+
 function Get-CargoEnv {
     param([string]$Target)
     # CARGO_TERM_COLOR: CI sets `always`; the executor sets `never` so the
     # log and the `test result:` parsing see no ANSI escapes.
-    return @{ CARGO_TARGET_DIR = $Target; CARGO_TERM_COLOR = 'never' }
+    $envs = @{ CARGO_TARGET_DIR = $Target; CARGO_TERM_COLOR = 'never' }
+    if (-not $env:CARGO_BUILD_JOBS) { $envs['CARGO_BUILD_JOBS'] = [string]$script:HalfCores }
+    if (-not $env:RUST_TEST_THREADS) { $envs['RUST_TEST_THREADS'] = [string]$script:HalfCores }
+    return $envs
 }
 
 # ---------------------------------------------------------------------------
