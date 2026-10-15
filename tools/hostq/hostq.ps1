@@ -392,6 +392,7 @@ function Get-MainState {
 
 $script:AllowedFields = @{
     'ping'        = @('id', 'kind')
+    'limits'      = @('id', 'kind')
     'git-info'    = @('id', 'kind', 'rev', 'range')
     'gate'        = @('id', 'kind', 'sha', 'steps')
     'pixels'      = @('id', 'kind', 'sha')
@@ -1277,6 +1278,46 @@ function Invoke-GitInfo {
     return (New-Result $status $reason $steps @())
 }
 
+# The resource limits, tried on the live host: the summary the executor took
+# at start, then a child process (in the job, as every step is) that commits
+# memory in 256 MB blocks until it is refused. It passes when the refusal
+# comes at or below the job's ceiling. The child runs only when the job
+# object is in place, so a missing limit cannot take the machine.
+$script:LimitsResult = 'not applied'
+$script:LimitBytes = [uint64]0
+$script:LimitsSummary = 'limits not applied'
+
+function Invoke-Limits {
+    param([string]$Repo, [string]$OutDir)
+    $steps = @()
+    $steps += New-InfoStep -Name 'limits' -Cmd 'Enable-ResourceLimits' -Exit ([int](-not $script:LimitsResult.StartsWith('ok'))) -Tail $script:LimitsSummary
+    if (-not $script:LimitsResult.StartsWith('ok')) {
+        return (New-Result 'failed' 'the job object is not in place; the allocation test was not run' $steps @())
+    }
+    $cap = $script:LimitBytes
+    $child = @"
+`$cap = [uint64]$cap
+`$blocks = New-Object System.Collections.Generic.List[byte[]]
+`$total = [uint64]0
+try {
+    while (`$total -lt (`$cap + 1GB)) { `$blocks.Add((New-Object byte[] (256MB))); `$total += 256MB }
+    'ALLOCATED ' + `$total
+} catch {
+    'REFUSED ' + `$total + ' ' + `$_.Exception.GetType().Name
+}
+"@
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($child))
+    $alloc = Invoke-Logged -Name 'memory-ceiling' -Exe 'powershell.exe' -Arguments @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded) -WorkDir $Repo -TimeoutSec 600 -OutDir $OutDir
+    $text = [string]$alloc.stdout
+    $refused = $text -match 'REFUSED (\d+)'
+    $at = if ($refused) { [uint64]$Matches[1] } else { [uint64]0 }
+    $ok = $refused -and ($at -le $cap)
+    $steps += New-InfoStep -Name 'memory-ceiling-verdict' -Cmd 'refused at or below the ceiling' -Exit ([int](-not $ok)) -Tail ("{0}; ceiling {1:N1} GB, refused after {2:N1} GB" -f $text.Trim(), ($cap / 1GB), ($at / 1GB))
+    $status = if ($ok) { 'ok' } else { 'failed' }
+    $reason = if ($ok) { '' } else { 'the child was not refused at the ceiling' }
+    return (New-Result $status $reason $steps @())
+}
+
 function Invoke-Ping {
     param([string]$Repo, [string]$OutDir)
     $tc = $script:Toolchain
@@ -1421,6 +1462,7 @@ function Invoke-JobFile {
             $r = $null
             switch ($kind) {
                 'ping' { $r = Invoke-Ping -Repo $Repo -OutDir $outDir }
+                'limits' { $r = Invoke-Limits -Repo $Repo -OutDir $outDir }
                 'git-info' { $r = Invoke-GitInfo -Repo $Repo -Job $job -OutDir $outDir }
                 'gate' {
                     $only = @()
@@ -2053,6 +2095,9 @@ public static class HostqJob {
 '@
     }
     $result = [HostqJob]::Apply($limitBytes, [uint32]$cpuPercent)
+    $script:LimitsResult = $result
+    $script:LimitBytes = $limitBytes
+    $script:LimitsSummary = ("limits {0}: memory {1:N1} GB ({2}% of {3:N1} GB), cpu {4}%, below normal, cargo jobs {5}" -f $result, $limitGb, $memoryPercent, ($totalBytes / 1GB), $cpuPercent, $script:HalfCores)
     Write-Host ("hostq: limits {0} (memory {1:N1} GB = {2}% of {3:N1} GB, cpu {4}%, below normal, cargo jobs {5})" -f $result, $limitGb, $memoryPercent, ($totalBytes / 1GB), $cpuPercent, $script:HalfCores)
 }
 
