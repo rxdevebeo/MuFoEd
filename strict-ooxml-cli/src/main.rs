@@ -20,6 +20,9 @@
 //! - `write <file.docx> --out <file.docx>` — serializes the parsed model back
 //!   to a Strict package (Stage 8A) and prints what the writer could not
 //!   express.
+//! - `fonts list|install|remove|needed|path` — the font packs for scripts the
+//!   bundle does not draw (CJK, Indic, Thai, ...), fetched only on request
+//!   (`font_packs`).
 //!
 //! Exit codes for `check` (per `TZ-STRICT-OOXML-RUST.md` decision G.8 and
 //! `STAGE-3-TASK.md` §7.2):
@@ -63,6 +66,7 @@ macro_rules! eprintln {
 }
 
 mod djvu;
+mod font_packs;
 mod fonts;
 mod rtf;
 
@@ -133,6 +137,13 @@ fn run_command() -> ExitCode {
         Some("import-rtf") => rtf::run(&args.collect::<Vec<_>>()),
         Some("write") => run_write(&args.collect::<Vec<_>>()),
         Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
+        Some("fonts") => match font_packs::run(&args.collect::<Vec<_>>()) {
+            Ok(()) => ExitCode::from(EXIT_OK),
+            Err(error) => {
+                eprintln!("error: {error}");
+                ExitCode::from(EXIT_ERROR)
+            }
+        },
         Some("--help" | "-h" | "help") | None => {
             print_usage();
             ExitCode::from(EXIT_OK)
@@ -151,16 +162,19 @@ fn run_command() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|import-rtf|write|normalize> <file> \
+        "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|import-rtf|write|normalize|fonts> <file> \
          [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
          [--no-floating] [--no-math] [--wps-times] [--cell-nowrap=spec|always] [--transitional] \
-         [--fonts <manifest.json>] [--system-fonts] [--strict-fonts]"
+         [--fonts <manifest.json>] [--system-fonts] [--strict-fonts] [--fetch-fonts] [--no-font-packs]"
     );
     eprintln!();
     eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
     eprintln!("  --fonts         render/to-pdf: also use the fonts a strictlib.font-assets.v1 manifest pins");
     eprintln!("  --system-fonts  render/to-pdf: also use the installed fonts the document names (output then depends on the machine)");
     eprintln!("  --strict-fonts  render/to-pdf: refuse to render when a font the document names is unavailable");
+    eprintln!("  --fetch-fonts   render/to-pdf: download the font packs the document's scripts need before rendering");
+    eprintln!("  --no-font-packs render/to-pdf: do not use installed font packs");
+    eprintln!("  fonts           font packs for CJK, Indic and other scripts: list | install <pack...|all> | remove <pack...|all> | needed <file> | path");
     eprintln!("  normalize       open a Transitional package and print the Loss Report");
     eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
     eprintln!("  from-djvu       import DjVu to Strict DOCX --out <file.docx> [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr]");

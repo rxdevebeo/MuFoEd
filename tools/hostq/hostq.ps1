@@ -400,7 +400,7 @@ $script:AllowedFields = @{
     'corpus-scan' = @('id', 'kind', 'sha', 'set')
     'bench'       = @('id', 'kind', 'sha', 'bench')
     'wps'         = @('id', 'kind', 'sha')
-    'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts', 'font_pack')
+    'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts', 'font_pack', 'font_packs')
     'rtf'         = @('id', 'kind', 'sha')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
@@ -561,7 +561,7 @@ function Test-JobRecord {
                     return (& $reject 'limit must be an integer 0..100000')
                 }
             }
-            foreach ($flag in @('capture', 'recompare', 'system_fonts')) {
+            foreach ($flag in @('capture', 'recompare', 'system_fonts', 'font_packs')) {
                 if ($fields -contains $flag -and $Job.$flag -isnot [bool]) {
                     return (& $reject ("{0} must be true or false" -f $flag))
                 }
@@ -1177,6 +1177,25 @@ function Invoke-WpsQa {
         $label += '-' + [string]$Job.font_pack
         $renderExtra += @('--to-pdf-arg=--fonts', ('--to-pdf-arg=' + $manifest))
     }
+    # The CLI's runtime font packs (strict-ooxml fonts): every render sees a
+    # cache of the executor's own, never the owner's. Empty unless
+    # `font_packs` asks for the whole catalog, installed before the render and
+    # named in the label, so a label means one set of fonts.
+    $packDir = Join-Path $QueueDir 'font-packs-none'
+    $usePacks = $null -ne $Job.PSObject.Properties['font_packs'] -and [bool]$Job.font_packs
+    if ($usePacks) {
+        $packDir = Join-Path $QueueDir 'font-packs'
+        $label += '-packs'
+    }
+    New-Item -ItemType Directory -Force -Path $packDir | Out-Null
+    $packEnv = @{ STRICTLIB_FONT_DIR = $packDir }
+    if ($usePacks) {
+        $install = Invoke-Logged -Name 'font-packs-install' -Exe $cli -Arguments @('fonts', 'install', 'all') -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $packEnv -OutDir $OutDir
+        $steps += $install
+        if ($install.timedout -or $install.exit -ne 0) {
+            return (New-Result (Get-StepsStatus $steps) 'wps-qa: the font packs did not install' $steps @())
+        }
+    }
     $store = Join-Path $Repo 'wps-qa'
     $scope = @('--data-root', $Repo, '--store', $store)
     if ($null -ne $Job.PSObject.Properties['corpus']) {
@@ -1200,7 +1219,7 @@ function Invoke-WpsQa {
     $artifacts = @()
     foreach ($run in $runs) {
         $name = [string]$run[0]
-        $step = Invoke-Logged -Name ('wps-qa-' + $name) -Exe $script:Python -Arguments (@('-X', 'utf8', 'xtool/wps-qa/wps_qa.py') + [string[]]$run[1]) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
+        $step = Invoke-Logged -Name ('wps-qa-' + $name) -Exe $script:Python -Arguments (@('-X', 'utf8', 'xtool/wps-qa/wps_qa.py') + [string[]]$run[1]) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $packEnv -OutDir $OutDir
         $steps += $step
         $p = Join-Path $OutDir ('wps-qa-' + $name + '.txt')
         Save-StepOutput -Step $step -Path $p

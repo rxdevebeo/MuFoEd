@@ -19,7 +19,10 @@ path = "src/main.rs"
 doc = false
 
 [features]
-default = []
+# `fonts install` and `--fetch-fonts` download font packs over HTTPS; without
+# the feature the CLI stays offline and uses only packs already in the cache.
+default = ["font-download"]
+font-download = ["dep:ureq"]
 ocr-ollama = ["strict-ooxml/ocr-ollama"]
 
 [dependencies]
@@ -29,6 +32,9 @@ strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write", "pdf", "convert", "rtf", "djvu-image", "system-fonts"] }
 serde.workspace = true
 serde_json.workspace = true
+# The HTTPS client `strict-ooxml-ocr` and `xtool` already lock: ureq 3 with its
+# default rustls + webpki-roots.
+ureq = { version = "3", optional = true }
 
 [dev-dependencies]
 strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }
