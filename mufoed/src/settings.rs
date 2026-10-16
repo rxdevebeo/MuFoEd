@@ -31,6 +31,8 @@ pub(crate) struct Settings {
     pub(crate) ocr_model: String,
     /// Recognition language hint, empty for none.
     pub(crate) ocr_language: String,
+    /// The name comments are signed with.
+    pub(crate) author: String,
 }
 
 impl Default for Settings {
@@ -57,6 +59,9 @@ impl Default for Settings {
             ocr_endpoint: endpoint,
             ocr_model: model,
             ocr_language: String::new(),
+            author: std::env::var("USERNAME")
+                .or_else(|_| std::env::var("USER"))
+                .unwrap_or_default(),
         }
     }
 }

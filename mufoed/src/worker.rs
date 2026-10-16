@@ -83,6 +83,8 @@ pub(crate) enum Request {
     HeaderFooter(HeaderFooterCommand),
     /// Footnotes, bookmarks, the table of contents.
     References(ReferenceCommand),
+    /// Comments.
+    Comments(CommentCommand),
     /// Indent the selected paragraphs one step more (or, `false`, less): a
     /// list item a level deeper or shallower.
     IndentStep(bool),
@@ -594,6 +596,43 @@ pub(crate) struct ClipObject {
     pub(crate) bytes: Option<Vec<u8>>,
 }
 
+/// What can be done with comments.
+#[derive(Clone, Debug)]
+pub(crate) enum CommentCommand {
+    /// A comment on the selection (or the word at the caret), empty, by
+    /// this author.
+    Add {
+        author: String,
+        initials: String,
+    },
+    /// The comment's text.
+    Edit {
+        id: String,
+        text: String,
+    },
+    Delete(String),
+    /// Select the text the comment is about.
+    Select(String),
+    /// The next (or previous) comment's text selected.
+    Step {
+        back: bool,
+    },
+}
+
+/// A comment as the pane shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct CommentView {
+    pub(crate) id: String,
+    pub(crate) author: String,
+    pub(crate) date: String,
+    pub(crate) text: String,
+    /// The page its text is on, and where on it, for the order of the pane.
+    pub(crate) page: usize,
+    pub(crate) y: f64,
+    /// Where the text it is about is drawn.
+    pub(crate) rects: Vec<VisualRect>,
+}
+
 /// Footnotes, bookmarks and the table of contents.
 #[derive(Clone, Debug)]
 pub(crate) enum ReferenceCommand {
@@ -747,6 +786,10 @@ pub(crate) enum Reply {
     Clipboard(String),
     /// The drawings of what was copied, after its text.
     ClipboardObjects(Box<ClipObjects>),
+    /// The comments, in the order of the text.
+    Comments(Vec<CommentView>),
+    /// A comment was added: the pane edits its text.
+    CommentAdded(String),
     /// A picture's bytes, asked for by `ObjectCommand::Export`.
     Picture {
         id: u32,
@@ -1226,6 +1269,7 @@ impl<'a, 's> Worker<'a, 's> {
             Request::List(preset) => self.list(preset),
             Request::HeaderFooter(command) => self.header_footer(command),
             Request::References(command) => self.references(command),
+            Request::Comments(command) => self.comments(command),
             Request::IndentStep(more) => self.indent_step(more),
             Request::Indent([left, right, first]) => {
                 use strict_ooxml::model::values::Indentation;
@@ -1343,6 +1387,8 @@ impl<'a, 's> Worker<'a, 's> {
         };
         crate::trace::log(|| format!("caret map took {} ms", pages_at.elapsed().as_millis()));
         self.send(Reply::Busy(None));
+        let comments = self.comment_views();
+        self.send(Reply::Comments(comments));
         let outline = self.build_outline();
         if outline != self.outline {
             self.outline.clone_from(&outline);
@@ -2548,6 +2594,227 @@ impl<'a, 's> Worker<'a, 's> {
             picture: matches!(graphic, Some(Graphic::Picture(_))),
             wrap: wrap_style(&drawing),
         })
+    }
+
+    // ----- comments -----------------------------------------------------
+
+    /// Each comment's marks in the body: its range start, range end and
+    /// reference, as (paragraph, top-level inline index).
+    fn comment_marks(&self, id: &str) -> Vec<(Address, usize, CommentMark)> {
+        use strict_ooxml::model::{Inline, RunContent};
+        let mut out = Vec::new();
+        for address in self.paragraphs(&Story::Body) {
+            let Some(paragraph) = self.paragraph(&address) else {
+                continue;
+            };
+            for (index, inline) in paragraph.inlines.iter().enumerate() {
+                let mark = match inline {
+                    Inline::CommentRangeStart(c) if c.as_str() == id => Some(CommentMark::Start),
+                    Inline::CommentRangeEnd(c) if c.as_str() == id => Some(CommentMark::End),
+                    Inline::CommentReference(c) if c.as_str() == id => Some(CommentMark::Reference),
+                    Inline::Run(run)
+                        if run.content.len() == 1
+                            && matches!(run.content.first(), Some(RunContent::CommentReference(c)) if c.to_string() == id) =>
+                    {
+                        Some(CommentMark::Reference)
+                    }
+                    _ => None,
+                };
+                if let Some(mark) = mark {
+                    out.push((address.clone(), index, mark));
+                }
+            }
+        }
+        out
+    }
+
+    /// The text a comment is about, as carets: from its range start to its
+    /// range end (or its reference).
+    fn comment_range(&self, id: &str) -> Option<(Logical, Logical)> {
+        let marks = self.comment_marks(id);
+        let at = |kind: CommentMark| {
+            marks
+                .iter()
+                .find(|(_, _, mark)| *mark == kind)
+                .map(|(paragraph, index, _)| Logical {
+                    offset: self.offset_of_inline(paragraph, *index),
+                    paragraph: paragraph.clone(),
+                })
+        };
+        let end = at(CommentMark::End).or_else(|| at(CommentMark::Reference))?;
+        let start = at(CommentMark::Start).unwrap_or_else(|| end.clone());
+        Some((start, end))
+    }
+
+    fn comment_views(&self) -> Vec<CommentView> {
+        let document = self.session.document();
+        let revision = self.session.revision();
+        let mut views: Vec<CommentView> = document
+            .comments
+            .iter()
+            .map(|comment| {
+                let id = comment.id.as_str().to_owned();
+                let rects = self
+                    .comment_range(&id)
+                    .zip(self.map.as_ref())
+                    .map(|((start, end), map)| {
+                        let (a, b) = (self.position(&start), self.position(&end));
+                        if start == end {
+                            map.caret(revision, &a).unwrap_or_default()
+                        } else {
+                            map.selection_between(revision, &a, &b).unwrap_or_default()
+                        }
+                    })
+                    .unwrap_or_default();
+                let first = rects.first().copied();
+                CommentView {
+                    text: comment_text(&comment.blocks),
+                    author: comment.author.as_deref().unwrap_or_default().to_owned(),
+                    date: comment.date.as_deref().unwrap_or_default().to_owned(),
+                    page: first.map_or(usize::MAX, |r| r.page),
+                    y: first.map_or(0.0, |r| r.y),
+                    rects,
+                    id,
+                }
+            })
+            .collect();
+        views.sort_by(|a, b| {
+            (a.page, a.y)
+                .partial_cmp(&(b.page, b.y))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        views
+    }
+
+    fn comments(&mut self, command: CommentCommand) -> Outcome {
+        use strict_ooxml::edit::{comment_blocks, new_comment, Definition};
+        use strict_ooxml::model::{CommentId, Inline};
+        match command {
+            CommentCommand::Add { author, initials } => {
+                let Some(caret) = self.caret.clone() else {
+                    return Outcome::Quiet;
+                };
+                if caret.paragraph.story != Story::Body {
+                    self.note("note.comments_in_body", String::new(), false);
+                    return Outcome::Quiet;
+                }
+                // The selection, else the word at the caret.
+                let (start, end) = self.selection().unwrap_or_else(|| {
+                    let text = self.text_of(&caret.paragraph);
+                    nav::word_at(&text, caret.offset).map_or_else(
+                        || (caret.clone(), caret.clone()),
+                        |range| {
+                            (
+                                Logical {
+                                    paragraph: caret.paragraph.clone(),
+                                    offset: range.start,
+                                },
+                                Logical {
+                                    paragraph: caret.paragraph.clone(),
+                                    offset: range.end,
+                                },
+                            )
+                        },
+                    )
+                });
+                let comment =
+                    new_comment(self.session.document(), &author, &initials, &now_iso(), "");
+                let id = comment.id.clone();
+                let end_marks = vec![
+                    Inline::CommentRangeEnd(id.clone()),
+                    Inline::CommentReference(id.clone()),
+                ];
+                let commands = if start == end {
+                    let mut marks = vec![Inline::CommentRangeStart(id.clone())];
+                    marks.extend(end_marks);
+                    self.inlines_at_caret(&start, marks)
+                } else {
+                    let mut commands = self.inlines_at_caret(&end, end_marks);
+                    commands.extend(
+                        self.inline_at_caret(&start, Inline::CommentRangeStart(id.clone())),
+                    );
+                    commands
+                };
+                let outcome = self
+                    .define_and_transact(&[Definition::AddComment(Box::new(comment))], &commands);
+                if matches!(outcome, Outcome::Edited) {
+                    self.anchor = None;
+                    self.send(Reply::CommentAdded(id.as_str().to_owned()));
+                }
+                outcome
+            }
+            CommentCommand::Edit { id, text } => {
+                let Some(mut comment) = self
+                    .session
+                    .document()
+                    .comments
+                    .iter()
+                    .find(|c| c.id.as_str() == id)
+                    .cloned()
+                else {
+                    return Outcome::Quiet;
+                };
+                if comment_text(&comment.blocks) == text {
+                    return Outcome::Quiet;
+                }
+                comment.blocks = comment_blocks(&text);
+                self.define_and_transact(&[Definition::ReplaceComment(Box::new(comment))], &[])
+            }
+            CommentCommand::Delete(id) => {
+                let paragraphs = self.paragraphs(&Story::Body);
+                let order = |a: &Address| paragraphs.iter().position(|p| p == a).unwrap_or(0);
+                let mut marks = self.comment_marks(&id);
+                marks.sort_by_key(|(at, index, _)| std::cmp::Reverse((order(at), *index)));
+                let commands: Vec<Edit> = marks
+                    .into_iter()
+                    .map(|(at, index, _)| Edit::DeleteInline { at, index })
+                    .collect();
+                self.define_and_transact(
+                    &[Definition::DeleteComment(CommentId::new(id))],
+                    &commands,
+                )
+            }
+            CommentCommand::Select(id) => self.select_comment(&id),
+            CommentCommand::Step { back } => {
+                let views = self.comment_views();
+                let here = self
+                    .caret
+                    .as_ref()
+                    .and_then(|caret| {
+                        let revision = self.session.revision();
+                        self.map
+                            .as_ref()?
+                            .caret(revision, &self.position(caret))
+                            .ok()?
+                            .first()
+                            .map(|r| (r.page, r.y))
+                    })
+                    .unwrap_or((0, 0.0));
+                let target = if back {
+                    views.iter().rev().find(|v| (v.page, v.y) < here)
+                } else {
+                    views
+                        .iter()
+                        .find(|v| (v.page, v.y) > (here.0, here.1 + 0.5))
+                };
+                match target.map(|v| v.id.clone()) {
+                    Some(id) => self.select_comment(&id),
+                    None => Outcome::Quiet,
+                }
+            }
+        }
+    }
+
+    fn select_comment(&mut self, id: &str) -> Outcome {
+        let Some((start, end)) = self.comment_range(id) else {
+            return Outcome::Quiet;
+        };
+        self.story = Story::Body;
+        self.object = None;
+        self.cells = None;
+        self.anchor = (start != end).then_some(start);
+        self.caret = Some(end);
+        Outcome::Moved
     }
 
     // ----- references ---------------------------------------------------
@@ -6404,6 +6671,56 @@ fn rewrapped(
     }
 }
 
+/// A comment mark in the text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CommentMark {
+    Start,
+    End,
+    Reference,
+}
+
+/// A comment's text, one line per paragraph.
+fn comment_text(blocks: &[Block]) -> String {
+    let lines: Vec<String> = blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(
+                nav::pieces(paragraph)
+                    .iter()
+                    .map(|piece| piece.text.as_str())
+                    .collect::<String>(),
+            ),
+            _ => None,
+        })
+        .collect();
+    lines.join("\n")
+}
+
+/// Now, as an ISO 8601 UTC time (`2026-10-17T09:30:00Z`).
+fn now_iso() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let days = i64::try_from(seconds / 86_400).unwrap_or(0);
+    let rest = seconds % 86_400;
+    // Days to a civil date (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rest / 3600,
+        rest % 3600 / 60,
+        rest % 60
+    )
+}
+
 /// The media part a picture drawing shows.
 fn picture_part(drawing: &strict_ooxml::model::Drawing) -> Option<strict_ooxml_core::part::PartId> {
     use strict_ooxml::model::{DrawingKind, Graphic};
@@ -7267,6 +7584,71 @@ mod tests {
                 break;
             }
         }
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    fn comment_list(replies: &Receiver<Reply>) -> Vec<CommentView> {
+        wait(replies, |reply| match reply {
+            Reply::Comments(list) => Some(list),
+            Reply::Note(note) if note.error => panic!("{}: {}", note.key, note.detail),
+            _ => None,
+        })
+    }
+
+    /// A comment on the word at the caret: added empty, given its text,
+    /// listed with where its word is, deleted with its marks.
+    #[test]
+    fn comments_are_added_edited_and_deleted() {
+        let (requests, replies) = new_document();
+        send_all(
+            &requests,
+            vec![
+                Request::Type("one two".to_owned()),
+                Request::Comments(CommentCommand::Add {
+                    author: "Ann".to_owned(),
+                    initials: "A".to_owned(),
+                }),
+            ],
+        );
+        let id = wait(&replies, |reply| match reply {
+            Reply::CommentAdded(id) => Some(id),
+            _ => None,
+        });
+        requests
+            .send(Request::Comments(CommentCommand::Edit {
+                id: id.clone(),
+                text: "Why two?".to_owned(),
+            }))
+            .unwrap();
+        let list = loop {
+            let list = comment_list(&replies);
+            if list.first().is_some_and(|c| c.text == "Why two?") {
+                break list;
+            }
+        };
+        let comment = list.first().expect("the comment");
+        assert_eq!(comment.author, "Ann");
+        assert!(
+            comment.date.ends_with('Z') && comment.date.len() == 20,
+            "{}",
+            comment.date
+        );
+        // The word, on one line (one rect per run it falls in).
+        let width: f64 = comment.rects.iter().map(|r| r.width).sum();
+        assert!(width > 10.0, "{:?}", comment.rects);
+        assert!(comment
+            .rects
+            .iter()
+            .all(|r| (r.y - comment.rects[0].y).abs() < 0.5));
+        requests
+            .send(Request::Comments(CommentCommand::Delete(id)))
+            .unwrap();
+        loop {
+            if comment_list(&replies).is_empty() {
+                break;
+            }
+        }
+        assert_eq!(body_text(&requests, &replies), "one two");
         requests.send(Request::Shutdown).unwrap();
     }
 

@@ -29,6 +29,7 @@ pub(crate) enum Icon {
     Picture,
     Print,
     Toc,
+    Comment,
     Footnote,
     Bookmark,
     Header,
@@ -408,6 +409,33 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                 color,
                 Stroke::NONE,
             ));
+        }
+        Icon::Comment => {
+            // A speech balloon.
+            let body = Rect::from_min_max(
+                r.left_top() + vec2(0.0, r.height() * 0.08),
+                pos2(r.right(), r.bottom() - r.height() * 0.25),
+            );
+            painter.rect_filled(body, 3.0, accent);
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    pos2(body.left() + body.width() * 0.25, body.bottom() - 1.0),
+                    pos2(body.left() + body.width() * 0.45, body.bottom() - 1.0),
+                    pos2(body.left() + body.width() * 0.2, r.bottom()),
+                ],
+                accent,
+                Stroke::NONE,
+            ));
+            for i in 0..2u8 {
+                let y = body.top() + body.height() * (0.35 + 0.3 * f32::from(i));
+                painter.line_segment(
+                    [
+                        pos2(body.left() + body.width() * 0.2, y),
+                        pos2(body.right() - body.width() * 0.2, y),
+                    ],
+                    stroke(Color32::WHITE, thin * 1.2),
+                );
+            }
         }
         Icon::Toc => {
             page(painter, page_rect, color, paper);

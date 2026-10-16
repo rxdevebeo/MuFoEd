@@ -40,6 +40,8 @@ pub(crate) enum TabEvent {
     },
     Loaded,
     Failed(String),
+    /// A comment was added: show the pane.
+    CommentAdded,
 }
 
 /// What happens once a pending save finishes.
@@ -169,6 +171,12 @@ pub(crate) struct DocTab {
     pub(crate) outline: Vec<OutlineEntry>,
     /// What the worker is busy with.
     pub(crate) busy: Option<Busy>,
+    /// The document's comments, in the order of the text.
+    pub(crate) comments: Vec<crate::worker::CommentView>,
+    /// The comment whose text the pane edits, and the text so far.
+    pub(crate) editing_comment: Option<(String, String)>,
+    /// Comments were there once, so the pane was shown.
+    comments_seen: bool,
     pub(crate) zoom: f32,
     pub(crate) view: ViewState,
     pub(crate) after_save: Option<AfterSave>,
@@ -207,6 +215,9 @@ impl DocTab {
             state: EditState::default(),
             outline: Vec::new(),
             busy: None,
+            comments: Vec::new(),
+            editing_comment: None,
+            comments_seen: false,
             zoom,
             view: ViewState::new(),
             after_save: None,
@@ -273,6 +284,19 @@ impl DocTab {
             }
             Reply::State(state) => self.state = state,
             Reply::Outline(outline) => self.outline = outline,
+            Reply::Comments(comments) => {
+                // A document's comments show the pane the first time they
+                // are there.
+                if self.comments.is_empty() && !comments.is_empty() && !self.comments_seen {
+                    self.comments_seen = true;
+                    events.push(TabEvent::CommentAdded);
+                }
+                self.comments = comments;
+            }
+            Reply::CommentAdded(id) => {
+                self.editing_comment = Some((id, String::new()));
+                events.push(TabEvent::CommentAdded);
+            }
             Reply::Busy(busy) => self.busy = busy,
             Reply::Note(note) => events.push(TabEvent::Note(note)),
             Reply::Clipboard(text) => events.push(TabEvent::Clipboard(text)),

@@ -13,6 +13,7 @@ use crate::app::{Action, Dialog, Zoom};
 use crate::i18n::I18n;
 use crate::icons::{self, Icon};
 use crate::theme::{self, Palette};
+use crate::worker::CommentCommand;
 use crate::worker::{
     Align, CaretFormat, EditState, ExportPurpose, FormatChange, HeaderFooterCommand, Insert,
     ObjectCommand, ObjectView, PageChange, PictureEdit, ReferenceCommand, Request, StyleEntry,
@@ -82,6 +83,8 @@ pub(crate) struct RibbonState<'a> {
     pub(crate) object: Option<&'a ObjectView>,
     /// Its handles crop instead of resizing.
     pub(crate) crop: bool,
+    /// The comments pane is shown.
+    pub(crate) comments_open: bool,
     /// The header or footer being edited.
     pub(crate) header_footer: Option<&'a crate::worker::HeaderFooterView>,
     /// Faces to draw font names in.
@@ -2414,6 +2417,53 @@ fn review(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
         ) {
             actions.push(Action::Open(Dialog::WordCount));
         }
+    });
+    group(ui, s.t("group.comments"), p, |ui| {
+        if big_clicked(
+            ui,
+            Icon::Comment,
+            s.t("cmd.new_comment"),
+            s.t("tip.new_comment"),
+            editable,
+            p,
+        ) {
+            actions.push(Action::NewComment);
+        }
+        column(ui, |ui| {
+            let items = [
+                Small::new(
+                    Icon::Undo,
+                    s.t("cmd.previous_comment"),
+                    s.t("tip.previous_comment"),
+                    s.document,
+                ),
+                Small::new(
+                    Icon::Redo,
+                    s.t("cmd.next_comment"),
+                    s.t("tip.next_comment"),
+                    s.document,
+                ),
+                Small::new(
+                    Icon::Comment,
+                    s.t("cmd.show_comments"),
+                    s.t("tip.show_comments"),
+                    s.document,
+                )
+                .with_on(s.comments_open),
+            ];
+            match small_column(ui, &items, p) {
+                Some(0) => doc(
+                    actions,
+                    Request::Comments(CommentCommand::Step { back: true }),
+                ),
+                Some(1) => doc(
+                    actions,
+                    Request::Comments(CommentCommand::Step { back: false }),
+                ),
+                Some(_) => actions.push(Action::ToggleComments),
+                None => {}
+            }
+        });
     });
     group(ui, s.t("group.changes"), p, |ui| {
         if big_clicked(

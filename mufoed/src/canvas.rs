@@ -330,6 +330,22 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                     );
                     Some(r.translate(offset))
                 };
+                // The text comments are about, lit; the one being edited more.
+                let editing = tab.editing_comment.as_ref().map(|(id, _)| id.clone());
+                for comment in &tab.comments {
+                    let fill = if editing.as_deref() == Some(comment.id.as_str()) {
+                        Color32::from_rgba_unmultiplied(255, 196, 0, 110)
+                    } else {
+                        Color32::from_rgba_unmultiplied(255, 214, 90, 70)
+                    };
+                    for rect in &comment.rects {
+                        if let Some(screen) =
+                            to_screen(rect.page, rect.x, rect.y, rect.width.max(2.0), rect.height)
+                        {
+                            painter.rect_filled(screen, 0.0, fill);
+                        }
+                    }
+                }
                 if let Some(cursor) = &tab.cursor {
                     for rect in &cursor.selection {
                         if let Some(screen) =

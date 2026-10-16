@@ -14,11 +14,11 @@ use crate::ribbon::{self, RibbonState, RibbonTab};
 use crate::settings::{self, Settings};
 use crate::tab::{AfterSave, DocTab, Status, TabEvent};
 use crate::theme::{self, Palette};
-use crate::worker::ReferenceCommand;
 use crate::worker::{
     Align, Busy, CaretFormat, EditState, ExportPurpose, FindQuery, FormatChange,
     HeaderFooterCommand, Insert, Motion, ObjectCommand, PictureEdit, Request, SaveFormat,
 };
+use crate::worker::{CommentCommand, ReferenceCommand};
 
 /// Everything a click can ask for.
 pub(crate) enum Action {
@@ -50,6 +50,9 @@ pub(crate) enum Action {
     ToggleReport,
     ToggleNavigation,
     ToggleRuler,
+    ToggleComments,
+    /// A comment on the selection, by the user.
+    NewComment,
     PrintDialog,
     /// Insert or update the table of contents.
     TableOfContents,
@@ -246,6 +249,8 @@ pub(crate) struct App {
     find_open: bool,
     find_replace: bool,
     report_open: bool,
+    /// The comments pane is shown.
+    comments_open: bool,
     font_color: [u8; 3],
     status: Option<StatusLine>,
     next_id: u64,
@@ -311,6 +316,7 @@ impl App {
             find_open: false,
             find_replace: false,
             report_open: false,
+            comments_open: false,
             font_color: [192, 0, 0],
             status: None,
             next_id: 1,
@@ -731,6 +737,17 @@ impl App {
                     })));
                 }
             }
+            Action::ToggleComments => self.comments_open = !self.comments_open,
+            Action::NewComment => {
+                let author = self.settings.author.clone();
+                let initials: String = author
+                    .split_whitespace()
+                    .filter_map(|word| word.chars().next())
+                    .collect();
+                if let Some(tab) = self.active_tab() {
+                    tab.send(Request::Comments(CommentCommand::Add { author, initials }));
+                }
+            }
             Action::ToggleRuler => {
                 self.settings.ruler = !self.settings.ruler;
                 self.settings.save();
@@ -856,6 +873,7 @@ impl App {
                             }
                         }
                     }
+                    TabEvent::CommentAdded => self.comments_open = true,
                     TabEvent::Loaded => {
                         messages.push((
                             self.i18n.tf("status.opened", &[("file", &tab.title)]),
@@ -1322,6 +1340,18 @@ impl eframe::App for App {
                         .frame(egui::Frame::new().fill(palette.ribbon).inner_margin(8))
                         .show(ui, |ui| self.navigation_ui(ui, &mut actions));
                 }
+                let has_comments = self
+                    .active_tab()
+                    .is_some_and(|tab| !tab.comments.is_empty());
+                let _ = has_comments;
+                if self.comments_open && self.active_tab().is_some() {
+                    egui::Panel::right("comments")
+                        .resizable(true)
+                        .default_size(300.0)
+                        .size_range(220.0..=560.0)
+                        .frame(egui::Frame::new().fill(palette.ribbon).inner_margin(10))
+                        .show(ui, |ui| self.comments_ui(ui, palette));
+                }
                 if self.report_open {
                     egui::Panel::right("report")
                         .resizable(true)
@@ -1684,6 +1714,7 @@ impl App {
                 .and_then(|tab| tab.cursor.as_ref())
                 .and_then(|cursor| cursor.object.as_ref()),
             crop: tab.is_some_and(|tab| tab.view.crop),
+            comments_open: self.comments_open,
             header_footer: tab
                 .and_then(|tab| tab.cursor.as_ref())
                 .and_then(|cursor| cursor.header_footer.as_ref()),
@@ -1908,6 +1939,134 @@ impl App {
                         }
                     });
             });
+    }
+
+    /// The comments pane: a card per comment, in the order of the text; the
+    /// one being edited has a text box.
+    fn comments_ui(&mut self, ui: &mut egui::Ui, palette: Palette) {
+        let close = self.t("button.close").to_owned();
+        let title = self.t("comments.title").to_owned();
+        let empty = self.t("comments.none").to_owned();
+        let edit_label = self.t("comments.edit").to_owned();
+        let delete_label = self.t("comments.delete").to_owned();
+        let done_label = self.t("comments.done").to_owned();
+        let hint = self.t("comments.hint").to_owned();
+        let mut closing = false;
+        ui.horizontal(|ui| {
+            icons::icon_widget(ui, Icon::Comment, 16.0, theme::ACCENT);
+            ui.label(RichText::new(&title).family(FontFamily::Name(theme::BOLD.into())));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.small_button("×").on_hover_text(&close).clicked() {
+                    closing = true;
+                }
+            });
+        });
+        if closing {
+            self.comments_open = false;
+            return;
+        }
+        ui.add_space(6.0);
+        let Some(index) = self.active else {
+            return;
+        };
+        let Some(tab) = self.tabs.get_mut(index) else {
+            return;
+        };
+        let mut requests = Vec::new();
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            if tab.comments.is_empty() {
+                ui.label(RichText::new(&empty).weak());
+            }
+            for comment in &tab.comments {
+                let editing = tab
+                    .editing_comment
+                    .as_ref()
+                    .is_some_and(|(id, _)| *id == comment.id);
+                let frame = egui::Frame::new()
+                    .fill(if editing {
+                        palette.pressed
+                    } else {
+                        ui.visuals().extreme_bg_color
+                    })
+                    .stroke(Stroke::new(
+                        1.0,
+                        if editing {
+                            theme::ACCENT
+                        } else {
+                            palette.button_border
+                        },
+                    ))
+                    .corner_radius(6)
+                    .inner_margin(egui::Margin::symmetric(10, 8));
+                let response = frame
+                    .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(if comment.author.is_empty() {
+                                    "—"
+                                } else {
+                                    &comment.author
+                                })
+                                .family(FontFamily::Name(theme::BOLD.into())),
+                            );
+                            ui.label(
+                                RichText::new(comment.date.replace('T', " ").trim_end_matches('Z'))
+                                    .weak()
+                                    .size(11.0),
+                            );
+                        });
+                        ui.add_space(4.0);
+                        if editing {
+                            if let Some((_, draft)) = tab.editing_comment.as_mut() {
+                                let field = ui.add(
+                                    egui::TextEdit::multiline(draft)
+                                        .desired_rows(3)
+                                        .desired_width(f32::INFINITY)
+                                        .hint_text(&hint),
+                                );
+                                field.request_focus();
+                                ui.add_space(4.0);
+                                ui.horizontal(|ui| {
+                                    if ui.button(&done_label).clicked() {
+                                        requests.push(CommentCommand::Edit {
+                                            id: comment.id.clone(),
+                                            text: draft.clone(),
+                                        });
+                                    }
+                                });
+                            }
+                        } else {
+                            ui.label(&comment.text);
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                if ui.small_button(&edit_label).clicked() {
+                                    requests.push(CommentCommand::Select(comment.id.clone()));
+                                    tab.editing_comment =
+                                        Some((comment.id.clone(), comment.text.clone()));
+                                }
+                                if ui.small_button(&delete_label).clicked() {
+                                    requests.push(CommentCommand::Delete(comment.id.clone()));
+                                }
+                            });
+                        }
+                    })
+                    .response;
+                if response.interact(Sense::click()).clicked() && !editing {
+                    requests.push(CommentCommand::Select(comment.id.clone()));
+                }
+                ui.add_space(8.0);
+            }
+        });
+        for request in requests {
+            if matches!(
+                request,
+                CommentCommand::Edit { .. } | CommentCommand::Delete(_)
+            ) {
+                tab.editing_comment = None;
+            }
+            tab.send(Request::Comments(request));
+        }
     }
 
     fn report_ui(&mut self, ui: &mut egui::Ui) {
@@ -2848,6 +3007,9 @@ impl App {
                             ui.end_row();
                             ui.label(t("settings.ocr_model"));
                             ui.text_edit_singleline(&mut self.settings.ocr_model);
+                            ui.end_row();
+                            ui.label(t("settings.author"));
+                            ui.text_edit_singleline(&mut self.settings.author);
                             ui.end_row();
                             ui.label(t("settings.ocr_language"));
                             ui.add(
