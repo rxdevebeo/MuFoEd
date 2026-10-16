@@ -498,15 +498,40 @@ fn body_size(lines: &[GlyphLine]) -> f64 {
 /// a space is put between them unless one is there. Wider gaps (a tab stop, a
 /// table column, a second text column) still end the line.
 fn join_fragments(lines: Vec<GlyphLine>) -> Vec<GlyphLine> {
-    let mut out: Vec<GlyphLine> = Vec::with_capacity(lines.len());
+    // Rows: fragments on one baseline and of one size. A producer may draw a
+    // line's bold words or another font's after the rest, so a fragment is
+    // matched with the last few rows, not only the one before it.
+    const LOOKBACK: usize = 4;
+    let mut rows: Vec<Vec<GlyphLine>> = Vec::new();
     for line in lines {
-        if let Some(previous) = out.last_mut() {
+        let found = rows.iter().rev().take(LOOKBACK).position(|row| {
+            row.first().is_some_and(|first| {
+                let size = first.size.max(line.size);
+                (first.baseline - line.baseline).abs() < size * 0.1
+                    && (first.size - line.size).abs() < size * 0.2
+            })
+        });
+        match found.and_then(|back| rows.len().checked_sub(back + 1)) {
+            Some(index) => {
+                if let Some(row) = rows.get_mut(index) {
+                    row.push(line);
+                }
+            }
+            None => rows.push(vec![line]),
+        }
+    }
+    let mut out: Vec<GlyphLine> = Vec::new();
+    for mut row in rows {
+        row.sort_by(|a, b| a.x.total_cmp(&b.x));
+        let mut current: Option<GlyphLine> = None;
+        for line in row {
+            let Some(previous) = current.as_mut() else {
+                current = Some(line);
+                continue;
+            };
             let end = previous.x + previous.width;
             let gap = line.x - end;
-            let same_row = (previous.baseline - line.baseline).abs()
-                < previous.size.max(line.size) * 0.1
-                && (previous.size - line.size).abs() < previous.size.max(line.size) * 0.2;
-            if same_row && gap > -0.5 && gap <= previous.size.max(line.size) * 2.5 {
+            if gap > -0.5 && gap <= previous.size.max(line.size) * 2.5 {
                 let spaced = previous
                     .glyphs
                     .last()
@@ -525,12 +550,13 @@ fn join_fragments(lines: Vec<GlyphLine>) -> Vec<GlyphLine> {
                         });
                     }
                 }
-                previous.width = line.x + line.width - previous.x;
+                previous.width = (line.x + line.width - previous.x).max(previous.width);
                 previous.glyphs.extend(line.glyphs);
-                continue;
+            } else if let Some(done) = current.replace(line) {
+                out.push(done);
             }
         }
-        out.push(line);
+        out.extend(current);
     }
     out
 }
@@ -1135,6 +1161,19 @@ mod fragment_tests {
             width,
             glyphs: vec![glyph],
         }
+    }
+
+    #[test]
+    fn a_bold_word_drawn_after_its_line_joins_it() {
+        let mut bold = run("15.12.2026.", 300.0, 45.0);
+        bold.glyphs[0].font = "Amalia-Bold".to_owned();
+        let lines = join_fragments(vec![
+            run("stupaju na snagu ", 230.0, 68.0),
+            run("godine.", 348.0, 30.0),
+            bold,
+        ]);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text(), "stupaju na snagu 15.12.2026. godine.");
     }
 
     #[test]
