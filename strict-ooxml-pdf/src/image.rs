@@ -123,7 +123,9 @@ impl Encoded {
         // colour is all black and whose shape is all mask (how Word writes a
         // signature) is otherwise a black box.
         let with_alpha = match (components, self.alpha_channel()) {
-            (1 | 3, Some(alpha)) if alpha.len() == width as usize * height as usize => {
+            (1 | 3, Some(alpha))
+                if (width as usize).checked_mul(height as usize) == Some(alpha.len()) =>
+            {
                 Some(interleave_alpha(samples, components, &alpha))
             }
             _ => None,
@@ -150,7 +152,7 @@ impl Encoded {
 /// interleaved buffer.
 fn interleave_alpha(samples: &[u8], components: u8, alpha: &[u8]) -> Vec<u8> {
     let step = usize::from(components);
-    let mut out = Vec::with_capacity(samples.len() + alpha.len());
+    let mut out = Vec::with_capacity(samples.len().saturating_add(alpha.len()));
     for (pixel, opacity) in samples.chunks_exact(step).zip(alpha) {
         out.extend_from_slice(pixel);
         out.push(*opacity);
@@ -163,7 +165,7 @@ fn interleave_alpha(samples: &[u8], components: u8, alpha: &[u8]) -> Vec<u8> {
 fn fit_mask(mask: &[u8], from: (u32, u32), to: (u32, u32)) -> Option<Vec<u8>> {
     let (mask_width, mask_height) = (from.0 as usize, from.1 as usize);
     let (width, height) = (to.0 as usize, to.1 as usize);
-    if mask.len() != mask_width.checked_mul(mask_height)? || mask_width == 0 || mask_height == 0 {
+    if mask_width == 0 || mask_height == 0 || mask.len() != mask_width.checked_mul(mask_height)? {
         return None;
     }
     if (mask_width, mask_height) == (width, height) {
@@ -171,9 +173,11 @@ fn fit_mask(mask: &[u8], from: (u32, u32), to: (u32, u32)) -> Option<Vec<u8>> {
     }
     let mut out = Vec::with_capacity(width.checked_mul(height)?);
     for row in 0..height {
-        let source_row = row * mask_height / height;
+        let source_row = row.checked_mul(mask_height)?.checked_div(height)?;
+        let line = mask.get(source_row.checked_mul(mask_width)?..)?;
         for column in 0..width {
-            out.push(mask[source_row * mask_width + column * mask_width / width]);
+            let source_column = column.checked_mul(mask_width)?.checked_div(width)?;
+            out.push(*line.get(source_column)?);
         }
     }
     Some(out)
@@ -531,56 +535,71 @@ fn decode_inner(
     // PNG's transparency alive through the conversion.
     if let Ok(mask_id) = dictionary.get(b"SMask").and_then(Object::as_reference) {
         if let Some((mask, _, _)) = mask_of(mask_id) {
-            match (&mut encoded, &mask) {
-                (Encoded::Jpeg { alpha: slot, .. }, _) => {
-                    *slot = Some(Box::new(mask));
-                }
-                (
-                    Encoded::Raw {
-                        width,
-                        height,
-                        samples,
-                        components,
-                        alpha,
-                    },
-                    Encoded::Raw {
-                        width: mask_width,
-                        height: mask_height,
-                        samples: mask_samples,
-                        components: 1,
-                        ..
-                    },
-                ) => {
-                    if let Some(fitted) =
-                        fit_mask(mask_samples, (*mask_width, *mask_height), (*width, *height))
-                    {
-                        let matte = document
-                            .get_object(mask_id)
-                            .and_then(Object::as_stream)
-                            .ok()
-                            .and_then(|mask| mask.dict.get(b"Matte").ok())
-                            .and_then(|matte| matte.as_array().ok())
-                            .map(|items| {
-                                items
-                                    .iter()
-                                    .filter_map(|item| {
-                                        resolve.get(item).and_then(|value| value.as_float().ok())
-                                    })
-                                    .map(f64::from)
-                                    .collect::<Vec<_>>()
-                            });
-                        if let Some(matte) = matte {
-                            let samples: &mut Vec<u8> = Arc::make_mut(samples);
-                            unmatte(samples, *components, &fitted, &matte);
-                        }
-                        *alpha = Some(Arc::new(fitted));
-                    }
-                }
-                _ => {}
-            }
+            attach_mask(&mut encoded, mask, mask_id, document);
         }
     }
     Ok((encoded, width, height))
+}
+
+/// Gives a decoded picture its soft mask: a JPEG carries it beside its bytes,
+/// raw samples get it as their alpha channel at their own size, with colours
+/// premultiplied against `/Matte` restored.
+fn attach_mask(
+    encoded: &mut Encoded,
+    mask: Encoded,
+    mask_id: lopdf::ObjectId,
+    document: &lopdf::Document,
+) {
+    let resolve = resolver(document);
+    match (encoded, &mask) {
+        (Encoded::Jpeg { alpha: slot, .. }, _) => {
+            *slot = Some(Box::new(mask));
+        }
+        (
+            Encoded::Raw {
+                width,
+                height,
+                samples,
+                components,
+                alpha,
+            },
+            Encoded::Raw {
+                width: mask_width,
+                height: mask_height,
+                samples: mask_samples,
+                components: 1,
+                ..
+            },
+        ) => {
+            let Some(fitted) =
+                fit_mask(mask_samples, (*mask_width, *mask_height), (*width, *height))
+            else {
+                return;
+            };
+            let matte = document
+                .get_object(mask_id)
+                .and_then(Object::as_stream)
+                .ok()
+                .and_then(|mask| mask.dict.get(b"Matte").ok())
+                .and_then(|matte| resolve.get(matte))
+                .and_then(|matte| matte.as_array().ok())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| {
+                            resolve.get(item).and_then(|value| value.as_float().ok())
+                        })
+                        .map(f64::from)
+                        .collect::<Vec<_>>()
+                });
+            if let Some(matte) = matte {
+                let samples: &mut Vec<u8> = Arc::make_mut(samples);
+                unmatte(samples, *components, &fitted, &matte);
+            }
+            *alpha = Some(Arc::new(fitted));
+        }
+        _ => {}
+    }
 }
 
 /// The filter chain of a stream, as names.

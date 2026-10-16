@@ -12,7 +12,8 @@ use strict_ooxml_wml::model::inline::Inline;
 use strict_ooxml_wml::model::Block;
 
 /// A Letter page: a heading, a row of two pictures with nothing beside them,
-/// a picture with a line of text beside it and one with text set over it.
+/// a picture with a line of text beside it, one with text set over it and
+/// one across an empty line.
 fn letter() -> Vec<u8> {
     let mut pdf = PdfBuilder::new();
     let font = pdf.object(
@@ -33,7 +34,10 @@ fn letter() -> Vec<u8> {
                   q 100 0 0 50 300 400 cm /Im1 Do Q\n\
                   BT /F1 12 Tf 72 420 Td (Beside) Tj ET\n\
                   q 200 0 0 50 72 200 cm /Im1 Do Q\n\
-                  BT /F1 12 Tf 80 220 Td (Over) Tj ET";
+                  BT /F1 12 Tf 80 220 Td (Over) Tj ET\n\
+                  q 100 0 0 50 300 100 cm /Im1 Do Q\n\
+                  BT /F1 12 Tf 72 120 Td (   ) Tj ET\n\
+                  BT /F1 12 Tf 72 60 Td (End) Tj ET";
     pdf.page_with(stream.as_bytes(), &resources);
     pdf.build()
 }
@@ -57,6 +61,7 @@ fn anchors(blocks: &[Block]) -> Vec<(usize, &AnchorDrawing)> {
     out
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn points(anchor: &AnchorDrawing) -> (f64, f64) {
     let at = |position: &Option<strict_ooxml_wml::model::drawing::Position>| {
         position
@@ -75,7 +80,7 @@ fn pictures_are_anchored_where_the_page_put_them() {
         convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
     let blocks = &converted.document.body.blocks;
     let found = anchors(blocks);
-    assert_eq!(found.len(), 4, "every picture is anchored");
+    assert_eq!(found.len(), 5, "every picture is anchored");
     // All held by the page's first paragraph, which carries its text too:
     // no paragraph exists only to hold a picture.
     assert!(found.iter().all(|(index, _)| *index == found[0].0));
@@ -106,6 +111,10 @@ fn pictures_are_anchored_where_the_page_put_them() {
     assert_eq!((placed[2].1, placed[2].2), (WrapKind::Square, false));
     assert!(near(placed[3].0, (72.0, 542.0)), "{placed:?}");
     assert_eq!((placed[3].1, placed[3].2), (WrapKind::None, true));
+    // The empty line holds the picture's room already: it pushes nothing and
+    // stays in front.
+    assert!(near(placed[4].0, (300.0, 642.0)), "{placed:?}");
+    assert_eq!((placed[4].1, placed[4].2), (WrapKind::None, false));
 }
 
 #[test]
