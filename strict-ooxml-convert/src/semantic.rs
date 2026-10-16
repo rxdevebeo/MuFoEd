@@ -152,7 +152,10 @@ pub(crate) fn build(
         let raw_lines = join_fragments(strict_ooxml_pdf::text::lines(page.items()));
         report.lines += raw_lines.len();
         let column_plan = crate::columns::plan(page, &raw_lines, report);
-        let lines = crate::columns::apply(raw_lines, &column_plan);
+        let lines = margin_lines_in_place(
+            crate::columns::apply(raw_lines, &column_plan),
+            page.geometry.height,
+        );
         let body = body_size(&lines);
         let pitch = body_pitch(&lines);
         let plan = tables::plan(
@@ -339,7 +342,9 @@ fn paragraphs_of(
             }
             paragraph = Some(fresh);
         } else if let Some(paragraph) = paragraph.as_mut() {
-            set_line_gap(paragraph, line, body);
+            if let Some(previous) = previous {
+                set_line_gap(paragraph, line, line.baseline - previous.baseline);
+            }
         }
         // The marker's line is *all* marker, and the character is in the
         // numbering definition now — see lists for why that moves a character
@@ -529,6 +534,12 @@ fn join_fragments(lines: Vec<GlyphLine>) -> Vec<GlyphLine> {
                 current = Some(line);
                 continue;
             };
+            // The space a producer draws after a list's marker, in a font
+            // of its own, belongs to neither: it is dropped, and the marker
+            // stays a marker.
+            if is_marker(previous) && line.text().trim().is_empty() {
+                continue;
+            }
             let end = previous.x + previous.width;
             let gap = line.x - end;
             // A list's marker and its text are two runs on one baseline, and
@@ -562,6 +573,27 @@ fn join_fragments(lines: Vec<GlyphLine>) -> Vec<GlyphLine> {
         out.extend(current);
     }
     out
+}
+
+/// The page's running header first and its footer last, whatever order they
+/// were drawn in: Word draws a page's footer before its body, and the
+/// footer's lines opened the converted page. A line in the top tenth of the
+/// page goes before the others, one in the bottom tenth after; each group
+/// keeps its order.
+fn margin_lines_in_place(lines: Vec<GlyphLine>, height: f64) -> Vec<GlyphLine> {
+    let (mut top, mut body, mut bottom) = (Vec::new(), Vec::new(), Vec::new());
+    for line in lines {
+        if line.baseline < height * 0.1 {
+            top.push(line);
+        } else if line.baseline > height * 0.9 {
+            bottom.push(line);
+        } else {
+            body.push(line);
+        }
+    }
+    top.extend(body);
+    top.extend(bottom);
+    top
 }
 
 /// Whether a run is nothing but a list marker: one bullet character, or a
@@ -666,11 +698,18 @@ fn new_paragraph(line: &GlyphLine, heading: Option<u8>, origin: f64) -> Paragrap
 }
 
 /// Sets the leading a wrapped line needs, so the second line lands on the PDF's
-/// baseline rather than on the first one's.
-fn set_line_gap(paragraph: &mut Paragraph, line: &GlyphLine, body: f64) {
-    let pitch = line.size - body;
+/// baseline rather than on the first one's: the distance between the two
+/// baselines, exactly. It was the line's size less the body's - nothing for
+/// running text, and below zero for a footer set smaller than the body, whose
+/// lines then printed over each other. Two lines on one baseline (a marker and
+/// its text) or a gap a paragraph would not hold set nothing.
+fn set_line_gap(paragraph: &mut Paragraph, line: &GlyphLine, pitch: f64) {
+    if !(pitch >= line.size * 0.8 && pitch <= line.size * 3.0) {
+        return;
+    }
     paragraph.props.spacing = Some(Spacing {
         line: Some(Twips(to_twips(pitch))),
+        line_rule: Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact),
         ..Spacing::default()
     });
 }
@@ -707,16 +746,95 @@ fn push_runs_from(paragraph: &mut Paragraph, line: &GlyphLine, skip: usize) {
 #[must_use]
 fn run_properties(glyph: &Glyph) -> RunProperties {
     let [red, green, blue] = glyph.color.to_rgb8();
+    let face = FontName::of(&glyph.font);
+    let on = |set: bool| {
+        if set {
+            strict_ooxml_wml::model::values::TriState::On
+        } else {
+            strict_ooxml_wml::model::values::TriState::Absent
+        }
+    };
     RunProperties {
         fonts: Some(Fonts {
-            ascii: Some(Arc::from(glyph.font.as_str())),
-            h_ansi: Some(Arc::from(glyph.font.as_str())),
+            ascii: Some(Arc::from(face.family.as_str())),
+            h_ansi: Some(Arc::from(face.family.as_str())),
             ..Fonts::default()
         }),
+        bold: on(face.bold),
+        italic: on(face.italic),
         size: Some(HalfPoints(to_half_points(glyph.size))),
         size_cs: Some(HalfPoints(to_half_points(glyph.size))),
         color: Some(Color::new(format!("{red:02X}{green:02X}{blue:02X}"))),
         ..RunProperties::default()
+    }
+}
+
+/// A PDF font's name as a family and a style. `BCDFEE+Amalia-Bold` is the
+/// family Amalia, bold: the six letters and `+` name a subset, and the style
+/// is a suffix. Kept whole, the name was a font nobody has, drawn in a
+/// regular substitute - every bold word of a Word PDF lost its weight.
+struct FontName {
+    family: String,
+    bold: bool,
+    italic: bool,
+}
+
+impl FontName {
+    fn of(name: &str) -> Self {
+        let name = name.trim();
+        // A subset tag: six capitals and `+`.
+        let name = match name.split_once('+') {
+            Some((tag, rest))
+                if tag.len() == 6 && tag.chars().all(|ch| ch.is_ascii_uppercase()) =>
+            {
+                rest
+            }
+            _ => name,
+        };
+        let (base, style) = match name.find(['-', ',']) {
+            Some(at) => (
+                name.get(..at).unwrap_or(name),
+                name.get(at + 1..).unwrap_or(""),
+            ),
+            None => (name, ""),
+        };
+        let style = style.to_ascii_lowercase();
+        let lower = name.to_ascii_lowercase();
+        let bold = ["bold", "black", "heavy", "semibold", "demibold"]
+            .iter()
+            .any(|word| style.contains(word))
+            || lower.ends_with("bold");
+        let italic = ["italic", "oblique"]
+            .iter()
+            .any(|word| style.contains(word))
+            || lower.ends_with("italic");
+        // `ArialMT`, `TimesNewRomanPSMT`, `Arial-BoldMT`: the PostScript
+        // suffix is no part of the family.
+        let base = base
+            .strip_suffix("PSMT")
+            .or_else(|| base.strip_suffix("MT"))
+            .or_else(|| base.strip_suffix("PS"))
+            .unwrap_or(base);
+        // `TimesNewRoman` is the family Times New Roman: a space before each
+        // capital that follows a small letter.
+        let mut family = String::with_capacity(base.len() + 4);
+        let mut previous: Option<char> = None;
+        for ch in base.chars() {
+            if ch.is_uppercase() && previous.is_some_and(char::is_lowercase) {
+                family.push(' ');
+            }
+            family.push(ch);
+            previous = Some(ch);
+        }
+        Self {
+            family: if family.is_empty() {
+                name.to_owned()
+            } else {
+                family
+            },
+            bold,
+            italic,
+        }
     }
 }
 
@@ -1189,6 +1307,44 @@ mod fragment_tests {
             width,
             glyphs: vec![glyph],
         }
+    }
+
+    #[test]
+    fn a_pdf_font_name_is_a_family_and_a_style() {
+        let name = super::FontName::of("BCDFEE+Amalia-Bold");
+        assert_eq!(
+            (name.family.as_str(), name.bold, name.italic),
+            ("Amalia", true, false)
+        );
+        let name = super::FontName::of("TimesNewRomanPS-BoldItalicMT");
+        assert_eq!(
+            (name.family.as_str(), name.bold, name.italic),
+            ("Times New Roman", true, true)
+        );
+        let name = super::FontName::of("ArialMT");
+        assert_eq!((name.family.as_str(), name.bold), ("Arial", false));
+        let name = super::FontName::of("Calibri,Italic");
+        assert_eq!((name.family.as_str(), name.italic), ("Calibri", true));
+    }
+
+    #[test]
+    fn a_marker_drops_the_space_drawn_after_it() {
+        let lines = join_fragments(vec![
+            run("\u{2022}", 96.3, 4.1),
+            run(" ", 100.3, 2.5),
+            run("Naknada za poslove", 114.3, 80.0),
+        ]);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].text(), "\u{2022}");
+    }
+
+    #[test]
+    fn a_footer_drawn_first_ends_the_page() {
+        let mut footer = run("Raiffeisen banka a.d. Beograd", 78.0, 115.0);
+        footer.baseline = 793.0;
+        let body = run("Predmet:", 78.0, 40.0);
+        let lines = super::margin_lines_in_place(vec![footer, body], 842.0);
+        assert_eq!(lines[0].text(), "Predmet:");
     }
 
     #[test]
