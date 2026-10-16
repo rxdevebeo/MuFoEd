@@ -149,7 +149,14 @@ pub(crate) fn build(
         }
         let text_area = text_area(&section);
         sections.begin_page(&mut blocks, section, false);
-        let raw_lines = join_fragments(strict_ooxml_pdf::text::lines(page.items()));
+        // Lines of nothing but spaces are Word's empty paragraphs: they hold
+        // no text, the gap they make is read from the baselines anyway, and
+        // between two bullets they split one list into two of one item each
+        // (which are no lists).
+        let raw_lines: Vec<GlyphLine> = join_fragments(strict_ooxml_pdf::text::lines(page.items()))
+            .into_iter()
+            .filter(|line| !line.text().trim().is_empty())
+            .collect();
         report.lines += raw_lines.len();
         let column_plan = crate::columns::plan(page, &raw_lines, report);
         let lines = margin_lines_in_place(
@@ -342,7 +349,9 @@ fn paragraphs_of(
             }
             paragraph = Some(fresh);
         } else if let Some(paragraph) = paragraph.as_mut() {
-            set_line_gap(paragraph, line, body);
+            if let Some(previous) = previous {
+                set_line_gap(paragraph, line, line.baseline - previous.baseline);
+            }
         }
         // The marker's line is *all* marker, and the character is in the
         // numbering definition now — see lists for why that moves a character
@@ -696,11 +705,18 @@ fn new_paragraph(line: &GlyphLine, heading: Option<u8>, origin: f64) -> Paragrap
 }
 
 /// Sets the leading a wrapped line needs, so the second line lands on the PDF's
-/// baseline rather than on the first one's.
-fn set_line_gap(paragraph: &mut Paragraph, line: &GlyphLine, body: f64) {
-    let pitch = line.size - body;
+/// baseline rather than on the first one's: the distance between the two
+/// baselines, exactly. It was the line's size less the body's - nothing for
+/// running text, and below zero for a footer set smaller than the body, whose
+/// lines then printed over each other. Two lines on one baseline (a marker and
+/// its text) or a gap a paragraph would not hold set nothing.
+fn set_line_gap(paragraph: &mut Paragraph, line: &GlyphLine, pitch: f64) {
+    if !(pitch >= line.size * 0.8 && pitch <= line.size * 3.0) {
+        return;
+    }
     paragraph.props.spacing = Some(Spacing {
         line: Some(Twips(to_twips(pitch))),
+        line_rule: Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact),
         ..Spacing::default()
     });
 }
