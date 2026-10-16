@@ -15,8 +15,8 @@ use crate::settings::{self, Settings};
 use crate::tab::{AfterSave, DocTab, Status, TabEvent};
 use crate::theme::{self, Palette};
 use crate::worker::{
-    Align, Busy, CaretFormat, EditState, ExportPurpose, FindQuery, FormatChange, Insert, Motion,
-    ObjectCommand, PictureEdit, Request, SaveFormat,
+    Align, Busy, CaretFormat, EditState, ExportPurpose, FindQuery, FormatChange,
+    HeaderFooterCommand, Insert, Motion, ObjectCommand, PictureEdit, Request, SaveFormat,
 };
 
 /// Everything a click can ask for.
@@ -48,6 +48,18 @@ pub(crate) enum Action {
     Open(Dialog),
     ToggleReport,
     ToggleNavigation,
+    ToggleRuler,
+    PrintDialog,
+    /// Edit the header (or footer) of the page in view.
+    EnterHeaderFooter {
+        header: bool,
+    },
+    /// Page numbers in the header (`top`) or footer.
+    PageNumbers {
+        top: bool,
+        align: Align,
+        of_total: bool,
+    },
     ToggleSystemFonts,
     ToggleDark,
     Language(String),
@@ -115,16 +127,49 @@ pub(crate) enum Zoom {
 /// Modal and floating dialogs.
 #[derive(Clone, Debug)]
 pub(crate) enum Dialog {
-    Find { replace: bool },
-    Table { rows: usize, columns: usize },
+    Find {
+        replace: bool,
+    },
+    Table {
+        rows: usize,
+        columns: usize,
+    },
     Symbols,
     WordCount,
     Settings,
     About,
     Import(Box<ImportDialog>),
-    ConfirmClose { tab: u64 },
+    ConfirmClose {
+        tab: u64,
+    },
     ConfirmExit,
     Adjust(Box<AdjustDialog>),
+    /// The first page number of the section: `None` continues.
+    PageStart {
+        start: u32,
+        restart: bool,
+    },
+    Print(Box<PrintDialog>),
+}
+
+/// The print dialog's fields.
+#[derive(Clone, Debug)]
+pub(crate) struct PrintDialog {
+    printers: Vec<String>,
+    printer: usize,
+    copies: u32,
+    collate: bool,
+    range: PrintRange,
+    /// Pages for [`PrintRange::Pages`], as typed: `1-3, 5`.
+    pages: String,
+    error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PrintRange {
+    All,
+    Current,
+    Pages,
 }
 
 /// Brightness and contrast of the selected picture, previewed on a small
@@ -204,10 +249,19 @@ pub(crate) struct App {
     doc_fonts: crate::docfonts::DocumentFonts,
     /// What the last copy carried besides text.
     clip: Option<Box<crate::worker::ClipObjects>>,
-    /// A drawing was selected in the last frame.
-    object_selected: bool,
-    /// The ribbon tab to go back to once no drawing is selected.
-    tab_before_picture: RibbonTab,
+    /// The contextual tab shown in the last frame.
+    tool_shown: Option<RibbonTab>,
+    /// The ribbon tab to go back to once the contextual one goes.
+    tab_before_tool: RibbonTab,
+    /// How the print job is going.
+    print_progress: Option<std::sync::mpsc::Receiver<crate::print::Progress>>,
+    /// A print job waiting for its PDF (CUPS).
+    #[cfg(not(windows))]
+    pending_print: Option<(
+        crate::print::Job,
+        PathBuf,
+        Box<dyn Fn(crate::print::Progress) + Send>,
+    )>,
     /// Pictures open in an outside editor.
     external: Vec<ExternalEdit>,
     /// When they were last looked at.
@@ -257,8 +311,11 @@ impl App {
             applied_dark: None,
             doc_fonts: crate::docfonts::DocumentFonts::new(interface_fonts),
             clip: None,
-            object_selected: false,
-            tab_before_picture: RibbonTab::Home,
+            tool_shown: None,
+            tab_before_tool: RibbonTab::Home,
+            print_progress: None,
+            #[cfg(not(windows))]
+            pending_print: None,
             external: Vec::new(),
             external_checked: 0.0,
             window_title: String::new(),
@@ -612,6 +669,54 @@ impl App {
                 }
             }
             Action::ToggleReport => self.report_open = !self.report_open,
+            Action::EnterHeaderFooter { header } => {
+                if let Some(tab) = self.active_tab() {
+                    tab.send(Request::HeaderFooter(HeaderFooterCommand::Enter {
+                        page: tab.view.current_page,
+                        header,
+                    }));
+                }
+            }
+            Action::PageNumbers {
+                top,
+                align,
+                of_total,
+            } => {
+                let words = of_total.then(|| {
+                    (
+                        self.t("page_number.page").to_owned(),
+                        self.t("page_number.of").to_owned(),
+                    )
+                });
+                if let Some(tab) = self.active_tab() {
+                    tab.send(Request::HeaderFooter(HeaderFooterCommand::Insert {
+                        top,
+                        align,
+                        of_total: words,
+                    }));
+                }
+            }
+            Action::PrintDialog => {
+                let printers = crate::print::printers();
+                if printers.is_empty() {
+                    let text = self.t("print.no_printers").to_owned();
+                    self.say(text, true, now);
+                } else {
+                    self.dialog = Some(Dialog::Print(Box::new(PrintDialog {
+                        printers,
+                        printer: 0,
+                        copies: 1,
+                        collate: true,
+                        range: PrintRange::All,
+                        pages: String::new(),
+                        error: None,
+                    })));
+                }
+            }
+            Action::ToggleRuler => {
+                self.settings.ruler = !self.settings.ruler;
+                self.settings.save();
+            }
             Action::ToggleNavigation => {
                 self.settings.navigation = !self.settings.navigation;
                 self.settings.save();
@@ -707,6 +812,17 @@ impl App {
                         extension,
                         purpose,
                     } => pictures.push((tab.id, id, bytes, extension, purpose)),
+                    #[cfg(not(windows))]
+                    TabEvent::Saved { path, .. }
+                        if self
+                            .pending_print
+                            .as_ref()
+                            .is_some_and(|(_, pdf, _)| *pdf == path) =>
+                    {
+                        if let Some((job, pdf, report)) = self.pending_print.take() {
+                            crate::print::start_pdf(job, pdf, report);
+                        }
+                    }
                     TabEvent::Saved { path, format } => {
                         let key = if format == SaveFormat::Docx {
                             "status.saved"
@@ -753,6 +869,7 @@ impl App {
             }
         }
         self.watch_external(now);
+        self.poll_print(now);
         if !self.external.is_empty() {
             ctx.request_repaint_after(std::time::Duration::from_secs(1));
         }
@@ -761,6 +878,68 @@ impl App {
         }
         for index in close.into_iter().rev() {
             self.close_tab(index, true);
+        }
+    }
+
+    /// Sends a print job off and reports how it goes in the status bar.
+    fn start_print(&mut self, job: crate::print::Job, ctx: &egui::Context) {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        self.print_progress = Some(receiver);
+        let repaint = ctx.clone();
+        let report = move |progress| {
+            let _ = sender.send(progress);
+            repaint.request_repaint();
+        };
+        #[cfg(windows)]
+        {
+            let pages = self
+                .active_tab()
+                .map(|tab| tab.pages.clone())
+                .unwrap_or_default();
+            crate::print::start(job, pages, report);
+        }
+        #[cfg(not(windows))]
+        {
+            // The document goes to CUPS as a PDF, written first.
+            let path =
+                std::env::temp_dir().join(format!("mufoed-print-{}.pdf", std::process::id()));
+            if let Some(tab) = self.active_tab() {
+                tab.send(Request::Save {
+                    path: path.clone(),
+                    format: SaveFormat::Pdf,
+                });
+            }
+            self.pending_print = Some((job, path, Box::new(report)));
+        }
+    }
+
+    /// The print job's progress, in the status bar.
+    fn poll_print(&mut self, now: f64) {
+        let Some(receiver) = &self.print_progress else {
+            return;
+        };
+        let mut said = None;
+        while let Ok(progress) = receiver.try_recv() {
+            said = Some(progress);
+        }
+        match said {
+            Some(crate::print::Progress::Sheets { done, total }) => {
+                let text = self
+                    .i18n
+                    .tf("print.progress", &[("done", &done), ("total", &total)]);
+                self.say(text, false, now);
+            }
+            Some(crate::print::Progress::Done(Ok(()))) => {
+                self.print_progress = None;
+                let text = self.t("print.sent").to_owned();
+                self.say(text, false, now);
+            }
+            Some(crate::print::Progress::Done(Err(error))) => {
+                self.print_progress = None;
+                let text = self.i18n.tf("print.failed", &[("error", &error)]);
+                self.say(text, true, now);
+            }
+            None => {}
         }
     }
 
@@ -909,7 +1088,7 @@ impl App {
                             Key::S if shift => Some(Action::SaveAs),
                             Key::S => Some(Action::Save),
                             Key::W | Key::F4 => self.active.map(Action::CloseTab),
-                            Key::P => Some(Action::Export(SaveFormat::Pdf)),
+                            Key::P => Some(Action::PrintDialog),
                             Key::F => Some(Action::Open(Dialog::Find { replace: false })),
                             Key::H => Some(Action::Open(Dialog::Find { replace: true })),
                             Key::Tab => {
@@ -937,6 +1116,16 @@ impl App {
                             self.backstage = false;
                         } else if self.find_open && !modal {
                             self.find_open = false;
+                        } else if document
+                            && self
+                                .active_tab()
+                                .and_then(|tab| tab.cursor.as_ref())
+                                .is_some_and(|cursor| cursor.header_footer.is_some())
+                        {
+                            // Esc leaves the header or footer.
+                            actions.push(Action::Doc(Request::HeaderFooter(
+                                HeaderFooterCommand::Exit,
+                            )));
                         }
                         continue;
                     }
@@ -1134,7 +1323,14 @@ impl eframe::App for App {
                                 Status::Ready if tab.pages.is_empty() && tab.busy.is_some() => {
                                     loading_ui(ui, tab, &self.i18n, palette);
                                 }
-                                Status::Ready => canvas::show(ui, tab, palette, !dialog_open),
+                                Status::Ready => crate::ruler::desk(
+                                    ui,
+                                    tab,
+                                    palette,
+                                    !dialog_open,
+                                    self.settings.ruler,
+                                    &self.i18n,
+                                ),
                                 Status::Loading => loading_ui(ui, tab, &self.i18n, palette),
                                 Status::Failed(error) => {
                                     let error = error.clone();
@@ -1349,24 +1545,30 @@ impl App {
 
     fn ribbon_ui(&mut self, ui: &mut egui::Ui, palette: Palette, actions: &mut Vec<Action>) {
         ui.horizontal(|ui| {
-            // The picture tools stay while a drawing is selected.
-            let selected = self
-                .active_tab()
-                .and_then(|tab| tab.cursor.as_ref())
-                .is_some_and(|cursor| cursor.object.is_some());
-            // Selecting a drawing opens its tools; letting it go returns to
-            // the tab that was open before.
-            if selected && !self.object_selected {
-                if self.ribbon_tab != RibbonTab::Picture {
-                    self.tab_before_picture = self.ribbon_tab;
+            // Tools for what is being worked on: a selected drawing, or a
+            // header or footer being edited. They open when it starts and
+            // give the tab that was open back when it ends.
+            let cursor = self.active_tab().and_then(|tab| tab.cursor.as_ref());
+            let tool = if cursor.is_some_and(|cursor| cursor.object.is_some()) {
+                Some(RibbonTab::Picture)
+            } else if cursor.is_some_and(|cursor| cursor.header_footer.is_some()) {
+                Some(RibbonTab::HeaderFooter)
+            } else {
+                None
+            };
+            if tool != self.tool_shown {
+                let on_tool = Some(self.ribbon_tab) == self.tool_shown;
+                if let Some(tool) = tool {
+                    if !on_tool {
+                        self.tab_before_tool = self.ribbon_tab;
+                    }
+                    self.ribbon_tab = tool;
+                } else if on_tool {
+                    self.ribbon_tab = self.tab_before_tool;
                 }
-                self.ribbon_tab = RibbonTab::Picture;
+                self.tool_shown = tool;
             }
-            if !selected && self.ribbon_tab == RibbonTab::Picture {
-                self.ribbon_tab = self.tab_before_picture;
-            }
-            self.object_selected = selected;
-            if ribbon::tab_strip(ui, &mut self.ribbon_tab, selected, &self.i18n, palette) {
+            if ribbon::tab_strip(ui, &mut self.ribbon_tab, tool, &self.i18n, palette) {
                 actions.push(Action::Backstage(true));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1454,6 +1656,7 @@ impl App {
             state: tab.map_or(&empty_state, |tab| &tab.state),
             document: ready,
             navigation: self.settings.navigation,
+            ruler: self.settings.ruler,
             report: self.report_open,
             dark: self.settings.dark,
             zoom: tab.map_or(1.0, |tab| tab.zoom),
@@ -1895,6 +2098,10 @@ impl App {
                 if item(ui, Icon::SaveAs, self.i18n.t("cmd.save_as"), ready) {
                     actions.push(Action::SaveAs);
                 }
+                if item(ui, Icon::Print, self.i18n.t("cmd.print"), ready) {
+                    actions.push(Action::PrintDialog);
+                    actions.push(Action::Backstage(false));
+                }
                 if item(ui, Icon::Pdf, self.i18n.t("cmd.export_pdf"), ready) {
                     actions.push(Action::Export(SaveFormat::Pdf));
                 }
@@ -2169,6 +2376,162 @@ impl App {
                     keep = false;
                 } else {
                     next = Some(Dialog::Table { rows, columns });
+                }
+            }
+            Dialog::Print(mut dialog) => {
+                let mut go = false;
+                let pages_total = self.active_tab().map_or(0, |tab| tab.pages.len());
+                let laying_out = self
+                    .active_tab()
+                    .is_some_and(|tab| tab.busy == Some(Busy::Layout));
+                let response = modal("print").show(ctx, |ui| {
+                    ui.set_min_width(360.0);
+                    ui.heading(t("print.title"));
+                    ui.add_space(6.0);
+                    egui::Grid::new("print-grid")
+                        .num_columns(2)
+                        .spacing(vec2(12.0, 8.0))
+                        .show(ui, |ui| {
+                            ui.label(t("print.printer"));
+                            let selected = dialog
+                                .printers
+                                .get(dialog.printer)
+                                .cloned()
+                                .unwrap_or_default();
+                            egui::ComboBox::from_id_salt("print-printer")
+                                .width(240.0)
+                                .selected_text(selected)
+                                .show_ui(ui, |ui| {
+                                    for (index, name) in dialog.printers.iter().enumerate() {
+                                        ui.selectable_value(&mut dialog.printer, index, name);
+                                    }
+                                });
+                            ui.end_row();
+                            ui.label(t("print.copies"));
+                            ui.horizontal(|ui| {
+                                ui.add(egui::DragValue::new(&mut dialog.copies).range(1..=999));
+                                ui.checkbox(&mut dialog.collate, t("print.collate"));
+                            });
+                            ui.end_row();
+                            ui.label(t("print.range"));
+                            ui.vertical(|ui| {
+                                ui.radio_value(
+                                    &mut dialog.range,
+                                    PrintRange::All,
+                                    self.i18n.tf("print.all", &[("count", &pages_total)]),
+                                );
+                                ui.radio_value(
+                                    &mut dialog.range,
+                                    PrintRange::Current,
+                                    t("print.current"),
+                                );
+                                ui.horizontal(|ui| {
+                                    ui.radio_value(
+                                        &mut dialog.range,
+                                        PrintRange::Pages,
+                                        t("print.pages"),
+                                    );
+                                    let field = ui.add_enabled(
+                                        dialog.range == PrintRange::Pages,
+                                        egui::TextEdit::singleline(&mut dialog.pages)
+                                            .hint_text("1-3, 5")
+                                            .desired_width(120.0),
+                                    );
+                                    if field.gained_focus() {
+                                        dialog.range = PrintRange::Pages;
+                                    }
+                                });
+                            });
+                            ui.end_row();
+                        });
+                    if laying_out {
+                        ui.label(RichText::new(t("print.wait_layout")).weak());
+                    }
+                    if let Some(error) = &dialog.error {
+                        ui.colored_label(Color32::from_rgb(200, 50, 50), error);
+                    }
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(!laying_out, egui::Button::new(t("print.print")))
+                            .clicked()
+                        {
+                            go = true;
+                        }
+                        if ui.button(t("button.cancel")).clicked() {
+                            ui.close();
+                        }
+                    });
+                });
+                let mut done = false;
+                if go {
+                    let current = self.active_tab().map_or(0, |tab| tab.view.current_page);
+                    let pages = match dialog.range {
+                        PrintRange::All => Some((0..pages_total).collect()),
+                        PrintRange::Current => Some(vec![current]),
+                        PrintRange::Pages => crate::print::parse_range(&dialog.pages, pages_total),
+                    };
+                    match pages {
+                        Some(pages) => {
+                            let job = crate::print::Job {
+                                printer: dialog
+                                    .printers
+                                    .get(dialog.printer)
+                                    .cloned()
+                                    .unwrap_or_default(),
+                                copies: dialog.copies,
+                                collate: dialog.collate,
+                                pages,
+                                title: self
+                                    .active_tab()
+                                    .map_or_else(String::new, |tab| tab.title.clone()),
+                                output: None,
+                            };
+                            self.start_print(job, ctx);
+                            done = true;
+                        }
+                        None => dialog.error = Some(t("print.bad_range")),
+                    }
+                }
+                if response.should_close() || done {
+                    keep = false;
+                } else {
+                    next = Some(Dialog::Print(dialog));
+                }
+            }
+            Dialog::PageStart {
+                mut start,
+                mut restart,
+            } => {
+                let mut apply = false;
+                let response = modal("page-start").show(ctx, |ui| {
+                    ui.heading(t("page_number.format_title"));
+                    ui.add_space(6.0);
+                    ui.radio_value(&mut restart, false, t("page_number.continue"));
+                    ui.horizontal(|ui| {
+                        ui.radio_value(&mut restart, true, t("page_number.start_at"));
+                        ui.add_enabled(restart, egui::DragValue::new(&mut start).range(0..=9999));
+                    });
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(t("button.ok")).clicked() {
+                            apply = true;
+                            ui.close();
+                        }
+                        if ui.button(t("button.cancel")).clicked() {
+                            ui.close();
+                        }
+                    });
+                });
+                if apply {
+                    actions.push(Action::Doc(Request::HeaderFooter(
+                        HeaderFooterCommand::Start(restart.then_some(start)),
+                    )));
+                }
+                if response.should_close() || apply {
+                    keep = false;
+                } else {
+                    next = Some(Dialog::PageStart { start, restart });
                 }
             }
             Dialog::Adjust(mut dialog) => {

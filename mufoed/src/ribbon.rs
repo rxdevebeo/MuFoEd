@@ -14,8 +14,9 @@ use crate::i18n::I18n;
 use crate::icons::{self, Icon};
 use crate::theme::{self, Palette};
 use crate::worker::{
-    Align, CaretFormat, EditState, ExportPurpose, FormatChange, Insert, ObjectCommand, ObjectView,
-    PageChange, PictureEdit, Request, StyleEntry, TableCommand, WrapStyle, FONT_SIZES,
+    Align, CaretFormat, EditState, ExportPurpose, FormatChange, HeaderFooterCommand, Insert,
+    ObjectCommand, ObjectView, PageChange, PictureEdit, Request, StyleEntry, TableCommand,
+    WrapStyle, FONT_SIZES,
 };
 
 /// Ribbon tabs.
@@ -29,6 +30,8 @@ pub(crate) enum RibbonTab {
     Recognition,
     /// The picture tools, shown while a drawing is selected.
     Picture,
+    /// The header and footer tools, shown while one is edited.
+    HeaderFooter,
 }
 
 impl RibbonTab {
@@ -50,6 +53,7 @@ impl RibbonTab {
             Self::View => "ribbon.view",
             Self::Recognition => "ribbon.recognition",
             Self::Picture => "ribbon.picture",
+            Self::HeaderFooter => "ribbon.header_footer",
         }
     }
 }
@@ -64,6 +68,7 @@ pub(crate) struct RibbonState<'a> {
     /// A document tab is active and ready.
     pub(crate) document: bool,
     pub(crate) navigation: bool,
+    pub(crate) ruler: bool,
     pub(crate) report: bool,
     pub(crate) dark: bool,
     pub(crate) zoom: f32,
@@ -134,7 +139,7 @@ fn text_width(ui: &egui::Ui, text: &str, font: &FontId) -> f32 {
 pub(crate) fn tab_strip(
     ui: &mut egui::Ui,
     tab: &mut RibbonTab,
-    contextual: bool,
+    contextual: Option<RibbonTab>,
     i18n: &I18n,
     palette: Palette,
 ) -> bool {
@@ -153,10 +158,9 @@ pub(crate) fn tab_strip(
             file = true;
         }
         ui.add_space(6.0);
-        let contextual = contextual.then_some(RibbonTab::Picture);
         for candidate in RibbonTab::ALL.into_iter().chain(contextual) {
             let selected = *tab == candidate;
-            let tool = candidate == RibbonTab::Picture;
+            let tool = Some(candidate) == contextual;
             let font = if selected {
                 FontId::new(13.5, FontFamily::Name(theme::BOLD.into()))
             } else {
@@ -255,6 +259,7 @@ pub(crate) fn body(
                         RibbonTab::View => view(ui, state, actions),
                         RibbonTab::Recognition => recognition(ui, state, actions),
                         RibbonTab::Picture => picture(ui, state, actions),
+                        RibbonTab::HeaderFooter => header_footer(ui, state, actions),
                     }
                 });
             });
@@ -1478,6 +1483,9 @@ fn insert(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
             actions.push(Action::InsertPicture);
         }
     });
+    group(ui, s.t("group.header_footer"), p, |ui| {
+        header_footer_buttons(ui, s, actions);
+    });
     group(ui, s.t("group.tables"), p, |ui| {
         if big_clicked(
             ui,
@@ -1525,6 +1533,91 @@ fn insert(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
             p,
         ) {
             actions.push(Action::Open(Dialog::Symbols));
+        }
+    });
+}
+
+// ----- Headers and footers -------------------------------------------------
+
+/// The header, footer and page number menus, on Insert and on the header
+/// and footer tools.
+fn header_footer_buttons(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
+    let editable = s.editable();
+    let p = s.palette;
+    for (header, icon, label, tip) in [
+        (true, Icon::Header, "cmd.header", "tip.header"),
+        (false, Icon::Footer, "cmd.footer", "tip.footer"),
+    ] {
+        if big_clicked(ui, icon, s.t(label), s.t(tip), editable, p) {
+            actions.push(Action::EnterHeaderFooter { header });
+        }
+    }
+    big_menu(
+        ui,
+        Icon::PageNumber,
+        s.t("cmd.page_number"),
+        s.t("tip.page_number"),
+        editable,
+        p,
+        |ui| {
+            for (top, title) in [(true, "page_number.top"), (false, "page_number.bottom")] {
+                ui.menu_button(s.t(title), |ui| {
+                    for (align, key) in [
+                        (Align::Left, "page_number.left"),
+                        (Align::Center, "page_number.center"),
+                        (Align::Right, "page_number.right"),
+                    ] {
+                        if ui.button(s.t(key)).clicked() {
+                            actions.push(Action::PageNumbers {
+                                top,
+                                align,
+                                of_total: false,
+                            });
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    if ui.button(s.t("page_number.of_total")).clicked() {
+                        actions.push(Action::PageNumbers {
+                            top,
+                            align: Align::Center,
+                            of_total: true,
+                        });
+                        ui.close();
+                    }
+                });
+            }
+            ui.separator();
+            if ui.button(s.t("page_number.format")).clicked() {
+                actions.push(Action::Open(Dialog::PageStart {
+                    start: 1,
+                    restart: false,
+                }));
+                ui.close();
+            }
+            if ui.button(s.t("page_number.remove")).clicked() {
+                doc(actions, Request::HeaderFooter(HeaderFooterCommand::Remove));
+                ui.close();
+            }
+        },
+    );
+}
+
+fn header_footer(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
+    let p = s.palette;
+    group(ui, s.t("group.header_footer"), p, |ui| {
+        header_footer_buttons(ui, s, actions);
+    });
+    group(ui, s.t("group.close"), p, |ui| {
+        if big_clicked(
+            ui,
+            Icon::Close,
+            s.t("cmd.close_header_footer"),
+            s.t("tip.close_header_footer"),
+            true,
+            p,
+        ) {
+            doc(actions, Request::HeaderFooter(HeaderFooterCommand::Exit));
         }
     });
 }
@@ -2058,6 +2151,12 @@ fn view(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
                 p,
             ) {
                 actions.push(Action::ToggleSystemFonts);
+            }
+        });
+        column(ui, |ui| {
+            let width = text_width(ui, s.t("cmd.ruler"), &label_font()) + 36.0;
+            if check(ui, s.t("cmd.ruler"), s.t("tip.ruler"), s.ruler, width, p) {
+                actions.push(Action::ToggleRuler);
             }
         });
     });

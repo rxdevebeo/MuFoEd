@@ -14,7 +14,8 @@
       "review": "Review",
       "view": "View",
       "recognition": "Recognition",
-      "picture": "Picture"
+      "picture": "Picture",
+      "header_footer": "Header & Footer"
     },
     "group": {
       "clipboard": "Clipboard",
@@ -43,7 +44,9 @@
       "edit_picture": "Edit",
       "recognize_picture": "Recognition",
       "adjust_picture": "Adjust",
-      "arrange": "Arrange"
+      "arrange": "Arrange",
+      "header_footer": "Header & Footer",
+      "close": "Close"
     },
     "cmd": {
       "new": "New",
@@ -112,7 +115,13 @@
       "wrap": "Wrap text",
       "save_picture": "Save as…",
       "external_edit": "Edit elsewhere",
-      "adjust_more": "Adjust…"
+      "adjust_more": "Adjust…",
+      "ruler": "Ruler",
+      "header": "Header",
+      "footer": "Footer",
+      "page_number": "Page number",
+      "close_header_footer": "Close header and footer",
+      "print": "Print"
     },
     "tip": {
       "start_page": "Start page",
@@ -196,7 +205,12 @@
       "contrast": "Raise or lower the picture's contrast",
       "wrap": "How text flows around the picture",
       "save_picture": "Save the picture to a file",
-      "external_edit": "Open the picture in a picture editor; what is saved there comes back into the document"
+      "external_edit": "Open the picture in a picture editor; what is saved there comes back into the document",
+      "ruler": "Show the rulers for margins and indents",
+      "header": "Edit the header (double-click above the page text)",
+      "footer": "Edit the footer (double-click below the page text)",
+      "page_number": "Put page numbers in a header or footer",
+      "close_header_footer": "Back to the document text (Esc)"
     },
     "font": {
       "default": "(from style)"
@@ -429,6 +443,48 @@
     },
     "adjust": {
       "title": "Brightness and contrast"
+    },
+    "ruler": {
+      "left_margin": "Left margin",
+      "right_margin": "Right margin",
+      "top_margin": "Top margin",
+      "bottom_margin": "Bottom margin",
+      "first_line": "First line indent",
+      "hanging": "Hanging indent",
+      "left_indent": "Left indent",
+      "right_indent": "Right indent"
+    },
+    "page_number": {
+      "top": "Top of page",
+      "bottom": "Bottom of page",
+      "left": "Left",
+      "center": "Center",
+      "right": "Right",
+      "of_total": "Page X of Y",
+      "page": "Page ",
+      "of": " of ",
+      "format": "Start numbering at…",
+      "remove": "Remove page numbers",
+      "format_title": "Page numbering",
+      "continue": "Continue from the previous section",
+      "start_at": "Start at"
+    },
+    "print": {
+      "title": "Print",
+      "printer": "Printer",
+      "copies": "Copies",
+      "collate": "Collate",
+      "range": "Pages",
+      "all": "All ({count})",
+      "current": "Current",
+      "pages": "Pages:",
+      "print": "Print",
+      "bad_range": "Give pages like this: 1-3, 5",
+      "wait_layout": "Wait until the pages are laid out",
+      "no_printers": "No printers were found",
+      "progress": "Printing: {done} of {total} sheets sent",
+      "sent": "The document was sent to the printer",
+      "failed": "Printing failed: {error}"
     }
   }
 }

@@ -21,6 +21,8 @@ pub(crate) struct Settings {
     pub(crate) zoom: f32,
     /// Show the navigation pane.
     pub(crate) navigation: bool,
+    /// Show the rulers.
+    pub(crate) ruler: bool,
     /// Measure and draw with the machine's installed fonts as well.
     pub(crate) system_fonts: bool,
     /// Ollama endpoint for recognition.
@@ -50,6 +52,7 @@ impl Default for Settings {
             recent: Vec::new(),
             zoom: 1.0,
             navigation: true,
+            ruler: true,
             system_fonts: false,
             ocr_endpoint: endpoint,
             ocr_model: model,

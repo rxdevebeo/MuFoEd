@@ -90,6 +90,10 @@ pub(crate) struct ViewState {
     pub(crate) crop: bool,
     /// The selected drawing being dragged to another place.
     pub(crate) moving: Option<Moving>,
+    /// Where each page is on screen this frame (`None` out of view).
+    pub(crate) page_screens: Vec<Option<egui::Rect>>,
+    /// A ruler's margin or indent being dragged.
+    pub(crate) ruler_drag: Option<crate::ruler::Dragging>,
 }
 
 /// Dragging a selected drawing by its body.
@@ -140,6 +144,8 @@ impl ViewState {
             resize: None,
             crop: false,
             moving: None,
+            page_screens: Vec::new(),
+            ruler_drag: None,
         }
     }
 }

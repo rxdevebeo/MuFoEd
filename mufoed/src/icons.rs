@@ -25,6 +25,10 @@ pub(crate) enum Icon {
     Bullets,
     Numbering,
     Picture,
+    Print,
+    Header,
+    Footer,
+    PageNumber,
     Crop,
     Rotate,
     Brightness,
@@ -399,6 +403,74 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                 color,
                 Stroke::NONE,
             ));
+        }
+        Icon::Print => {
+            // A printer: body, paper coming out, a tray.
+            let body = Rect::from_min_max(
+                pos2(r.left(), r.top() + r.height() * 0.35),
+                pos2(r.right(), r.top() + r.height() * 0.75),
+            );
+            painter.rect_stroke(
+                body,
+                2.0,
+                stroke(color, thin * 1.3),
+                egui::StrokeKind::Inside,
+            );
+            let paper_top = Rect::from_min_max(
+                pos2(r.left() + r.width() * 0.22, r.top()),
+                pos2(r.right() - r.width() * 0.22, body.top()),
+            );
+            painter.rect_stroke(
+                paper_top,
+                0.0,
+                stroke(color, thin),
+                egui::StrokeKind::Inside,
+            );
+            let paper_out = Rect::from_min_max(
+                pos2(
+                    r.left() + r.width() * 0.22,
+                    body.bottom() - r.height() * 0.1,
+                ),
+                pos2(r.right() - r.width() * 0.22, r.bottom()),
+            );
+            painter.rect_filled(paper_out, 0.0, paper);
+            painter.rect_stroke(
+                paper_out,
+                0.0,
+                stroke(color, thin),
+                egui::StrokeKind::Inside,
+            );
+            painter.circle_filled(
+                pos2(body.right() - thin * 3.0, body.top() + thin * 3.0),
+                thin,
+                accent,
+            );
+        }
+        Icon::Header | Icon::Footer | Icon::PageNumber => {
+            page(painter, page_rect, color, paper);
+            let band_h = page_rect.height() * 0.2;
+            let band = if icon == Icon::Footer {
+                Rect::from_min_max(
+                    pos2(page_rect.left(), page_rect.bottom() - band_h),
+                    page_rect.right_bottom(),
+                )
+            } else {
+                Rect::from_min_max(
+                    page_rect.left_top(),
+                    pos2(page_rect.right(), page_rect.top() + band_h),
+                )
+            };
+            if icon == Icon::PageNumber {
+                painter.text(
+                    pos2(page_rect.center().x, page_rect.bottom() - band_h * 0.6),
+                    egui::Align2::CENTER_CENTER,
+                    "1",
+                    egui::FontId::proportional(band_h * 1.6),
+                    accent,
+                );
+            } else {
+                painter.rect_filled(band.shrink(thin), 0.0, accent);
+            }
         }
         Icon::Crop => {
             // Two corner brackets crossing, as crop marks.

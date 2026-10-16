@@ -246,6 +246,15 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                 let offset = area.min.to_vec2() + center;
                 let painter = ui.painter_at(area);
                 let mut visible = Vec::new();
+                // Where the pages are on screen, for the rulers.
+                let clip = ui.clip_rect();
+                tab.view.page_screens = rects
+                    .iter()
+                    .map(|rect| {
+                        let screen = rect.translate(offset);
+                        screen.intersects(clip).then_some(screen)
+                    })
+                    .collect();
                 for (index, rect) in rects.iter().enumerate() {
                     let screen = rect.translate(offset);
                     let local = rect.translate(center);
@@ -350,6 +359,40 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                         tab.view.caret_moved = now;
                     }
                     ctx.request_repaint_after(std::time::Duration::from_millis(400));
+                }
+                // Editing a header or footer: the body is dimmed and the
+                // header's (or footer's) edge marked.
+                if let Some(view) = tab.cursor.as_ref().and_then(|c| c.header_footer.as_ref()) {
+                    for (index, rect) in rects.iter().enumerate() {
+                        let Some((top, bottom)) = view.body.get(index).copied() else {
+                            continue;
+                        };
+                        let screen = rect.translate(offset);
+                        if !screen.intersects(ui.clip_rect()) {
+                            continue;
+                        }
+                        let z = tab.zoom;
+                        #[allow(clippy::cast_possible_truncation)]
+                        let (top, bottom) = (
+                            screen.top() + top as f32 * z,
+                            screen.top() + bottom as f32 * z,
+                        );
+                        painter.rect_filled(
+                            Rect::from_x_y_ranges(screen.x_range(), top..=bottom),
+                            0.0,
+                            Color32::from_white_alpha(150),
+                        );
+                        let edge = if view.header { top } else { bottom };
+                        let dash = Stroke::new(1.0, crate::theme::ACCENT);
+                        let mut x = screen.left();
+                        while x < screen.right() {
+                            painter.line_segment(
+                                [pos2(x, edge), pos2((x + 5.0).min(screen.right()), edge)],
+                                dash,
+                            );
+                            x += 9.0;
+                        }
+                    }
                 }
                 // A selected drawing: its frame and handles, or the frame a
                 // resize is dragging out.

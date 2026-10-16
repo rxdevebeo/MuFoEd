@@ -79,6 +79,11 @@ pub(crate) enum Request {
     Align(Align),
     /// Work on drawings.
     Object(ObjectCommand),
+    /// Headers, footers and page numbers.
+    HeaderFooter(HeaderFooterCommand),
+    /// Indents of the selected paragraphs, in twips: left, right and the
+    /// first line's (negative: hanging).
+    Indent([i32; 3]),
     /// Put the selected paragraphs in a list of this format, or (`None`)
     /// take them out of their list.
     List(Option<ListPreset>),
@@ -543,6 +548,10 @@ impl CaretList {
 pub(crate) struct Cursor {
     /// The selected drawing, when one is.
     pub(crate) object: Option<ObjectView>,
+    /// What the rulers show for the caret.
+    pub(crate) ruler: Option<RulerInfo>,
+    /// The header or footer being edited, when one is.
+    pub(crate) header_footer: Option<HeaderFooterView>,
     pub(crate) carets: Vec<VisualRect>,
     pub(crate) selection: Vec<VisualRect>,
     /// Bring the caret into view.
@@ -571,6 +580,49 @@ pub(crate) struct ClipObject {
     pub(crate) drawing: strict_ooxml::model::Drawing,
     /// The picture's bytes, so it can go into another document.
     pub(crate) bytes: Option<Vec<u8>>,
+}
+
+/// What can be done with headers and footers.
+#[derive(Clone, Debug)]
+pub(crate) enum HeaderFooterCommand {
+    /// Edit the header (or footer) of the page's section, made if missing.
+    Enter { page: usize, header: bool },
+    /// Back to the body.
+    Exit,
+    /// Page numbers in the header (`top`) or footer, aligned; with
+    /// `of_total`, the words around "X of Y".
+    Insert {
+        top: bool,
+        align: Align,
+        of_total: Option<(String, String)>,
+    },
+    /// Take the page numbers out of every header and footer.
+    Remove,
+    /// The first page number of the caret's section; `None` continues.
+    Start(Option<u32>),
+}
+
+/// The header or footer being edited.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct HeaderFooterView {
+    pub(crate) header: bool,
+    /// The body's band on each page (top, bottom, in page pixels), dimmed
+    /// while a header or footer is edited.
+    pub(crate) body: Vec<(f64, f64)>,
+}
+
+/// The caret's page and paragraph, as the rulers show them; twips.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct RulerInfo {
+    /// The page the caret is on.
+    pub(crate) page: usize,
+    pub(crate) width: i32,
+    pub(crate) height: i32,
+    /// Top, right, bottom, left.
+    pub(crate) margins: [i32; 4],
+    /// The paragraph's left, right and first-line indents (negative:
+    /// hanging), for a body paragraph outside tables.
+    pub(crate) indent: Option<[i32; 3]>,
 }
 
 /// A selected drawing, as the canvas and the ribbon show it.
@@ -888,6 +940,10 @@ struct Worker<'a, 's> {
     goal_x: Option<f64>,
     /// The selected drawing.
     object: Option<DrawingPosition>,
+    /// The story the caret edits: the body, or a header or footer.
+    story: Story,
+    /// Where the caret was in the body before a header was entered.
+    body_caret: Option<Logical>,
     undo_depth: usize,
     redo_depth: usize,
     saved_revision: u64,
@@ -921,6 +977,8 @@ impl<'a, 's> Worker<'a, 's> {
             cell_origin: None,
             goal_x: None,
             object: None,
+            story: Story::Body,
+            body_caret: None,
             undo_depth: 0,
             redo_depth: 0,
             saved_revision,
@@ -1081,6 +1139,19 @@ impl<'a, 's> Worker<'a, 's> {
             Request::Format(change) => self.format(&change),
             Request::Align(align) => self.align(align),
             Request::List(preset) => self.list(preset),
+            Request::HeaderFooter(command) => self.header_footer(command),
+            Request::Indent([left, right, first]) => {
+                use strict_ooxml::model::values::Indentation;
+                self.paragraph_edit(|properties| {
+                    properties.indentation = Some(Indentation {
+                        start: Some(Twips(left)),
+                        end: Some(Twips(right)),
+                        first_line: (first >= 0).then_some(Twips(first)),
+                        hanging: (first < 0).then_some(Twips(-first)),
+                        ..Indentation::default()
+                    });
+                })
+            }
             Request::Object(command) => self.object_command(command),
             Request::Style(id) => self.set_style(&id),
             Request::Insert(insert) => self.insert(insert),
@@ -1435,11 +1506,20 @@ impl<'a, 's> Worker<'a, 's> {
         let mut selection = selection;
         selection.extend(self.selected_object_rects());
         let object = self.object_view();
+        let ruler = self.ruler_info(
+            carets
+                .first()
+                .or(selection.first())
+                .map_or(0, |rect| rect.page),
+        );
         // A selected drawing shows its frame, not a caret.
         let carets = if object.is_some() { Vec::new() } else { carets };
         let format = self.caret_format();
+        let header_footer = self.header_footer_view();
         self.send(Reply::Cursor(Box::new(Cursor {
             object,
+            ruler,
+            header_footer,
             carets,
             selection,
             scroll,
@@ -1545,6 +1625,20 @@ impl<'a, 's> Worker<'a, 's> {
         let Ok(Some(position)) = map.hit_test(revision, page, x, y) else {
             return Outcome::Quiet;
         };
+        // The body and the headers are edited one at a time: a click in the
+        // header while the body is edited does nothing (a double click
+        // enters it), and a click in the body leaves a header.
+        if position.paragraph.story != self.story {
+            if self.story == Story::Body {
+                return Outcome::Quiet;
+            }
+            if position.paragraph.story == Story::Body {
+                self.story = Story::Body;
+                self.body_caret = None;
+            } else {
+                self.story = position.paragraph.story.clone();
+            }
+        }
         let line_start = map
             .caret(revision, &position)
             .ok()
@@ -1621,6 +1715,13 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn select_word(&mut self, page: usize, x: f64, y: f64) -> Outcome {
+        // A double click in a header or footer, or in the margin where one
+        // goes, edits it.
+        if self.story == Story::Body {
+            if let Some(header) = self.margin_band(page, y) {
+                return self.enter_header_footer(page, header, Some((x, y)));
+            }
+        }
         if matches!(self.click(page, x, y, false, false), Outcome::Quiet) {
             return Outcome::Quiet;
         }
@@ -1654,7 +1755,7 @@ impl<'a, 's> Worker<'a, 's> {
 
     fn select_all(&mut self) -> Outcome {
         self.cells = None;
-        let paragraphs = self.paragraphs(&Story::Body);
+        let paragraphs = self.paragraphs(&self.story.clone());
         let (Some(first), Some(last)) = (paragraphs.first(), paragraphs.last()) else {
             return Outcome::Quiet;
         };
@@ -1771,12 +1872,16 @@ impl<'a, 's> Worker<'a, 's> {
                 let x = if motion == Motion::Home { 0.0 } else { width };
                 self.hit(rect.page, x, rect.y + rect.height / 2.0)
             }
-            Motion::DocStart => self.first_paragraph().map(|paragraph| Logical {
-                paragraph,
-                offset: 0,
-            }),
+            Motion::DocStart => self
+                .paragraphs(&self.story)
+                .first()
+                .cloned()
+                .map(|paragraph| Logical {
+                    paragraph,
+                    offset: 0,
+                }),
             Motion::DocEnd => self
-                .paragraphs(&Story::Body)
+                .paragraphs(&self.story)
                 .last()
                 .cloned()
                 .map(|paragraph| {
@@ -2194,6 +2299,436 @@ impl<'a, 's> Worker<'a, 's> {
             height: extent.map_or(0, |e| e.cy.0),
             picture: matches!(graphic, Some(Graphic::Picture(_))),
             wrap: wrap_style(&drawing),
+        })
+    }
+
+    // ----- headers and footers -------------------------------------------
+
+    /// The section a page shows, by index.
+    fn page_section(&self, page: usize) -> usize {
+        self.pages
+            .get(page)
+            .map_or(0, |data| data.placed.section_index)
+    }
+
+    /// Whether a page point is in the header band (`Some(true)`), the
+    /// footer band, or neither: above the top margin or below the bottom.
+    fn margin_band(&self, page: usize, y: f64) -> Option<bool> {
+        let section = self
+            .session
+            .document()
+            .sections
+            .get(self.page_section(page))?
+            .properties
+            .clone();
+        let height = self.pages.get(page)?.height;
+        let margins = section.page_margins.unwrap_or_default();
+        let top = f64::from(margins.top.map_or(1440, |t| t.0.abs())) / 15.0;
+        let bottom = f64::from(margins.bottom.map_or(1440, |t| t.0.abs())) / 15.0;
+        if y < top {
+            Some(true)
+        } else if y > height - bottom {
+            Some(false)
+        } else {
+            None
+        }
+    }
+
+    /// The header (or footer) part a section uses: its own default one, or
+    /// the one it takes from the sections before it.
+    fn header_footer_of(
+        &self,
+        section: usize,
+        header: bool,
+    ) -> Option<strict_ooxml_core::part::PartId> {
+        use strict_ooxml::model::props::HeaderFooterKind;
+        let sections = &self.session.document().sections;
+        (0..=section).rev().find_map(|index| {
+            let properties = &sections.get(index)?.properties;
+            let references = if header {
+                &properties.headers
+            } else {
+                &properties.footers
+            };
+            references
+                .iter()
+                .find(|r| r.kind == HeaderFooterKind::Default)
+                .and_then(|r| r.part.clone())
+        })
+    }
+
+    /// A body paragraph of a section, for editing its properties.
+    fn section_paragraph(&self, section: usize) -> Option<Address> {
+        let mut index = 0;
+        for (block, item) in self.session.document().body.blocks.iter().enumerate() {
+            if let Block::Paragraph(paragraph) = item {
+                if index == section {
+                    return Some(Address::body(block));
+                }
+                if paragraph.props.section.is_some() {
+                    index += 1;
+                }
+            }
+        }
+        None
+    }
+
+    /// The header (or footer) of a section, made (empty, for every later
+    /// section that has none of its own) when it has none.
+    fn ensure_header_footer(
+        &mut self,
+        section: usize,
+        header: bool,
+    ) -> Option<strict_ooxml_core::part::PartId> {
+        use strict_ooxml::edit::{header_footer_reference, new_header_footer, Definition};
+        use strict_ooxml::model::props::HeaderFooterKind;
+        if let Some(part) = self.header_footer_of(section, header) {
+            return Some(part);
+        }
+        let at = self.section_paragraph(section)?;
+        let mut properties = self
+            .session
+            .document()
+            .sections
+            .get(section)?
+            .properties
+            .clone();
+        let made = new_header_footer(self.session.document(), header);
+        let part = made.part.clone();
+        let reference = header_footer_reference(&part, HeaderFooterKind::Default);
+        if header {
+            properties.headers.push(reference);
+        } else {
+            properties.footers.push(reference);
+        }
+        let outcome = self.define_and_transact(
+            &[Definition::AddHeaderFooter(Box::new(made))],
+            &[Edit::SectionProperties {
+                at,
+                properties: Box::new(properties),
+            }],
+        );
+        matches!(outcome, Outcome::Edited).then_some(part)
+    }
+
+    /// Starts editing the header (or footer) of a page's section, the caret
+    /// at the point clicked when it is in its text, else at its end.
+    fn enter_header_footer(
+        &mut self,
+        page: usize,
+        header: bool,
+        point: Option<(f64, f64)>,
+    ) -> Outcome {
+        let section = self.page_section(page);
+        let Some(part) = self.ensure_header_footer(section, header) else {
+            return Outcome::Quiet;
+        };
+        self.ensure_layout();
+        let story = Story::HeaderFooter(part);
+        if self.story == Story::Body {
+            self.body_caret.clone_from(&self.caret);
+        }
+        self.story = story.clone();
+        self.object = None;
+        self.cells = None;
+        self.anchor = None;
+        let revision = self.session.revision();
+        let hit = point.and_then(|(x, y)| {
+            let map = self.map.as_ref()?;
+            map.hit_test(revision, page, x, y)
+                .ok()
+                .flatten()
+                .filter(|position| position.paragraph.story == story)
+        });
+        self.caret = match hit {
+            Some(position) => Some(self.logical(&position)),
+            None => self.paragraphs(&story).last().cloned().map(|paragraph| {
+                let offset = self.text_of(&paragraph).chars().count();
+                Logical { paragraph, offset }
+            }),
+        };
+        Outcome::Edited
+    }
+
+    fn exit_header_footer(&mut self) -> Outcome {
+        if self.story == Story::Body {
+            return Outcome::Quiet;
+        }
+        self.story = Story::Body;
+        self.anchor = None;
+        self.caret = self.body_caret.take().or_else(|| {
+            self.first_paragraph().map(|paragraph| Logical {
+                paragraph,
+                offset: 0,
+            })
+        });
+        Outcome::Moved
+    }
+
+    fn header_footer_view(&self) -> Option<HeaderFooterView> {
+        let Story::HeaderFooter(part) = &self.story else {
+            return None;
+        };
+        let header = self.session.document().header_footer(part)?.is_header;
+        let sections = &self.session.document().sections;
+        let body = self
+            .pages
+            .iter()
+            .map(|page| {
+                let margins = sections
+                    .get(page.placed.section_index)
+                    .and_then(|s| s.properties.page_margins)
+                    .unwrap_or_default();
+                let top = f64::from(margins.top.map_or(1440, |t| t.0.abs())) / 15.0;
+                let bottom = f64::from(margins.bottom.map_or(1440, |t| t.0.abs())) / 15.0;
+                (top, page.height - bottom)
+            })
+            .collect();
+        Some(HeaderFooterView { header, body })
+    }
+
+    fn header_footer(&mut self, command: HeaderFooterCommand) -> Outcome {
+        match command {
+            HeaderFooterCommand::Enter { page, header } => {
+                self.enter_header_footer(page, header, None)
+            }
+            HeaderFooterCommand::Exit => self.exit_header_footer(),
+            HeaderFooterCommand::Insert {
+                top,
+                align,
+                of_total,
+            } => self.insert_page_numbers(top, align, of_total.as_ref()),
+            HeaderFooterCommand::Remove => self.remove_page_numbers(),
+            HeaderFooterCommand::Start(start) => {
+                let Some(at) = self.section_anchor() else {
+                    return Outcome::Quiet;
+                };
+                let mut properties = self.section_of(at.block);
+                let mut numbering = properties.page_number.clone().unwrap_or_default();
+                numbering.start = start;
+                properties.page_number = Some(numbering);
+                if self.transact(&[Edit::SectionProperties {
+                    at,
+                    properties: Box::new(properties),
+                }]) {
+                    Outcome::Edited
+                } else {
+                    Outcome::Quiet
+                }
+            }
+        }
+    }
+
+    /// Puts the page number in the header (or footer) of the caret's
+    /// section, in a paragraph of its own aligned as asked: the header's only
+    /// paragraph when it is empty, else a new one after its text.
+    fn insert_page_numbers(
+        &mut self,
+        top: bool,
+        align: Align,
+        of_total: Option<&(String, String)>,
+    ) -> Outcome {
+        use strict_ooxml::model::{Field, Inline, Run, RunContent, Space, TextNode};
+        let page = self.caret_page();
+        let section = self.page_section(page);
+        let Some(part) = self.ensure_header_footer(section, top) else {
+            return Outcome::Quiet;
+        };
+        let story = Story::HeaderFooter(part);
+        let paragraphs = self.paragraphs(&story);
+        let text = |value: &str| {
+            Inline::Run(Run {
+                props: strict_ooxml::model::props::RunProperties::default(),
+                content: vec![RunContent::Text(TextNode {
+                    text: value.to_owned(),
+                    space: Space::Preserve,
+                })],
+                revision: None,
+                location: SourceLocation::unknown(),
+            })
+        };
+        let field = |instruction: &str, shown: &str| {
+            Inline::Field(Field {
+                instruction: Some(std::sync::Arc::from(instruction)),
+                inlines: vec![text(shown)],
+                location: SourceLocation::unknown(),
+            })
+        };
+        let mut inlines = Vec::new();
+        match of_total {
+            Some((before, between)) => {
+                if !before.is_empty() {
+                    inlines.push(text(before));
+                }
+                inlines.push(field(" PAGE ", "1"));
+                inlines.push(text(between));
+                inlines.push(field(" NUMPAGES ", "1"));
+            }
+            None => inlines.push(field(" PAGE ", "1")),
+        }
+        let alignment = match align {
+            Align::Left => Justification::Start,
+            Align::Center => Justification::Center,
+            Align::Right => Justification::End,
+            Align::Justify => Justification::Both,
+        };
+        let empty = paragraphs.len() == 1
+            && paragraphs
+                .first()
+                .is_some_and(|only| self.paragraph(only).is_some_and(|p| p.inlines.is_empty()));
+        let commands = if let (true, Some(only)) = (empty, paragraphs.first()) {
+            let Some(paragraph) = self.paragraph(only) else {
+                return Outcome::Quiet;
+            };
+            let mut properties = paragraph.props.clone();
+            properties.alignment = Some(alignment);
+            let mut commands = vec![Edit::ParagraphProperties {
+                at: only.clone(),
+                properties: Box::new(properties),
+            }];
+            for (index, inline) in inlines.into_iter().enumerate() {
+                commands.push(Edit::InsertInline {
+                    at: only.clone(),
+                    index,
+                    inline: Box::new(inline),
+                });
+            }
+            commands
+        } else {
+            let mut paragraph = strict_ooxml::model::Paragraph {
+                props: ParagraphProperties::default(),
+                inlines,
+                rsids: strict_ooxml::model::Rsids::default(),
+                revision: None,
+                para_id: None,
+                text_id: None,
+                location: SourceLocation::unknown(),
+            };
+            paragraph.props.alignment = Some(alignment);
+            vec![Edit::Insert {
+                at: Address {
+                    story,
+                    containers: Vec::new(),
+                    block: paragraphs.len(),
+                },
+                block: Box::new(Block::Paragraph(paragraph)),
+            }]
+        };
+        if self.transact(&commands) {
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    /// The page the caret is drawn on.
+    fn caret_page(&self) -> usize {
+        let revision = self.session.revision();
+        self.caret
+            .as_ref()
+            .zip(self.map.as_ref())
+            .and_then(|(caret, map)| map.caret(revision, &self.position(caret)).ok())
+            .and_then(|rects| rects.first().map(|rect| rect.page))
+            .unwrap_or(0)
+    }
+
+    /// Takes the page numbers (and their paragraphs, when nothing else is
+    /// in them) out of every header and footer.
+    fn remove_page_numbers(&mut self) -> Outcome {
+        use strict_ooxml::model::Inline;
+        let is_number = |inline: &Inline| {
+            matches!(inline, Inline::Field(field) if field.instruction.as_deref().is_some_and(|i| {
+                let i = i.trim().to_ascii_uppercase();
+                i.starts_with("PAGE") || i.starts_with("NUMPAGES") || i.starts_with("SECTIONPAGES")
+            }))
+        };
+        let parts: Vec<_> = self
+            .session
+            .document()
+            .headers_footers
+            .iter()
+            .map(|h| h.part.clone())
+            .collect();
+        let mut commands = Vec::new();
+        for part in parts {
+            let story = Story::HeaderFooter(part);
+            let paragraphs = self.paragraphs(&story);
+            let single = paragraphs.len() == 1;
+            for at in paragraphs.iter().rev() {
+                let Some(paragraph) = self.paragraph(at) else {
+                    continue;
+                };
+                if !paragraph.inlines.iter().any(is_number) {
+                    continue;
+                }
+                if at.containers.is_empty() && !single {
+                    commands.push(Edit::Delete { at: at.clone() });
+                    continue;
+                }
+                for (index, inline) in paragraph.inlines.iter().enumerate().rev() {
+                    if is_number(inline) {
+                        commands.push(Edit::DeleteInline {
+                            at: at.clone(),
+                            index,
+                        });
+                    }
+                }
+            }
+        }
+        if self.transact(&commands) {
+            if self.story != Story::Body {
+                return self.exit_header_footer();
+            }
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    /// The page size, margins and caret paragraph indents for the rulers.
+    fn ruler_info(&self, page: usize) -> Option<RulerInfo> {
+        let caret = self.caret.as_ref()?;
+        // The section the page shows.
+        let section = self
+            .pages
+            .get(page)
+            .map(|data| data.placed.section_index)
+            .and_then(|index| self.session.document().sections.get(index))
+            .map(|section| section.properties.clone())
+            .or_else(|| self.section_anchor().map(|at| self.section_of(at.block)))?;
+        let size = section.page_size.unwrap_or_default();
+        let width = size.width.map_or(11906, |twips| twips.0);
+        let height = size.height.map_or(16838, |twips| twips.0);
+        let margins = section.page_margins.unwrap_or_default();
+        let twips = |value: Option<Twips>, default: i32| value.map_or(default, |t| t.0);
+        let indent = (caret.paragraph.story == Story::Body
+            && caret.paragraph.containers.is_empty())
+        .then(|| self.paragraph(&caret.paragraph))
+        .flatten()
+        .map(|paragraph| {
+            let computed = strict_ooxml_render_svg::style::compute_paragraph(
+                self.session.document(),
+                paragraph,
+            );
+            #[allow(clippy::cast_possible_truncation)]
+            let tw = |points: f64| (points * 20.0).round() as i32;
+            [
+                tw(computed.indent_start_pt),
+                tw(computed.indent_end_pt),
+                tw(computed.first_line_pt),
+            ]
+        });
+        Some(RulerInfo {
+            page,
+            width,
+            height,
+            margins: [
+                twips(margins.top.map(|t| Twips(t.0.abs())), 1440),
+                twips(margins.right, 1440),
+                twips(margins.bottom.map(|t| Twips(t.0.abs())), 1440),
+                twips(margins.left, 1440),
+            ],
+            indent,
         })
     }
 
@@ -5473,6 +6008,99 @@ mod tests {
         loop {
             let view = picture_selected(&replies);
             if view.height == view.width {
+                break;
+            }
+        }
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    /// The placed text of the last pages reply.
+    fn page_texts(replies: &Receiver<Reply>) -> Vec<(f64, String)> {
+        let pages = wait(replies, |reply| match reply {
+            Reply::Pages { pages, .. } => Some(pages),
+            Reply::Note(note) if note.error => panic!("{}: {}", note.key, note.detail),
+            _ => None,
+        });
+        pages
+            .first()
+            .map(|page| {
+                page.placed
+                    .items
+                    .iter()
+                    .flat_map(strict_ooxml_render_svg::Item::leaves)
+                    .filter_map(|item| match item {
+                        strict_ooxml_render_svg::Item::Text(text) => {
+                            Some((text.baseline, text.text.clone()))
+                        }
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Page numbers go into a footer made for them; a double click above
+    /// the text makes and enters a header, typing goes there, Esc leaves.
+    #[test]
+    fn headers_footers_and_page_numbers() {
+        let (requests, replies) = new_document();
+        requests.send(Request::Type("body".to_owned())).unwrap();
+        requests
+            .send(Request::HeaderFooter(HeaderFooterCommand::Insert {
+                top: false,
+                align: Align::Center,
+                of_total: Some(("Page ".to_owned(), " of ".to_owned())),
+            }))
+            .unwrap();
+        let texts = loop {
+            let texts = page_texts(&replies);
+            if texts.iter().any(|(_, t)| t.contains("of")) {
+                break texts;
+            }
+        };
+        let body_y = texts.iter().find(|(_, t)| t == "body").expect("body").0;
+        let number = texts
+            .iter()
+            .find(|(_, t)| t.trim() == "1")
+            .unwrap_or_else(|| panic!("{texts:?}"));
+        assert!(number.0 > body_y + 500.0, "{texts:?}");
+        // Into a header made by a double click in the top margin.
+        requests
+            .send(Request::SelectWord {
+                page: 0,
+                x: 200.0,
+                y: 20.0,
+            })
+            .unwrap();
+        let view = loop {
+            let cursor = cursor(&replies);
+            if let Some(view) = cursor.header_footer {
+                break view;
+            }
+        };
+        assert!(view.header);
+        requests.send(Request::Type("Head".to_owned())).unwrap();
+        let texts = loop {
+            let texts = page_texts(&replies);
+            if texts.iter().any(|(_, t)| t == "Head") {
+                break texts;
+            }
+        };
+        let head_y = texts.iter().find(|(_, t)| t == "Head").expect("head").0;
+        assert!(head_y < body_y);
+        requests
+            .send(Request::HeaderFooter(HeaderFooterCommand::Exit))
+            .unwrap();
+        loop {
+            if cursor(&replies).header_footer.is_none() {
+                break;
+            }
+        }
+        // Typing goes to the body again.
+        requests.send(Request::Type("!".to_owned())).unwrap();
+        loop {
+            let texts = page_texts(&replies);
+            if texts.iter().any(|(_, t)| t.contains("body!")) {
                 break;
             }
         }
