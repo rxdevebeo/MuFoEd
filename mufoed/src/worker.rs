@@ -832,6 +832,8 @@ pub(crate) enum Reply {
     ClipboardObjects(Box<ClipObjects>),
     /// The comments, in the order of the text.
     Comments(Vec<CommentView>),
+    /// Font packs that would draw text nothing draws now (their ids).
+    FontsMissing(Vec<&'static str>),
     /// The misspelt words, and the scripts with words no dictionary checks.
     Spelling {
         errors: Vec<SpellError>,
@@ -901,8 +903,12 @@ fn run(
         }
     };
     let mut document = loaded.document;
+    let (font_assets, missing_fonts) = installed_fonts(document.document(), system_fonts);
+    if !missing_fonts.is_empty() {
+        send(Reply::FontsMissing(missing_fonts));
+    }
     let options = RenderOptions {
-        font_assets: installed_fonts(document.document(), system_fonts),
+        font_assets,
         ..RenderOptions::default()
     };
     let path = match source {
@@ -959,11 +965,18 @@ fn run(
 /// the scripts no bundled face has (without them that text is measured with
 /// a face that lacks it, and the rasterizer searches every installed font
 /// for each glyph), and with `named` the families the document names.
-fn installed_fonts(document: &Document, named: bool) -> Option<Arc<strict_ooxml::FontAssets>> {
+/// The fonts a document is drawn with beyond the bundled ones: the
+/// installed faces it names (`named`), the font packs fetched for its
+/// scripts and installed faces for scripts neither has; and the packs that
+/// would draw the text nothing draws now.
+fn installed_fonts(
+    document: &Document,
+    named: bool,
+) -> (Option<Arc<strict_ooxml::FontAssets>>, Vec<&'static str>) {
+    use strict_ooxml::font_packs;
     use strict_ooxml::system_fonts as system;
     let limits = strict_ooxml::FontAssetLimits::default();
     let faces = system::index();
-    let fallbacks = system::script_fallbacks(document, faces, limits);
     let mut assets = if named {
         system::assets_for(&system::document_families(document), faces, limits).unwrap_or_default()
     } else {
@@ -973,18 +986,42 @@ fn installed_fonts(document: &Document, named: bool) -> Option<Arc<strict_ooxml:
         let (family, bold, italic) = asset.key();
         (family.to_lowercase(), bold, italic)
     };
-    for fallback in fallbacks.iter().cloned() {
-        if !assets.iter().any(|asset| key(asset) == key(&fallback)) {
-            assets.push(fallback);
+    let add = |more: Vec<strict_ooxml::FontAsset>, assets: &mut Vec<strict_ooxml::FontAsset>| {
+        for asset in more {
+            if !assets.iter().any(|known| key(known) == key(&asset)) {
+                assets.push(asset);
+            }
+        }
+    };
+    // Packs fetched before, for the text the bundled faces do not draw.
+    let undrawn = system::undrawn(document, &[]);
+    let root = font_packs::cache_dir();
+    let wanted: Vec<&'static font_packs::Pack> = font_packs::CATALOG
+        .iter()
+        .filter(|pack| undrawn.iter().any(|ch| pack.covers(*ch)))
+        .collect();
+    for pack in &wanted {
+        if let Some(root) = root.as_ref().filter(|root| pack.is_installed(root)) {
+            add(pack.assets(root, limits).unwrap_or_default(), &mut assets);
         }
     }
+    let fallbacks = system::script_fallbacks(document, faces, limits);
+    add(fallbacks.clone(), &mut assets);
+    // What still has no glyph: a pack that has it is offered.
+    let still = system::undrawn(document, &assets);
+    let missing = wanted
+        .iter()
+        .filter(|pack| still.iter().any(|ch| pack.covers(*ch)))
+        .map(|pack| pack.id)
+        .collect();
     if assets.is_empty() {
-        return None;
+        return (None, missing);
     }
-    strict_ooxml::FontAssets::new(assets, limits)
+    let set = strict_ooxml::FontAssets::new(assets, limits)
         .or_else(|_| strict_ooxml::FontAssets::new(fallbacks, limits))
         .ok()
-        .map(Arc::new)
+        .map(Arc::new);
+    (set, missing)
 }
 
 fn styles_of(document: &Document) -> Vec<StyleEntry> {
@@ -1295,7 +1332,11 @@ impl<'a, 's> Worker<'a, 's> {
                 Outcome::Quiet
             }
             Request::SystemFonts(enabled) => {
-                self.options.font_assets = installed_fonts(self.session.document(), enabled);
+                let (assets, missing) = installed_fonts(self.session.document(), enabled);
+                self.options.font_assets = assets;
+                if !missing.is_empty() {
+                    self.send(Reply::FontsMissing(missing));
+                }
                 self.stale = true;
                 Outcome::Moved
             }

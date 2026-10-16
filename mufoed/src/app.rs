@@ -25,6 +25,7 @@ use crate::worker::{CommentCommand, PageChange, ReferenceCommand};
 pub(crate) enum Action {
     ToggleSpelling,
     DownloadDictionary(&'static str),
+    DownloadFontPack(&'static str),
     New,
     OpenDialog,
     OpenPath(PathBuf),
@@ -165,6 +166,10 @@ pub(crate) enum Dialog {
         space_cm: f32,
         separator: bool,
     },
+    /// A font pack to fetch, for text no font draws.
+    FontPack {
+        id: &'static str,
+    },
     /// A dictionary to fetch, for words no dictionary checks.
     Dictionary {
         code: &'static str,
@@ -271,6 +276,10 @@ pub(crate) struct App {
     dictionary_download: Option<(&'static str, std::sync::mpsc::Receiver<Result<(), String>>)>,
     /// Languages offered this session, not offered again.
     dictionaries_offered: Vec<&'static str>,
+    /// A font pack being fetched, and how it went.
+    font_download: Option<(&'static str, std::sync::mpsc::Receiver<Result<(), String>>)>,
+    /// Font packs offered this session.
+    fonts_offered: Vec<&'static str>,
     font_color: [u8; 3],
     status: Option<StatusLine>,
     next_id: u64,
@@ -345,6 +354,8 @@ impl App {
             speller_loading: Some(load_speller(&cc.egui_ctx)),
             dictionary_download: None,
             dictionaries_offered: Vec::new(),
+            font_download: None,
+            fonts_offered: Vec::new(),
             font_color: [192, 0, 0],
             status: None,
             next_id: 1,
@@ -779,6 +790,7 @@ impl App {
                 }
             }
             Action::DownloadDictionary(code) => self.download_dictionary(ctx, code, now),
+            Action::DownloadFontPack(id) => self.download_font_pack(ctx, id, now),
             Action::NewComment => {
                 let author = self.settings.author.clone();
                 let initials: String = author
@@ -855,6 +867,7 @@ impl App {
         let mut messages = Vec::new();
         let mut pictures = Vec::new();
         let mut missing_scripts = Vec::new();
+        let mut missing_fonts = Vec::new();
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             for event in tab.poll() {
                 match event {
@@ -917,6 +930,7 @@ impl App {
                     }
                     TabEvent::CommentAdded => self.comments_open = true,
                     TabEvent::SpellingMissing(scripts) => missing_scripts.extend(scripts),
+                    TabEvent::FontsMissing(packs) => missing_fonts.extend(packs),
                     TabEvent::Loaded => {
                         messages.push((
                             self.i18n.tf("status.opened", &[("file", &tab.title)]),
@@ -935,6 +949,7 @@ impl App {
         for (text, error) in messages {
             self.say(text, error, now);
         }
+        self.offer_font_packs(&missing_fonts);
         self.offer_dictionaries(&missing_scripts);
         for (tab, id, bytes, extension, purpose) in pictures {
             match purpose {
@@ -1352,6 +1367,28 @@ impl App {
                 tab.set_speller(speller.clone());
             }
         }
+        if let Some((id, result)) = self
+            .font_download
+            .as_ref()
+            .and_then(|(id, rx)| rx.try_recv().ok().map(|result| (*id, result)))
+        {
+            self.font_download = None;
+            match result {
+                Ok(()) => {
+                    let title = strict_ooxml::font_packs::pack(id).map_or("", |pack| pack.title);
+                    let text = self.i18n.tf("fonts.installed", &[("pack", &title)]);
+                    self.say(text, false, now);
+                    // The tabs measure and draw with it from now on.
+                    for tab in &self.tabs {
+                        tab.send(Request::SystemFonts(self.settings.system_fonts));
+                    }
+                }
+                Err(error) => {
+                    let text = self.i18n.tf("fonts.download_failed", &[("error", &error)]);
+                    self.say(text, true, now);
+                }
+            }
+        }
         if let Some((code, result)) = self
             .dictionary_download
             .as_ref()
@@ -1390,6 +1427,38 @@ impl App {
         let text = self
             .i18n
             .tf("spell.downloading", &[("language", &self.t(name))]);
+        self.say(text, false, now);
+    }
+
+    /// Offers the font pack for text no font draws.
+    fn offer_font_packs(&mut self, packs: &[&'static str]) {
+        if self.dialog.is_some() || self.font_download.is_some() {
+            return;
+        }
+        if let Some(id) = packs.iter().find(|id| !self.fonts_offered.contains(id)) {
+            self.fonts_offered.push(id);
+            self.dialog = Some(Dialog::FontPack { id });
+        }
+    }
+
+    fn download_font_pack(&mut self, ctx: &egui::Context, id: &'static str, now: f64) {
+        let (Some(pack), Some(root)) = (
+            strict_ooxml::font_packs::pack(id),
+            strict_ooxml::font_packs::cache_dir(),
+        ) else {
+            return;
+        };
+        if self.font_download.is_some() {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(pack.install(&root));
+            ctx.request_repaint();
+        });
+        self.font_download = Some((id, rx));
+        let text = self.i18n.tf("fonts.downloading", &[("pack", &pack.title)]);
         self.say(text, false, now);
     }
 
@@ -1435,6 +1504,7 @@ impl App {
             "about" => Some(Dialog::About),
             "exit" => Some(Dialog::ConfirmExit),
             "dictionary" => Some(Dialog::Dictionary { code: "ru" }),
+            "font-pack" => Some(Dialog::FontPack { id: "devanagari" }),
             "print" => {
                 actions.push(Action::PrintDialog);
                 None
@@ -2800,6 +2870,40 @@ impl App {
                         space_cm,
                         separator,
                     });
+                }
+            }
+            Dialog::FontPack { id } => {
+                let mut fetch = false;
+                let pack = strict_ooxml::font_packs::pack(id);
+                let title = pack.map_or("", |pack| pack.title);
+                #[allow(clippy::cast_precision_loss)]
+                let size = pack.map_or(0.0, |pack| pack.size() as f64 / 1_000_000.0);
+                let text = self.i18n.tf(
+                    "fonts.offer_text",
+                    &[("pack", &title), ("size", &format!("{size:.1}"))],
+                );
+                let response = modal("font-pack").show(ctx, |ui| {
+                    crate::dialog::title(ui, &t("fonts.offer_title"));
+                    ui.set_max_width(440.0);
+                    ui.label(text);
+                    ui.label(RichText::new(t("fonts.offer_source")).weak().size(12.0));
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary(ui, &t("spell.download")).clicked() {
+                            fetch = true;
+                            ui.close();
+                        }
+                        if crate::dialog::button(ui, &t("button.not_now")).clicked() {
+                            ui.close();
+                        }
+                    });
+                });
+                if fetch {
+                    actions.push(Action::DownloadFontPack(id));
+                }
+                if response.should_close() || fetch {
+                    keep = false;
+                } else {
+                    next = Some(Dialog::FontPack { id });
                 }
             }
             Dialog::Dictionary { code } => {

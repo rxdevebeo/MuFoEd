@@ -608,6 +608,14 @@
       "no_suggestions": "(no suggestions)",
       "ignore": "Ignore all",
       "add": "Add to dictionary"
+    },
+    "fonts": {
+      "offer_title": "No font for a script",
+      "offer_text": "Some of the text has no font to draw it: boxes show instead of letters. Download {pack} (about {size} MB)?",
+      "offer_source": "Noto fonts (SIL OFL 1.1) from github.com/google/fonts; each file is checked against its pinned SHA-256.",
+      "downloading": "Downloading {pack}…",
+      "installed": "Font installed: {pack}",
+      "download_failed": "Could not download the font: {error}"
     }
   }
 }

@@ -44,6 +44,8 @@ pub(crate) enum TabEvent {
     CommentAdded,
     /// The document has words in scripts no dictionary checks.
     SpellingMissing(Vec<crate::spell::Script>),
+    /// The document has text no font draws; these packs would.
+    FontsMissing(Vec<&'static str>),
 }
 
 /// What happens once a pending save finishes.
@@ -320,6 +322,7 @@ impl DocTab {
                 }
                 self.comments = comments;
             }
+            Reply::FontsMissing(packs) => events.push(TabEvent::FontsMissing(packs)),
             Reply::Spelling { errors, missing } => {
                 self.spelling = errors;
                 if !missing.is_empty() {

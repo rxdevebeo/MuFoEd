@@ -22,7 +22,7 @@ default = ["ocr"]
 ocr = ["strict-ooxml/ocr-ollama", "strict-ooxml/pdf-raster"]
 
 [dependencies]
-strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write", "pdf", "convert", "rtf", "djvu-image", "edit", "system-fonts"] }
+strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write", "pdf", "convert", "rtf", "djvu-image", "edit", "system-fonts", "font-download"] }
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-svg" }
 eframe = "0.35"
