@@ -98,6 +98,11 @@ pub use strict_ooxml_djvu::{
 };
 #[cfg(feature = "ocr-ollama")]
 pub use strict_ooxml_ocr::ollama::{OllamaConfig, OllamaVision};
+/// Recognition of a single picture: its text, or the formula it shows.
+#[cfg(feature = "ocr-ollama")]
+pub use strict_ooxml_ocr::{Image as OcrImage, Recovered, TextRecovery, VisionError};
+/// Presentation MathML into an equation of the model.
+pub use strict_ooxml_wml::mathml::{math_from_mathml, MathMlReadError};
 
 use std::io::Read;
 use std::path::Path;

@@ -55,6 +55,7 @@
     clippy::type_complexity
 )]
 
+pub mod mathml;
 pub mod model;
 pub mod nesting;
 pub mod parse;

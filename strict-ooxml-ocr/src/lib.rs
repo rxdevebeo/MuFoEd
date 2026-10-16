@@ -53,7 +53,7 @@ pub mod traits;
 pub use layout::{Align, BlockKind, Layout, LayoutBlock};
 pub use lexicon::{Lexicon, LexiconError};
 pub use report::{OcrLoss, OcrReport, Severity};
-pub use traits::{FigureClassifier, FigureKind, Recovered, TextRecovery, VisionError};
+pub use traits::{mathml_in, FigureClassifier, FigureKind, Recovered, TextRecovery, VisionError};
 
 /// A PNG of a page or a region, ready to be sent to a model.
 #[derive(Clone, Debug, PartialEq, Eq)]

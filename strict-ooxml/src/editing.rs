@@ -5,7 +5,8 @@ use strict_ooxml_core::{
     pipeline::{PipelineStage, PipelineSummary},
 };
 use strict_ooxml_edit::{
-    EditError, EditLimits, Editor, SaveError, SavePolicy, SavedDocument, VisualError, VisualMap,
+    EditError, EditLimits, Editor, MediaLayer, SaveError, SavePolicy, SavedDocument, VisualError,
+    VisualMap,
 };
 /// An editing session sharing the facade's original package/media source.
 pub struct DocumentEditor<'a> {
@@ -51,8 +52,8 @@ impl DocumentEditor<'_> {
         options: &WriteOptions,
         policy: SavePolicy,
     ) -> Result<SavedDocument, SaveError> {
-        self.editor
-            .save(revision, Some(self.package), options, policy)
+        let media = self.media();
+        self.editor.save(revision, Some(&media), options, policy)
     }
     /// Refreshes parser support without overwriting the live model or its history.
     pub fn refresh_support(
@@ -60,8 +61,11 @@ impl DocumentEditor<'_> {
         revision: u64,
         options: &WriteOptions,
     ) -> Result<(), SaveError> {
+        // The bytes are shared, so the copy is cheap.
+        let added = self.editor.added_media().clone();
+        let media = MediaLayer::new(&added, Some(self.package));
         self.editor
-            .refresh_support(revision, Some(self.package), options)?;
+            .refresh_support(revision, Some(&media), options)?;
         self.was_dirty = false;
         Ok(())
     }
@@ -72,7 +76,7 @@ impl DocumentEditor<'_> {
         options: &RenderOptions,
     ) -> Result<VisualMap, VisualError> {
         self.editor
-            .visual_map(revision, options, Some(self.package))
+            .visual_map(revision, options, Some(&self.media()))
     }
     /// [`Editor::visual_map_placed`] over pages from [`Self::place`] (placed
     /// with caret anchors on), saving a layout.
@@ -83,12 +87,16 @@ impl DocumentEditor<'_> {
         original: &[P],
     ) -> Result<VisualMap, VisualError> {
         self.editor
-            .visual_map_placed(revision, options, Some(self.package), original)
+            .visual_map_placed(revision, options, Some(&self.media()), original)
     }
     /// Lays the live edited model out once, resolving images from its
     /// original package, for painting page by page ([`crate::paint_page`]).
     pub fn place(&self, options: &RenderOptions) -> strict_ooxml_core::error::Result<Placement> {
-        strict_ooxml_render_svg::place_document(self.editor.document(), options, Some(self.package))
+        strict_ooxml_render_svg::place_document(
+            self.editor.document(),
+            options,
+            Some(&self.media()),
+        )
     }
     /// Renders the live edited model, resolving images from its original package.
     pub fn render_svg(
@@ -98,8 +106,26 @@ impl DocumentEditor<'_> {
         strict_ooxml_render_svg::render_with_media(
             self.editor.document(),
             options,
-            Some(self.package),
+            Some(&self.media()),
         )
+    }
+}
+impl DocumentEditor<'_> {
+    /// The session's added pictures over the original package.
+    fn media(&self) -> MediaLayer<'_, Package> {
+        MediaLayer::new(self.editor.added_media(), Some(self.package))
+    }
+    /// A media part's bytes: a picture the session added, or one of the
+    /// original package.
+    ///
+    /// # Errors
+    ///
+    /// When the part is in neither.
+    pub fn media_bytes(
+        &self,
+        part: &strict_ooxml_core::part::PartId,
+    ) -> strict_ooxml_core::error::Result<Vec<u8>> {
+        strict_ooxml_render_svg::MediaSource::read_media(&self.media(), part)
     }
 }
 impl<'a> std::ops::Deref for DocumentEditor<'a> {

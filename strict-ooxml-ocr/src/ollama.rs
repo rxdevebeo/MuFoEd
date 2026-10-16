@@ -276,6 +276,9 @@ been captured elsewhere, so transcribe only what is inside this image and do not
 heading, a page number, a caption or any other text that is not visible in it. If there \
 is no readable text, reply with exactly: NO TEXT";
 
+/// The prompt that asks for the formula an image shows, as MathML.
+const FORMULA_PROMPT: &str = "This image shows a mathematical formula. Write it as presentation MathML: one <math xmlns=\"http://www.w3.org/1998/Math/MathML\"> element using mi, mn, mo, mrow, mfrac, msqrt, mroot, msup, msub, msubsup, munder, mover, munderover and mtable, and nothing else - no explanation, no LaTeX, no code fence. Transcribe exactly what is shown. If the image shows no formula, reply with exactly: NO FORMULA";
+
 /// The prompt that asks for a page's layout: blocks in reading order, boxes on
 /// Qwen-VL's 0-1000 grid, text in Markdown.
 ///
@@ -402,6 +405,22 @@ impl TextRecovery for OllamaVision {
 
     fn recover_table(&self, table: &Image) -> Result<Option<Recovered>, VisionError> {
         self.ask_for_text(TABLE_PROMPT, table)
+    }
+
+    fn recover_formula(&self, formula: &Image) -> Result<Option<Recovered>, VisionError> {
+        let (text, version) = self.ask(FORMULA_PROMPT, formula, "")?;
+        if text.trim().eq_ignore_ascii_case("NO FORMULA") {
+            return Ok(None);
+        }
+        let mathml = crate::traits::mathml_in(&text).ok_or_else(|| {
+            VisionError::Unusable("the answer holds no <math> element".to_owned())
+        })?;
+        Ok(Some(Recovered {
+            text: mathml.to_owned(),
+            model: self.config.model.clone(),
+            version,
+            confidence: None,
+        }))
     }
 
     fn recover_layout(&self, page: &Image) -> Result<Option<crate::Layout>, VisionError> {

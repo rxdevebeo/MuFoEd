@@ -116,6 +116,29 @@ pub trait TextRecovery: Send + Sync {
         let _ = table;
         Ok(None)
     }
+
+    /// The formula an image shows, as presentation MathML: its text is one
+    /// `<math>` element.
+    ///
+    /// `Ok(None)` - the default - means this implementation cannot, or the
+    /// image shows no formula.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`VisionError`] when no usable answer could be obtained.
+    fn recover_formula(&self, formula: &Image) -> Result<Option<Recovered>, VisionError> {
+        let _ = formula;
+        Ok(None)
+    }
+}
+
+/// The `<math>` element of a model's answer: the answer may wrap it in a
+/// code fence or a sentence. `None` when there is none.
+#[must_use]
+pub fn mathml_in(answer: &str) -> Option<&str> {
+    let start = answer.find("<math")?;
+    let end = answer.rfind("</math>")? + "</math>".len();
+    answer.get(start..end)
 }
 
 /// Says what a graphic region is, and describes it in words.
