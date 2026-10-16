@@ -1577,8 +1577,11 @@ fn show_text(
             // `glyph_advance` is already in text space, where one unit is one em
             // scaled by `Tfs`, so on an identity CTM it is the device distance.
             // Scaling it again by the font size is what turned a 7.6 pt advance
-            // into 1937 pt.
-            glyph.width = advance.abs() * state.ctm.scale_factor();
+            // into 1937 pt. The text matrix's own scale is the other half:
+            // `1 Tf` with `72 0 0 72 x y Tm` (how Google Docs and Chrome set
+            // text) is a 72 pt glyph a fraction of a point wide, and every
+            // letter of a word read as a word of its own.
+            glyph.width = advance.abs() * Matrix::chain(text.matrix, state.ctm).scale_factor();
         }
         adjust_text(advance, text, state, geometry);
         if let Some(glyph) = glyph {

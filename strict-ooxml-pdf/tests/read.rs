@@ -258,6 +258,33 @@ fn a_tj_adjustment_moves_the_pen_without_drawing() {
 }
 
 #[test]
+fn a_glyph_scaled_by_the_text_matrix_is_as_wide_as_it_is_drawn() {
+    // `1 Tf` and a scaling `Tm`: the size comes from the matrix, and so must
+    // the width - A is 600/1000 em, 6 pt at 10 pt.
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\nBT /F1 1 Tf 10 0 0 10 10 50 Tm (AB) Tj ET\nendstream",
+        FONT,
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    let glyphs: Vec<&strict_ooxml_pdf::Glyph> = page
+        .items()
+        .iter()
+        .filter_map(|item| match item {
+            Item::Glyph(glyph) => Some(glyph),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(glyphs.len(), 2);
+    assert!((glyphs[0].size - 10.0).abs() < 0.01, "{}", glyphs[0].size);
+    assert!((glyphs[0].width - 6.0).abs() < 0.01, "{}", glyphs[0].width);
+    assert!((glyphs[1].x - 16.0).abs() < 0.01, "{}", glyphs[1].x);
+}
+
+#[test]
 fn invisible_text_is_measured_but_not_drawn() {
     let objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",
