@@ -198,7 +198,7 @@ pub(crate) fn build(
         // keeps its text where it stood, in text boxes; as one flow its
         // blocks stacked onto page after page.
         if !rebuilt
-            && matches!(column_plan, crate::columns::ColumnPlan::Single)
+            && !matches!(column_plan, crate::columns::ColumnPlan::Two { .. })
             && crate::designed::is_designed(&lines, page.geometry.height)
         {
             let frames = crate::designed::text_frames(&lines, pitch / body, push_runs);

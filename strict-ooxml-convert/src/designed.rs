@@ -1,13 +1,13 @@
 //! Pages laid out as a design rather than as running text.
 //!
 //! A brochure, a cover, a web page saved as PDF: blocks of text placed side
-//! by side, in boxes and grids. Read in order they do not run down the page
-//! - a line beside another stands on the same baseline, a column starts back
-//! at the top - and set as one flow they stack, each beside-line a line
-//! lower, until a two-page brochure takes eleven. Such a page keeps its
-//! place instead: its lines are grouped into the blocks they form, and each
-//! block is a text box anchored to the page where the block stood, one
-//! paragraph per line of the source, unwrapped, with the line's own leading.
+//! by side, in boxes and grids. Read in order they do not run down the page:
+//! a line beside another stands on the same baseline, a column starts back
+//! at the top. Set as one flow they stack, each beside-line a line lower,
+//! until a two-page brochure takes eleven. Such a page keeps its place
+//! instead: its lines are grouped into the blocks they form, and each block
+//! is a text box anchored to the page where the block stood, one paragraph
+//! per line of the source, unwrapped, with the line's own leading.
 
 use std::sync::Arc;
 
@@ -33,17 +33,31 @@ const EXACT_LINE_ASCENT: f64 = 0.8;
 const DESIGNED_SHARE: f64 = 0.15;
 
 /// Whether the page's lines, read in their order, would stack: the height of
-/// the lines that do not move down the page (they stand beside a line before
-/// them, or start back up at the top of a column) against the page's height.
+/// the lines that climb back above the flow (a column starting again at the
+/// top) or stand third or later in a row (a grid), against the page's
+/// height. Two to a row is a list item's marker and text, or a pair of
+/// signatures, which a flow holds.
 pub(crate) fn is_designed(lines: &[GlyphLine], page_height: f64) -> bool {
     if !(page_height.is_finite() && page_height > 0.0) {
         return false;
     }
     let mut furthest = f64::NEG_INFINITY;
+    let mut row = f64::NEG_INFINITY;
+    let mut in_row = 0usize;
     let mut stacked = 0.0;
     for line in lines.iter().filter(|line| !line.text().trim().is_empty()) {
-        if line.baseline < furthest + line.size * 0.5 {
-            stacked += line.size * 1.2;
+        let tolerance = line.size * 0.5;
+        if (line.baseline - row).abs() < tolerance {
+            in_row = in_row.saturating_add(1);
+            if in_row >= 3 {
+                stacked += line.size * 1.2;
+            }
+        } else {
+            if line.baseline < furthest - tolerance {
+                stacked += line.size * 1.2;
+            }
+            row = line.baseline;
+            in_row = 1;
         }
         furthest = furthest.max(line.baseline);
     }
