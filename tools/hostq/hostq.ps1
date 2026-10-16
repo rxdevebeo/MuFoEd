@@ -407,7 +407,7 @@ $script:AllowedFields = @{
     'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts', 'font_pack', 'font_packs')
     'rtf'         = @('id', 'kind', 'sha')
     'pdf-dump'    = @('id', 'kind', 'sha', 'input', 'page', 'glyphs')
-    'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes', 'lang', 'lexicon', 'ocr_layout')
+    'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes', 'lang', 'lexicon', 'ocr_layout', 'images')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
 }
@@ -572,7 +572,7 @@ function Test-JobRecord {
             if ($fields -contains 'lang' -and ($Job.lang -isnot [string] -or [string]$Job.lang -notmatch '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$')) {
                 return (& $reject 'lang is not a BCP 47 tag')
             }
-            foreach ($flag in @('convert', 'layout', 'lexicon', 'ocr_layout')) {
+            foreach ($flag in @('convert', 'layout', 'lexicon', 'ocr_layout', 'images')) {
                 if ($fields -contains $flag -and $Job.$flag -isnot [bool]) {
                     return (& $reject ("{0} must be true or false" -f $flag))
                 }
@@ -1342,7 +1342,8 @@ function Invoke-PdfDump {
 }
 
 # Recognition of a scanned PDF by the owner's local Ollama, for debugging:
-# `convert` (default on) runs `from-pdf --ocr --no-images` on the page span and
+# `convert` (default on) runs `from-pdf --ocr` on the page span (with
+# `--no-images` unless `images` is true) and
 # `to-pdf` on the result; `layout` (default on) runs the `layout_probe`
 # example, which keeps each page picture the model saw and its verbatim answer
 # to a layout prompt (blocks, boxes, kinds, Markdown). The model is `model`, or
@@ -1374,7 +1375,10 @@ function Invoke-OcrProbe {
             $cli = Join-Path $target 'release\strict-ooxml.exe'
             $docx = Join-Path $OutDir 'ocr.docx'
             $report = Join-Path $OutDir 'ocr-report.json'
-            $convertArgs = @('from-pdf', $inputPdf, '--ocr', '--pages', $pages, '--no-images', '--out', $docx, '--report-out', $report)
+            $convertArgs = @('from-pdf', $inputPdf, '--ocr', '--pages', $pages, '--out', $docx, '--report-out', $report)
+            # Pictures stay out unless `images` asks for them: they cost
+            # size and time, and recognition does not need them.
+            if (-not ($null -ne $Job.PSObject.Properties['images'] -and [bool]$Job.images)) { $convertArgs += @('--no-images') }
             # `lang` names the text's language; its word list (the executor's
             # own cache, fetched on first use) restores dropped diacritics
             # unless `lexicon` is false.
