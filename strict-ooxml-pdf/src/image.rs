@@ -570,7 +570,8 @@ fn decode_inner(
                                     .collect::<Vec<_>>()
                             });
                         if let Some(matte) = matte {
-                            unmatte(Arc::make_mut(samples), *components, &fitted, &matte);
+                            let samples: &mut Vec<u8> = Arc::make_mut(samples);
+                            unmatte(samples, *components, &fitted, &matte);
                         }
                         *alpha = Some(Arc::new(fitted));
                     }
