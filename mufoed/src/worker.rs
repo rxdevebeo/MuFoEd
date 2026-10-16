@@ -369,6 +369,8 @@ pub(crate) enum Align {
 #[derive(Clone, Debug)]
 pub(crate) enum Insert {
     PageBreak,
+    /// The text after the caret starts the next column.
+    ColumnBreak,
     Table {
         rows: usize,
         columns: usize,
@@ -378,7 +380,7 @@ pub(crate) enum Insert {
 }
 
 /// Page setup of the caret's section.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum PageChange {
     Orientation {
         landscape: bool,
@@ -390,6 +392,14 @@ pub(crate) enum PageChange {
     },
     /// Top, right, bottom, left, in twips.
     Margins([i32; 4]),
+    /// Text columns: how many, the space between them, a line between;
+    /// `widths` for columns of their own widths (twips), else equal.
+    Columns {
+        count: u16,
+        space: i32,
+        separator: bool,
+        widths: Option<Vec<i32>>,
+    },
     SectionBreak,
 }
 
@@ -711,6 +721,16 @@ pub(crate) struct RulerInfo {
     /// The paragraph's left, right and first-line indents (negative:
     /// hanging), for a body paragraph outside tables.
     pub(crate) indent: Option<[i32; 3]>,
+    /// The text columns: each one's left and right edge, twips from the
+    /// page's left edge.
+    pub(crate) columns: Vec<(i32, i32)>,
+    /// The column the caret is in, which the indents count from.
+    pub(crate) column: usize,
+    /// The columns have widths of their own (not equal).
+    pub(crate) unequal: bool,
+    /// The space between columns, for equal ones.
+    pub(crate) column_space: i32,
+    pub(crate) separator: bool,
 }
 
 /// A selected drawing, as the canvas and the ribbon show it.
@@ -3896,7 +3916,52 @@ impl<'a, 's> Worker<'a, 's> {
                 tw(computed.first_line_pt),
             ]
         });
+        // The columns across the text.
+        let left_margin = margins.left.map_or(1440, |t| t.0);
+        let right_margin = margins.right.map_or(1440, |t| t.0);
+        let text = (width - left_margin - right_margin).max(1);
+        let columns = section.columns.clone().unwrap_or_default();
+        let count = i32::from(columns.count.unwrap_or(1).max(1));
+        let space = columns.space.map_or(720, |t| t.0);
+        let unequal = !columns.equal_width && !columns.columns.is_empty();
+        let mut edges = Vec::new();
+        if unequal {
+            let mut x = left_margin;
+            for spec in &columns.columns {
+                let w = spec.width.map_or(text / count, |t| t.0);
+                edges.push((x, x + w));
+                x += w + spec.space.map_or(space, |t| t.0);
+            }
+        } else {
+            let w = (text - space * (count - 1)) / count;
+            for index in 0..count {
+                let x = left_margin + index * (w + space);
+                edges.push((x, x + w));
+            }
+        }
+        // The caret's column, by where it is drawn.
+        let caret_x = self
+            .map
+            .as_ref()
+            .and_then(|map| {
+                map.caret(self.session.revision(), &self.position(caret))
+                    .ok()
+            })
+            .and_then(|rects| rects.first().map(|r| r.x * 15.0));
+        #[allow(clippy::cast_possible_truncation)]
+        let column = caret_x
+            .and_then(|x| {
+                edges
+                    .iter()
+                    .position(|(a, b)| x >= f64::from(*a) - 30.0 && x <= f64::from(*b) + 30.0)
+            })
+            .unwrap_or(0);
         Some(RulerInfo {
+            columns: edges,
+            column,
+            unequal,
+            column_space: space,
+            separator: columns.separator,
             page,
             width,
             height,
@@ -5267,6 +5332,24 @@ impl<'a, 's> Worker<'a, 's> {
 
     fn insert(&mut self, insert: Insert) -> Outcome {
         match insert {
+            Insert::ColumnBreak => {
+                let Some(caret) = self.caret.clone() else {
+                    return Outcome::Quiet;
+                };
+                self.delete_selection();
+                let caret = self.caret.clone().unwrap_or(caret);
+                let commands = self.inline_at_caret(
+                    &caret,
+                    strict_ooxml::model::Inline::Break(strict_ooxml::model::BreakKind::Column),
+                );
+                if self.transact(&commands) {
+                    self.caret = Some(Logical {
+                        offset: caret.offset + 1,
+                        paragraph: caret.paragraph,
+                    });
+                }
+                Outcome::Edited
+            }
             Insert::PageBreak => {
                 if !self.split() {
                     return Outcome::Quiet;
@@ -5427,6 +5510,32 @@ impl<'a, 's> Worker<'a, 's> {
                 margins.header = margins.header.or(Some(Twips(709)));
                 margins.footer = margins.footer.or(Some(Twips(709)));
                 properties.page_margins = Some(margins);
+            }
+            PageChange::Columns {
+                count,
+                space,
+                separator,
+                widths,
+            } => {
+                use strict_ooxml::model::props::{ColumnSpec, Columns};
+                let count = count.clamp(1, 16);
+                let specs = widths.as_ref().map_or_else(Vec::new, |widths| {
+                    widths
+                        .iter()
+                        .enumerate()
+                        .map(|(index, width)| ColumnSpec {
+                            width: Some(Twips(*width)),
+                            space: (index + 1 < widths.len()).then_some(Twips(space)),
+                        })
+                        .collect()
+                });
+                properties.columns = Some(Columns {
+                    count: Some(count),
+                    space: Some(Twips(space)),
+                    equal_width: widths.is_none(),
+                    separator: separator && count > 1,
+                    columns: specs,
+                });
             }
             PageChange::SectionBreak => {}
         }
@@ -7882,6 +7991,55 @@ mod tests {
         assert_eq!(settle(&requests, &replies), "onetwo");
         requests.send(Request::Shutdown).unwrap();
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Columns set from the Layout tab reach the ruler: two equal ones
+    /// with their gap, then ones of their own widths.
+    #[test]
+    fn columns_reach_the_ruler() {
+        let (requests, replies) = new_document();
+        send_all(&requests, typed("abc"));
+        requests
+            .send(Request::Page(PageChange::Columns {
+                count: 2,
+                space: 708,
+                separator: true,
+                widths: None,
+            }))
+            .unwrap();
+        let ruler = wait(&replies, |reply| match reply {
+            Reply::Cursor(cursor) => cursor.ruler.filter(|r| r.columns.len() == 2),
+            _ => None,
+        });
+        let [(_, a_end), (b_start, _)] = ruler.columns[..] else {
+            panic!("{:?}", ruler.columns);
+        };
+        assert_eq!(b_start - a_end, 708);
+        assert!(ruler.separator && !ruler.unequal);
+        requests
+            .send(Request::Page(PageChange::Columns {
+                count: 2,
+                space: 708,
+                separator: false,
+                widths: Some(vec![2835, 5953]),
+            }))
+            .unwrap();
+        let ruler = wait(&replies, |reply| match reply {
+            Reply::Cursor(cursor) => cursor.ruler.filter(|r| r.unequal),
+            _ => None,
+        });
+        let widths: Vec<i32> = ruler.columns.iter().map(|(a, b)| b - a).collect();
+        assert_eq!(widths, vec![2835, 5953]);
+        // A column break goes in at the caret, which stays after it.
+        send_all(&requests, vec![Request::Insert(Insert::ColumnBreak)]);
+        send_all(&requests, typed("d"));
+        let text = settle(&requests, &replies);
+        assert_eq!(text.chars().filter(|c| *c == 'd').count(), 1, "{text:?}");
+        assert!(
+            text.starts_with("abc") && text.ends_with('d') && text.len() > 4,
+            "{text:?}"
+        );
+        requests.send(Request::Shutdown).unwrap();
     }
 
     #[test]

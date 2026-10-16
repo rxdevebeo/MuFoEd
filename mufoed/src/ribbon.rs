@@ -1664,6 +1664,16 @@ fn insert(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
         }
         if big_clicked(
             ui,
+            Icon::Columns,
+            s.t("cmd.column_break"),
+            s.t("tip.column_break"),
+            editable,
+            p,
+        ) {
+            doc(actions, Request::Insert(Insert::ColumnBreak));
+        }
+        if big_clicked(
+            ui,
             Icon::SectionBreak,
             s.t("cmd.section_break"),
             s.t("tip.section_break"),
@@ -2308,6 +2318,49 @@ fn layout(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
             });
         });
     });
+    group(ui, s.t("group.columns"), p, |ui| {
+        big_menu(
+            ui,
+            Icon::Columns,
+            s.t("cmd.columns"),
+            s.t("tip.columns"),
+            editable,
+            p,
+            |ui| {
+                // Twips of the A4 text width a preset splits.
+                let presets: [(&str, u16, Option<Vec<i32>>); 5] = [
+                    ("columns.one", 1, None),
+                    ("columns.two", 2, None),
+                    ("columns.three", 3, None),
+                    ("columns.left", 2, Some(vec![2835, 5953])),
+                    ("columns.right", 2, Some(vec![5953, 2835])),
+                ];
+                for (key, count, widths) in presets {
+                    if ui.button(s.t(key)).clicked() {
+                        doc(
+                            actions,
+                            Request::Page(PageChange::Columns {
+                                count,
+                                space: 708,
+                                separator: false,
+                                widths,
+                            }),
+                        );
+                        ui.close();
+                    }
+                }
+                ui.separator();
+                if ui.button(s.t("columns.more")).clicked() {
+                    actions.push(Action::Open(Dialog::Columns {
+                        count: 2,
+                        space_cm: 1.25,
+                        separator: false,
+                    }));
+                    ui.close();
+                }
+            },
+        );
+    });
     group(ui, s.t("group.breaks"), p, |ui| {
         if big_clicked(
             ui,
@@ -2318,6 +2371,16 @@ fn layout(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
             p,
         ) {
             doc(actions, Request::Insert(Insert::PageBreak));
+        }
+        if big_clicked(
+            ui,
+            Icon::Columns,
+            s.t("cmd.column_break"),
+            s.t("tip.column_break"),
+            editable,
+            p,
+        ) {
+            doc(actions, Request::Insert(Insert::ColumnBreak));
         }
         if big_clicked(
             ui,

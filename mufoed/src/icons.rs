@@ -29,6 +29,7 @@ pub(crate) enum Icon {
     Picture,
     Print,
     Toc,
+    Columns,
     Comment,
     Footnote,
     Bookmark,
@@ -409,6 +410,18 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                 color,
                 Stroke::NONE,
             ));
+        }
+        Icon::Columns => {
+            page(painter, page_rect, color, paper);
+            let inner = page_rect.shrink(page_rect.width() * 0.16);
+            let half = inner.width() * 0.44;
+            for column in 0..2u8 {
+                let x0 = inner.left() + f32::from(column) * (inner.width() - half);
+                for line in 0..5u8 {
+                    let y = inner.top() + inner.height() * f32::from(line) / 4.0;
+                    painter.line_segment([pos2(x0, y), pos2(x0 + half, y)], stroke(accent, thin));
+                }
+            }
         }
         Icon::Comment => {
             // A speech balloon.

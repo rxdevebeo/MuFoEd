@@ -52,7 +52,8 @@
       "toc": "Table of Contents",
       "notes": "Footnotes",
       "links": "Links",
-      "comments": "Comments"
+      "comments": "Comments",
+      "columns": "Columns"
     },
     "cmd": {
       "new": "New",
@@ -137,7 +138,9 @@
       "new_comment": "New comment",
       "previous_comment": "Previous",
       "next_comment": "Next",
-      "show_comments": "Show comments"
+      "show_comments": "Show comments",
+      "columns": "Columns",
+      "column_break": "Column break"
     },
     "tip": {
       "start_page": "Start page",
@@ -242,7 +245,9 @@
       "new_comment": "A comment on the selected text (or the word at the caret)",
       "previous_comment": "Go to the previous comment",
       "next_comment": "Go to the next comment",
-      "show_comments": "The comments pane"
+      "show_comments": "The comments pane",
+      "columns": "Split the section's text into columns",
+      "column_break": "Continue the text at the top of the next column"
     },
     "font": {
       "default": "(from style)",
@@ -490,7 +495,8 @@
       "first_line": "First line indent",
       "hanging": "Hanging indent",
       "left_indent": "Left indent",
-      "right_indent": "Right indent"
+      "right_indent": "Right indent",
+      "column_gap": "Space between columns"
     },
     "page_number": {
       "top": "Top of page",
@@ -566,6 +572,18 @@
       "delete": "Delete",
       "done": "Done",
       "hint": "Comment text"
+    },
+    "columns": {
+      "one": "One",
+      "two": "Two",
+      "three": "Three",
+      "left": "Left",
+      "right": "Right",
+      "more": "More columns…",
+      "title": "Columns",
+      "count": "Number of columns",
+      "space": "Spacing",
+      "separator": "Line between"
     }
   }
 }

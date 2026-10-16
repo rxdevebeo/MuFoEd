@@ -29,6 +29,8 @@ pub(crate) enum Grip {
     /// Both, together (the box under the bottom triangle).
     LeftIndent,
     RightIndent,
+    /// The left (`false`) or right edge of the gap after column `n`.
+    ColumnGap(usize, bool),
 }
 
 impl Grip {
@@ -42,6 +44,7 @@ impl Grip {
             Self::Hanging => "ruler.hanging",
             Self::LeftIndent => "ruler.left_indent",
             Self::RightIndent => "ruler.right_indent",
+            Self::ColumnGap(..) => "ruler.column_gap",
         }
     }
 }
@@ -217,8 +220,14 @@ fn horizontal(
                 | Grip::Hanging
                 | Grip::LeftIndent
                 | Grip::RightIndent
+                | Grip::ColumnGap(..)
         )
     });
+    let (column_left, column_right) = info
+        .columns
+        .get(info.column)
+        .copied()
+        .unwrap_or((left_margin, info.width - right_margin));
     // Margins as dragged so far.
     let mut left_edge = left_margin;
     let mut right_edge = info.width - right_margin;
@@ -240,6 +249,36 @@ fn horizontal(
     );
     painter.rect_filled(paper, 0.0, palette.desk);
     painter.rect_filled(text, 0.0, Color32::WHITE);
+    // The gaps between columns, shaded like the margins (as dragged so far).
+    let mut gaps: Vec<(f32, f32)> = info
+        .columns
+        .windows(2)
+        .filter_map(|pair| match pair {
+            [a, b] => Some((x_of(info, page, a.1), x_of(info, page, b.0))),
+            _ => None,
+        })
+        .collect();
+    if let Some(Dragging {
+        grip: Grip::ColumnGap(index, right),
+        at,
+    }) = dragging
+    {
+        if let Some(gap) = gaps.get_mut(index) {
+            let x = x_of(info, page, at);
+            if right {
+                gap.1 = x.max(gap.0 + 2.0);
+            } else {
+                gap.0 = x.min(gap.1 - 2.0);
+            }
+        }
+    }
+    for (a, b) in &gaps {
+        painter.rect_filled(
+            Rect::from_x_y_ranges(*a..=*b, band.y_range()),
+            0.0,
+            palette.desk,
+        );
+    }
     painter.rect_stroke(
         paper,
         0.0,
@@ -262,7 +301,7 @@ fn horizontal(
     if let Some(indent) = info.indent {
         let [mut left, mut right, mut first] = indent;
         if let Some(drag) = dragging {
-            let from_margin = drag.at - left_edge;
+            let from_margin = drag.at - column_left;
             match drag.grip {
                 Grip::FirstLine => first = from_margin - left,
                 Grip::Hanging => {
@@ -272,15 +311,20 @@ fn horizontal(
                     first = first_at - left;
                 }
                 Grip::LeftIndent => left = from_margin,
-                Grip::RightIndent => right = (info.width - right_margin) - drag.at,
+                Grip::RightIndent => right = column_right - drag.at,
                 _ => {}
             }
         }
         let line = Color32::from_gray(70);
         let fill = Color32::from_gray(235);
-        let first_x = x_of(info, page, left_edge + left + first);
-        let left_x = x_of(info, page, left_edge + left);
-        let right_x = x_of(info, page, right_edge - right);
+        // The caret's column, moved with the margin when that is dragged.
+        let from = column_left + (left_edge - left_margin) * i32::from(info.column == 0);
+        let to = column_right
+            - ((info.width - right_margin) - right_edge)
+                * i32::from(info.column + 1 >= info.columns.len());
+        let first_x = x_of(info, page, from + left + first);
+        let left_x = x_of(info, page, from + left);
+        let right_x = x_of(info, page, to - right);
         triangle(&painter, pos2(first_x, band.top() + 6.0), true, fill, line);
         triangle(
             &painter,
@@ -334,12 +378,20 @@ fn horizontal(
             return Some(*grip);
         }
         if (pos.x - text.left()).abs() <= 3.0 {
-            Some(Grip::LeftMargin)
-        } else if (pos.x - text.right()).abs() <= 3.0 {
-            Some(Grip::RightMargin)
-        } else {
-            None
+            return Some(Grip::LeftMargin);
         }
+        if (pos.x - text.right()).abs() <= 3.0 {
+            return Some(Grip::RightMargin);
+        }
+        gaps.iter().enumerate().find_map(|(index, (a, b))| {
+            if (pos.x - a).abs() <= 3.0 {
+                Some(Grip::ColumnGap(index, false))
+            } else if (pos.x - b).abs() <= 3.0 {
+                Some(Grip::ColumnGap(index, true))
+            } else {
+                None
+            }
+        })
     };
     if response.hovered() {
         if let Some(grip) = pointer.and_then(grip_at) {
@@ -365,6 +417,7 @@ fn horizontal(
                 | Grip::Hanging
                 | Grip::LeftIndent
                 | Grip::RightIndent
+                | Grip::ColumnGap(..)
         ) {
             // Snap to an eighth of a centimetre, as Word does.
             #[allow(clippy::cast_possible_truncation)]
@@ -518,11 +571,55 @@ fn finish(tab: &DocTab, info: &RulerInfo, drag: Dragging) {
                 top, right, bottom, left,
             ])));
         }
+        Grip::ColumnGap(index, right_edge) => {
+            let (Some(before), Some(after)) =
+                (info.columns.get(index), info.columns.get(index + 1))
+            else {
+                return;
+            };
+            let count = u16::try_from(info.columns.len()).unwrap_or(1);
+            if info.unequal {
+                // The column beside the dragged edge narrows or widens; the
+                // space stays.
+                let mut widths: Vec<i32> = info.columns.iter().map(|(a, b)| b - a).collect();
+                if right_edge {
+                    if let Some(width) = widths.get_mut(index + 1) {
+                        *width = (after.1 - drag.at).max(567);
+                    }
+                } else if let Some(width) = widths.get_mut(index) {
+                    *width = (drag.at - before.0).max(567);
+                }
+                tab.send(Request::Page(PageChange::Columns {
+                    count,
+                    space: info.column_space,
+                    separator: info.separator,
+                    widths: Some(widths),
+                }));
+            } else {
+                // Equal columns: the gap is the space between them all.
+                let space = if right_edge {
+                    drag.at - before.1
+                } else {
+                    after.0 - drag.at
+                };
+                tab.send(Request::Page(PageChange::Columns {
+                    count,
+                    space: space.clamp(0, 2880),
+                    separator: info.separator,
+                    widths: None,
+                }));
+            }
+        }
         Grip::FirstLine | Grip::Hanging | Grip::LeftIndent | Grip::RightIndent => {
             let Some([mut indent_left, mut indent_right, mut first]) = info.indent else {
                 return;
             };
-            let from_margin = drag.at - left;
+            let (column_left, column_right) = info
+                .columns
+                .get(info.column)
+                .copied()
+                .unwrap_or((left, info.width - right));
+            let from_margin = drag.at - column_left;
             match drag.grip {
                 Grip::FirstLine => first = from_margin - indent_left,
                 Grip::Hanging => {
@@ -531,7 +628,7 @@ fn finish(tab: &DocTab, info: &RulerInfo, drag: Dragging) {
                     first = first_at - indent_left;
                 }
                 Grip::LeftIndent => indent_left = from_margin,
-                _ => indent_right = (info.width - right) - drag.at,
+                _ => indent_right = column_right - drag.at,
             }
             tab.send(Request::Indent([indent_left, indent_right, first]));
         }

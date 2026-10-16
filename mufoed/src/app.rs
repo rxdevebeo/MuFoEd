@@ -18,7 +18,7 @@ use crate::worker::{
     Align, Busy, CaretFormat, EditState, ExportPurpose, FindQuery, FormatChange,
     HeaderFooterCommand, Insert, Motion, ObjectCommand, PictureEdit, Request, SaveFormat,
 };
-use crate::worker::{CommentCommand, ReferenceCommand};
+use crate::worker::{CommentCommand, PageChange, ReferenceCommand};
 
 /// Everything a click can ask for.
 pub(crate) enum Action {
@@ -156,6 +156,12 @@ pub(crate) enum Dialog {
         restart: bool,
     },
     Print(Box<PrintDialog>),
+    /// Text columns: how many, the space between, a line between.
+    Columns {
+        count: u16,
+        space_cm: f32,
+        separator: bool,
+    },
     /// The bookmarks: a name to add, the one chosen in the list.
     Bookmarks {
         name: String,
@@ -2565,6 +2571,67 @@ impl App {
                     keep = false;
                 } else {
                     next = Some(Dialog::Table { rows, columns });
+                }
+            }
+            Dialog::Columns {
+                mut count,
+                mut space_cm,
+                mut separator,
+            } => {
+                let mut apply = false;
+                let response = modal("columns").show(ctx, |ui| {
+                    ui.set_min_width(300.0);
+                    ui.heading(t("columns.title"));
+                    ui.add_space(10.0);
+                    egui::Grid::new("columns-grid")
+                        .num_columns(2)
+                        .spacing(vec2(16.0, 10.0))
+                        .show(ui, |ui| {
+                            ui.label(t("columns.count"));
+                            ui.add(egui::DragValue::new(&mut count).range(1..=6));
+                            ui.end_row();
+                            ui.label(t("columns.space"));
+                            ui.add(
+                                egui::DragValue::new(&mut space_cm)
+                                    .range(0.0..=5.0)
+                                    .speed(0.05)
+                                    .fixed_decimals(2)
+                                    .suffix(format!(" {}", t("unit.cm"))),
+                            );
+                            ui.end_row();
+                            ui.label("");
+                            ui.checkbox(&mut separator, t("columns.separator"));
+                            ui.end_row();
+                        });
+                    ui.add_space(14.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(t("button.ok")).clicked() {
+                            apply = true;
+                            ui.close();
+                        }
+                        if ui.button(t("button.cancel")).clicked() {
+                            ui.close();
+                        }
+                    });
+                });
+                if apply {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let space = (space_cm * 566.929).round() as i32;
+                    actions.push(Action::Doc(Request::Page(PageChange::Columns {
+                        count,
+                        space,
+                        separator,
+                        widths: None,
+                    })));
+                }
+                if response.should_close() || apply {
+                    keep = false;
+                } else {
+                    next = Some(Dialog::Columns {
+                        count,
+                        space_cm,
+                        separator,
+                    });
                 }
             }
             Dialog::Bookmarks {
