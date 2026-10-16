@@ -326,7 +326,9 @@ pub(crate) fn recover_pages(
                             .into_iter()
                             .map(|paragraph| RecoveredItem::Paragraph(Box::new(paragraph)))
                             .collect(),
-                        whole_page: false,
+                        // A scan read as plain lines (no layout) is still a
+                        // page of the book: it starts a page as well.
+                        whole_page: ask == Ask::Page,
                         extent: None,
                     });
                 }
