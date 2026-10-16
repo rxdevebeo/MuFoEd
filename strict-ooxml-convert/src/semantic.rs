@@ -151,6 +151,11 @@ pub(crate) fn build(
             section.page_margins = Some(*margins);
         }
         let text_area = text_area(&section);
+        let top_margin = section
+            .page_margins
+            .as_ref()
+            .and_then(|margins| margins.top)
+            .map(|top| f64::from(top.0) / 20.0);
         sections.begin_page(&mut blocks, section, false);
         let raw_lines = join_fragments(strict_ooxml_pdf::text::lines(page.items()));
         report.lines += raw_lines.len();
@@ -298,6 +303,16 @@ pub(crate) fn build(
             index + 1,
         );
         blocks.extend(figures.map(|(_, figure)| figure));
+        // Only where the page starts at the top: the document's first page, or
+        // one after a hard break. In a flow a page's first line follows the
+        // last one before it.
+        if index == 0 || break_next {
+            if let (Some(top), Some(first)) = (top_margin, lines.first()) {
+                if plan.starts_table(0).is_none() {
+                    place_first_line(&mut blocks, page_start, first, top, pitch / body);
+                }
+            }
+        }
         hold_anchors(&mut blocks, page_start, anchored);
         if break_next {
             break_page(&mut blocks, page_start);
@@ -1114,6 +1129,47 @@ fn hold_anchors(blocks: &mut Vec<Block>, page_start: usize, mut anchors: Vec<Inl
     let mut paragraph = empty_paragraph();
     paragraph.inlines = anchors;
     blocks.push(Block::Paragraph(paragraph));
+}
+
+/// Sets the room above a page's first paragraph, so its first baseline lands
+/// where the PDF put it rather than on the top margin. The margin is the
+/// page's least, and a cover's title set a third of the way down stood at
+/// the top of the page.
+fn place_first_line(
+    blocks: &mut [Block],
+    page_start: usize,
+    line: &GlyphLine,
+    top: f64,
+    ratio: f64,
+) {
+    let Some(Block::Paragraph(paragraph)) = blocks.get_mut(page_start) else {
+        return;
+    };
+    let ratio = if ratio.is_finite() {
+        ratio.clamp(1.0, 1.6)
+    } else {
+        1.2
+    };
+    let spacing = paragraph.props.spacing.get_or_insert_with(Spacing::default);
+    if spacing.before.is_some() {
+        return;
+    }
+    let height = match (spacing.line, spacing.line_rule) {
+        (Some(line), Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact)) => {
+            f64::from(line.0) / 20.0
+        }
+        _ => {
+            let height = line.size * ratio;
+            spacing.line = Some(Twips(to_twips(height)));
+            spacing.line_rule = Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact);
+            height
+        }
+    };
+    // An exact line's baseline is 0.8 of the way down its box.
+    let before = line.baseline - top - 0.8 * height;
+    if before > 0.5 {
+        spacing.before = Some(Twips(to_twips(before)));
+    }
 }
 
 /// An empty paragraph.
