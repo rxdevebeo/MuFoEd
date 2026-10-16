@@ -168,18 +168,29 @@ pub(crate) fn build(
             report,
         );
 
-        // Pictures and drawn shapes, each with the top of its box (points from
-        // the page's top). On a single-column page they join the flow where they
-        // stand: before the first line below their top. A two-column page keeps
-        // them after its text, because "below" means nothing across a gutter.
+        // Drawn shapes (and a rebuilt scan's pictures), each with the top of
+        // its box (points from the page's top). On a single-column page they
+        // join the flow where they stand: before the first line below their
+        // top. A two-column page keeps them after its text, because "below"
+        // means nothing across a gutter.
         let mut figures: Vec<(f64, Block)> = Vec::new();
-        if options.embed_images {
+        // A page's own pictures stand where the page put them, anchored to it:
+        // a logo above the letterhead, two signatures and a stamp in one row
+        // are not a column of paragraphs, and stacking them pushed a letter's
+        // last lines onto a second page. A scan rebuilt from its layout keeps
+        // the flow: its picture is the page, and anchored it would push the
+        // text it was read into off the page.
+        let mut anchored = Vec::new();
+        if options.embed_images && rebuilt {
             figures.extend(images_of(page, &mut media, report, options));
+        } else if options.embed_images {
+            anchored = anchored_images_of(page, &lines, &mut media, report, options);
         }
+        let page_start = blocks.len();
         figures.extend(crate::vectors::placed_blocks_for(page, report));
         let interleave = matches!(column_plan, crate::columns::ColumnPlan::Single);
         if interleave {
-            // Stable: equal tops keep pictures before shapes, as before.
+            // Stable: equal tops keep pictures before shapes.
             figures.sort_by(|a, b| a.0.total_cmp(&b.0));
         }
         let mut figures = figures.into_iter().peekable();
@@ -238,6 +249,7 @@ pub(crate) fn build(
             index + 1,
         );
         blocks.extend(figures.map(|(_, figure)| figure));
+        hold_anchors(&mut blocks, page_start, anchored);
         // Text a model read off a picture-only region comes after the page's
         // own content, indented to the region's left edge.
         for block in recovered.page(index) {
@@ -905,6 +917,107 @@ fn images_of(
     report: &mut ConversionReport,
     options: &PdfOptions,
 ) -> Vec<(f64, Block)> {
+    stored_images(page, media, report, options)
+        .into_iter()
+        .map(|(image, part, description)| {
+            let top = page.geometry.height - (image.y + image.height);
+            (
+                top,
+                Block::Paragraph(image_paragraph(image, &part, description)),
+            )
+        })
+        .collect()
+}
+
+/// The page's pictures as page-anchored drawings, each wrapped by what the
+/// page sets around it: text over a picture puts it behind the text, text
+/// beside it wraps square, and otherwise it pushes the text above and below.
+fn anchored_images_of(
+    page: &PdfPage,
+    lines: &[GlyphLine],
+    media: &mut MediaCollector,
+    report: &mut ConversionReport,
+    options: &PdfOptions,
+) -> Vec<Inline> {
+    let inked: Vec<&GlyphLine> = lines
+        .iter()
+        .filter(|line| !line.text().trim().is_empty())
+        .collect();
+    stored_images(page, media, report, options)
+        .into_iter()
+        .filter_map(|(image, part, description)| {
+            let top = page.geometry.height - (image.y + image.height);
+            let (left, right, bottom) = (image.x, image.x + image.width, top + image.height);
+            let mut wrap = PictureWrap::TopAndBottom;
+            for line in &inked {
+                let (line_top, line_bottom) = (line.baseline - line.ascent, line.baseline);
+                let shared = line_bottom.min(bottom) - line_top.max(top);
+                if shared <= line.size * 0.25 {
+                    continue;
+                }
+                if line.x < right && line.x + line.width > left {
+                    wrap = PictureWrap::Behind;
+                    break;
+                }
+                wrap = PictureWrap::Square;
+            }
+            anchored_image(image, &part, description, top, wrap)
+        })
+        .collect()
+}
+
+/// How a page-anchored picture meets the text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PictureWrap {
+    /// Text set over it: the picture is behind the text and wraps nothing.
+    Behind,
+    /// Text beside it.
+    Square,
+    /// No text beside it: lines that would cross it move below.
+    TopAndBottom,
+}
+
+/// Puts a page's anchored drawings into its first paragraph, which is on the
+/// page they belong to whatever the text before it does; a page without one
+/// gets a paragraph of their own.
+fn hold_anchors(blocks: &mut Vec<Block>, page_start: usize, anchors: Vec<Inline>) {
+    if anchors.is_empty() {
+        return;
+    }
+    let first = blocks
+        .iter_mut()
+        .skip(page_start)
+        .find_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        });
+    if let Some(paragraph) = first {
+        paragraph.inlines.splice(0..0, anchors);
+        return;
+    }
+    blocks.push(Block::Paragraph(Paragraph {
+        props: ParagraphProperties::default(),
+        inlines: anchors,
+        rsids: Rsids::default(),
+        para_id: None,
+        text_id: None,
+        revision: None,
+        location: strict_ooxml_core::error::SourceLocation::unknown(),
+    }));
+}
+
+/// The page's pictures stored as media parts, each with what a model said of
+/// it.
+fn stored_images<'p>(
+    page: &'p PdfPage,
+    media: &mut MediaCollector,
+    report: &mut ConversionReport,
+    options: &PdfOptions,
+) -> Vec<(
+    &'p strict_ooxml_pdf::PlacedImage,
+    strict_ooxml_core::part::PartId,
+    Option<String>,
+)> {
     let page_number = page.number;
     let mut out = Vec::new();
     for item in page.items() {
@@ -931,11 +1044,7 @@ fn images_of(
                 continue;
             }
         };
-        let top = page.geometry.height - (image.y + image.height);
-        out.push((
-            top,
-            Block::Paragraph(image_paragraph(image, &part, description)),
-        ));
+        out.push((image, part, description));
     }
     out
 }
@@ -1277,6 +1386,79 @@ fn sized_image_paragraph(
         revision: None,
         location,
     }
+}
+
+/// A picture anchored to the page at its place on it.
+fn anchored_image(
+    image: &strict_ooxml_pdf::PlacedImage,
+    part: &strict_ooxml_core::part::PartId,
+    description: Option<String>,
+    top: f64,
+    wrap: PictureWrap,
+) -> Option<Inline> {
+    use strict_ooxml_wml::model::drawing::{AnchorDrawing, Position, Wrap, WrapKind};
+    let emu = |points: f64| Emu((points * 12_700.0).round() as i64);
+    let Paragraph { mut inlines, .. } =
+        sized_image_paragraph(image.width, image.height, part, description);
+    let Some(Inline::Drawing(Drawing {
+        kind: DrawingKind::Inline(inline),
+        location,
+    })) = inlines.pop()
+    else {
+        return None;
+    };
+    let position = |offset: f64| Position {
+        relative_from: Some(Arc::from("page")),
+        align: None,
+        offset: Some(emu(offset)),
+        percent_offset: None,
+    };
+    let kind = match wrap {
+        PictureWrap::Behind => WrapKind::None,
+        PictureWrap::Square => WrapKind::Square,
+        PictureWrap::TopAndBottom => WrapKind::TopAndBottom,
+    };
+    Some(Inline::Drawing(Drawing {
+        kind: DrawingKind::Anchor(AnchorDrawing {
+            extent: inline.extent,
+            effect_extent: None,
+            doc_pr: inline.doc_pr,
+            simple_pos: false,
+            simple_pos_point: None,
+            hidden: None,
+            position_h: Some(position(image.x)),
+            position_v: Some(position(top)),
+            wrap: Some(Wrap {
+                kind,
+                wrap_text: if kind == WrapKind::Square {
+                    Some(Arc::from("bothSides"))
+                } else {
+                    None
+                },
+                dist_left: None,
+                dist_right: None,
+                dist_top: None,
+                dist_bottom: None,
+                polygon: Vec::new(),
+                polygon_edited: None,
+            }),
+            behind_doc: wrap == PictureWrap::Behind,
+            relative_height: Some(1),
+            dist_top: None,
+            dist_bottom: None,
+            dist_left: None,
+            dist_right: None,
+            allow_overlap: true,
+            layout_in_cell: true,
+            locked: false,
+            graphic_uri: inline.graphic_uri,
+            graphic: inline.graphic,
+            size_rel_h: None,
+            size_rel_v: None,
+            location: location.clone(),
+        }),
+        location,
+    }))
 }
 
 #[cfg(test)]
