@@ -12,10 +12,9 @@
 //! edit that merges or splits runs moves the kernel position, the paragraph
 //! offset stays where the user put it.
 
-use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
-use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 
@@ -35,7 +34,8 @@ use strict_ooxml::model::{
     Block, Document, GridCol, Paragraph, StyleId, Table, TableCell, TableRow,
 };
 use strict_ooxml::{
-    DocumentEditor, OpenControl, OpenOptions, Page, RenderOptions, StrictDocument, WriteOptions,
+    DocumentEditor, OpenControl, OpenOptions, PageSelection, PlacedPage, Placement, RenderOptions,
+    StrictDocument, WriteOptions,
 };
 use strict_ooxml_core::error::SourceLocation;
 
@@ -288,9 +288,29 @@ pub(crate) enum SaveFormat {
 pub(crate) struct PageData {
     pub(crate) width: f64,
     pub(crate) height: f64,
-    pub(crate) svg: Arc<str>,
-    /// Changes when the SVG does, so unchanged pages keep their bitmaps.
-    pub(crate) hash: u64,
+    /// The laid-out page; it is painted only when it comes into view.
+    pub(crate) placed: PlacedPage,
+    /// New with every layout of the page. A bitmap made from an older
+    /// generation is checked against the new one's SVG before it is reused.
+    pub(crate) generation: u64,
+}
+
+/// A generation no page has had yet.
+fn next_generation() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Pages laid out first, so a long document shows something at once.
+const PREVIEW_PAGES: usize = 3;
+
+/// What the worker is busy with, for the status bar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Busy {
+    /// Laying the pages out.
+    Layout,
+    /// Building the caret map; clicks and typing wait for it.
+    Map,
 }
 
 /// A heading for the navigation pane.
@@ -299,6 +319,57 @@ pub(crate) struct OutlineEntry {
     pub(crate) level: u8,
     pub(crate) text: String,
     pub(crate) paragraph: Address,
+    /// How the page draws the heading's text.
+    pub(crate) font: Option<HeadingFont>,
+}
+
+/// The face, size and colour of a heading's first run, through its styles.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct HeadingFont {
+    /// The family the page paints with (a bundled substitute or the
+    /// document's own font).
+    pub(crate) family: String,
+    pub(crate) bold: bool,
+    pub(crate) italic: bool,
+    pub(crate) size_pt: f32,
+    pub(crate) color: Option<[u8; 3]>,
+}
+
+/// How the page draws `paragraph`'s text, through its styles: its first run
+/// with text, else its paragraph mark.
+fn heading_font(
+    document: &Document,
+    programs: &Arc<strict_ooxml_render_svg::font::embedded::FontPrograms>,
+    paragraph: &Paragraph,
+    text: &str,
+) -> HeadingFont {
+    use strict_ooxml::model::{Inline, RunContent};
+    use strict_ooxml_render_svg::style;
+    let computed = style::compute_paragraph(document, paragraph);
+    let run = paragraph.inlines.iter().find_map(|inline| match inline {
+        Inline::Run(run) if run.content.iter().any(|c| matches!(c, RunContent::Text(_))) => {
+            Some(run)
+        }
+        _ => None,
+    });
+    let mut run = run.map_or_else(
+        || computed.mark_run().clone(),
+        |run| style::compute_run(document, &computed, run),
+    );
+    run.font_programs = Arc::clone(programs);
+    let color = run.color.as_deref().and_then(|hex| {
+        let hex = hex.strip_prefix('#')?;
+        let channel = |at: usize| u8::from_str_radix(hex.get(at..at + 2)?, 16).ok();
+        Some([channel(0)?, channel(2)?, channel(4)?])
+    });
+    #[allow(clippy::cast_possible_truncation)]
+    HeadingFont {
+        family: style::installed_paint_family(&run, text),
+        bold: run.bold,
+        italic: run.italic,
+        size_pt: run.size_pt as f32,
+        color,
+    }
 }
 
 /// What the ribbon shows for the text at the caret.
@@ -375,6 +446,7 @@ pub(crate) enum Reply {
     Cursor(Box<Cursor>),
     State(EditState),
     Outline(Vec<OutlineEntry>),
+    Busy(Option<Busy>),
     Note(Note),
     Clipboard(String),
     Saved {
@@ -432,12 +504,10 @@ fn run(
         }
     };
     let mut document = loaded.document;
-    let mut options = RenderOptions::default();
-    if system_fonts {
-        if let Ok(assets) = strict_ooxml::system_fonts::system_fonts_for(document.document()) {
-            options = options.font_assets(Arc::new(assets));
-        }
-    }
+    let options = RenderOptions {
+        font_assets: installed_fonts(document.document(), system_fonts),
+        ..RenderOptions::default()
+    };
     let path = match source {
         Source::File { path, .. } if !loaded.kind.converted() && loaded.kind != Kind::Rtf => {
             Some(path.clone())
@@ -471,6 +541,38 @@ fn run(
     let mut worker = Worker::new(Session::View(&document), options, replies, ctx, path);
     worker.read_only = Some(read_only);
     worker.serve(requests);
+}
+
+/// The installed fonts a document is laid out with: always those that draw
+/// the scripts no bundled face has (without them that text is measured with
+/// a face that lacks it, and the rasterizer searches every installed font
+/// for each glyph), and with `named` the families the document names.
+fn installed_fonts(document: &Document, named: bool) -> Option<Arc<strict_ooxml::FontAssets>> {
+    use strict_ooxml::system_fonts as system;
+    let limits = strict_ooxml::FontAssetLimits::default();
+    let faces = system::index();
+    let fallbacks = system::script_fallbacks(document, faces, limits);
+    let mut assets = if named {
+        system::assets_for(&system::document_families(document), faces, limits).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let key = |asset: &strict_ooxml::FontAsset| {
+        let (family, bold, italic) = asset.key();
+        (family.to_lowercase(), bold, italic)
+    };
+    for fallback in fallbacks.iter().cloned() {
+        if !assets.iter().any(|asset| key(asset) == key(&fallback)) {
+            assets.push(fallback);
+        }
+    }
+    if assets.is_empty() {
+        return None;
+    }
+    strict_ooxml::FontAssets::new(assets, limits)
+        .or_else(|_| strict_ooxml::FontAssets::new(fallbacks, limits))
+        .ok()
+        .map(Arc::new)
 }
 
 fn styles_of(document: &Document) -> Vec<StyleEntry> {
@@ -523,10 +625,10 @@ impl Session<'_> {
         }
     }
 
-    fn render(&self, options: &RenderOptions) -> Result<Vec<Page>, String> {
+    fn place(&self, options: &RenderOptions) -> Result<Placement, String> {
         match self {
-            Self::Edit(editor) => editor.render_svg(options),
-            Self::View(document) => document.render_svg(options),
+            Self::Edit(editor) => editor.place(options),
+            Self::View(document) => document.place(options),
         }
         .map_err(|error| error.to_string())
     }
@@ -642,6 +744,7 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn serve(&mut self, requests: &Receiver<Request>) {
+        self.preview();
         self.relayout();
         self.caret = self.first_paragraph().map(|paragraph| Logical {
             paragraph,
@@ -725,14 +828,7 @@ impl<'a, 's> Worker<'a, 's> {
                 Outcome::Quiet
             }
             Request::SystemFonts(enabled) => {
-                self.options.font_assets = None;
-                if enabled {
-                    if let Ok(assets) =
-                        strict_ooxml::system_fonts::system_fonts_for(self.session.document())
-                    {
-                        self.options.font_assets = Some(Arc::new(assets));
-                    }
-                }
+                self.options.font_assets = installed_fonts(self.session.document(), enabled);
                 self.stale = true;
                 Outcome::Moved
             }
@@ -780,56 +876,85 @@ impl<'a, 's> Worker<'a, 's> {
         crate::trace::log(|| format!("layout took {} ms", started.elapsed().as_millis()));
     }
 
+    /// Lays out the first pages alone and shows them, before the whole
+    /// document is laid out.
+    fn preview(&mut self) {
+        let options = self.options.clone().pages(PageSelection::Range {
+            start: 1,
+            end: PREVIEW_PAGES,
+        });
+        self.send(Reply::Busy(Some(Busy::Layout)));
+        let started = std::time::Instant::now();
+        if let Ok(placement) = self.session.place(&options) {
+            self.show(placement);
+        }
+        crate::trace::log(|| format!("preview took {} ms", started.elapsed().as_millis()));
+    }
+
+    /// Sends a placement's pages to the interface.
+    fn show(&mut self, placement: Placement) {
+        self.pages = placement
+            .pages
+            .into_iter()
+            .map(|page| {
+                Arc::new(PageData {
+                    width: page.width_px,
+                    height: page.height_px,
+                    placed: page,
+                    generation: next_generation(),
+                })
+            })
+            .collect();
+        self.page_sizes = self
+            .pages
+            .iter()
+            .map(|page| (page.width, page.height))
+            .collect();
+        self.send(Reply::Pages {
+            pages: self.pages.clone(),
+            warnings: placement.warnings,
+        });
+    }
+
     fn relayout_inner(&mut self) {
         self.stale = false;
-        match self.session.render(&self.options) {
-            Ok(pages) => {
-                let mut warnings: Vec<String> = Vec::new();
-                let mut out = Vec::with_capacity(pages.len());
-                for (index, page) in pages.into_iter().enumerate() {
-                    for warning in page.warnings {
-                        if !warnings.contains(&warning) {
-                            warnings.push(warning);
-                        }
-                    }
-                    let mut hasher = DefaultHasher::new();
-                    page.svg.hash(&mut hasher);
-                    let hash = hasher.finish();
-                    let reuse = self
-                        .pages
-                        .get(index)
-                        .filter(|known| known.hash == hash)
-                        .cloned();
-                    out.push(reuse.unwrap_or_else(|| {
-                        Arc::new(PageData {
-                            width: page.width_px,
-                            height: page.height_px,
-                            svg: Arc::from(page.svg),
-                            hash,
-                        })
-                    }));
-                }
-                self.page_sizes = out.iter().map(|page| (page.width, page.height)).collect();
-                self.pages = out;
-                self.send(Reply::Pages {
-                    pages: self.pages.clone(),
-                    warnings,
-                });
+        // One layout serves the pages and the caret map: it places caret
+        // anchors, which painting leaves out.
+        let editing = matches!(self.session, Session::Edit(_));
+        let options = self.options.clone().caret_anchors(editing);
+        self.send(Reply::Busy(Some(Busy::Layout)));
+        let placed = match self.session.place(&options) {
+            Ok(placement) => {
+                self.show(placement);
+                true
             }
-            Err(error) => self.note("note.render_failed", error, true),
+            Err(error) => {
+                self.note("note.render_failed", error, true);
+                false
+            }
+        };
+        if editing {
+            self.send(Reply::Busy(Some(Busy::Map)));
         }
+        let pages_at = std::time::Instant::now();
+        let original: Vec<&PlacedPage> = self.pages.iter().map(|page| &page.placed).collect();
         self.map = match &self.session {
-            Session::Edit(editor) => match editor.visual_map(editor.revision(), &self.options) {
-                Ok(map) => Some(map),
-                Err(error) => {
-                    if self.read_only.is_none() {
-                        self.note("note.no_caret_map", error.to_string(), true);
+            Session::Edit(_) if !placed => None,
+            Session::Edit(editor) => {
+                match editor.visual_map_placed(editor.revision(), &self.options, &original) {
+                    Ok(map) => Some(map),
+                    Err(error) => {
+                        if self.read_only.is_none() {
+                            self.note("note.no_caret_map", error.to_string(), true);
+                        }
+                        None
                     }
-                    None
                 }
-            },
+            }
             Session::View(_) => None,
         };
+        crate::trace::log(|| format!("caret map took {} ms", pages_at.elapsed().as_millis()));
+        self.send(Reply::Busy(None));
         let outline = self.build_outline();
         if outline != self.outline {
             self.outline.clone_from(&outline);
@@ -845,6 +970,7 @@ impl<'a, 's> Worker<'a, 's> {
 
     fn build_outline(&self) -> Vec<OutlineEntry> {
         let document = self.session.document();
+        let programs = strict_ooxml_render_svg::font_programs(document, &self.options, None);
         let mut out = Vec::new();
         for (index, block) in document.body.blocks.iter().enumerate() {
             let Block::Paragraph(paragraph) = block else {
@@ -863,6 +989,7 @@ impl<'a, 's> Worker<'a, 's> {
             }
             out.push(OutlineEntry {
                 level,
+                font: Some(heading_font(document, &programs, paragraph, text)),
                 text: text.chars().take(80).collect(),
                 paragraph: Address::body(index),
             });
@@ -3214,7 +3341,8 @@ impl<'a, 's> Worker<'a, 's> {
             } else {
                 format!("{stem}-{:03}.svg", index + 1)
             };
-            write_atomic(&dir.join(name), page.svg.as_bytes())?;
+            let svg = strict_ooxml::paint_page(&page.placed, &self.options);
+            write_atomic(&dir.join(name), svg.as_bytes())?;
         }
         Ok(())
     }

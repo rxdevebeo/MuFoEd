@@ -88,3 +88,25 @@ pub(crate) fn rasterize(svg: &str, scale: f32) -> Result<Bitmap, String> {
         rgba: pixmap.take(),
     })
 }
+
+/// An installed face's program and its index in the file, found as the
+/// rasterizer finds it.
+pub(crate) fn installed_face(family: &str, bold: bool, italic: bool) -> Option<(Vec<u8>, u32)> {
+    let database = &options().fontdb;
+    let query = usvg::fontdb::Query {
+        families: &[usvg::fontdb::Family::Name(family)],
+        weight: if bold {
+            usvg::fontdb::Weight::BOLD
+        } else {
+            usvg::fontdb::Weight::NORMAL
+        },
+        stretch: usvg::fontdb::Stretch::Normal,
+        style: if italic {
+            usvg::fontdb::Style::Italic
+        } else {
+            usvg::fontdb::Style::Normal
+        },
+    };
+    let id = database.query(&query)?;
+    database.with_face_data(id, |data, index| (data.to_vec(), index))
+}

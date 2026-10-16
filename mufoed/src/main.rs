@@ -29,6 +29,7 @@
 
 mod app;
 mod canvas;
+mod docfonts;
 mod formats;
 mod i18n;
 mod icons;

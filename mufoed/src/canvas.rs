@@ -1,9 +1,14 @@
 //! The desk: pages in a column, the caret and the selection over them.
 //!
-//! Pages arrive as SVG; a bitmap is made on the thread pool only for the pages
-//! in view (and one either side), at the zoom and the screen's pixel density,
-//! and bitmaps of pages far out of view are dropped. While a new bitmap is
-//! being made the old one is stretched, so zooming never shows a blank page.
+//! Pages arrive laid out. Only the pages in view (and one either side) are
+//! painted to SVG and rasterized, on the thread pool, at the zoom and the
+//! screen's pixel density; bitmaps of pages far out of view are dropped. While
+//! a new bitmap is being made the old one is stretched, so zooming or editing
+//! never shows a blank page, and a re-laid page whose SVG did not change keeps
+//! its bitmap.
+
+use std::hash::{Hash, Hasher};
+use std::sync::OnceLock;
 
 use eframe::egui::{self, pos2, vec2, Color32, Rect, Sense, Stroke};
 
@@ -11,6 +16,13 @@ use crate::raster;
 use crate::tab::{DocTab, PageTexture, Rastered};
 use crate::theme::Palette;
 use crate::worker::Request;
+
+/// Painting for the screen: the rasterizer has the faces, so they are not
+/// embedded in each page.
+fn paint_options() -> &'static strict_ooxml::RenderOptions {
+    static OPTIONS: OnceLock<strict_ooxml::RenderOptions> = OnceLock::new();
+    OPTIONS.get_or_init(|| strict_ooxml::RenderOptions::default().embed_fonts(false))
+}
 
 /// Gap between pages and around the column, in points.
 const GAP: f32 = 18.0;
@@ -43,16 +55,26 @@ pub(crate) fn page_rects(tab: &DocTab) -> (Vec<Rect>, egui::Vec2) {
 fn receive_bitmaps(ctx: &egui::Context, tab: &mut DocTab) {
     while let Ok(Rastered {
         index,
-        hash,
+        generation,
+        svg,
         scale,
         bitmap,
     }) = tab.view.raster_rx.try_recv()
     {
-        tab.view.pending.remove(&(index, hash, scale));
-        let current = tab.pages.get(index).map(|page| page.hash);
-        if current != Some(hash) {
+        tab.view.pending.remove(&(index, generation, scale));
+        let current = tab.pages.get(index).map(|page| page.generation);
+        if current != Some(generation) {
             continue;
         }
+        let Some(bitmap) = bitmap else {
+            // The new layout painted the same SVG: the bitmap stands.
+            if let Some(texture) = tab.view.textures.get_mut(&index) {
+                if texture.svg == svg && texture.scale == scale {
+                    texture.generation = generation;
+                }
+            }
+            continue;
+        };
         let Ok(bitmap) = bitmap else {
             continue;
         };
@@ -66,7 +88,8 @@ fn receive_bitmaps(ctx: &egui::Context, tab: &mut DocTab) {
         tab.view.textures.insert(
             index,
             PageTexture {
-                hash,
+                generation,
+                svg,
                 scale,
                 texture,
             },
@@ -78,20 +101,31 @@ fn request_bitmap(ctx: &egui::Context, tab: &mut DocTab, index: usize, scale: f3
     let Some(page) = tab.pages.get(index) else {
         return;
     };
-    let job = (index, page.hash, key);
+    let job = (index, page.generation, key);
     if tab.view.pending.contains(&job) || tab.view.pending.len() >= MAX_PENDING {
         return;
     }
     tab.view.pending.insert(job);
-    let svg = page.svg.clone();
-    let hash = page.hash;
+    let page = std::sync::Arc::clone(page);
+    // The SVG the bitmap at this scale was made from, if there is one.
+    let known = tab
+        .view
+        .textures
+        .get(&index)
+        .filter(|texture| texture.scale == key)
+        .map(|texture| texture.svg);
     let sender = tab.view.raster_tx.clone();
     let ctx = ctx.clone();
     rayon::spawn(move || {
-        let bitmap = raster::rasterize(&svg, scale);
+        let svg = strict_ooxml::paint_page(&page.placed, paint_options());
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        svg.hash(&mut hasher);
+        let hash = hasher.finish();
+        let bitmap = (known != Some(hash)).then(|| raster::rasterize(&svg, scale));
         let _ = sender.send(Rastered {
             index,
-            hash,
+            generation: page.generation,
+            svg: hash,
             scale: key,
             bitmap,
         });
@@ -142,7 +176,7 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                         Color32::from_black_alpha(40),
                     );
                     painter.rect_filled(screen, 0.0, Color32::WHITE);
-                    let page_hash = tab.pages.get(index).map(|page| page.hash);
+                    let generation = tab.pages.get(index).map(|page| page.generation);
                     let texture = tab.view.textures.get(&index);
                     if let Some(texture) = texture {
                         painter.image(
@@ -153,20 +187,22 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                         );
                     }
                     let fresh =
-                        texture.is_some_and(|t| Some(t.hash) == page_hash && t.scale == key);
-                    let stale_content = texture.is_some_and(|t| Some(t.hash) != page_hash);
+                        texture.is_some_and(|t| Some(t.generation) == generation && t.scale == key);
+                    let stale_content = texture.is_some_and(|t| Some(t.generation) != generation);
                     let missing = texture.is_none();
                     if !fresh && (settled || missing || stale_content) {
                         request_bitmap(&ctx, tab, index, scale, key);
                     }
                     if missing {
-                        painter.text(
-                            screen.center(),
-                            egui::Align2::CENTER_CENTER,
-                            "…",
-                            egui::FontId::proportional(28.0),
-                            Color32::from_gray(170),
-                        );
+                        // The page is laid out but not drawn yet.
+                        let size = (screen.width() / 6.0).clamp(12.0, 36.0);
+                        egui::Spinner::new()
+                            .size(size)
+                            .color(Color32::from_gray(160))
+                            .paint_at(
+                                ui,
+                                Rect::from_center_size(screen.center(), vec2(size, size)),
+                            );
                     }
                 }
                 // Bitmaps of pages far out of view go.

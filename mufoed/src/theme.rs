@@ -80,7 +80,7 @@ pub(crate) const ITALIC: &str = "italic";
 /// Interface fonts: Selawik (metric-compatible with Segoe UI, the face Word's
 /// interface uses) from the renderer's own bundle, with egui's defaults behind
 /// it for the symbols it lacks.
-pub(crate) fn install_fonts(ctx: &egui::Context) {
+pub(crate) fn install_fonts(ctx: &egui::Context) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let mut add = |name: &str, family: &str, bold: bool, italic: bool| -> bool {
         let Some(source) = face_source(family, bold, italic) else {
@@ -123,7 +123,8 @@ pub(crate) fn install_fonts(ctx: &egui::Context) {
     fonts
         .families
         .insert(FontFamily::Name(ITALIC.into()), italic_family);
-    ctx.set_fonts(fonts);
+    ctx.set_fonts(fonts.clone());
+    fonts
 }
 
 /// egui visuals tuned toward the office look.

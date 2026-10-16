@@ -12,7 +12,8 @@ use strict_ooxml::OpenControl;
 use crate::formats::{Kind, Source};
 use crate::raster::Bitmap;
 use crate::worker::{
-    self, Cursor, DocInfo, EditState, Note, OutlineEntry, PageData, Reply, Request, SaveFormat,
+    self, Busy, Cursor, DocInfo, EditState, Note, OutlineEntry, PageData, Reply, Request,
+    SaveFormat,
 };
 
 /// Where a tab is in its life.
@@ -39,7 +40,10 @@ pub(crate) enum AfterSave {
 
 /// A bitmap of a page at one scale.
 pub(crate) struct PageTexture {
-    pub(crate) hash: u64,
+    /// The layout generation it shows.
+    pub(crate) generation: u64,
+    /// A hash of the SVG it was made from.
+    pub(crate) svg: u64,
     pub(crate) scale: u32,
     pub(crate) texture: egui::TextureHandle,
 }
@@ -47,9 +51,11 @@ pub(crate) struct PageTexture {
 /// One finished rasterization.
 pub(crate) struct Rastered {
     pub(crate) index: usize,
-    pub(crate) hash: u64,
+    pub(crate) generation: u64,
+    pub(crate) svg: u64,
     pub(crate) scale: u32,
-    pub(crate) bitmap: Result<Bitmap, String>,
+    /// `None` when the page's SVG is the one the bitmap already shows.
+    pub(crate) bitmap: Option<Result<Bitmap, String>>,
 }
 
 /// The canvas's own state.
@@ -106,6 +112,8 @@ pub(crate) struct DocTab {
     pub(crate) cursor: Option<Box<Cursor>>,
     pub(crate) state: EditState,
     pub(crate) outline: Vec<OutlineEntry>,
+    /// What the worker is busy with.
+    pub(crate) busy: Option<Busy>,
     pub(crate) zoom: f32,
     pub(crate) view: ViewState,
     pub(crate) after_save: Option<AfterSave>,
@@ -143,6 +151,7 @@ impl DocTab {
             cursor: None,
             state: EditState::default(),
             outline: Vec::new(),
+            busy: None,
             zoom,
             view: ViewState::new(),
             after_save: None,
@@ -195,8 +204,8 @@ impl DocTab {
                 events.push(TabEvent::Failed(error));
             }
             Reply::Pages { pages, warnings } => {
-                // Bitmaps of pages whose SVG changed are dropped below, when
-                // their hash no longer matches; pages past the end go now.
+                // Bitmaps of re-laid pages stay until their new SVG is known
+                // (and kept if it is the same); pages past the end go now.
                 self.view.textures.retain(|index, _| *index < pages.len());
                 self.pages = pages;
                 self.warnings = warnings;
@@ -209,6 +218,7 @@ impl DocTab {
             }
             Reply::State(state) => self.state = state,
             Reply::Outline(outline) => self.outline = outline,
+            Reply::Busy(busy) => self.busy = busy,
             Reply::Note(note) => events.push(TabEvent::Note(note)),
             Reply::Clipboard(text) => events.push(TabEvent::Clipboard(text)),
             Reply::Saved { path, format } => {

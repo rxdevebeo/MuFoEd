@@ -192,7 +192,10 @@
       "saved": "Saved: {file}",
       "exported": "Exported: {file}",
       "opened": "Opened \"{file}\"",
-      "open_failed": "Could not open: {error}"
+      "open_failed": "Could not open: {error}",
+      "layout": "Laying out pages…",
+      "map": "Preparing for editing…",
+      "page_counting": "Page {page} of …"
     },
     "format": {
       "new": "New document",
@@ -340,7 +343,8 @@
     },
     "loading": {
       "title": "Opening \"{file}\"…",
-      "converting": "Conversion and recognition can take a while"
+      "converting": "Conversion and recognition can take a while",
+      "layout": "Laying out pages…"
     },
     "failed": {
       "title": "The document did not open"

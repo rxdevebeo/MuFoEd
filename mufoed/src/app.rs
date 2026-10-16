@@ -15,7 +15,8 @@ use crate::settings::{self, Settings};
 use crate::tab::{AfterSave, DocTab, Status, TabEvent};
 use crate::theme::{self, Palette};
 use crate::worker::{
-    Align, CaretFormat, EditState, FindQuery, FormatChange, Insert, Motion, Request, SaveFormat,
+    Align, Busy, CaretFormat, EditState, FindQuery, FormatChange, Insert, Motion, Request,
+    SaveFormat,
 };
 
 /// Everything a click can ask for.
@@ -120,6 +121,8 @@ pub(crate) struct App {
     /// Files named on the command line, opened on the first frame.
     startup: Vec<PathBuf>,
     applied_dark: Option<bool>,
+    /// Document faces for the navigation pane.
+    doc_fonts: crate::docfonts::DocumentFonts,
     window_title: String,
     /// This frame's input in its order, Tab keys included, when the Tab keys
     /// were taken from egui before it could move focus with them.
@@ -138,7 +141,7 @@ impl App {
         if !i18n.set_language(&language) {
             i18n.set_language("en");
         }
-        theme::install_fonts(&cc.egui_ctx);
+        let interface_fonts = theme::install_fonts(&cc.egui_ctx);
         cc.egui_ctx
             .options_mut(|options| options.zoom_with_keyboard = false);
         std::thread::spawn(crate::raster::prepare);
@@ -163,6 +166,7 @@ impl App {
             exit_confirmed: false,
             startup: files,
             applied_dark: None,
+            doc_fonts: crate::docfonts::DocumentFonts::new(interface_fonts),
             window_title: String::new(),
             frame_events: None,
         };
@@ -824,6 +828,10 @@ impl eframe::App for App {
                     Some(index) => {
                         if let Some(tab) = self.tabs.get_mut(index) {
                             match &tab.status {
+                                // Opened, but no page laid out yet.
+                                Status::Ready if tab.pages.is_empty() && tab.busy.is_some() => {
+                                    loading_ui(ui, tab, &self.i18n, palette);
+                                }
                                 Status::Ready => canvas::show(ui, tab, palette, !dialog_open),
                                 Status::Loading => loading_ui(ui, tab, &self.i18n, palette),
                                 Status::Failed(error) => {
@@ -1151,11 +1159,29 @@ impl App {
                 if tab.ready() {
                     let pages = tab.pages.len().max(1);
                     let page = (tab.view.current_page + 1).min(pages);
-                    ui.label(text(
+                    // While the whole document is laid out, the pages shown
+                    // are the first few.
+                    let counting = tab.busy == Some(Busy::Layout);
+                    ui.label(text(if counting {
+                        self.i18n.tf("status.page_counting", &[("page", &page)])
+                    } else {
                         self.i18n
-                            .tf("status.page", &[("page", &page), ("pages", &pages)]),
-                    ));
+                            .tf("status.page", &[("page", &page), ("pages", &pages)])
+                    }));
                     ui.separator();
+                    if let Some(busy) = tab.busy {
+                        ui.add(egui::Spinner::new().size(12.0).color(palette.status_text));
+                        ui.label(text(
+                            self.t(match busy {
+                                Busy::Layout => "status.layout",
+                                Busy::Map => "status.map",
+                            })
+                            .to_owned(),
+                        ));
+                        ui.separator();
+                        ui.ctx()
+                            .request_repaint_after(std::time::Duration::from_millis(100));
+                    }
                     ui.label(text(
                         self.i18n.tf("status.words", &[("words", &tab.state.words)]),
                     ));
@@ -1299,14 +1325,11 @@ impl App {
                                     .size(12.0),
                             );
                         }
+                        let dark = self.settings.dark;
                         for entry in &tab.outline {
                             ui.horizontal(|ui| {
                                 ui.add_space(f32::from(entry.level) * 12.0);
-                                let text = RichText::new(&entry.text).size(if entry.level == 0 {
-                                    13.0
-                                } else {
-                                    12.5
-                                });
+                                let text = heading_text(ui.ctx(), &mut self.doc_fonts, entry, dark);
                                 if ui
                                     .add(egui::Button::new(text).frame(false).wrap())
                                     .clicked()
@@ -2261,6 +2284,37 @@ fn tile(ui: &mut egui::Ui, icon: Icon, label: &str, palette: Palette) -> egui::R
     response
 }
 
+/// A heading in the navigation pane, in the face, style and colour the
+/// page draws it with, at a size the pane can hold.
+fn heading_text(
+    ctx: &egui::Context,
+    fonts: &mut crate::docfonts::DocumentFonts,
+    entry: &crate::worker::OutlineEntry,
+    dark: bool,
+) -> RichText {
+    let fallback = if entry.level == 0 { 13.0 } else { 12.5 };
+    let mut text = RichText::new(&entry.text).size(fallback);
+    let Some(font) = &entry.font else {
+        return text;
+    };
+    // Document sizes run from body text to titles; the pane keeps them
+    // between its own text and a little larger.
+    text = text.size((font.size_pt * 0.9).clamp(12.0, 17.0));
+    match fonts.family(ctx, font) {
+        Some(family) => text = text.family(family),
+        // Until the face is in (or when there is none), the interface's own.
+        None if font.bold => text = text.family(FontFamily::Name(theme::BOLD.into())),
+        None if font.italic => text = text.family(FontFamily::Name(theme::ITALIC.into())),
+        None => {}
+    }
+    // Page colours are chosen against white; on a dark pane they are left
+    // to the theme.
+    if let (Some([r, g, b]), false) = (font.color, dark) {
+        text = text.color(Color32::from_rgb(r, g, b));
+    }
+    text
+}
+
 fn loading_ui(ui: &mut egui::Ui, tab: &DocTab, i18n: &I18n, palette: Palette) {
     egui::Frame::new().fill(palette.desk).show(ui, |ui| {
         ui.set_min_size(ui.available_size());
@@ -2271,7 +2325,9 @@ fn loading_ui(ui: &mut egui::Ui, tab: &DocTab, i18n: &I18n, palette: Palette) {
             let progress = tab.control.progress();
             let stage = format!("{:?}", progress.stage);
             #[allow(clippy::cast_precision_loss)]
-            let line = if progress.total > 0 {
+            let line = if tab.ready() {
+                i18n.t("loading.layout").to_owned()
+            } else if progress.total > 0 {
                 format!(
                     "{stage}: {:.0}%",
                     progress.done as f64 * 100.0 / progress.total as f64
