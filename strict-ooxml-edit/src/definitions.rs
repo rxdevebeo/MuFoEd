@@ -42,6 +42,10 @@ pub enum Definition {
         /// The definition to delete.
         id: AbstractNumId,
     },
+    /// Indexes a media part, so a picture inserted in the same transaction
+    /// can name it ([`crate::AddedMedia::add`] keeps its bytes). A part
+    /// already indexed is left as it is.
+    AddMedia(Box<strict_ooxml_wml::model::MediaItem>),
     /// Adds a list instance; its id must be new and not 0, and its abstract
     /// definition must exist.
     CreateNum(Box<Num>),
@@ -132,6 +136,9 @@ pub(crate) fn apply(document: &mut Document, definition: &Definition) -> Result<
             delete_style(document, id, replace_with.as_ref())?;
         }
         Definition::SetDocDefaults(defaults) => document.styles.set_defaults((**defaults).clone()),
+        Definition::AddMedia(item) => {
+            document.media.insert((**item).clone());
+        }
         Definition::CreateAbstractNum(abstract_num) => {
             if !document.numbering.insert_abstract((**abstract_num).clone()) {
                 return Err(exists());

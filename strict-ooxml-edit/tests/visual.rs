@@ -380,3 +380,24 @@ fn a_line_of_tabs_only_has_a_caret_at_every_stop() {
     assert!((middle - start - 48.0).abs() < 0.5, "{start} {middle}");
     assert!((end - middle - 48.0).abs() < 0.5, "{middle} {end}");
 }
+
+/// Spaces a line starts with are laid out as an advance, not drawn; their
+/// carets stand in that advance, before the first word's.
+#[test]
+fn leading_spaces_have_carets_before_the_first_word() {
+    let (map, _package) = tab_map("<w:p><w:r><w:t xml:space=\"preserve\">  word</w:t></w:r></w:p>");
+    let x = |offset: usize| {
+        map.caret(0, &at(vec![0], 0, offset))
+            .expect("caret")
+            .first()
+            .map_or_else(|| panic!("no caret at {offset}"), |rect| rect.x)
+    };
+    assert!(
+        x(0) < x(1) && x(1) < x(2) && x(2) < x(3),
+        "{} {} {} {}",
+        x(0),
+        x(1),
+        x(2),
+        x(3)
+    );
+}

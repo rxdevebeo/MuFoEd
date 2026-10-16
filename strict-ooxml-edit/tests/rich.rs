@@ -513,3 +513,33 @@ fn a_replacement_that_would_break_something_is_refused() {
         Err(EditError::LimitExceeded)
     );
 }
+
+/// Text typed into a run joins its text node, at its start, middle or end:
+/// the run keeps one node, so every caret position stays drawn.
+#[test]
+fn typed_text_joins_the_text_node_it_lands_in() {
+    let mut d = doc("<w:p><w:r><w:t>word</w:t></w:r></w:p>");
+    let mut editor = Editor::new(&mut d, EditLimits::default()).expect("editor");
+    for (offset, text) in [(0, " "), (3, "-"), (6, "!")] {
+        let revision = editor.revision();
+        editor
+            .transact(
+                revision,
+                &[Edit::ReplaceAt {
+                    at: Address::body(0),
+                    from: point(&[0], 0, offset),
+                    to: point(&[0], 0, offset),
+                    text: text.to_owned(),
+                }],
+            )
+            .expect("typed");
+    }
+    let Block::Paragraph(p) = &editor.document().body.blocks[0] else {
+        panic!("paragraph")
+    };
+    let Inline::Run(run) = &p.inlines[0] else {
+        panic!("run")
+    };
+    assert_eq!(run.content.len(), 1, "{:?}", run.content);
+    assert_eq!(shape(&p.inlines), " wo-rd!");
+}

@@ -284,3 +284,80 @@ fn picture_fixture() -> (
     };
     (source, d, drawing, pixels)
 }
+
+/// A picture the session adds: its bytes kept by the editor, its media entry
+/// and drawing in one transaction; drawn through the media layer, saved with
+/// its bytes, and gone again after one undo.
+#[test]
+fn an_added_picture_is_drawn_saved_and_undone_in_one_step() {
+    use strict_ooxml_edit::{
+        picture_drawing, picture_pixels, unused_drawing_id, Definition, MediaLayer, EMU_PER_PX,
+    };
+    use strict_ooxml_wml::model::*;
+    let mut pixels = vec![];
+    {
+        let mut encoder = png::Encoder::new(&mut pixels, 3, 2);
+        encoder.set_color(png::ColorType::Rgba);
+        let mut writer = encoder.write_header().unwrap();
+        writer.write_image_data(&[0u8; 3 * 2 * 4]).unwrap();
+    }
+    assert_eq!(picture_pixels(&pixels), Some((3, 2)));
+    let source = package();
+    let mut d = parse_document(&source, &ParseOptions::default()).unwrap();
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    assert!(e.add_media(b"not a picture".to_vec()).is_err());
+    let item = e.add_media(pixels.clone()).unwrap();
+    let drawing = picture_drawing(
+        &item,
+        Emu(3 * EMU_PER_PX),
+        Emu(2 * EMU_PER_PX),
+        unused_drawing_id(e.document()),
+        "Picture",
+    );
+    e.define_and_transact(
+        0,
+        &[Definition::AddMedia(Box::new(item.clone()))],
+        &[Edit::InsertInline {
+            at: Address::body(0),
+            index: 0,
+            inline: Box::new(Inline::Drawing(drawing)),
+        }],
+    )
+    .unwrap();
+    #[cfg(feature = "visual")]
+    {
+        let media = MediaLayer::new(e.added_media(), Some(&source));
+        let pages = strict_ooxml_render_svg::render_with_media(
+            e.document(),
+            &strict_ooxml_render_svg::RenderOptions::default(),
+            Some(&media),
+        )
+        .unwrap();
+        assert!(
+            pages[0].svg.contains("data:image/png;base64,"),
+            "{}",
+            pages[0].svg
+        );
+    }
+    let media = MediaLayer::new(e.added_media(), Some(&source));
+    let saved = e
+        .save(
+            1,
+            Some(&media),
+            &WriteOptions::default(),
+            SavePolicy::AllowDegraded,
+        )
+        .unwrap();
+    let out = Package::open_reader(saved.bytes.as_slice(), &OpenOptions::default()).unwrap();
+    let reopened = parse_document(&out, &ParseOptions::default()).unwrap();
+    let written = reopened.media.iter().next().expect("the picture's part");
+    assert_eq!(out.read_part(&written.part).unwrap(), pixels);
+
+    e.undo(1).unwrap();
+    assert!(e.document().media.get(&item.part).is_none());
+    let paragraph = e.document().body.blocks[0].as_paragraph().unwrap();
+    assert!(!paragraph
+        .inlines
+        .iter()
+        .any(|i| matches!(i, Inline::Drawing(_))));
+}

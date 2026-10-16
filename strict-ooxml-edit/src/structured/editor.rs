@@ -35,6 +35,8 @@ pub struct Editor<'a> {
     /// built by the first [`find`](Editor::find) after a change, so the next
     /// ones do not walk the story again.
     found: std::sync::Mutex<Option<FoundIndex>>,
+    /// Bytes of the pictures this session added.
+    added_media: crate::AddedMedia,
 }
 /// The paragraphs of one story by identity (uppercased), at one revision.
 struct FoundIndex {
@@ -96,7 +98,28 @@ impl<'a> Editor<'a> {
             ids,
             tolerance,
             found: std::sync::Mutex::new(None),
+            added_media: crate::AddedMedia::default(),
         })
+    }
+    /// Keeps a picture's bytes for this session ([`crate::AddedMedia::add`])
+    /// and returns the media entry to index with
+    /// [`crate::Definition::AddMedia`] when the picture goes in. Bytes stay
+    /// for the session whether or not the picture is kept, so undo and redo
+    /// find them.
+    ///
+    /// # Errors
+    ///
+    /// As [`crate::AddedMedia::add`].
+    pub fn add_media(
+        &mut self,
+        bytes: Vec<u8>,
+    ) -> Result<strict_ooxml_wml::model::MediaItem, EditError> {
+        self.added_media.add(self.document, bytes)
+    }
+    /// The pictures this session added; layer them over the source with
+    /// [`crate::MediaLayer`] to render or save.
+    pub fn added_media(&self) -> &crate::AddedMedia {
+        &self.added_media
     }
     /// Reads the current document.
     pub fn document(&self) -> &Document {
@@ -366,8 +389,35 @@ impl<'a> Editor<'a> {
     }
     /// The transaction on a copy of the whole document, with note references
     /// given notes of their own.
-    fn transact_whole(&mut self, commands: &[Edit]) -> Result<ChangeSet, EditFailure> {
+    /// Changes definitions and then content as one transaction, one undo
+    /// step: what applying a new list to paragraphs takes (a numbering
+    /// definition, then the paragraphs' `w:numPr`). The definitions are
+    /// applied as [`Self::define`] applies them, the commands as
+    /// [`Self::transact`] does, to one copy of the document.
+    pub fn define_and_transact(
+        &mut self,
+        revision: u64,
+        definitions: &[crate::Definition],
+        commands: &[Edit],
+    ) -> Result<ChangeSet, EditFailure> {
+        self.check(revision).map_err(EditFailure::batch)?;
         let mut candidate = self.document.clone();
+        for definition in definitions {
+            crate::definitions::apply(&mut candidate, definition).map_err(EditFailure::batch)?;
+        }
+        strict_ooxml_wml::resolve::refresh_definitions(&mut candidate);
+        self.transact_on(candidate, commands)
+    }
+    fn transact_whole(&mut self, commands: &[Edit]) -> Result<ChangeSet, EditFailure> {
+        self.transact_on(self.document.clone(), commands)
+    }
+    /// Applies `commands` to `candidate`, a copy of the document, and makes
+    /// it the document once checked.
+    fn transact_on(
+        &mut self,
+        mut candidate: Document,
+        commands: &[Edit],
+    ) -> Result<ChangeSet, EditFailure> {
         // Carries the high-water paragraph id from command to command.
         let mut minted = self.ids.clone();
         for (index, command) in commands.iter().enumerate() {

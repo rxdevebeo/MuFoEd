@@ -1,7 +1,8 @@
 //! K02: styles, lists and document defaults as editor transactions.
 use strict_ooxml_core::opc::{OpenOptions, Package};
 use strict_ooxml_edit::{
-    restarted, unused_num_id, Definition, EditError, EditLimits, Editor, Invariant,
+    list_definition, list_instance, list_level, restarted, unused_abstract_num_id, unused_num_id,
+    Address, Definition, Edit, EditError, EditLimits, Editor, Invariant, ListPreset,
 };
 use strict_ooxml_testkit::DocxBuilder;
 use strict_ooxml_wml::model::{
@@ -412,4 +413,52 @@ fn lists_are_applied_and_removed_as_one_transaction() {
             ilvl: None,
         })
     );
+}
+
+/// A paragraph's list level reads through its instance; a new list is its
+/// definitions and its paragraphs in one transaction, and one undo.
+#[test]
+fn a_new_list_and_its_paragraph_are_one_undo_step() {
+    let mut d = document();
+    let mut e = Editor::new(&mut d, EditLimits::default()).expect("editor");
+    let first = e.paragraph(&Address::body(0)).expect("first").clone();
+    let level = list_level(e.document(), &first).expect("a list");
+    assert_eq!((level.num_id, level.ilvl), (NumId(1), 0));
+    assert_eq!(ListPreset::matching(&level), Some(ListPreset::Decimal));
+    let second = e.paragraph(&Address::body(1)).expect("second").clone();
+    assert!(list_level(e.document(), &second).is_none());
+
+    let abstract_id = unused_abstract_num_id(e.document());
+    let num_id = unused_num_id(e.document());
+    let mut properties = second.props.clone();
+    properties.numbering = Some(strict_ooxml_wml::model::props::NumPr {
+        num_id: Some(num_id),
+        ilvl: Some(Ilvl(0)),
+    });
+    let revision = e.revision();
+    e.define_and_transact(
+        revision,
+        &[
+            Definition::CreateAbstractNum(Box::new(list_definition(
+                abstract_id,
+                ListPreset::Square,
+            ))),
+            Definition::CreateNum(Box::new(list_instance(num_id, abstract_id))),
+        ],
+        &[Edit::ParagraphProperties {
+            at: Address::body(1),
+            properties: Box::new(properties),
+        }],
+    )
+    .expect("list");
+    let second = e.paragraph(&Address::body(1)).expect("second").clone();
+    let level = list_level(e.document(), &second).expect("listed");
+    assert!(level.is_bullet());
+    assert_eq!(ListPreset::matching(&level), Some(ListPreset::Square));
+
+    let revision = e.revision();
+    e.undo(revision).expect("undo");
+    assert!(e.document().numbering.num(num_id).is_none());
+    let second = e.paragraph(&Address::body(1)).expect("second").clone();
+    assert!(list_level(e.document(), &second).is_none());
 }

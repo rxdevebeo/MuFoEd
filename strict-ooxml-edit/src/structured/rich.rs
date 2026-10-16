@@ -357,10 +357,23 @@ pub(super) fn replace(
         return Err(EditError::UnsupportedContent(Unsupported::TrackedChange));
     }
     let mut after = cut(&mut run.content, from.content, from.offset, false)?;
-    run.content.push(RunContent::Text(TextNode {
-        text: text.to_owned(),
-        space: Space::Preserve,
-    }));
+    // The text joins the text it is typed into: a run keeps one text node
+    // where it had one, as Word writes it, instead of a node per keystroke.
+    let mut joined = text.to_owned();
+    if let Some(RunContent::Text(next)) = after.first() {
+        joined.push_str(&next.text);
+        after.remove(0);
+    }
+    match run.content.last_mut() {
+        Some(RunContent::Text(previous)) => {
+            previous.text.push_str(&joined);
+            previous.space = Space::Preserve;
+        }
+        _ => run.content.push(RunContent::Text(TextNode {
+            text: joined,
+            space: Space::Preserve,
+        })),
+    }
     run.content.append(&mut after);
     Ok(())
 }

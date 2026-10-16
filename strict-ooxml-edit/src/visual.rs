@@ -528,11 +528,21 @@ fn text_span(
         })
         .ok_or(VisualError::Attribution)?;
     let end = start + len;
+    // Spaces the line starts with are laid out as an advance before the
+    // item, not drawn in it; their carets stand in that advance.
+    let skipped = rendered
+        .get(node.cursor..start)
+        .filter(|gap| !gap.is_empty() && gap.chars().all(char::is_whitespace))
+        .map(|_| node.cursor);
     node.cursor = end;
     let mut stops = vec![];
     let mut scalar = 0;
     let mut bytes = 0;
     for grapheme in node.text.graphemes(true) {
+        if skipped.is_some_and(|from| bytes >= from && bytes < start) {
+            let gap = rendered.get(bytes..start).ok_or(VisualError::Attribution)?;
+            stops.push((scalar, text.x - measure(gap, text, provider)));
+        }
         if bytes >= start && bytes <= end {
             let prefix = rendered.get(start..bytes).ok_or(VisualError::Attribution)?;
             let width = measure(prefix, text, provider);

@@ -26,7 +26,14 @@ mod structured;
 pub use structured::{Address, Container, Edit, EditFailure, Editor, InlinePoint, Story};
 mod definitions;
 mod import;
+mod lists;
+mod media;
 pub use definitions::{restarted, unused_abstract_num_id, unused_num_id, Definition};
+pub use lists::{list_definition, list_instance, list_level, ListLevel, ListPreset};
+pub use media::{
+    picture_drawing, picture_format, picture_pixels, unused_drawing_id, AddedMedia, MediaLayer,
+    EMU_PER_PX,
+};
 mod diff;
 pub use diff::{diff, DiffChange, DiffItem, DiffMode, DocumentDiff};
 mod operations;
