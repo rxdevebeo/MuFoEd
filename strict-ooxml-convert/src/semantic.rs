@@ -965,10 +965,11 @@ fn images_of(
 
 /// The page's pictures as page-anchored drawings, each wrapped by what the
 /// page sets around it: text over a picture puts it behind the text, text
-/// beside it wraps square. Lines of nothing but spaces across it already
-/// hold its room in the flow, and it wraps nothing; with no line across it
-/// at all, it pushes the text above and below, or the flow would close the
-/// room it stands in.
+/// beside it wraps square, and otherwise it stands in front and wraps
+/// nothing. The flow keeps the room a picture stands in (each paragraph's
+/// space before is the PDF's), so a picture that pushed text as well moved a
+/// letter's names a line below their signatures and its footer onto a second
+/// page.
 fn anchored_images_of(
     page: &PdfPage,
     lines: &[GlyphLine],
@@ -981,7 +982,7 @@ fn anchored_images_of(
         .filter_map(|(image, part, description)| {
             let top = page.geometry.height - (image.y + image.height);
             let (left, right, bottom) = (image.x, image.x + image.width, top + image.height);
-            let mut wrap = PictureWrap::TopAndBottom;
+            let mut wrap = PictureWrap::Over;
             for line in lines {
                 let (line_top, line_bottom) = (line.baseline - line.ascent, line.baseline);
                 let shared = line_bottom.min(bottom) - line_top.max(top);
@@ -989,15 +990,13 @@ fn anchored_images_of(
                     continue;
                 }
                 if line.text().trim().is_empty() {
-                    if wrap == PictureWrap::TopAndBottom {
-                        wrap = PictureWrap::Over;
-                    }
-                } else if line.x < right && line.x + line.width > left {
+                    continue;
+                }
+                if line.x < right && line.x + line.width > left {
                     wrap = PictureWrap::Behind;
                     break;
-                } else {
-                    wrap = PictureWrap::Square;
                 }
+                wrap = PictureWrap::Square;
             }
             anchored_image(image, &part, description, top, wrap)
         })
@@ -1009,12 +1008,10 @@ fn anchored_images_of(
 enum PictureWrap {
     /// Text set over it: the picture is behind the text and wraps nothing.
     Behind,
-    /// Only empty lines across it: in front, and it wraps nothing.
+    /// No text across it: in front, and it wraps nothing.
     Over,
     /// Text beside it.
     Square,
-    /// No text beside it: lines that would cross it move below.
-    TopAndBottom,
 }
 
 /// Puts a page's anchored drawings into its first paragraph, which is on the
@@ -1456,7 +1453,6 @@ fn anchored_image(
     let kind = match wrap {
         PictureWrap::Behind | PictureWrap::Over => WrapKind::None,
         PictureWrap::Square => WrapKind::Square,
-        PictureWrap::TopAndBottom => WrapKind::TopAndBottom,
     };
     Some(Inline::Drawing(Drawing {
         kind: DrawingKind::Anchor(AnchorDrawing {

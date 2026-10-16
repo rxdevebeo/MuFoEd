@@ -105,14 +105,13 @@ fn pictures_are_anchored_where_the_page_put_them() {
     // Tops from the page's top: 792 - (y + height).
     assert!(near(placed[0].0, (72.0, 142.0)), "{placed:?}");
     assert!(near(placed[1].0, (300.0, 142.0)), "{placed:?}");
-    assert_eq!((placed[0].1, placed[0].2), (WrapKind::TopAndBottom, false));
-    assert_eq!((placed[1].1, placed[1].2), (WrapKind::TopAndBottom, false));
+    assert_eq!((placed[0].1, placed[0].2), (WrapKind::None, false));
+    assert_eq!((placed[1].1, placed[1].2), (WrapKind::None, false));
     assert!(near(placed[2].0, (300.0, 342.0)), "{placed:?}");
     assert_eq!((placed[2].1, placed[2].2), (WrapKind::Square, false));
     assert!(near(placed[3].0, (72.0, 542.0)), "{placed:?}");
     assert_eq!((placed[3].1, placed[3].2), (WrapKind::None, true));
-    // The empty line holds the picture's room already: it pushes nothing and
-    // stays in front.
+    // An empty line across a picture is no text across it.
     assert!(near(placed[4].0, (300.0, 642.0)), "{placed:?}");
     assert_eq!((placed[4].1, placed[4].2), (WrapKind::None, false));
 }
