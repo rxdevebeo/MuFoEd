@@ -1154,17 +1154,17 @@ fn place_first_line(
     if spacing.before.is_some() {
         return;
     }
-    let height = match (spacing.line, spacing.line_rule) {
-        (Some(line), Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact)) => {
+    let height =
+        if let (Some(line), Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact)) =
+            (spacing.line, spacing.line_rule)
+        {
             f64::from(line.0) / 20.0
-        }
-        _ => {
+        } else {
             let height = line.size * ratio;
             spacing.line = Some(Twips(to_twips(height)));
             spacing.line_rule = Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact);
             height
-        }
-    };
+        };
     // An exact line's baseline is 0.8 of the way down its box.
     let before = line.baseline - top - 0.8 * height;
     if before > 0.5 {

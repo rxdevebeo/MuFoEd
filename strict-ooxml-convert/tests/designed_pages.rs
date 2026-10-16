@@ -11,6 +11,7 @@ use strict_ooxml_wml::model::inline::Inline;
 use strict_ooxml_wml::model::Block;
 
 fn page(columns: &[f64]) -> Vec<u8> {
+    use std::fmt::Write as _;
     let mut pdf = PdfBuilder::new();
     let font = pdf.object(
         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
@@ -21,9 +22,10 @@ fn page(columns: &[f64]) -> Vec<u8> {
     for (column, x) in columns.iter().enumerate() {
         for row in 0..20 {
             let y = 700 - row * 14;
-            stream.push_str(&format!(
-                "BT /F1 10 Tf {x} {y} Td (Block {column} line {row}) Tj ET\n"
-            ));
+            let _ = writeln!(
+                stream,
+                "BT /F1 10 Tf {x} {y} Td (Block {column} line {row}) Tj ET"
+            );
         }
     }
     pdf.page_with(stream.as_bytes(), &resources);
