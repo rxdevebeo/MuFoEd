@@ -149,7 +149,7 @@ pub(crate) fn build(
         }
         let text_area = text_area(&section);
         sections.begin_page(&mut blocks, section, false);
-        let raw_lines = strict_ooxml_pdf::text::lines(page.items());
+        let raw_lines = join_fragments(strict_ooxml_pdf::text::lines(page.items()));
         report.lines += raw_lines.len();
         let column_plan = crate::columns::plan(page, &raw_lines, report);
         let lines = crate::columns::apply(raw_lines, &column_plan);
@@ -486,6 +486,107 @@ fn body_size(lines: &[GlyphLine]) -> f64 {
         .iter()
         .find(|line| (line.size * 10.0).round() as u64 == key)
         .map_or(12.0, |line| line.size)
+}
+
+/// Fragments of one line joined. The reader's lines are runs of glyphs that
+/// follow each other exactly; Word justifies by setting each word in a text
+/// object of its own at an absolute position, so a justified line arrives as
+/// one run per word and every word became a paragraph of its own, indented to
+/// where it stood (a bank's one-page letter came out as four pages of
+/// staircases). Consecutive runs on one baseline, of one size, with a gap of
+/// at most 2.5 times the size between them - a stretched space - are one line;
+/// a space is put between them unless one is there. Wider gaps (a tab stop, a
+/// table column, a second text column) still end the line.
+fn join_fragments(lines: Vec<GlyphLine>) -> Vec<GlyphLine> {
+    // Rows: fragments on one baseline and of one size. A producer may draw a
+    // line's bold words or another font's after the rest, so a fragment is
+    // matched with the last few rows, not only the one before it.
+    const LOOKBACK: usize = 4;
+    let mut rows: Vec<Vec<GlyphLine>> = Vec::new();
+    for line in lines {
+        let found = rows.iter().rev().take(LOOKBACK).position(|row| {
+            row.first().is_some_and(|first| {
+                let size = first.size.max(line.size);
+                (first.baseline - line.baseline).abs() < size * 0.1
+                    && (first.size - line.size).abs() < size * 0.2
+            })
+        });
+        match found.and_then(|back| rows.len().checked_sub(back + 1)) {
+            Some(index) => {
+                if let Some(row) = rows.get_mut(index) {
+                    row.push(line);
+                }
+            }
+            None => rows.push(vec![line]),
+        }
+    }
+    let mut out: Vec<GlyphLine> = Vec::new();
+    for mut row in rows {
+        row.sort_by(|a, b| a.x.total_cmp(&b.x));
+        let mut current: Option<GlyphLine> = None;
+        for line in row {
+            let Some(previous) = current.as_mut() else {
+                current = Some(line);
+                continue;
+            };
+            let end = previous.x + previous.width;
+            let gap = line.x - end;
+            // A list's marker and its text are two runs on one baseline, and
+            // the lists read them as such (`lists`): a marker stays its own.
+            let marker = is_marker(previous) && gap >= previous.size * 0.5;
+            if !marker && gap > -0.5 && gap <= previous.size.max(line.size) * 2.5 {
+                let spaced = previous
+                    .glyphs
+                    .last()
+                    .is_some_and(|glyph| glyph.text.ends_with(' '))
+                    || line
+                        .glyphs
+                        .first()
+                        .is_some_and(|glyph| glyph.text.starts_with(' '));
+                if !spaced {
+                    if let Some(template) = previous.glyphs.last().cloned() {
+                        previous.glyphs.push(strict_ooxml_pdf::Glyph {
+                            text: " ".to_owned(),
+                            x: end,
+                            width: gap.max(0.0),
+                            ..template
+                        });
+                    }
+                }
+                previous.width = (line.x + line.width - previous.x).max(previous.width);
+                previous.glyphs.extend(line.glyphs);
+            } else if let Some(done) = current.replace(line) {
+                out.push(done);
+            }
+        }
+        out.extend(current);
+    }
+    out
+}
+
+/// Whether a run is nothing but a list marker: one bullet character, or a
+/// number or letter closed by `.` or `)` (`1.`, `a)`, `iv.`).
+fn is_marker(line: &GlyphLine) -> bool {
+    let text = line.text();
+    let text = text.trim();
+    let mut chars = text.chars();
+    if let (Some(only), None) = (chars.next(), chars.next()) {
+        return matches!(
+            only,
+            '•' | '‣' | '▪' | '■' | '·' | '–' | '—' | '-' | '*' | '+' | 'o' | '◦' | '►' | '▶'
+        );
+    }
+    let Some(stem) = text.strip_suffix('.').or_else(|| text.strip_suffix(')')) else {
+        return false;
+    };
+    let digits = !stem.is_empty() && stem.len() <= 3 && stem.chars().all(|ch| ch.is_ascii_digit());
+    let letter = stem.chars().count() == 1 && stem.chars().all(char::is_alphabetic);
+    let roman = !stem.is_empty()
+        && stem.len() <= 5
+        && stem
+            .chars()
+            .all(|ch| matches!(ch.to_ascii_lowercase(), 'i' | 'v' | 'x' | 'l' | 'c'));
+    digits || letter || roman
 }
 
 /// The distance between consecutive baselines, in points.
@@ -1057,6 +1158,76 @@ fn sized_image_paragraph(
         text_id: None,
         revision: None,
         location,
+    }
+}
+
+#[cfg(test)]
+mod fragment_tests {
+    use super::join_fragments;
+    use strict_ooxml_pdf::text::GlyphLine;
+    use strict_ooxml_pdf::{Glyph, RenderMode, Rgb};
+
+    fn run(text: &str, x: f64, width: f64) -> GlyphLine {
+        let glyph = Glyph {
+            text: text.to_owned(),
+            x,
+            y: 100.0,
+            width,
+            ascent: 7.0,
+            descent: 2.0,
+            size: 9.0,
+            font: "Amalia".to_owned(),
+            color: Rgb(0.0, 0.0, 0.0),
+            render_mode: RenderMode::Fill,
+            mapped: true,
+        };
+        GlyphLine {
+            x,
+            baseline: 100.0,
+            size: 9.0,
+            ascent: 7.0,
+            width,
+            glyphs: vec![glyph],
+        }
+    }
+
+    #[test]
+    fn a_list_marker_stays_apart_from_its_text() {
+        let lines = join_fragments(vec![
+            run("\u{2022}", 96.7, 3.2),
+            run("Naknada za poslove", 115.0, 80.0),
+        ]);
+        assert_eq!(lines.len(), 2);
+        let lines = join_fragments(vec![run("1.", 90.0, 6.0), run("Mi", 104.0, 9.0)]);
+        assert_eq!(lines.len(), 2);
+    }
+
+    #[test]
+    fn a_bold_word_drawn_after_its_line_joins_it() {
+        let mut bold = run("15.12.2026.", 300.0, 45.0);
+        bold.glyphs[0].font = "Amalia-Bold".to_owned();
+        let lines = join_fragments(vec![
+            run("stupaju na snagu ", 230.0, 68.0),
+            run("godine.", 348.0, 30.0),
+            bold,
+        ]);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text(), "stupaju na snagu 15.12.2026. godine.");
+    }
+
+    #[test]
+    fn a_justified_line_of_word_runs_is_one_line() {
+        // (opcija OUR) - ostale valute, each word placed on its own.
+        let lines = join_fragments(vec![
+            run("(opcija OUR) ", 235.0, 48.0),
+            run("\u{2013}", 285.0, 4.5),
+            run("ostale", 292.0, 25.0),
+            // A tab stop's distance: a separate line.
+            run("5.900,00 RSD", 424.6, 50.0),
+        ]);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].text(), "(opcija OUR) \u{2013} ostale");
+        assert_eq!(lines[1].text(), "5.900,00 RSD");
     }
 }
 
