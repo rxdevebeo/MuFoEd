@@ -139,6 +139,8 @@ impl App {
         cc.egui_ctx
             .options_mut(|options| options.zoom_with_keyboard = false);
         std::thread::spawn(crate::raster::prepare);
+        crate::stack::remember_interface_thread();
+        crate::trace::watchdog(cc.egui_ctx.clone());
         let problems = i18n.problems.join("; ");
         let mut app = Self {
             i18n,
@@ -736,6 +738,11 @@ impl App {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        let input = input_summary(&ctx);
+        crate::trace::frame(&input);
+        if !input.is_empty() {
+            crate::trace::log(|| format!("input {input}"));
+        }
         if self.applied_dark != Some(self.settings.dark) {
             theme::apply(&ctx, self.settings.dark);
             self.applied_dark = Some(self.settings.dark);
@@ -2110,6 +2117,54 @@ impl ImportDialog {
             layout: false,
         }
     }
+}
+
+/// The keyboard and clipboard part of this frame's input, for the trace.
+fn input_summary(ctx: &egui::Context) -> String {
+    ctx.input(|input| {
+        let mut out = Vec::new();
+        for event in &input.events {
+            match event {
+                egui::Event::Text(text) => out.push(format!("text {text:?}")),
+                egui::Event::Key {
+                    key,
+                    physical_key,
+                    pressed,
+                    repeat,
+                    modifiers,
+                } => out.push(format!(
+                    "key {key:?}/{physical_key:?} {} {}{}",
+                    if *pressed { "down" } else { "up" },
+                    if *repeat { "repeat " } else { "" },
+                    modifier_names(*modifiers)
+                )),
+                egui::Event::Copy => out.push("copy".to_owned()),
+                egui::Event::Cut => out.push("cut".to_owned()),
+                egui::Event::Paste(text) => {
+                    out.push(format!("paste {} chars", text.chars().count()));
+                }
+                egui::Event::Ime(ime) => out.push(format!("ime {ime:?}")),
+                egui::Event::WindowFocused(focused) => out.push(format!("focused {focused}")),
+                _ => {}
+            }
+        }
+        out.join("; ")
+    })
+}
+
+fn modifier_names(modifiers: egui::Modifiers) -> String {
+    let mut out = String::new();
+    for (on, name) in [
+        (modifiers.ctrl, "ctrl+"),
+        (modifiers.alt, "alt+"),
+        (modifiers.shift, "shift+"),
+        (modifiers.mac_cmd, "cmd+"),
+    ] {
+        if on {
+            out.push_str(name);
+        }
+    }
+    out
 }
 
 fn tile(ui: &mut egui::Ui, icon: Icon, label: &str, palette: Palette) -> egui::Response {

@@ -2675,6 +2675,7 @@ dependencies = [
  "strict-ooxml-render-svg",
  "sys-locale",
  "unicode-segmentation",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

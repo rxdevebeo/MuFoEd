@@ -39,3 +39,21 @@ objects flatten to dotted keys, missing keys fall back to English.
 - `formats.rs` - every input becomes an opened Strict package.
 - `canvas.rs` - pages on the desk, rasterized lazily on the rayon pool.
 - `app.rs`, `ribbon.rs`, `tab.rs`, `icons.rs`, `theme.rs` - the interface.
+
+## Rendering backend and keyboard-layout switchers
+
+On Windows the window draws with Direct3D 12 only (`WGPU_BACKEND` overrides
+it). wgpu's default set includes OpenGL, whose initialization leaves hidden
+windows on threads that never pump messages; a layout change (Punto
+Switcher's automatic one, or any `WM_INPUTLANGCHANGEREQUEST`) makes Windows
+notify every GUI thread of the process synchronously, and the window froze
+waiting for them.
+
+## Diagnostics
+
+A watchdog notes in `<config>/MuFoEd/trace.log` when the interface does not
+paint for three seconds or a document request runs that long, with the
+interface thread's stack (names and lines when `mufoed.pdb` lies beside the
+executable: build with `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only`).
+`MUFOED_TRACE=1` also logs every key, text and clipboard event and every
+document request with its timing.

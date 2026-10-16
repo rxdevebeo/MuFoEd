@@ -548,7 +548,21 @@ impl<'a, 's> Worker<'a, 's> {
             let mut moved = false;
             let mut edited = false;
             for request in batch {
-                match self.handle(request) {
+                let started = std::time::Instant::now();
+                let described = format!("{request:?}");
+                let described: String = described.chars().take(160).collect();
+                let name = crate::trace::enabled().then(|| described.clone());
+                let guard = crate::trace::busy(|| described);
+                let outcome = self.handle(request);
+                drop(guard);
+                if let Some(name) = name {
+                    crate::trace::write(&format!(
+                        "request {} took {} ms",
+                        name.chars().take(120).collect::<String>(),
+                        started.elapsed().as_millis()
+                    ));
+                }
+                match outcome {
                     Outcome::Quiet => {}
                     Outcome::Moved => moved = true,
                     Outcome::Edited => {
@@ -637,6 +651,14 @@ impl<'a, 's> Worker<'a, 's> {
     // ----- layout -------------------------------------------------------
 
     fn relayout(&mut self) {
+        let started = std::time::Instant::now();
+        let guard = crate::trace::busy(|| "layout".to_owned());
+        self.relayout_inner();
+        drop(guard);
+        crate::trace::log(|| format!("layout took {} ms", started.elapsed().as_millis()));
+    }
+
+    fn relayout_inner(&mut self) {
         self.stale = false;
         match self.session.render(&self.options) {
             Ok(pages) => {
@@ -2536,6 +2558,63 @@ mod tests {
             Reply::Note(note) if note.error => panic!("{}: {}", note.key, note.detail),
             _ => None,
         })
+    }
+
+    /// The text of the body's paragraphs, through a copy of everything.
+    fn body_text(requests: &Sender<Request>, replies: &Receiver<Reply>) -> String {
+        requests.send(Request::SelectAll).unwrap();
+        requests.send(Request::Copy { cut: false }).unwrap();
+        let text = wait(replies, |reply| match reply {
+            Reply::Clipboard(text) => Some(text),
+            _ => None,
+        });
+        requests
+            .send(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            })
+            .unwrap();
+        text
+    }
+
+    fn new_document() -> (Sender<Request>, Receiver<Reply>) {
+        let ctx = eframe::egui::Context::default();
+        let (requests, replies) = spawn(Source::New, false, OpenControl::new(), ctx);
+        let _ = state(&replies);
+        (requests, replies)
+    }
+
+    /// What Punto Switcher does when it corrects a word: one backspace per
+    /// letter, as fast as it can, then the word again in the other layout.
+    #[test]
+    fn a_word_erased_key_by_key_and_retyped_comes_out_right() {
+        let (requests, replies) = new_document();
+        for c in "ghbdtn ".chars() {
+            requests.send(Request::Type(c.to_string())).unwrap();
+        }
+        for _ in 0.."ghbdtn ".chars().count() {
+            requests.send(Request::Backspace).unwrap();
+        }
+        for c in "привет ".chars() {
+            requests.send(Request::Type(c.to_string())).unwrap();
+        }
+        assert_eq!(body_text(&requests, &replies), "привет ");
+        requests.send(Request::Delete).unwrap();
+        requests
+            .send(Request::Move {
+                motion: Motion::Left,
+                extend: false,
+            })
+            .unwrap();
+        requests
+            .send(Request::Move {
+                motion: Motion::Left,
+                extend: false,
+            })
+            .unwrap();
+        requests.send(Request::Delete).unwrap();
+        assert_eq!(body_text(&requests, &replies), "приве ");
+        requests.send(Request::Shutdown).unwrap();
     }
 
     #[test]

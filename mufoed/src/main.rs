@@ -36,15 +36,17 @@ mod nav;
 mod raster;
 mod ribbon;
 mod settings;
+mod stack;
 mod tab;
 mod theme;
+mod trace;
 mod worker;
 
 use std::path::PathBuf;
 
 fn main() -> eframe::Result {
     let files: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
-    let options = eframe::NativeOptions {
+    let mut options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("MultiFormatEditor")
             .with_app_id("mufoed")
@@ -54,11 +56,31 @@ fn main() -> eframe::Result {
             .with_icon(window_icon()),
         ..eframe::NativeOptions::default()
     };
+    restrict_backends(&mut options);
     eframe::run_native(
         "MultiFormatEditor",
         options,
         Box::new(|cc| Ok(Box::new(app::App::new(cc, files)))),
     )
+}
+
+/// On Windows, draw with Direct3D 12 only.
+///
+/// wgpu's default set includes OpenGL, and initializing it (with the NVIDIA
+/// driver, at least) leaves hidden windows owned by threads that never pump
+/// messages. A keyboard-layout change - Punto Switcher's automatic one, or any
+/// other program's `WM_INPUTLANGCHANGEREQUEST` - makes the system notify every
+/// GUI thread of the process synchronously, so the window's own thread waited
+/// on those forever and the window froze. Without OpenGL there are no such
+/// threads. `WGPU_BACKEND` still chooses another backend when set.
+fn restrict_backends(options: &mut eframe::NativeOptions) {
+    #[cfg(windows)]
+    if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut options.wgpu_options.wgpu_setup {
+        use eframe::egui_wgpu::wgpu::Backends;
+        setup.instance_descriptor.backends = Backends::from_env().unwrap_or(Backends::DX12);
+    }
+    #[cfg(not(windows))]
+    let _ = options;
 }
 
 /// A blue rounded square with a white page, drawn at start-up.
