@@ -23,6 +23,10 @@ pub struct FontProgram {
     pub hash: [u8; 32],
     /// What the font's `OS/2.fsType` lets an output carry of it.
     pub embedding: Embedding,
+    /// The family the machine knows the program by, for a caller's own
+    /// program ([`super::FontAsset`]); `None` for a document's embedded
+    /// font, which only [`Self::family`] names.
+    pub installed: Option<String>,
 }
 
 /// What a font's licence flags (`OS/2.fsType`) let an output carry of it.
@@ -105,6 +109,7 @@ impl FontProgram {
             metrics,
             hash,
             embedding,
+            installed: None,
         })
     }
     /// Checks that a subset supplies every character in this text fragment.

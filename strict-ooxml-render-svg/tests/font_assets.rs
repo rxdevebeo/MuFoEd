@@ -259,3 +259,35 @@ fn a_fallback_program_draws_what_the_face_lacks() {
         render_with(FontAsset::new("Pack Math", false, false, stix.data.to_vec()).fallback(""));
     assert!(fallback[0].svg.contains("FALLBACK-"), "{}", fallback[0].svg);
 }
+
+/// Painted without embedded faces, a supplied program and a fallback go by
+/// the families they were supplied as, which the consumer's fonts know.
+#[test]
+fn without_embedded_faces_supplied_programs_go_by_their_family() {
+    let body = "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Test Sans\" w:hAnsi=\"Test Sans\"/></w:rPr>\
+<w:t>Supplied</w:t></w:r><w:r><w:rPr><w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\"/></w:rPr>\
+<w:t>\u{2A00}</w:t></w:r></w:p>";
+    let stix = face_source("STIX Two Math", false, false).expect("bundled STIX");
+    let assets = FontAssets::new(
+        vec![
+            arimo("Test Sans"),
+            FontAsset::new("Pack Math", false, false, stix.data.to_vec()).fallback(""),
+        ],
+        FontAssetLimits::default(),
+    )
+    .expect("assets");
+    let (package, document) = open_body(body);
+    let options = RenderOptions::default().font_assets(Arc::new(assets));
+    let placement = strict_ooxml_render_svg::place_document(&document, &options, Some(&package))
+        .expect("place");
+    let page = placement.pages.first().expect("a page");
+    let embedded = strict_ooxml_render_svg::paint_page(page, &options);
+    assert!(embedded.contains("ASSET-") && embedded.contains("FALLBACK-"));
+    let bare = strict_ooxml_render_svg::paint_page(page, &options.clone().embed_fonts(false));
+    assert!(
+        !bare.contains("ASSET-") && !bare.contains("FALLBACK-"),
+        "{bare}"
+    );
+    assert!(bare.contains("font-family=\"Test Sans\""), "{bare}");
+    assert!(bare.contains("font-family=\"Pack Math\""), "{bare}");
+}

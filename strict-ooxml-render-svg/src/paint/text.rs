@@ -30,6 +30,9 @@ pub(crate) fn text_ink_right(item: &TextItem) -> Option<f64> {
 /// Writes one text fragment with its shading, highlight, underline and
 /// strikethrough.
 pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
+    if item.is_caret_anchor() {
+        return;
+    }
     if item.run.rotation_deg != 0.0 {
         let _ = writeln!(
             out,
@@ -67,7 +70,10 @@ fn text_svg_unrotated(out: &mut String, item: &TextItem) {
     let shown = crate::font::present_text(&item.run.family, &item.text);
     let family = crate::style::chosen_family(&item.run, &item.text);
     // The face that draws; `family` keeps the measured positions.
-    let painted = crate::style::paint_family(&item.run, &item.text, true);
+    let painted = super::svg_family(
+        &item.run,
+        crate::style::paint_family(&item.run, &item.text, true),
+    );
     let fill = item
         .run
         .color

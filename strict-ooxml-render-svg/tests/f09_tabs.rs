@@ -224,3 +224,31 @@ fn caret_anchors_mark_empty_lines_and_tabs_only_when_asked() {
         assert_eq!((x.x, x.baseline, &x.text), (y.x, y.baseline, &y.text));
     }
 }
+
+/// One placement, painted page by page, is what `render` writes; its caret
+/// anchors are not painted; without embedded faces only the `@font-face`
+/// block goes.
+#[test]
+fn painting_a_placement_matches_render_and_skips_anchors() {
+    let body = "<w:p/><w:p><w:r><w:t>a</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>b</w:t></w:r></w:p>";
+    let bytes = build_docx(&[
+        ("[Content_Types].xml", content_types().into_bytes()),
+        ("_rels/.rels", root_rels().into_bytes()),
+        ("word/document.xml", document(body).into_bytes()),
+    ]);
+    let (_package, doc) = open_bytes(bytes);
+    let options = RenderOptions::default();
+    let rendered = strict_ooxml_render_svg::render(&doc, &options).expect("render");
+    let plain = strict_ooxml_render_svg::place_document(&doc, &options, None).expect("place");
+    let anchored =
+        strict_ooxml_render_svg::place_document(&doc, &options.clone().caret_anchors(true), None)
+            .expect("place");
+    assert_eq!(rendered.len(), plain.pages.len());
+    for ((page, a), b) in rendered.iter().zip(&plain.pages).zip(&anchored.pages) {
+        assert_eq!(strict_ooxml_render_svg::paint_page(a, &options), page.svg);
+        assert_eq!(strict_ooxml_render_svg::paint_page(b, &options), page.svg);
+        let bare = strict_ooxml_render_svg::paint_page(a, &options.clone().embed_fonts(false));
+        assert!(!bare.contains("@font-face") && page.svg.contains("@font-face"));
+        assert!(bare.contains(">a</text>"));
+    }
+}

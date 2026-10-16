@@ -179,6 +179,130 @@ pub fn system_fonts_for(document: &Document) -> Result<FontAssets, FontAssetErro
     FontAssets::new(assets, limits)
 }
 
+/// At most this many installed faces stand in for scripts the bundle lacks.
+const MAX_SCRIPT_FALLBACKS: usize = 4;
+
+/// Installed faces for the characters of `document` that no bundled face
+/// draws (Telugu, say), as fallback programs for any language
+/// ([`FontAsset::fallback`]): layout then measures that text with a face
+/// that has it, and a painter names that face instead of a bundled one
+/// without the glyphs.
+///
+/// Upright regular faces are preferred, then the index order; a face is
+/// taken when it draws any character still missing. Characters no
+/// installed face draws are remembered for the process, so a document full
+/// of them reads the fonts once.
+#[must_use]
+pub fn script_fallbacks(
+    document: &Document,
+    faces: &[SystemFace],
+    limits: FontAssetLimits,
+) -> Vec<FontAsset> {
+    use std::collections::BTreeSet;
+    use std::sync::Mutex;
+    static NOWHERE: Mutex<BTreeSet<char>> = Mutex::new(BTreeSet::new());
+    let bundled = super::builtin::bundled_families();
+    let nowhere = NOWHERE.lock().map(|set| set.clone()).unwrap_or_default();
+    let mut missing: BTreeSet<char> = document_chars(document)
+        .into_iter()
+        .filter(|ch| !ch.is_whitespace() && !ch.is_control() && !nowhere.contains(ch))
+        .filter(|ch| {
+            !bundled
+                .iter()
+                .any(|family| super::builtin::bundled_has_glyph(family, *ch))
+        })
+        .collect();
+    let mut assets = Vec::new();
+    if missing.is_empty() {
+        return assets;
+    }
+    let mut order: Vec<&SystemFace> = faces.iter().collect();
+    order.sort_by_key(|face| face.bold || face.italic);
+    let mut total = 0usize;
+    for face in order {
+        if missing.is_empty() || assets.len() >= MAX_SCRIPT_FALLBACKS {
+            break;
+        }
+        let Ok(bytes) = std::fs::read(&face.path) else {
+            continue;
+        };
+        if bytes.len() > limits.max_asset_bytes
+            || total.saturating_add(bytes.len()) > limits.max_total_bytes
+        {
+            continue;
+        }
+        let Ok(font) = skrifa::FontRef::from_index(&bytes, face.face_index) else {
+            continue;
+        };
+        let charmap = skrifa::MetadataProvider::charmap(&font);
+        let drawn: Vec<char> = missing
+            .iter()
+            .copied()
+            .filter(|ch| charmap.map(*ch).is_some())
+            .collect();
+        if drawn.is_empty() {
+            continue;
+        }
+        for ch in &drawn {
+            missing.remove(ch);
+        }
+        total += bytes.len();
+        assets.push(
+            FontAsset::new(&face.family, face.bold, face.italic, bytes)
+                .face_index(face.face_index)
+                .fallback(""),
+        );
+    }
+    if assets.len() < MAX_SCRIPT_FALLBACKS {
+        // Every face was read: what is still missing is drawn by none.
+        if let Ok(mut set) = NOWHERE.lock() {
+            set.extend(missing);
+        }
+    }
+    assets
+}
+
+/// The characters of the document's body text.
+fn document_chars(document: &Document) -> std::collections::BTreeSet<char> {
+    use strict_ooxml_wml::model::{Block, Inline, RunContent};
+    fn inlines(list: &[Inline], out: &mut std::collections::BTreeSet<char>) {
+        for inline in list {
+            match inline {
+                Inline::Run(run) => {
+                    for content in &run.content {
+                        if let RunContent::Text(text) = content {
+                            out.extend(text.text.chars());
+                        }
+                    }
+                }
+                Inline::Hyperlink(link) => inlines(&link.inlines, out),
+                Inline::SdtInline(sdt) => inlines(&sdt.inlines, out),
+                Inline::Directional(directional) => inlines(&directional.inlines, out),
+                _ => {}
+            }
+        }
+    }
+    fn blocks(list: &[Block], out: &mut std::collections::BTreeSet<char>) {
+        for block in list {
+            match block {
+                Block::Paragraph(paragraph) => inlines(&paragraph.inlines, out),
+                Block::Table(table) => {
+                    for row in &table.rows {
+                        for cell in &row.cells {
+                            blocks(&cell.blocks, out);
+                        }
+                    }
+                }
+                Block::SdtBlock(sdt) => blocks(&sdt.blocks, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = std::collections::BTreeSet::new();
+    blocks(&document.body.blocks, &mut out);
+    out
+}
+
 fn collect_files(dir: &Path, depth: usize, files: &mut Vec<PathBuf>) {
     if depth > MAX_DEPTH || files.len() >= MAX_FILES {
         return;

@@ -19,7 +19,8 @@ use crate::units::fmt_num;
 
 /// Renders one placed page to an SVG document string.
 #[must_use]
-pub(crate) fn render_page(page: &PlacedPage, background: bool) -> String {
+pub(crate) fn render_page(page: &PlacedPage, background: bool, embed_fonts: bool) -> String {
+    let _naming = InstalledNames::scope(!embed_fonts);
     let mut out = String::with_capacity(1024);
     let width = fmt_num(page.width_px);
     let height = fmt_num(page.height_px);
@@ -27,7 +28,9 @@ pub(crate) fn render_page(page: &PlacedPage, background: bool) -> String {
         out,
         "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" version=\"1.1\" width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\">"
     );
-    out.push_str(&font_faces(page));
+    if embed_fonts {
+        out.push_str(&font_faces(page));
+    }
     if background {
         let _ = writeln!(
             out,
@@ -39,6 +42,35 @@ pub(crate) fn render_page(page: &PlacedPage, background: bool) -> String {
     }
     out.push_str("</svg>\n");
     out
+}
+
+thread_local! {
+    static INSTALLED_NAMES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// While a page is painted without embedded faces, a caller's program is
+/// named by its installed family ([`crate::font::embedded::FontProgram::installed`]),
+/// which the consumer's font database knows, not by its resource name.
+struct InstalledNames(bool);
+
+impl InstalledNames {
+    fn scope(on: bool) -> Self {
+        Self(INSTALLED_NAMES.with(|cell| cell.replace(on)))
+    }
+}
+
+impl Drop for InstalledNames {
+    fn drop(&mut self) {
+        INSTALLED_NAMES.with(|cell| cell.set(self.0));
+    }
+}
+
+/// The family a text item's `painted` face goes by in this page's SVG.
+pub(crate) fn svg_family(run: &crate::style::ComputedRun, painted: String) -> String {
+    if !INSTALLED_NAMES.with(std::cell::Cell::get) {
+        return painted;
+    }
+    crate::style::installed_name(run, painted)
 }
 
 /// Writes one paint item.
@@ -131,6 +163,9 @@ fn font_faces(page: &PlacedPage) -> String {
         let Item::Text(text) = item else {
             continue;
         };
+        if text.is_caret_anchor() {
+            continue;
+        }
         let family = crate::style::paint_family(&text.run, &text.text, true);
         let key = (family, text.run.bold, text.run.italic);
         if !keys
@@ -207,7 +242,7 @@ mod tests {
             })],
             section_index: 0,
         };
-        let svg = render_page(&page, true);
+        let svg = render_page(&page, true, true);
         assert!(svg.starts_with("<svg "));
         assert!(svg.contains("viewBox=\"0 0 816 1056\""));
         assert!(svg.ends_with("</svg>\n"));

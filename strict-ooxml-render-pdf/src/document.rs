@@ -456,6 +456,9 @@ fn collect_fonts(pages: &[PlacedPage], report: &mut PdfReport) -> Vec<PlacedFont
             let Item::Text(text) = item else {
                 continue;
             };
+            if text.is_caret_anchor() {
+                continue;
+            }
             let shown = strict_ooxml_render_svg::font::present_text(&text.run.family, &text.text);
             // The face that draws: a font program its licence keeps out of a
             // subset is drawn with its bundled face (`paint_family`).
@@ -873,6 +876,9 @@ impl PageWriter<'_> {
     }
 
     fn text(&mut self, text: &TextItem) {
+        if text.is_caret_anchor() {
+            return;
+        }
         if text.run.rotation_deg == 0.0 {
             self.decorated_text(text);
             return;

@@ -203,8 +203,9 @@ impl FontAssets {
             }
             let bytes = single_face(&asset.bytes, asset.face_index)
                 .ok_or_else(|| FontAssetError::Invalid(asset.family.clone()))?;
-            let program = FontProgram::from_bytes(bytes, "ASSET")
+            let mut program = FontProgram::from_bytes(bytes, "ASSET")
                 .ok_or_else(|| FontAssetError::Invalid(asset.family.clone()))?;
+            program.installed = Some(asset.family.clone());
             let program = Arc::new(program);
             if let Some(language) = asset.fallback {
                 // A resource name of its own (the bytes are shared): a run the

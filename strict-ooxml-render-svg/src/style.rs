@@ -1084,6 +1084,23 @@ pub fn paint_family(run: &ComputedRun, text: &str, whole_program: bool) -> Strin
     }
 }
 
+/// [`paint_family`] for a consumer with the machine's fonts at hand (an SVG
+/// painted without embedded faces, [`crate::RenderOptions::embed_fonts`]): a
+/// caller's program goes by the family it is installed as, not by its
+/// resource name.
+#[must_use]
+pub fn installed_paint_family(run: &ComputedRun, text: &str) -> String {
+    installed_name(run, paint_family(run, text, true))
+}
+
+/// The installed family of the program `painted` names, if it is a caller's.
+pub(crate) fn installed_name(run: &ComputedRun, painted: String) -> String {
+    run.font_programs
+        .for_resource(&painted)
+        .and_then(|program| program.installed.clone())
+        .unwrap_or(painted)
+}
+
 /// Bundled family whose line box a script fallback face borrows.
 ///
 /// The fallback draws complex-script text, so this is the run's complex-script

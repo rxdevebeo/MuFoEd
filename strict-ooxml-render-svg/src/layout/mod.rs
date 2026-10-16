@@ -76,6 +76,15 @@ pub struct TextItem {
     pub plain_space_factor: f64,
 }
 
+impl TextItem {
+    /// Whether this is a caret anchor ([`crate::RenderOptions::caret_anchors`]):
+    /// an item with no text, which painters leave out.
+    #[must_use]
+    pub fn is_caret_anchor(&self) -> bool {
+        self.text.is_empty()
+    }
+}
+
 /// A filled/stroked rectangle.
 #[derive(Clone, Debug)]
 pub struct RectItem {

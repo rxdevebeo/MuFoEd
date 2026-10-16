@@ -206,6 +206,11 @@ pub struct RenderOptions {
     pub pages: PageSelection,
     /// Draw a white page background.
     pub background: bool,
+    /// Embed each face a page paints as an `@font-face` (default `true`),
+    /// so a standalone SVG draws without the machine's fonts. A consumer
+    /// with the faces at hand (a rasterizer with its own font database)
+    /// turns it off: the faces are most of a page's bytes.
+    pub embed_fonts: bool,
     /// Render floating (anchored) DrawingML objects.
     pub floating: bool,
     /// Render OMML formulas (`STAGE-5C-TASK.md` §6).
@@ -240,8 +245,8 @@ pub struct RenderOptions {
     /// Place caret anchors (default `false`): an empty text item of zero
     /// width where an empty paragraph's line starts, and one spanning each
     /// tab, in the run's own style. They change no other placement and are
-    /// meant for interaction maps, not for painting; the SVG and PDF
-    /// backends leave them off.
+    /// meant for interaction maps, not for painting: the SVG and PDF
+    /// backends skip them ([`TextItem::is_caret_anchor`]).
     pub caret_anchors: bool,
     /// Progress and cancellation handle (default none); see
     /// [`strict_ooxml_core::control`]. Layout reports pages laid out, painting
@@ -261,6 +266,7 @@ impl Default for RenderOptions {
             font_policy: FontPolicy::Substitute,
             pages: PageSelection::All,
             background: true,
+            embed_fonts: true,
             floating: true,
             math: true,
             revisions: RevisionView::Final,
@@ -353,6 +359,13 @@ impl RenderOptions {
         self
     }
 
+    /// Embeds the faces in each page ([`RenderOptions::embed_fonts`]).
+    #[must_use]
+    pub fn embed_fonts(mut self, embed: bool) -> Self {
+        self.embed_fonts = embed;
+        self
+    }
+
     /// Places caret anchors ([`RenderOptions::caret_anchors`]).
     #[must_use]
     pub fn caret_anchors(mut self, anchors: bool) -> Self {
@@ -429,6 +442,30 @@ pub fn place_pages(
     options: &RenderOptions,
     media: Option<&dyn MediaSource>,
 ) -> Result<Vec<PlacedPage>> {
+    place_document(document, options, media).map(|placement| placement.pages)
+}
+
+/// A laid-out document: the selected pages and what layout warned about.
+#[derive(Clone, Debug, Default)]
+pub struct Placement {
+    /// The placed pages, in order.
+    pub pages: Vec<PlacedPage>,
+    /// The warnings [`render_with_media`] gives every page, each once.
+    pub warnings: Vec<String>,
+}
+
+/// Lays `document` out once, for painting page by page ([`paint_page`]):
+/// a viewer paints only the pages it shows, and an interaction map reuses
+/// the same placement.
+///
+/// # Errors
+///
+/// As [`place_pages`].
+pub fn place_document(
+    document: &Document,
+    options: &RenderOptions,
+    media: Option<&dyn MediaSource>,
+) -> Result<Placement> {
     let _scope = options.control.as_ref().map(control::OpenControl::enter);
     let provider = options.font_provider.make();
     let context = layout::LayoutContext {
@@ -466,13 +503,49 @@ pub fn place_pages(
     };
     let laid_out = layout::paginate::layout_document(&context)?;
     check_font_policy(options, &laid_out.warnings)?;
-    Ok(laid_out
+    let pages: Vec<PlacedPage> = laid_out
         .pages
         .into_iter()
         .enumerate()
         .filter(|(index, _)| options.pages.contains(index + 1))
         .map(|(_, page)| page)
-        .collect())
+        .collect();
+    let mut warnings = Vec::new();
+    for warning in pages
+        .iter()
+        .filter_map(paint::invalid_char_warning)
+        .chain(laid_out.warnings)
+    {
+        if !warnings.contains(&warning) {
+            warnings.push(warning);
+        }
+    }
+    Ok(Placement { pages, warnings })
+}
+
+/// The font programs layout measures with under `options`: the document's
+/// embedded fonts, then the caller's [`RenderOptions::font_assets`]. A
+/// [`style::compute_run`] result carries none; give it these to ask
+/// [`style::installed_paint_family`] what a run is drawn with.
+#[must_use]
+pub fn font_programs(
+    document: &Document,
+    options: &RenderOptions,
+    media: Option<&dyn MediaSource>,
+) -> std::sync::Arc<font::embedded::FontPrograms> {
+    std::sync::Arc::new(font::embedded::FontPrograms::load(
+        document,
+        media,
+        options.font_assets.as_deref(),
+    ))
+}
+
+/// Paints one placed page to an SVG document, as [`render_with_media`]
+/// paints it under the same options ([`RenderOptions::background`],
+/// [`RenderOptions::embed_fonts`]).
+#[must_use]
+pub fn paint_page(page: &PlacedPage, options: &RenderOptions) -> String {
+    paint::render_page(page, options.background, options.embed_fonts)
 }
 
 /// Refuses the layout under [`FontPolicy::Reject`] when a font was
@@ -561,7 +634,7 @@ pub fn render_with_media(
         if !options.pages.contains(index + 1) {
             continue;
         }
-        let svg = paint::render_page(page, options.background);
+        let svg = paint::render_page(page, options.background, options.embed_fonts);
         if svg_bytes.saturating_add(svg.len()) > options.max_svg_bytes {
             let warning = format!(
                 "render.output-limit: SVG payload exceeds {} bytes; remaining pages omitted",
