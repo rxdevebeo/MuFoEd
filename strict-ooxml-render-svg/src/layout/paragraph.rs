@@ -3906,7 +3906,11 @@ fn resolve_tab(
         };
     }
     let tab_step = twips_to_px(default_tab.max(1), scale).max(1e-6);
-    let advances = (relative / tab_step).floor() + 1.0;
+    // A stop the text already stands on is behind it, as for custom stops
+    // above. `x` that ended on a stop comes back a rounding error short of it
+    // when the left edge is no whole number of pixels, and without the
+    // allowance the next tab landed on that same stop and drew nothing.
+    let advances = ((relative + 1e-6) / tab_step).floor() + 1.0;
     ResolvedTab {
         x: content_left + advances * tab_step,
         alignment: TabAlignment::Start,

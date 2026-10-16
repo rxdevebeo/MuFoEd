@@ -129,3 +129,35 @@ fn f09_left_center_decimal_tabs_matrix() {
         "decimal tab {decimal} after center {center}"
     );
 }
+
+/// Consecutive default tabs each move to the next default stop. With a left
+/// margin that is no whole number of pixels (3 cm, Word's Russian default) a
+/// tab ending exactly on a stop left `x - left` a hair under it, `floor` put
+/// the next tab on that same stop, and every tab after the first vanished.
+#[test]
+fn f09_consecutive_default_tabs_each_advance_a_stop() {
+    for tabs in 1..=5_u32 {
+        let body = format!(
+            "<w:p><w:r><w:t>a</w:t></w:r>{}<w:r><w:t>b</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/>\
+<w:pgMar w:top=\"1134\" w:right=\"850\" w:bottom=\"1134\" w:left=\"1701\" w:header=\"709\" w:footer=\"709\" w:gutter=\"0\"/>\
+</w:sectPr>",
+            "<w:r><w:tab/></w:r>".repeat(tabs as usize)
+        );
+        let items = placed(&body);
+        let x_of = |word: &str| {
+            items.iter().find_map(|item| match item {
+                Item::Text(text) if text.text.trim() == word => Some(text.x),
+                _ => None,
+            })
+        };
+        let left = x_of("a").expect("a is placed");
+        let b = x_of("b").expect("b is placed");
+        // The default stop is 720 twips: 48 px at 96 dpi.
+        let expected = left + 48.0 * f64::from(tabs);
+        assert!(
+            (b - expected).abs() <= 0.25,
+            "{tabs} tab(s): b at {b}, expected {expected}"
+        );
+    }
+}
