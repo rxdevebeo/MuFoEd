@@ -947,6 +947,23 @@ impl<'a, 's> Worker<'a, 's> {
             }
             before = end;
         }
+        // Beside a tab or a break with no text there, the map knows the
+        // position by the tab itself: offset 0 before it, 1 after it.
+        let mut before = 0;
+        for piece in &pieces {
+            let end = before + piece.len();
+            if piece.kind != nav::PieceKind::Text
+                && (end == logical.offset || before == logical.offset)
+            {
+                return TextPosition {
+                    paragraph: logical.paragraph.clone(),
+                    inline: piece.inline.clone(),
+                    content: piece.content,
+                    offset: usize::from(end == logical.offset),
+                };
+            }
+            before = end;
+        }
         fallback.unwrap_or(TextPosition {
             paragraph: logical.paragraph.clone(),
             inline: Vec::new(),
@@ -959,10 +976,7 @@ impl<'a, 's> Worker<'a, 's> {
     fn logical(&self, position: &TextPosition) -> Logical {
         let mut before = 0;
         for piece in self.pieces(&position.paragraph) {
-            if piece.kind == nav::PieceKind::Text
-                && piece.inline == position.inline
-                && piece.content == position.content
-            {
+            if piece.inline == position.inline && piece.content == position.content {
                 return Logical {
                     paragraph: position.paragraph.clone(),
                     offset: before + position.offset,
@@ -1814,25 +1828,73 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     /// Splits the caret's paragraph and puts the caret at the new one's start.
+    /// The kernel point at a caret, made where there is none: beside tabs
+    /// between runs an empty run goes in first, in the same transaction, and
+    /// the point is its start.
+    fn point_or_run(
+        &self,
+        logical: &Logical,
+    ) -> Option<(Vec<Edit>, strict_ooxml::edit::InlinePoint)> {
+        if let Some(point) = self.point(logical) {
+            return Some((Vec::new(), point));
+        }
+        let pieces = self.pieces(&logical.paragraph);
+        let mut before = 0;
+        let mut index = None;
+        for piece in &pieces {
+            let end = before + piece.len();
+            let top = piece.inline.first().copied()?;
+            if end == logical.offset {
+                index = Some(top + 1);
+            } else if before == logical.offset && index.is_none() {
+                index = Some(top);
+            }
+            before = end;
+        }
+        let index = index?;
+        let props = self
+            .paragraph(&logical.paragraph)?
+            .inlines
+            .iter()
+            .find_map(|inline| match inline {
+                strict_ooxml::model::Inline::Run(run) => Some(run.props.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        Some((
+            vec![Edit::InsertInline {
+                at: logical.paragraph.clone(),
+                index,
+                inline: Box::new(strict_ooxml::model::Inline::Run(text_run(props, ""))),
+            }],
+            strict_ooxml::edit::InlinePoint {
+                inline: vec![index],
+                content: 0,
+                offset: 0,
+            },
+        ))
+    }
+
     fn split(&mut self) -> bool {
         let Some(caret) = self.caret.clone() else {
             return false;
         };
-        let command = match self.point(&caret) {
-            Some(point) => Edit::SplitAt {
-                at: caret.paragraph.clone(),
-                point,
-            },
-            None if self.pieces(&caret.paragraph).is_empty() => Edit::Split {
+        let commands = if self.pieces(&caret.paragraph).is_empty() {
+            vec![Edit::Split {
                 at: caret.paragraph.clone(),
                 offset: 0,
-            },
-            None => {
-                self.note("note.cannot_edit_here", String::new(), true);
-                return false;
-            }
+            }]
+        } else if let Some((mut commands, point)) = self.point_or_run(&caret) {
+            commands.push(Edit::SplitAt {
+                at: caret.paragraph.clone(),
+                point,
+            });
+            commands
+        } else {
+            self.note("note.cannot_edit_here", String::new(), true);
+            return false;
         };
-        if !self.transact(&[command]) {
+        if !self.transact(&commands) {
             return false;
         }
         let mut next = caret.paragraph;
@@ -3516,6 +3578,38 @@ mod tests {
             vec![Request::Tab { back: false }, Request::Backspace],
         );
         assert_eq!(settle(&requests, &replies), "ab");
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    /// Enter beside tabs between runs, where the kernel has no point: after
+    /// a tab that ends a line, and before a tab that starts one.
+    #[test]
+    fn enter_splits_beside_tabs() {
+        let (requests, replies) = new_document();
+        send_all(&requests, typed("name"));
+        send_all(
+            &requests,
+            vec![
+                Request::Tab { back: false },
+                Request::Enter,
+                Request::Tab { back: false },
+                Request::Tab { back: false },
+            ],
+        );
+        send_all(&requests, typed("x"));
+        assert_eq!(settle(&requests, &replies), "name\t\n\t\tx");
+        send_all(
+            &requests,
+            vec![
+                Request::Move {
+                    motion: Motion::Home,
+                    extend: false,
+                },
+                Request::Enter,
+            ],
+        );
+        send_all(&requests, typed("y"));
+        assert_eq!(settle(&requests, &replies), "name\t\n\ny\t\tx");
         requests.send(Request::Shutdown).unwrap();
     }
 
