@@ -1,5 +1,6 @@
 //! A revision-scoped interaction map from the shared renderer's placement.
 use crate::{Address, EditError, Editor};
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashSet};
 use strict_ooxml_core::error::StrictError;
 use strict_ooxml_render_svg::{
@@ -294,12 +295,35 @@ fn same_node(a: &TextPosition, b: &TextPosition) -> bool {
 }
 impl Editor<'_> {
     /// Places the current model using shared renderer metrics and pagination.
-    #[allow(clippy::too_many_lines)]
     pub fn visual_map(
         &self,
         revision: u64,
         options: &RenderOptions,
         media: Option<&dyn MediaSource>,
+    ) -> Result<VisualMap, VisualError> {
+        if revision != self.revision() {
+            return Err(VisualError::Edit(EditError::StaleRevision));
+        }
+        let anchored = options.clone().caret_anchors(true);
+        let original = strict_ooxml_render_svg::place_pages(self.document, &anchored, media)
+            .map_err(VisualError::Render)?;
+        self.visual_map_placed(revision, options, media, &original)
+    }
+
+    /// [`Self::visual_map`] over a placement the caller already has, saving
+    /// one layout: a viewer that paints from
+    /// [`strict_ooxml_render_svg::place_document`] maps the same pages.
+    ///
+    /// `original` must be the current model placed under `options` with
+    /// [`RenderOptions::caret_anchors`] on; any other placement fails with
+    /// [`VisualError::Attribution`], never with a wrong map.
+    #[allow(clippy::too_many_lines)]
+    pub fn visual_map_placed<P: Borrow<PlacedPage>>(
+        &self,
+        revision: u64,
+        options: &RenderOptions,
+        media: Option<&dyn MediaSource>,
+        original: &[P],
     ) -> Result<VisualMap, VisualError> {
         if revision != self.revision() {
             return Err(VisualError::Edit(EditError::StaleRevision));
@@ -311,11 +335,9 @@ impl Editor<'_> {
         // Both layouts place caret anchors (an empty paragraph's line, each
         // tab), so they compare item for item.
         let anchored = options.clone().caret_anchors(true);
-        let original = strict_ooxml_render_svg::place_pages(self.document, &anchored, media)
-            .map_err(VisualError::Render)?;
         let unused: HashSet<String> = original
             .iter()
-            .flat_map(|p| &p.items)
+            .flat_map(|p| &p.borrow().items)
             .flat_map(Item::leaves)
             .flat_map(|i| match i {
                 Item::Text(t) => vec![t.run.color.clone(), t.run.highlight.clone()],
@@ -334,7 +356,7 @@ impl Editor<'_> {
         stamp_document(&mut tagged, &mut used, &mut nodes)?;
         let placement = strict_ooxml_render_svg::place_pages(&tagged, &anchored, media)
             .map_err(VisualError::Render)?;
-        if !same_placement(&original, &placement) {
+        if !same_placement(original, &placement) {
             return Err(VisualError::Attribution);
         }
         let provider = options.font_provider.make();
@@ -583,9 +605,10 @@ fn measure(text: &str, item: &TextItem, font: &dyn strict_ooxml_render_svg::Font
 }
 // Exact equality is intentional: attribution must reproduce the same layout.
 #[allow(clippy::float_cmp)]
-fn same_placement(a: &[PlacedPage], b: &[PlacedPage]) -> bool {
+fn same_placement<P: Borrow<PlacedPage>>(a: &[P], b: &[PlacedPage]) -> bool {
     a.len() == b.len()
         && a.iter().zip(b).all(|(a, b)| {
+            let a = a.borrow();
             a.width_px == b.width_px && a.height_px == b.height_px && same_items(&a.items, &b.items)
         })
 }

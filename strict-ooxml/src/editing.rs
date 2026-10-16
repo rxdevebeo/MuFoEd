@@ -1,5 +1,5 @@
 //! Source-aware editing on the public document facade.
-use crate::{Page, RenderOptions, StrictDocument, WriteOptions};
+use crate::{Page, PlacedPage, Placement, RenderOptions, StrictDocument, WriteOptions};
 use strict_ooxml_core::{
     opc::Package,
     pipeline::{PipelineStage, PipelineSummary},
@@ -73,6 +73,22 @@ impl DocumentEditor<'_> {
     ) -> Result<VisualMap, VisualError> {
         self.editor
             .visual_map(revision, options, Some(self.package))
+    }
+    /// [`Editor::visual_map_placed`] over pages from [`Self::place`] (placed
+    /// with caret anchors on), saving a layout.
+    pub fn visual_map_placed<P: std::borrow::Borrow<PlacedPage>>(
+        &self,
+        revision: u64,
+        options: &RenderOptions,
+        original: &[P],
+    ) -> Result<VisualMap, VisualError> {
+        self.editor
+            .visual_map_placed(revision, options, Some(self.package), original)
+    }
+    /// Lays the live edited model out once, resolving images from its
+    /// original package, for painting page by page ([`crate::paint_page`]).
+    pub fn place(&self, options: &RenderOptions) -> strict_ooxml_core::error::Result<Placement> {
+        strict_ooxml_render_svg::place_document(self.editor.document(), options, Some(self.package))
     }
     /// Renders the live edited model, resolving images from its original package.
     pub fn render_svg(

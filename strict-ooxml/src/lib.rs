@@ -157,8 +157,8 @@ pub use strict_ooxml_render_svg::font::system as system_fonts;
 pub use strict_ooxml_render_svg::font::{FontAsset, FontAssetError, FontAssetLimits, FontAssets};
 #[cfg(feature = "svg")]
 pub use strict_ooxml_render_svg::{
-    CellNoWrap, FontPolicy, MediaMode, Page, PageSelection, RenderError, RenderOptions,
-    WrapCoordinates,
+    paint_page, CellNoWrap, FontPolicy, MediaMode, Page, PageSelection, PlacedPage, Placement,
+    RenderError, RenderOptions, WrapCoordinates,
 };
 #[cfg(feature = "report")]
 pub use strict_ooxml_report::{
@@ -408,6 +408,22 @@ impl StrictDocument {
         )?;
         control::stage(Stage::Finished, 0);
         Ok(pages)
+    }
+
+    /// Lays the document out once, resolving images from the opened package,
+    /// for painting page by page with [`paint_page`]: a viewer paints only
+    /// the pages it shows.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`StrictError`] if a layout limit is exceeded.
+    #[cfg(feature = "svg")]
+    pub fn place(&self, options: &RenderOptions) -> Result<Placement> {
+        let _scope = options.control.as_ref().map(OpenControl::enter);
+        let placement =
+            strict_ooxml_render_svg::place_document(&self.document, options, Some(&self.package))?;
+        control::stage(Stage::Finished, 0);
+        Ok(placement)
     }
 
     /// Renders a single page to an SVG string (zero-based `index`).
