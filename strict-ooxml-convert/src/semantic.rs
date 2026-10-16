@@ -531,7 +531,10 @@ fn join_fragments(lines: Vec<GlyphLine>) -> Vec<GlyphLine> {
             };
             let end = previous.x + previous.width;
             let gap = line.x - end;
-            if gap > -0.5 && gap <= previous.size.max(line.size) * 2.5 {
+            // A list's marker and its text are two runs on one baseline, and
+            // the lists read them as such (`lists`): a marker stays its own.
+            let marker = is_marker(previous) && gap >= previous.size * 0.5;
+            if !marker && gap > -0.5 && gap <= previous.size.max(line.size) * 2.5 {
                 let spaced = previous
                     .glyphs
                     .last()
@@ -559,6 +562,31 @@ fn join_fragments(lines: Vec<GlyphLine>) -> Vec<GlyphLine> {
         out.extend(current);
     }
     out
+}
+
+/// Whether a run is nothing but a list marker: one bullet character, or a
+/// number or letter closed by `.` or `)` (`1.`, `a)`, `iv.`).
+fn is_marker(line: &GlyphLine) -> bool {
+    let text = line.text();
+    let text = text.trim();
+    let mut chars = text.chars();
+    if let (Some(only), None) = (chars.next(), chars.next()) {
+        return matches!(
+            only,
+            '•' | '‣' | '▪' | '■' | '·' | '–' | '—' | '-' | '*' | '+' | 'o' | '◦' | '►' | '▶'
+        );
+    }
+    let Some(stem) = text.strip_suffix('.').or_else(|| text.strip_suffix(')')) else {
+        return false;
+    };
+    let digits = !stem.is_empty() && stem.len() <= 3 && stem.chars().all(|ch| ch.is_ascii_digit());
+    let letter = stem.chars().count() == 1 && stem.chars().all(|ch| ch.is_alphabetic());
+    let roman = !stem.is_empty()
+        && stem.len() <= 5
+        && stem
+            .chars()
+            .all(|ch| matches!(ch.to_ascii_lowercase(), 'i' | 'v' | 'x' | 'l' | 'c'));
+    digits || letter || roman
 }
 
 /// The distance between consecutive baselines, in points.
@@ -1161,6 +1189,17 @@ mod fragment_tests {
             width,
             glyphs: vec![glyph],
         }
+    }
+
+    #[test]
+    fn a_list_marker_stays_apart_from_its_text() {
+        let lines = join_fragments(vec![
+            run("\u{2022}", 96.7, 3.2),
+            run("Naknada za poslove", 115.0, 80.0),
+        ]);
+        assert_eq!(lines.len(), 2);
+        let lines = join_fragments(vec![run("1.", 90.0, 6.0), run("Mi", 104.0, 9.0)]);
+        assert_eq!(lines.len(), 2);
     }
 
     #[test]
