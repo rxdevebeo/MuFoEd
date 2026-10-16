@@ -40,6 +40,10 @@ ocr-ollama = ["dep:strict-ooxml-ocr", "strict-ooxml-convert?/ocr-ollama"]
 # Reading scanned PDF pages: the converter rasterizes a page with no text and
 # shows it to a `TextRecovery` (`PdfOptions::text_recovery`).
 pdf-raster = ["convert", "strict-ooxml-convert/raster"]
+# The script fonts the library does not bundle (Noto, per script), from a
+# pinned catalog (`strict_ooxml::font_packs`); `font-download` fetches them.
+font-packs = ["svg", "dep:sha2"]
+font-download = ["font-packs", "dep:ureq"]
 # Parallel parsing of independent parts.
 parallel = ["strict-ooxml-wml/parallel"]
 # Transactional editing with source-aware save and shared visual geometry.
@@ -60,6 +64,9 @@ strict-ooxml-render-pdf = { version = "0.1.0", path = "../strict-ooxml-render-pd
 strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf", optional = true }
 strict-ooxml-convert = { version = "0.1.0", path = "../strict-ooxml-convert", optional = true }
 strict-ooxml-edit = { version = "0.1.0", path = "../strict-ooxml-edit", optional = true }
+sha2 = { version = "0.11", optional = true }
+# The HTTPS client the OCR crate already locks: ureq 3 with rustls.
+ureq = { version = "3", optional = true }
 
 [dev-dependencies]
 strict-ooxml-testkit = { path = "../strict-ooxml-testkit" }

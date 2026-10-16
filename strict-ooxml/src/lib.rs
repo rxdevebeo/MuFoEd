@@ -115,6 +115,8 @@ use strict_ooxml_core::opc::Package;
 use strict_ooxml_wml::model::support::SupportModel;
 #[cfg(feature = "edit")]
 mod editing;
+#[cfg(feature = "font-packs")]
+pub mod font_packs;
 #[cfg(feature = "edit")]
 pub use editing::DocumentEditor;
 #[cfg(feature = "edit")]

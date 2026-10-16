@@ -4334,6 +4334,7 @@ version = "0.1.0"
 dependencies = [
  "proptest",
  "roxmltree 0.20.0",
+ "sha2",
  "strict-ooxml-convert",
  "strict-ooxml-core",
  "strict-ooxml-djvu",
@@ -4347,6 +4348,7 @@ dependencies = [
  "strict-ooxml-testkit",
  "strict-ooxml-wml",
  "strict-ooxml-write",
+ "ureq",
 ]
 
 [[package]]
@@ -4361,7 +4363,6 @@ dependencies = [
  "strict-ooxml-core",
  "strict-ooxml-djvu",
  "strict-ooxml-testkit",
- "ureq",
 ]
 
 [[package]]
