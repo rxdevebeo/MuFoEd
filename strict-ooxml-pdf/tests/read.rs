@@ -150,6 +150,26 @@ fn a_rectangle_becomes_a_path_with_its_fill() {
 }
 
 #[test]
+fn scn_and_scn_upper_set_the_fill_and_the_stroke() {
+    // Browsers and design tools paint in an ICC-based space with `scn`; its
+    // fill was dropped and every such shape came out black.
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\n/DeviceRGB cs 0 0.5 0 scn /DeviceRGB CS 0 0 1 SCN \
+         10 20 30 40 re B\nendstream",
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    let Some(Item::Vector(vector)) = page.items().first() else {
+        panic!("no path: {:?}", page.items());
+    };
+    assert_eq!(vector.fill.map(Rgb::to_rgb8), Some([0, 128, 0]));
+    assert_eq!(vector.stroke.map(Rgb::to_rgb8), Some([0, 0, 255]));
+}
+
+#[test]
 fn a_curve_is_flattened_within_the_documented_tolerance() {
     // A quarter-circle-ish curve; the flattening must stay within a small
     // fraction of a point of the true curve, which is what SC-9 asks of the

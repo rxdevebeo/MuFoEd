@@ -949,13 +949,14 @@ fn interpret_from(
                         continue;
                     }
                 };
-                if operator.starts_with('s') && operator.ends_with('c') {
-                    // `sc`/`scn` set the fill; `SC`/`SCN` the stroke.
-                    if operator == "sc" || operator == "scn" {
-                        current.fill = colour;
-                    } else {
-                        current.stroke = colour;
-                    }
+                // `sc`/`scn` set the fill; `SC`/`SCN` the stroke. (The test
+                // was "starts with s and ends with c", which only `sc` passes:
+                // every `scn` fill - an ICC-based space's, which is how browsers
+                // and design tools write colour - stayed black.)
+                if operator == "sc" || operator == "scn" {
+                    current.fill = colour;
+                } else {
+                    current.stroke = colour;
                 }
             }
             "cm" => {
