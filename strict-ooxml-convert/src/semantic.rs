@@ -149,7 +149,7 @@ pub(crate) fn build(
         }
         let text_area = text_area(&section);
         sections.begin_page(&mut blocks, section, false);
-        let raw_lines = strict_ooxml_pdf::text::lines(page.items());
+        let raw_lines = join_fragments(strict_ooxml_pdf::text::lines(page.items()));
         report.lines += raw_lines.len();
         let column_plan = crate::columns::plan(page, &raw_lines, report);
         let lines = crate::columns::apply(raw_lines, &column_plan);
@@ -486,6 +486,53 @@ fn body_size(lines: &[GlyphLine]) -> f64 {
         .iter()
         .find(|line| (line.size * 10.0).round() as u64 == key)
         .map_or(12.0, |line| line.size)
+}
+
+/// Fragments of one line joined. The reader's lines are runs of glyphs that
+/// follow each other exactly; Word justifies by setting each word in a text
+/// object of its own at an absolute position, so a justified line arrives as
+/// one run per word and every word became a paragraph of its own, indented to
+/// where it stood (a bank's one-page letter came out as four pages of
+/// staircases). Consecutive runs on one baseline, of one size, with a gap of
+/// at most 2.5 times the size between them - a stretched space - are one line;
+/// a space is put between them unless one is there. Wider gaps (a tab stop, a
+/// table column, a second text column) still end the line.
+fn join_fragments(lines: Vec<GlyphLine>) -> Vec<GlyphLine> {
+    let mut out: Vec<GlyphLine> = Vec::with_capacity(lines.len());
+    for line in lines {
+        if let Some(previous) = out.last_mut() {
+            let end = previous.x + previous.width;
+            let gap = line.x - end;
+            let same_row = (previous.baseline - line.baseline).abs()
+                < previous.size.max(line.size) * 0.1
+                && (previous.size - line.size).abs() < previous.size.max(line.size) * 0.2;
+            if same_row && gap > -0.5 && gap <= previous.size.max(line.size) * 2.5 {
+                let spaced = previous
+                    .glyphs
+                    .last()
+                    .is_some_and(|glyph| glyph.text.ends_with(' '))
+                    || line
+                        .glyphs
+                        .first()
+                        .is_some_and(|glyph| glyph.text.starts_with(' '));
+                if !spaced {
+                    if let Some(template) = previous.glyphs.last().cloned() {
+                        previous.glyphs.push(strict_ooxml_pdf::Glyph {
+                            text: " ".to_owned(),
+                            x: end,
+                            width: gap.max(0.0),
+                            ..template
+                        });
+                    }
+                }
+                previous.width = line.x + line.width - previous.x;
+                previous.glyphs.extend(line.glyphs);
+                continue;
+            }
+        }
+        out.push(line);
+    }
+    out
 }
 
 /// The distance between consecutive baselines, in points.
@@ -1057,6 +1104,52 @@ fn sized_image_paragraph(
         text_id: None,
         revision: None,
         location,
+    }
+}
+
+#[cfg(test)]
+mod fragment_tests {
+    use super::join_fragments;
+    use strict_ooxml_pdf::text::GlyphLine;
+    use strict_ooxml_pdf::{Glyph, RenderMode, Rgb};
+
+    fn run(text: &str, x: f64, width: f64) -> GlyphLine {
+        let glyph = Glyph {
+            text: text.to_owned(),
+            x,
+            y: 100.0,
+            width,
+            ascent: 7.0,
+            descent: 2.0,
+            size: 9.0,
+            font: "Amalia".to_owned(),
+            color: Rgb(0.0, 0.0, 0.0),
+            render_mode: RenderMode::Fill,
+            mapped: true,
+        };
+        GlyphLine {
+            x,
+            baseline: 100.0,
+            size: 9.0,
+            ascent: 7.0,
+            width,
+            glyphs: vec![glyph],
+        }
+    }
+
+    #[test]
+    fn a_justified_line_of_word_runs_is_one_line() {
+        // (opcija OUR) - ostale valute, each word placed on its own.
+        let lines = join_fragments(vec![
+            run("(opcija OUR) ", 235.0, 48.0),
+            run("\u{2013}", 285.0, 4.5),
+            run("ostale", 292.0, 25.0),
+            // A tab stop's distance: a separate line.
+            run("5.900,00 RSD", 424.6, 50.0),
+        ]);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].text(), "(opcija OUR) \u{2013} ostale");
+        assert_eq!(lines[1].text(), "5.900,00 RSD");
     }
 }
 
