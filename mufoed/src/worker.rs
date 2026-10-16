@@ -598,6 +598,10 @@ pub(crate) enum HeaderFooterCommand {
     },
     /// Take the page numbers out of every header and footer.
     Remove,
+    /// A header and footer of its own for the first page of the section.
+    FirstPage(bool),
+    /// Different headers and footers for even and odd pages.
+    EvenOdd(bool),
     /// The first page number of the caret's section; `None` continues.
     Start(Option<u32>),
 }
@@ -606,6 +610,12 @@ pub(crate) enum HeaderFooterCommand {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct HeaderFooterView {
     pub(crate) header: bool,
+    /// Which pages it is for.
+    pub(crate) kind: strict_ooxml::model::props::HeaderFooterKind,
+    /// The section has a first page header of its own.
+    pub(crate) first_page: bool,
+    /// The document has even page headers.
+    pub(crate) even_odd: bool,
     /// The body's band on each page (top, bottom, in page pixels), dimmed
     /// while a header or footer is edited.
     pub(crate) body: Vec<(f64, f64)>,
@@ -772,7 +782,10 @@ fn run(
         defects: Vec::new(),
     };
     let read_only = match document.edit(EditLimits::default()) {
-        Ok(editor) => {
+        Ok(mut editor) => {
+            // Room for whole-document changes of a long document (a new
+            // header, a list definition): each keeps two copies of it.
+            editor.set_history_byte_limit(768 * 1024 * 1024);
             let defects = editor
                 .source_defects()
                 .iter()
@@ -2334,14 +2347,14 @@ impl<'a, 's> Worker<'a, 's> {
         }
     }
 
-    /// The header (or footer) part a section uses: its own default one, or
+    /// The header (or footer) part of `kind` a section uses: its own, or
     /// the one it takes from the sections before it.
     fn header_footer_of(
         &self,
         section: usize,
         header: bool,
+        kind: strict_ooxml::model::props::HeaderFooterKind,
     ) -> Option<strict_ooxml_core::part::PartId> {
-        use strict_ooxml::model::props::HeaderFooterKind;
         let sections = &self.session.document().sections;
         (0..=section).rev().find_map(|index| {
             let properties = &sections.get(index)?.properties;
@@ -2352,9 +2365,31 @@ impl<'a, 's> Worker<'a, 's> {
             };
             references
                 .iter()
-                .find(|r| r.kind == HeaderFooterKind::Default)
+                .find(|r| r.kind == kind)
                 .and_then(|r| r.part.clone())
         })
+    }
+
+    /// Which header or footer a page shows: the first page's when its
+    /// section has one of its own (`w:titlePg`) and it is the section's first
+    /// page, the even pages' when the document has them and the page is even,
+    /// else the default one.
+    fn page_kind(&self, page: usize) -> strict_ooxml::model::props::HeaderFooterKind {
+        use strict_ooxml::model::props::HeaderFooterKind;
+        let section = self.page_section(page);
+        let document = self.session.document();
+        let title_page = document
+            .sections
+            .get(section)
+            .is_some_and(|s| s.properties.title_page);
+        let first_of_section = page == 0 || self.page_section(page - 1) != section;
+        if title_page && first_of_section {
+            HeaderFooterKind::First
+        } else if document.settings.even_and_odd_headers && (page + 1).is_multiple_of(2) {
+            HeaderFooterKind::Even
+        } else {
+            HeaderFooterKind::Default
+        }
     }
 
     /// A body paragraph of a section, for editing its properties.
@@ -2379,10 +2414,10 @@ impl<'a, 's> Worker<'a, 's> {
         &mut self,
         section: usize,
         header: bool,
+        kind: strict_ooxml::model::props::HeaderFooterKind,
     ) -> Option<strict_ooxml_core::part::PartId> {
         use strict_ooxml::edit::{header_footer_reference, new_header_footer, Definition};
-        use strict_ooxml::model::props::HeaderFooterKind;
-        if let Some(part) = self.header_footer_of(section, header) {
+        if let Some(part) = self.header_footer_of(section, header, kind) {
             return Some(part);
         }
         let at = self.section_paragraph(section)?;
@@ -2395,7 +2430,7 @@ impl<'a, 's> Worker<'a, 's> {
             .clone();
         let made = new_header_footer(self.session.document(), header);
         let part = made.part.clone();
-        let reference = header_footer_reference(&part, HeaderFooterKind::Default);
+        let reference = header_footer_reference(&part, kind);
         if header {
             properties.headers.push(reference);
         } else {
@@ -2420,7 +2455,8 @@ impl<'a, 's> Worker<'a, 's> {
         point: Option<(f64, f64)>,
     ) -> Outcome {
         let section = self.page_section(page);
-        let Some(part) = self.ensure_header_footer(section, header) else {
+        let kind = self.page_kind(page);
+        let Some(part) = self.ensure_header_footer(section, header, kind) else {
             return Outcome::Quiet;
         };
         self.ensure_layout();
@@ -2471,6 +2507,23 @@ impl<'a, 's> Worker<'a, 's> {
         };
         let header = self.session.document().header_footer(part)?.is_header;
         let sections = &self.session.document().sections;
+        let kind = sections
+            .iter()
+            .flat_map(|s| {
+                s.properties
+                    .headers
+                    .iter()
+                    .chain(s.properties.footers.iter())
+            })
+            .find(|r| r.part.as_ref() == Some(part))
+            .map_or(strict_ooxml::model::props::HeaderFooterKind::Default, |r| {
+                r.kind
+            });
+        let section = self.caret_page_section();
+        let first_page = sections
+            .get(section)
+            .is_some_and(|s| s.properties.title_page);
+        let even_odd = self.session.document().settings.even_and_odd_headers;
         let body = self
             .pages
             .iter()
@@ -2484,7 +2537,13 @@ impl<'a, 's> Worker<'a, 's> {
                 (top, page.height - bottom)
             })
             .collect();
-        Some(HeaderFooterView { header, body })
+        Some(HeaderFooterView {
+            header,
+            kind,
+            first_page,
+            even_odd,
+            body,
+        })
     }
 
     fn header_footer(&mut self, command: HeaderFooterCommand) -> Outcome {
@@ -2499,6 +2558,25 @@ impl<'a, 's> Worker<'a, 's> {
                 of_total,
             } => self.insert_page_numbers(top, align, of_total.as_ref()),
             HeaderFooterCommand::Remove => self.remove_page_numbers(),
+            HeaderFooterCommand::FirstPage(on) => {
+                let Some(at) = self.section_anchor_of_story() else {
+                    return Outcome::Quiet;
+                };
+                let mut properties = self.section_of(at.block);
+                properties.title_page = on;
+                if self.transact(&[Edit::SectionProperties {
+                    at,
+                    properties: Box::new(properties),
+                }]) {
+                    Outcome::Edited
+                } else {
+                    Outcome::Quiet
+                }
+            }
+            HeaderFooterCommand::EvenOdd(on) => self.define_and_transact(
+                &[strict_ooxml::edit::Definition::EvenAndOddHeaders(on)],
+                &[],
+            ),
             HeaderFooterCommand::Start(start) => {
                 let Some(at) = self.section_anchor() else {
                     return Outcome::Quiet;
@@ -2528,13 +2606,39 @@ impl<'a, 's> Worker<'a, 's> {
         align: Align,
         of_total: Option<&(String, String)>,
     ) -> Outcome {
-        use strict_ooxml::model::{Field, Inline, Run, RunContent, Space, TextNode};
+        use strict_ooxml::model::props::HeaderFooterKind;
+        // Every kind the section's pages show gets the number: the default
+        // and even pages always, the first page when the caret is on it.
         let page = self.caret_page();
         let section = self.page_section(page);
-        let Some(part) = self.ensure_header_footer(section, top) else {
-            return Outcome::Quiet;
-        };
-        let story = Story::HeaderFooter(part);
+        let mut kinds = vec![HeaderFooterKind::Default];
+        if self.session.document().settings.even_and_odd_headers {
+            kinds.push(HeaderFooterKind::Even);
+        }
+        if self.page_kind(page) == HeaderFooterKind::First {
+            kinds.push(HeaderFooterKind::First);
+        }
+        let mut edited = false;
+        for kind in kinds {
+            if let Some(part) = self.ensure_header_footer(section, top, kind) {
+                edited |= self.number_story(Story::HeaderFooter(part), align, of_total);
+            }
+        }
+        if edited {
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    /// Puts the page number in a header or footer story.
+    fn number_story(
+        &mut self,
+        story: Story,
+        align: Align,
+        of_total: Option<&(String, String)>,
+    ) -> bool {
+        use strict_ooxml::model::{Field, Inline, Run, RunContent, Space, TextNode};
         let paragraphs = self.paragraphs(&story);
         let text = |value: &str| {
             Inline::Run(Run {
@@ -2578,7 +2682,7 @@ impl<'a, 's> Worker<'a, 's> {
                 .is_some_and(|only| self.paragraph(only).is_some_and(|p| p.inlines.is_empty()));
         let commands = if let (true, Some(only)) = (empty, paragraphs.first()) {
             let Some(paragraph) = self.paragraph(only) else {
-                return Outcome::Quiet;
+                return false;
             };
             let mut properties = paragraph.props.clone();
             properties.alignment = Some(alignment);
@@ -2614,11 +2718,21 @@ impl<'a, 's> Worker<'a, 's> {
                 block: Box::new(Block::Paragraph(paragraph)),
             }]
         };
-        if self.transact(&commands) {
-            Outcome::Edited
-        } else {
-            Outcome::Quiet
+        self.transact(&commands)
+    }
+
+    /// The section of the page the caret is on.
+    fn caret_page_section(&self) -> usize {
+        self.page_section(self.caret_page())
+    }
+
+    /// A body paragraph of the section the caret's page shows (the caret may
+    /// be in a header).
+    fn section_anchor_of_story(&self) -> Option<Address> {
+        if self.story == Story::Body {
+            return self.section_anchor();
         }
+        self.section_paragraph(self.caret_page_section())
     }
 
     /// The page the caret is drawn on.
@@ -6104,7 +6218,82 @@ mod tests {
                 break;
             }
         }
+        // A first page of its own: its header is another one, empty.
+        requests
+            .send(Request::HeaderFooter(HeaderFooterCommand::FirstPage(true)))
+            .unwrap();
+        loop {
+            let texts = page_texts(&replies);
+            if !texts.iter().any(|(_, t)| t == "Head") {
+                break;
+            }
+        }
+        requests
+            .send(Request::HeaderFooter(HeaderFooterCommand::Enter {
+                page: 0,
+                header: true,
+            }))
+            .unwrap();
+        let view = loop {
+            if let Some(view) = cursor(&replies).header_footer {
+                break view;
+            }
+        };
+        assert_eq!(view.kind, strict_ooxml::model::props::HeaderFooterKind::First);
+        assert!(view.first_page);
         requests.send(Request::Shutdown).unwrap();
+    }
+
+    /// Page numbers on real files: `MUFOED_PROBE_FILES` (`;`-separated).
+    #[test]
+    #[ignore = "probe over files named in MUFOED_PROBE_FILES"]
+    fn page_numbers_on_files() {
+        let files = std::env::var("MUFOED_PROBE_FILES").unwrap_or_default();
+        for file in files.split(';').filter(|f| !f.is_empty()) {
+            let ctx = eframe::egui::Context::default();
+            let (requests, replies) = spawn(
+                Source::File {
+                    path: std::path::PathBuf::from(file),
+                    import: crate::formats::ImportOptions::default(),
+                },
+                false,
+                OpenControl::new(),
+                ctx,
+            );
+            let _ = state(&replies);
+            requests
+                .send(Request::HeaderFooter(HeaderFooterCommand::Insert {
+                    top: false,
+                    align: Align::Right,
+                    of_total: Some(("PPP ".to_owned(), " / ".to_owned())),
+                }))
+                .unwrap();
+            let mut found = false;
+            let mut notes = Vec::new();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(240);
+            while std::time::Instant::now() < deadline {
+                match replies.recv_timeout(std::time::Duration::from_secs(120)) {
+                    Ok(Reply::Pages { pages, .. }) => {
+                        found = pages.first().is_some_and(|page| {
+                            page.placed
+                                .items
+                                .iter()
+                                .flat_map(strict_ooxml_render_svg::Item::leaves)
+                                .any(|i| matches!(i, strict_ooxml_render_svg::Item::Text(t) if t.text.contains("PPP")))
+                        });
+                        if found {
+                            break;
+                        }
+                    }
+                    Ok(Reply::Note(note)) => notes.push(format!("{} {}", note.key, note.detail)),
+                    Ok(Reply::State(_)) if !notes.is_empty() => break,
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+            }
+            eprintln!("{file}: found {found} notes {notes:?}");
+            requests.send(Request::Shutdown).unwrap();
+        }
     }
 
     /// What Punto Switcher does when it corrects a word: one backspace per

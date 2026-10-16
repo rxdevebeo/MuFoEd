@@ -46,7 +46,8 @@
       "adjust_picture": "Adjust",
       "arrange": "Arrange",
       "header_footer": "Header & Footer",
-      "close": "Close"
+      "close": "Close",
+      "options": "Options"
     },
     "cmd": {
       "new": "New",
@@ -210,7 +211,9 @@
       "header": "Edit the header (double-click above the page text)",
       "footer": "Edit the footer (double-click below the page text)",
       "page_number": "Put page numbers in a header or footer",
-      "close_header_footer": "Back to the document text (Esc)"
+      "close_header_footer": "Back to the document text (Esc)",
+      "hf_first_page": "The section's first page has headers of its own",
+      "hf_even_odd": "Even pages have headers of their own"
     },
     "font": {
       "default": "(from style)"
@@ -485,6 +488,10 @@
       "progress": "Printing: {done} of {total} sheets sent",
       "sent": "The document was sent to the printer",
       "failed": "Printing failed: {error}"
+    },
+    "hf": {
+      "first_page": "Different first page",
+      "even_odd": "Different odd and even pages"
     }
   }
 }

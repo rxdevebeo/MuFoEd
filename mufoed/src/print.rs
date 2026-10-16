@@ -214,9 +214,7 @@ mod windows {
         let info = DOCINFOW {
             cbSize: i32::try_from(std::mem::size_of::<DOCINFOW>()).unwrap_or(0),
             lpszDocName: title.as_ptr(),
-            lpszOutput: output
-                .as_ref()
-                .map_or(std::ptr::null(), Vec::as_ptr),
+            lpszOutput: output.as_ref().map_or(std::ptr::null(), Vec::as_ptr),
             ..DOCINFOW::default()
         };
         // SAFETY: `info` and its title live past the call.

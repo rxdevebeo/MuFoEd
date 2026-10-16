@@ -1666,6 +1666,9 @@ impl App {
                 .and_then(|tab| tab.cursor.as_ref())
                 .and_then(|cursor| cursor.object.as_ref()),
             crop: tab.is_some_and(|tab| tab.view.crop),
+            header_footer: tab
+                .and_then(|tab| tab.cursor.as_ref())
+                .and_then(|cursor| cursor.header_footer.as_ref()),
         };
         ui.add_space(2.0);
         ribbon::body(ui, self.ribbon_tab, &state, actions);

@@ -46,6 +46,9 @@ pub enum Definition {
     /// section at it with `Edit::SectionProperties` in the same transaction
     /// ([`crate::Editor::define_and_transact`]).
     AddHeaderFooter(Box<strict_ooxml_wml::model::HeaderFooter>),
+    /// Different headers and footers for even and odd pages
+    /// (`w:evenAndOddHeaders`), for the whole document.
+    EvenAndOddHeaders(bool),
     /// Indexes a media part, so a picture inserted in the same transaction
     /// can name it ([`crate::AddedMedia::add`] keeps its bytes). A part
     /// already indexed is left as it is.
@@ -187,6 +190,10 @@ pub(crate) fn apply(document: &mut Document, definition: &Definition) -> Result<
                 return Err(exists());
             }
             document.headers_footers.push((**part).clone());
+        }
+        Definition::EvenAndOddHeaders(on) => {
+            document.settings.even_and_odd_headers = *on;
+            document.settings.even_and_odd_headers_off = !*on;
         }
         Definition::AddMedia(item) => {
             document.media.insert((**item).clone());

@@ -79,6 +79,8 @@ pub(crate) struct RibbonState<'a> {
     pub(crate) object: Option<&'a ObjectView>,
     /// Its handles crop instead of resizing.
     pub(crate) crop: bool,
+    /// The header or footer being edited.
+    pub(crate) header_footer: Option<&'a crate::worker::HeaderFooterView>,
 }
 
 impl RibbonState<'_> {
@@ -1608,6 +1610,44 @@ fn header_footer(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Actio
     group(ui, s.t("group.header_footer"), p, |ui| {
         header_footer_buttons(ui, s, actions);
     });
+    if let Some(view) = s.header_footer {
+        group(ui, s.t("group.options"), p, |ui| {
+            column(ui, |ui| {
+                let font = label_font();
+                let width = [s.t("hf.first_page"), s.t("hf.even_odd")]
+                    .iter()
+                    .map(|label| text_width(ui, label, &font))
+                    .fold(0.0, f32::max)
+                    + 36.0;
+                if check(
+                    ui,
+                    s.t("hf.first_page"),
+                    s.t("tip.hf_first_page"),
+                    view.first_page,
+                    width,
+                    p,
+                ) {
+                    doc(
+                        actions,
+                        Request::HeaderFooter(HeaderFooterCommand::FirstPage(!view.first_page)),
+                    );
+                }
+                if check(
+                    ui,
+                    s.t("hf.even_odd"),
+                    s.t("tip.hf_even_odd"),
+                    view.even_odd,
+                    width,
+                    p,
+                ) {
+                    doc(
+                        actions,
+                        Request::HeaderFooter(HeaderFooterCommand::EvenOdd(!view.even_odd)),
+                    );
+                }
+            });
+        });
+    }
     group(ui, s.t("group.close"), p, |ui| {
         if big_clicked(
             ui,

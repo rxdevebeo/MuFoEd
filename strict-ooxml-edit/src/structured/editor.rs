@@ -151,6 +151,13 @@ impl<'a> Editor<'a> {
         self.trim_history();
         self
     }
+    /// Changes the memory the undo history may hold
+    /// ([`with_history_byte_limit`](Self::with_history_byte_limit)) on an
+    /// open session: a large document's whole-document changes (a new
+    /// header, a style) need room for two copies of it.
+    pub fn set_history_byte_limit(&mut self, bytes: usize) {
+        self.history_byte_limit = bytes;
+    }
     /// Explicitly validates the current model and all editable stories:
     /// it may break only what the document broke when it was opened.
     pub fn validate(&self) -> Result<(), EditError> {
