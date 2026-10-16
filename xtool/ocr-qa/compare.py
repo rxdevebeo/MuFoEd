@@ -121,7 +121,12 @@ def ink_grid(image: Image.Image) -> np.ndarray:
     luma = 0.299 * pixels[..., 0] + 0.587 * pixels[..., 1] + 0.114 * pixels[..., 2]
     chroma = pixels.max(-1) - pixels.min(-1)
     paper = np.median(luma)
-    ink = (luma < min(paper - 70, 170)) | ((chroma > 60) & (luma < paper - 20))
+    # Ink is what stands apart from the paper either way: dark on a light page,
+    # light on a dark slide (where measuring only "darker than the paper" saw
+    # no ink on either side and scored a blank result 1.0).
+    dark = luma < min(paper - 70, 170)
+    light = luma > max(paper + 70, 85)
+    ink = dark | light | ((chroma > 60) & (np.abs(luma - paper) > 20))
     height, width = ink.shape
     columns, rows = GRID
     grid = np.zeros((rows, columns), bool)
