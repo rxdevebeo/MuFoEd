@@ -304,7 +304,9 @@ fn only_continuations(lines: &[GlyphLine], from: usize, to: usize, text_x: f64) 
         .get(from..to)
         .unwrap_or_default()
         .iter()
-        .all(|line| (line.x - text_x).abs() <= 3.0)
+        // An empty line (a producer's empty paragraph between items) is no
+        // paragraph of its own: it does not end the list.
+        .all(|line| (line.x - text_x).abs() <= 3.0 || line.text().trim().is_empty())
 }
 
 /// Fills each run's items with a `w:num` of its own, records what it did, and

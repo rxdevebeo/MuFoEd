@@ -149,14 +149,7 @@ pub(crate) fn build(
         }
         let text_area = text_area(&section);
         sections.begin_page(&mut blocks, section, false);
-        // Lines of nothing but spaces are Word's empty paragraphs: they hold
-        // no text, the gap they make is read from the baselines anyway, and
-        // between two bullets they split one list into two of one item each
-        // (which are no lists).
-        let raw_lines: Vec<GlyphLine> = join_fragments(strict_ooxml_pdf::text::lines(page.items()))
-            .into_iter()
-            .filter(|line| !line.text().trim().is_empty())
-            .collect();
+        let raw_lines = join_fragments(strict_ooxml_pdf::text::lines(page.items()));
         report.lines += raw_lines.len();
         let column_plan = crate::columns::plan(page, &raw_lines, report);
         let lines = margin_lines_in_place(
