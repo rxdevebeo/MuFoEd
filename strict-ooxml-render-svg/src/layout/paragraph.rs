@@ -30,8 +30,8 @@ fn revision_visible(view: RevisionView, revision: Option<&Revision>) -> bool {
 enum Seg {
     /// A text fragment with its effective run.
     Text(String, ComputedRun),
-    /// A tab.
-    Tab,
+    /// A tab, with its run's style when it came from a run.
+    Tab(Option<Box<ComputedRun>>),
     /// A soft line break.
     Break,
     /// Line break that clears floating objects on the selected side.
@@ -202,7 +202,7 @@ pub(crate) fn intrinsic_widths(ctx: &LayoutContext<'_>, paragraph: &Paragraph) -
                 word = 0.0;
                 line = 0.0;
             }
-            Seg::Tab => {
+            Seg::Tab(_) => {
                 minimum = minimum.max(word);
                 word = 0.0;
                 line += ctx.size_px(computed.default_run.size_pt) * 4.0;
@@ -944,7 +944,7 @@ fn flatten_inlines(
                 BreakKind::Column => out.push(Seg::ColumnBreak),
                 BreakKind::TextWrapping => out.push(Seg::Break),
             },
-            Inline::Tab => out.push(Seg::Tab),
+            Inline::Tab => out.push(Seg::Tab(None)),
             Inline::SdtInline(sdt) => flatten_inlines(
                 ctx,
                 computed,
@@ -1220,7 +1220,7 @@ fn flatten_run(
                     push_script_segments(visible, &run_style, out);
                 }
             }
-            RunContent::Tab => out.push(Seg::Tab),
+            RunContent::Tab => out.push(Seg::Tab(Some(Box::new(run_style.clone())))),
             RunContent::Break(BreakKind::Page) => out.push(Seg::PageBreak),
             RunContent::Break(BreakKind::Column) => out.push(Seg::ColumnBreak),
             RunContent::ClearingBreak(clear) => out.push(Seg::ClearingBreak(*clear)),
@@ -1413,6 +1413,11 @@ struct LineBuilder {
     ink_depth: f64,
     /// Height of the tallest inline drawing on the line, in px.
     object_height: f64,
+    /// Caret anchors of the line's tabs: where each started and ended, and
+    /// its run ([`crate::RenderOptions::caret_anchors`]).
+    tab_anchors: Vec<(f64, f64, ComputedRun)>,
+    /// Where the caret of an empty paragraph's line stands.
+    empty_anchor: Option<f64>,
 }
 
 impl LineBuilder {
@@ -1425,6 +1430,8 @@ impl LineBuilder {
             ink_height: 0.0,
             ink_depth: 0.0,
             object_height: 0.0,
+            tab_anchors: Vec::new(),
+            empty_anchor: None,
         }
     }
 
@@ -1660,7 +1667,8 @@ fn build_lines(
                 }
                 x = normal_x;
             }
-            Seg::Tab => {
+            Seg::Tab(tab_run) => {
+                let before = x;
                 if let Some(stop) = place_tab(
                     ctx,
                     computed,
@@ -1675,6 +1683,10 @@ fn build_lines(
                     // is kept, as Word 2013+ does: the text it aligns may run
                     // into the margin instead of wrapping.
                     sink.right_edge = sink.right_edge.max(stop);
+                }
+                if ctx.options.caret_anchors {
+                    let run = tab_run.map_or_else(|| computed.mark_run().clone(), |run| *run);
+                    current.tab_anchors.push((before, x, run));
                 }
             }
             Seg::Image(image, [left, top, right, bottom]) => {
@@ -1858,6 +1870,9 @@ fn build_lines(
         }
     }
     let current_is_empty = current.is_empty();
+    if ctx.options.caret_anchors && current.items.is_empty() {
+        current.empty_anchor = Some(x);
+    }
     if !(sink.math_block && current_is_empty) {
         sink.emit(current, true);
     }
@@ -3461,6 +3476,7 @@ fn finish_line(
     let is_gap = |index: usize, item: &TextItem| {
         item.text.ends_with(' ') && !(hanging > 0.0 && Some(index) == last_item)
     };
+    let mut justified: Option<(Vec<f64>, f64)> = None;
     if justify && ink_used < line_width {
         let gaps = line
             .items
@@ -3493,6 +3509,7 @@ fn finish_line(
                     shift += extra;
                 }
             }
+            justified = Some((boundaries, extra));
         }
     }
 
@@ -3596,6 +3613,18 @@ fn finish_line(
         *item = shift_item(item.clone(), 0.0, ascent);
     }
     super::decoration::merge_run_borders(&mut line.items, &mut line.graphics);
+    let anchors = caret_anchors(
+        ctx,
+        computed,
+        &mut line,
+        &CaretGeometry {
+            justified: justified.as_ref(),
+            offset,
+            right_edge,
+            ascent,
+        },
+    );
+    line.items.extend(anchors);
     TextLine {
         items: line.items,
         graphics: line.graphics,
@@ -3604,6 +3633,74 @@ fn finish_line(
         footnote_refs: line.footnote_refs,
         suppress_line_number: computed.suppress_line_numbers,
     }
+}
+
+/// Where a finished line moved its content, for its caret anchors.
+struct CaretGeometry<'a> {
+    /// Justification's widened gaps: their right edges, and how much each grew.
+    justified: Option<&'a (Vec<f64>, f64)>,
+    /// The alignment offset of the line.
+    offset: f64,
+    right_edge: f64,
+    ascent: f64,
+}
+
+/// The caret anchors of a finished line ([`crate::RenderOptions::caret_anchors`]):
+/// one spanning each tab, moved as justification and alignment moved the
+/// text around it, and one at the start of an empty paragraph's line. A
+/// bidirectional line is reordered piece by piece and gets none; nor does a
+/// line the WPS calibration stretches.
+fn caret_anchors(
+    ctx: &LayoutContext<'_>,
+    computed: &ComputedParagraph,
+    line: &mut LineBuilder,
+    geometry: &CaretGeometry<'_>,
+) -> Vec<TextItem> {
+    let tabs = std::mem::take(&mut line.tab_anchors);
+    let empty = line.empty_anchor.take();
+    if !ctx.options.caret_anchors || computed.bidi || ctx.options.wps_times_calibration {
+        return Vec::new();
+    }
+    let shift = |x: f64| {
+        geometry.justified.map_or(0.0, |(boundaries, extra)| {
+            boundaries
+                .iter()
+                .filter(|right| **right <= x + 1e-6)
+                .count() as f64
+                * extra
+        }) + geometry.offset
+    };
+    let anchor = |x: f64, width: f64, run: &ComputedRun| TextItem {
+        x,
+        baseline: geometry.ascent,
+        width,
+        text: String::new(),
+        run: run.clone(),
+        size_px: ctx.size_px(run.size_pt),
+        advance: ctx.advance_kind_for("", run),
+        field: None,
+        compress_punctuation: false,
+        following_non_space: None,
+        plain_space_factor: 1.0,
+    };
+    let mut out: Vec<TextItem> = tabs
+        .iter()
+        .map(|(start, end, run)| {
+            let left = start + shift(*start);
+            let right = end + shift(*end);
+            anchor(left, (right - left).max(0.0), run)
+        })
+        .collect();
+    if let Some(x) = empty.filter(|_| line.items.is_empty() && line.graphics.is_empty()) {
+        let room = (geometry.right_edge - x).max(0.0);
+        let x = match computed.alignment {
+            strict_ooxml_wml::model::values::Justification::Center => x + room / 2.0,
+            strict_ooxml_wml::model::values::Justification::End => x + room,
+            _ => x,
+        };
+        out.push(anchor(x, 0.0, computed.mark_run()));
+    }
+    out
 }
 
 /// Appends a note marker to the line, advancing `x`.
@@ -3941,7 +4038,7 @@ fn following_ink(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
                 );
                 width += ctx.measure(&text, run);
             }
-            Seg::Tab
+            Seg::Tab(_)
             | Seg::Break
             | Seg::ClearingBreak(_)
             | Seg::PageBreak
@@ -3971,9 +4068,11 @@ fn decimal_offset(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
                 }
                 width += ctx.measure(text, run);
             }
-            Seg::Tab | Seg::Break | Seg::ClearingBreak(_) | Seg::PageBreak | Seg::ColumnBreak => {
-                break
-            }
+            Seg::Tab(_)
+            | Seg::Break
+            | Seg::ClearingBreak(_)
+            | Seg::PageBreak
+            | Seg::ColumnBreak => break,
             _ => {}
         }
     }

@@ -237,6 +237,12 @@ pub struct RenderOptions {
     pub wps_times_calibration: bool,
     /// How `w:noWrap` on a table cell is honoured. Default [`CellNoWrap::Spec`].
     pub cell_no_wrap: CellNoWrap,
+    /// Place caret anchors (default `false`): an empty text item of zero
+    /// width where an empty paragraph's line starts, and one spanning each
+    /// tab, in the run's own style. They change no other placement and are
+    /// meant for interaction maps, not for painting; the SVG and PDF
+    /// backends leave them off.
+    pub caret_anchors: bool,
     /// Progress and cancellation handle (default none); see
     /// [`strict_ooxml_core::control`]. Layout reports pages laid out, painting
     /// pages written, and either stops with `StrictError::Cancelled`.
@@ -261,6 +267,7 @@ impl Default for RenderOptions {
             limits: strict_ooxml_core::limits::ResourceLimits::default(),
             wps_times_calibration: false,
             cell_no_wrap: CellNoWrap::Spec,
+            caret_anchors: false,
             control: None,
         }
     }
@@ -343,6 +350,13 @@ impl RenderOptions {
     #[must_use]
     pub fn cell_no_wrap(mut self, mode: CellNoWrap) -> Self {
         self.cell_no_wrap = mode;
+        self
+    }
+
+    /// Places caret anchors ([`RenderOptions::caret_anchors`]).
+    #[must_use]
+    pub fn caret_anchors(mut self, anchors: bool) -> Self {
+        self.caret_anchors = anchors;
         self
     }
 }

@@ -161,3 +161,66 @@ fn f09_consecutive_default_tabs_each_advance_a_stop() {
         );
     }
 }
+
+/// Caret anchors are off unless asked for. With them, an empty paragraph's
+/// line gets a zero-width empty item and a tab an empty item spanning it, and
+/// nothing else moves.
+#[test]
+fn caret_anchors_mark_empty_lines_and_tabs_only_when_asked() {
+    let body = "<w:p/><w:p><w:r><w:t>a</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>b</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"10800\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>";
+    let bytes = build_docx(&[
+        ("[Content_Types].xml", content_types().into_bytes()),
+        ("_rels/.rels", root_rels().into_bytes()),
+        ("word/document.xml", document(body).into_bytes()),
+    ]);
+    let (_package, doc) = open_bytes(bytes);
+    let texts = |options: &RenderOptions| -> Vec<strict_ooxml_render_svg::TextItem> {
+        place_pages(&doc, options, None)
+            .expect("place")
+            .into_iter()
+            .flat_map(|page| page.items)
+            .filter_map(|item| match item {
+                Item::Text(text) => Some(text),
+                _ => None,
+            })
+            .collect()
+    };
+    let plain = texts(&RenderOptions::default());
+    assert!(plain.iter().all(|text| !text.text.is_empty()));
+    let anchored = texts(&RenderOptions::default().caret_anchors(true));
+    let anchors: Vec<_> = anchored
+        .iter()
+        .filter(|text| text.text.is_empty())
+        .collect();
+    assert_eq!(anchors.len(), 2, "{anchors:?}");
+    // The empty paragraph's anchor: zero width at the line start, above the
+    // second paragraph.
+    let a = plain.iter().find(|t| t.text == "a").expect("a");
+    let b = plain.iter().find(|t| t.text == "b").expect("b");
+    let empty = anchors
+        .iter()
+        .find(|t| t.width == 0.0)
+        .expect("empty line anchor");
+    assert!((empty.x - a.x).abs() < 1e-6 && empty.baseline < a.baseline);
+    // The tab's anchor spans from the end of "a" to the start of "b".
+    let tab = anchors.iter().find(|t| t.width > 0.0).expect("tab anchor");
+    assert!(
+        (tab.x - (a.x + a.width)).abs() < 1e-6,
+        "{} {}",
+        tab.x,
+        a.x + a.width
+    );
+    assert!((tab.x + tab.width - b.x).abs() < 1e-6);
+    // Everything else is where it was.
+    let rest: Vec<_> = anchored
+        .iter()
+        .filter(|text| !text.text.is_empty())
+        .collect();
+    assert_eq!(rest.len(), plain.len());
+    for (x, y) in rest.iter().zip(&plain) {
+        assert_eq!((x.x, x.baseline, &x.text), (y.x, y.baseline, &y.text));
+    }
+}
