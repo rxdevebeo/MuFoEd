@@ -22,6 +22,7 @@ use strict_ooxml::edit::{
     Address, Container, Edit, EditLimits, FormatPatch, OperationLimits, Operations, ReplacePolicy,
     SavePolicy, SearchQuery, SearchScope, Story, TextPosition, TextQuery, VisualMap, VisualRect,
 };
+use strict_ooxml::edit::{DrawingPosition, ListLevel, ListPreset};
 use strict_ooxml::model::props::{
     CellProperties, PageSize, ParagraphProperties, RowProperties, SectionProperties,
     TableProperties,
@@ -76,6 +77,11 @@ pub(crate) enum Request {
     Table(TableCommand),
     Format(FormatChange),
     Align(Align),
+    /// Work on drawings.
+    Object(ObjectCommand),
+    /// Put the selected paragraphs in a list of this format, or (`None`)
+    /// take them out of their list.
+    List(Option<ListPreset>),
     Style(String),
     Insert(Insert),
     Page(PageChange),
@@ -85,6 +91,8 @@ pub(crate) enum Request {
         cut: bool,
     },
     Paste(String),
+    /// Paste text and put the copied drawings back where they were in it.
+    PasteObjects(Box<ClipObjects>),
     Find {
         query: FindQuery,
         backwards: bool,
@@ -107,6 +115,109 @@ pub(crate) enum Request {
         format: SaveFormat,
     },
     Shutdown,
+}
+
+/// What can be done to a drawing.
+#[derive(Debug)]
+pub(crate) enum ObjectCommand {
+    /// Insert a picture at the caret.
+    InsertPicture { bytes: Vec<u8>, name: String },
+    /// Resize the selected drawing, in EMU.
+    Resize { width: i64, height: i64 },
+    /// Give the selected picture its own pixel size back.
+    ResetSize,
+    /// Delete the selected drawing.
+    Delete,
+    /// Change the selected picture's pixels.
+    Edit(PictureEdit),
+    /// How text flows around the selected drawing.
+    Wrap(WrapStyle),
+    /// Move the selected floating drawing by page pixels.
+    Move { dx: f64, dy: f64 },
+    /// Move the selected drawing in the text to where a click at this page
+    /// point would put the caret.
+    MoveTo { page: usize, x: f64, y: f64 },
+    /// Hand the selected picture's bytes over: to save, to edit elsewhere,
+    /// or to preview an adjustment.
+    Export { purpose: ExportPurpose },
+    /// The picture with this drawing id gets new bytes (edited elsewhere);
+    /// its width stays, its height follows the new proportions.
+    Replace { id: u32, bytes: Vec<u8> },
+    /// Recognise the selected picture: its text, or (`formula`) the
+    /// formula it shows, put in its place, through the Ollama model at
+    /// `endpoint`.
+    Recognize {
+        formula: bool,
+        endpoint: String,
+        model: String,
+    },
+}
+
+/// What a picture's bytes are handed over for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ExportPurpose {
+    Save,
+    External,
+    Preview,
+}
+
+/// How text flows around a drawing, as Word's Wrap Text menu offers it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WrapStyle {
+    /// In line with text: a character of its line.
+    Inline,
+    /// Floating, text around its frame.
+    Square,
+    /// Floating, text close around its outline.
+    Tight,
+    /// Floating, text above and below only.
+    TopAndBottom,
+    /// Floating behind the text.
+    Behind,
+    /// Floating in front of the text.
+    Front,
+}
+
+impl WrapStyle {
+    pub(crate) const ALL: [Self; 6] = [
+        Self::Inline,
+        Self::Square,
+        Self::Tight,
+        Self::TopAndBottom,
+        Self::Behind,
+        Self::Front,
+    ];
+
+    pub(crate) fn key(self) -> &'static str {
+        match self {
+            Self::Inline => "wrap.inline",
+            Self::Square => "wrap.square",
+            Self::Tight => "wrap.tight",
+            Self::TopAndBottom => "wrap.top_bottom",
+            Self::Behind => "wrap.behind",
+            Self::Front => "wrap.front",
+        }
+    }
+}
+
+/// What a recognised picture is replaced by.
+#[cfg(feature = "ocr")]
+enum Replacement {
+    Text(String),
+    Formula(strict_ooxml::model::MathExpression),
+}
+
+/// What the editor does to a picture's pixels; the picture gets new bytes.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum PictureEdit {
+    /// A quarter turn.
+    Rotate { clockwise: bool },
+    /// A mirror image.
+    Flip { vertical: bool },
+    /// Brightness and contrast, each in `-1..=1`.
+    Adjust { brightness: f32, contrast: f32 },
+    /// The fractions taken off the left, top, right and bottom.
+    Crop { sides: [f32; 4] },
 }
 
 /// Table commands of the Layout tab.
@@ -311,6 +422,9 @@ pub(crate) enum Busy {
     Layout,
     /// Building the caret map; clicks and typing wait for it.
     Map,
+    /// A vision model is reading a picture.
+    #[cfg_attr(not(feature = "ocr"), allow(dead_code))]
+    Recognize,
 }
 
 /// A heading for the navigation pane.
@@ -387,15 +501,90 @@ pub(crate) struct CaretFormat {
     pub(crate) align: Option<Align>,
     /// Paragraph style id.
     pub(crate) style: Option<String>,
+    /// The list the caret's paragraph is in.
+    pub(crate) list: Option<CaretList>,
+}
+
+/// The list at the caret, as the ribbon shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct CaretList {
+    pub(crate) bullet: bool,
+    /// The preset the list looks like, if it is one.
+    pub(crate) preset: Option<ListPreset>,
+    /// The level's marker as its first item shows it: `1.`, `a)`, `•`.
+    pub(crate) sample: String,
+    /// Zero-based level.
+    pub(crate) level: u8,
+}
+
+impl CaretList {
+    fn of(level: &ListLevel) -> Self {
+        let mut sample = level.text.clone();
+        for index in 1..=9 {
+            let digit = match level.format.as_str() {
+                "lowerLetter" => "a",
+                "upperLetter" => "A",
+                "lowerRoman" => "i",
+                "upperRoman" => "I",
+                _ => "1",
+            };
+            sample = sample.replace(&format!("%{index}"), digit);
+        }
+        Self {
+            bullet: level.is_bullet(),
+            preset: ListPreset::matching(level),
+            sample,
+            level: level.ilvl,
+        }
+    }
 }
 
 /// Caret and selection geometry, in page pixels.
 pub(crate) struct Cursor {
+    /// The selected drawing, when one is.
+    pub(crate) object: Option<ObjectView>,
     pub(crate) carets: Vec<VisualRect>,
     pub(crate) selection: Vec<VisualRect>,
     /// Bring the caret into view.
     pub(crate) scroll: bool,
     pub(crate) format: CaretFormat,
+}
+
+/// What a copy carried besides its text: its drawings and, for a lone
+/// picture, the picture itself for other programs.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ClipObjects {
+    /// The copied text, drawings left out.
+    pub(crate) text: String,
+    pub(crate) objects: Vec<ClipObject>,
+    /// A lone picture's pixels: width, height, premultiplied RGBA.
+    pub(crate) image: Option<(usize, usize, Vec<u8>)>,
+}
+
+/// One copied drawing and where it was in the copied text.
+#[derive(Clone, Debug)]
+pub(crate) struct ClipObject {
+    /// The line of the copied text.
+    pub(crate) line: usize,
+    /// The character offset in that line.
+    pub(crate) offset: usize,
+    pub(crate) drawing: strict_ooxml::model::Drawing,
+    /// The picture's bytes, so it can go into another document.
+    pub(crate) bytes: Option<Vec<u8>>,
+}
+
+/// A selected drawing, as the canvas and the ribbon show it.
+#[derive(Clone, Debug)]
+pub(crate) struct ObjectView {
+    /// Where it is drawn (more than one rect for a header's repeats).
+    pub(crate) rects: Vec<VisualRect>,
+    /// Its size, in EMU.
+    pub(crate) width: i64,
+    pub(crate) height: i64,
+    /// A picture (not a shape or a chart).
+    pub(crate) picture: bool,
+    /// How text flows around it.
+    pub(crate) wrap: WrapStyle,
 }
 
 /// Counters for the status bar and the quick access toolbar.
@@ -449,6 +638,15 @@ pub(crate) enum Reply {
     Busy(Option<Busy>),
     Note(Note),
     Clipboard(String),
+    /// The drawings of what was copied, after its text.
+    ClipboardObjects(Box<ClipObjects>),
+    /// A picture's bytes, asked for by `ObjectCommand::Export`.
+    Picture {
+        id: u32,
+        bytes: Vec<u8>,
+        extension: &'static str,
+        purpose: ExportPurpose,
+    },
     Saved {
         path: PathBuf,
         format: SaveFormat,
@@ -688,6 +886,8 @@ struct Worker<'a, 's> {
     /// The cell a click started in, for selecting cells by dragging.
     cell_origin: Option<CellRef>,
     goal_x: Option<f64>,
+    /// The selected drawing.
+    object: Option<DrawingPosition>,
     undo_depth: usize,
     redo_depth: usize,
     saved_revision: u64,
@@ -720,6 +920,7 @@ impl<'a, 's> Worker<'a, 's> {
             cells: None,
             cell_origin: None,
             goal_x: None,
+            object: None,
             undo_depth: 0,
             redo_depth: 0,
             saved_revision,
@@ -800,6 +1001,32 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn handle(&mut self, request: Request) -> Outcome {
+        // A drawing stays selected for what acts on it; anything else (a
+        // click selects anew) leaves it.
+        let keeps_object = matches!(
+            request,
+            Request::Object(_)
+                | Request::Backspace
+                | Request::Delete
+                | Request::Type(_)
+                | Request::Copy { .. }
+                | Request::Click { .. }
+        );
+        if !keeps_object {
+            self.object = None;
+        }
+        if self.object.is_some() {
+            match &request {
+                Request::Backspace | Request::Delete => return self.delete_object(),
+                // Typing over a selected picture replaces it.
+                Request::Type(_) => {
+                    if matches!(self.delete_object(), Outcome::Quiet) {
+                        return Outcome::Quiet;
+                    }
+                }
+                _ => {}
+            }
+        }
         match request {
             Request::Shutdown => Outcome::Quit,
             Request::Click {
@@ -853,12 +1080,15 @@ impl<'a, 's> Worker<'a, 's> {
             Request::Table(command) => self.table_command(command),
             Request::Format(change) => self.format(&change),
             Request::Align(align) => self.align(align),
+            Request::List(preset) => self.list(preset),
+            Request::Object(command) => self.object_command(command),
             Request::Style(id) => self.set_style(&id),
             Request::Insert(insert) => self.insert(insert),
             Request::Page(change) => self.page_setup(change),
             Request::Undo => self.undo(true),
             Request::Redo => self.undo(false),
             Request::Paste(text) => self.paste(&text),
+            Request::PasteObjects(clip) => self.paste_objects(&clip),
             Request::Replace { query, with } => self.replace(&query, &with),
             Request::ReplaceAll { query, with } => self.replace_all(&query, &with),
             Request::Revisions { accept } => self.revisions(accept),
@@ -1193,8 +1423,23 @@ impl<'a, 's> Worker<'a, 's> {
         } else {
             (carets, selection)
         };
+        // Right after a drawing that no text follows, the caret stands on
+        // the drawing's right edge; the map would put it at the text before.
+        let beside = self.caret_beside_object();
+        let carets = if carets.is_empty() || (!beside.is_empty() && !self.text_at_caret()) {
+            beside
+        } else {
+            carets
+        };
+        // Drawings inside the selection are selected too.
+        let mut selection = selection;
+        selection.extend(self.selected_object_rects());
+        let object = self.object_view();
+        // A selected drawing shows its frame, not a caret.
+        let carets = if object.is_some() { Vec::new() } else { carets };
         let format = self.caret_format();
         self.send(Reply::Cursor(Box::new(Cursor {
+            object,
             carets,
             selection,
             scroll,
@@ -1227,6 +1472,8 @@ impl<'a, 's> Worker<'a, 's> {
                     _ => None,
                 }),
             style: paragraph.props.style.as_ref().map(ToString::to_string),
+            list: strict_ooxml::edit::list_level(self.session.document(), paragraph)
+                .map(|level| CaretList::of(&level)),
             ..CaretFormat::default()
         };
         if let Some(props) = props {
@@ -1256,6 +1503,7 @@ impl<'a, 's> Worker<'a, 's> {
         let mut characters = 0;
         for address in self.paragraphs(&Story::Body) {
             let text = self.text_of(&address);
+            let text = text.replace(nav::OBJECT, " ");
             words += text.split_whitespace().count();
             characters += text.chars().filter(|c| !c.is_whitespace()).count();
         }
@@ -1278,6 +1526,22 @@ impl<'a, 's> Worker<'a, 's> {
         let Some(map) = &self.map else {
             return Outcome::Quiet;
         };
+        // A click on a drawing selects it, the caret before it.
+        if !extend && !column {
+            if let Ok(Some(object)) = map.hit_drawing(revision, page, x, y) {
+                if let Some(offset) = self.object_offset(&object) {
+                    self.caret = Some(Logical {
+                        paragraph: object.paragraph.clone(),
+                        offset,
+                    });
+                }
+                self.anchor = None;
+                self.cells = None;
+                self.object = Some(object);
+                return Outcome::Moved;
+            }
+        }
+        self.object = None;
         let Ok(Some(position)) = map.hit_test(revision, page, x, y) else {
             return Outcome::Quiet;
         };
@@ -1286,7 +1550,24 @@ impl<'a, 's> Worker<'a, 's> {
             .ok()
             .and_then(|rects| rects.into_iter().find(|rect| rect.page == page))
             .map(|rect| rect.x - position.offset as f64);
-        let logical = self.logical(&position);
+        let mut logical = self.logical(&position);
+        // Right of a drawing on the line, the caret goes after it: the map
+        // knows only text, which snaps the click to before the drawing.
+        for (offset, object) in self.objects_of(&logical.paragraph) {
+            let Ok(rects) = map.drawing_rects(revision, &object) else {
+                continue;
+            };
+            let past = rects.iter().any(|rect| {
+                rect.page == page
+                    && x > rect.x + rect.width
+                    && y >= rect.y
+                    && y <= rect.y + rect.height
+            });
+            if past && logical.offset <= offset {
+                logical.offset = offset + 1;
+            }
+        }
+        let logical = logical;
         self.goal_x = None;
         let cell = cell_of(&logical.paragraph);
         // Ctrl+click: the column under the pointer.
@@ -1798,46 +2079,7 @@ impl<'a, 's> Worker<'a, 's> {
             return Outcome::Quiet;
         };
         let at = caret.paragraph.clone();
-        let tab = || Box::new(strict_ooxml::model::Inline::Tab);
-        // Split there, put the tab first in the right half, join again: the
-        // kernel inserts inlines between runs, and this makes the caret's
-        // point a boundary between runs wherever it was.
-        #[allow(clippy::single_match_else)]
-        let commands = match self.point(&caret) {
-            Some(point) => {
-                let mut right = at.clone();
-                right.block += 1;
-                vec![
-                    Edit::SplitAt {
-                        at: at.clone(),
-                        point,
-                    },
-                    Edit::InsertInline {
-                        at: right,
-                        index: 0,
-                        inline: tab(),
-                    },
-                    Edit::Join { at: at.clone() },
-                ]
-            }
-            None => {
-                // An empty paragraph, or the caret beside tabs between runs.
-                let pieces = self.pieces(&at);
-                let mut before = 0;
-                let mut index = 0;
-                for piece in &pieces {
-                    before += piece.len();
-                    if before == caret.offset {
-                        index = piece.inline.first().copied().unwrap_or(0) + 1;
-                    }
-                }
-                vec![Edit::InsertInline {
-                    at: at.clone(),
-                    index,
-                    inline: tab(),
-                }]
-            }
-        };
+        let commands = self.inline_at_caret(&caret, strict_ooxml::model::Inline::Tab);
         if self.transact(&commands) {
             self.anchor = None;
             self.caret = Some(Logical {
@@ -1848,6 +2090,909 @@ impl<'a, 's> Worker<'a, 's> {
         } else {
             Outcome::Quiet
         }
+    }
+
+    /// Commands that put `inline` at the caret, between runs.
+    fn inline_at_caret(&self, caret: &Logical, inline: strict_ooxml::model::Inline) -> Vec<Edit> {
+        let at = caret.paragraph.clone();
+        // Split there, put the inline first in the right half, join again:
+        // the kernel inserts inlines between runs, and this makes the caret's
+        // point a boundary between runs wherever it was.
+        if let Some(point) = self.point(caret) {
+            let mut right = at.clone();
+            right.block += 1;
+            return vec![
+                Edit::SplitAt {
+                    at: at.clone(),
+                    point,
+                },
+                Edit::InsertInline {
+                    at: right,
+                    index: 0,
+                    inline: Box::new(inline),
+                },
+                Edit::Join { at },
+            ];
+        }
+        // An empty paragraph, or the caret beside atoms between runs.
+        let pieces = self.pieces(&at);
+        let mut before = 0;
+        let mut index = 0;
+        for piece in &pieces {
+            before += piece.len();
+            if before == caret.offset {
+                index = piece.inline.first().copied().unwrap_or(0) + 1;
+            }
+        }
+        vec![Edit::InsertInline {
+            at,
+            index,
+            inline: Box::new(inline),
+        }]
+    }
+
+    // ----- drawings -----------------------------------------------------
+
+    /// The caret offset of a drawing's atom.
+    fn object_offset(&self, object: &DrawingPosition) -> Option<usize> {
+        let mut before = 0;
+        for piece in self.pieces(&object.paragraph) {
+            let atom = piece.text.starts_with(nav::OBJECT) && piece.inline == object.inline;
+            let here = match object.content {
+                Some(content) => piece.kind == nav::PieceKind::RunAtom && piece.content == content,
+                None => piece.kind == nav::PieceKind::InlineAtom,
+            };
+            if atom && here {
+                return Some(before);
+            }
+            before += piece.len();
+        }
+        None
+    }
+
+    /// The drawing a position names.
+    fn drawing_at(&self, object: &DrawingPosition) -> Option<strict_ooxml::model::Drawing> {
+        use strict_ooxml::model::{Inline, RunContent};
+        let paragraph = self.paragraph(&object.paragraph)?;
+        let (last, wrappers) = object.inline.split_last()?;
+        let mut inlines = &paragraph.inlines;
+        for index in wrappers {
+            inlines = match inlines.get(*index)? {
+                Inline::Hyperlink(v) => &v.inlines,
+                Inline::SdtInline(v) => &v.inlines,
+                Inline::Directional(v) => &v.inlines,
+                _ => return None,
+            };
+        }
+        match (inlines.get(*last)?, object.content) {
+            (Inline::Drawing(drawing), None) => Some(drawing.clone()),
+            (Inline::Run(run), Some(content)) => match run.content.get(content)? {
+                RunContent::Drawing(drawing) => Some(drawing.clone()),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn object_view(&self) -> Option<ObjectView> {
+        use strict_ooxml::model::{DrawingKind, Graphic};
+        let object = self.object.as_ref()?;
+        let map = self.map.as_ref()?;
+        let rects = map
+            .drawing_rects(self.session.revision(), object)
+            .ok()
+            .filter(|rects| !rects.is_empty())?;
+        let drawing = self.drawing_at(object)?;
+        let (extent, graphic) = match &drawing.kind {
+            DrawingKind::Inline(v) => (v.extent, Some(&*v.graphic)),
+            DrawingKind::Anchor(v) => (v.extent, Some(&*v.graphic)),
+            DrawingKind::Opaque(_) => (None, None),
+        };
+        Some(ObjectView {
+            rects,
+            width: extent.map_or(0, |e| e.cx.0),
+            height: extent.map_or(0, |e| e.cy.0),
+            picture: matches!(graphic, Some(Graphic::Picture(_))),
+            wrap: wrap_style(&drawing),
+        })
+    }
+
+    /// Whether a text node holds the caret's offset.
+    fn text_at_caret(&self) -> bool {
+        let Some(caret) = &self.caret else {
+            return false;
+        };
+        let mut before = 0;
+        for piece in self.pieces(&caret.paragraph) {
+            let end = before + piece.len();
+            if piece.kind == nav::PieceKind::Text && (before..=end).contains(&caret.offset) {
+                return true;
+            }
+            before = end;
+        }
+        false
+    }
+
+    /// The drawings of a paragraph with their caret offsets.
+    fn objects_of(&self, paragraph: &Address) -> Vec<(usize, DrawingPosition)> {
+        let mut out = Vec::new();
+        let mut before = 0;
+        for piece in self.pieces(paragraph) {
+            if piece.text.starts_with(nav::OBJECT) {
+                out.push((
+                    before,
+                    DrawingPosition {
+                        paragraph: paragraph.clone(),
+                        inline: piece.inline.clone(),
+                        content: (piece.kind == nav::PieceKind::RunAtom).then_some(piece.content),
+                    },
+                ));
+            }
+            before += piece.len();
+        }
+        out
+    }
+
+    /// Where the drawings inside the selection are drawn.
+    fn selected_object_rects(&self) -> Vec<VisualRect> {
+        let (Some((start, end)), Some(map)) = (self.selection(), &self.map) else {
+            return Vec::new();
+        };
+        let revision = self.session.revision();
+        let paragraphs = self.paragraphs(&start.paragraph.story);
+        let from = paragraphs.iter().position(|a| *a == start.paragraph);
+        let to = paragraphs.iter().position(|a| *a == end.paragraph);
+        let (Some(from), Some(to)) = (from, to) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (index, paragraph) in paragraphs.iter().enumerate().take(to + 1).skip(from) {
+            for (offset, object) in self.objects_of(paragraph) {
+                let after_start = index > from || offset >= start.offset;
+                let before_end = index < to || offset < end.offset;
+                if after_start && before_end {
+                    out.extend(map.drawing_rects(revision, &object).unwrap_or_default());
+                }
+            }
+        }
+        out
+    }
+
+    /// The caret right after a drawing that no text follows: on the
+    /// drawing's right edge.
+    fn caret_beside_object(&self) -> Vec<VisualRect> {
+        let (Some(caret), Some(map)) = (&self.caret, &self.map) else {
+            return Vec::new();
+        };
+        let mut before = 0;
+        for piece in self.pieces(&caret.paragraph) {
+            let end = before + piece.len();
+            if piece.text.starts_with(nav::OBJECT) && end == caret.offset {
+                let object = DrawingPosition {
+                    paragraph: caret.paragraph.clone(),
+                    inline: piece.inline.clone(),
+                    content: (piece.kind == nav::PieceKind::RunAtom).then_some(piece.content),
+                };
+                return map
+                    .drawing_rects(self.session.revision(), &object)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|rect| VisualRect {
+                        x: rect.x + rect.width,
+                        width: 1.0,
+                        ..rect
+                    })
+                    .collect();
+            }
+            before = end;
+        }
+        Vec::new()
+    }
+
+    fn delete_object(&mut self) -> Outcome {
+        let Some(object) = self.object.take() else {
+            return Outcome::Quiet;
+        };
+        let Some(offset) = self.object_offset(&object) else {
+            return Outcome::Quiet;
+        };
+        self.anchor = Some(Logical {
+            paragraph: object.paragraph.clone(),
+            offset,
+        });
+        self.caret = Some(Logical {
+            paragraph: object.paragraph,
+            offset: offset + 1,
+        });
+        self.delete_selection()
+    }
+
+    fn object_command(&mut self, command: ObjectCommand) -> Outcome {
+        match command {
+            ObjectCommand::Delete => self.delete_object(),
+            ObjectCommand::Edit(edit) => self.edit_picture(edit),
+            ObjectCommand::Wrap(style) => self.wrap_object(style),
+            ObjectCommand::Move { dx, dy } => self.move_floating(dx, dy),
+            ObjectCommand::MoveTo { page, x, y } => self.move_in_text(page, x, y),
+            ObjectCommand::Export { purpose } => {
+                let id = self
+                    .object
+                    .as_ref()
+                    .and_then(|object| self.drawing_at(object))
+                    .map_or(0, |drawing| drawing_id(&drawing));
+                if let Some(bytes) = self.object_bytes() {
+                    let extension = strict_ooxml::edit::picture_format(&bytes)
+                        .map_or("bin", |(_, _, extension)| extension);
+                    self.send(Reply::Picture {
+                        id,
+                        bytes,
+                        extension,
+                        purpose,
+                    });
+                }
+                Outcome::Quiet
+            }
+            ObjectCommand::Replace { id, bytes } => self.replace_picture(id, bytes),
+            ObjectCommand::Resize { width, height } => self.resize_object(width, height),
+            ObjectCommand::ResetSize => {
+                let size = self.object_pixels();
+                match size {
+                    Some((width, height)) => self.resize_object(
+                        i64::from(width) * strict_ooxml::edit::EMU_PER_PX,
+                        i64::from(height) * strict_ooxml::edit::EMU_PER_PX,
+                    ),
+                    None => Outcome::Quiet,
+                }
+            }
+            ObjectCommand::InsertPicture { bytes, name } => self.insert_picture(bytes, &name),
+            ObjectCommand::Recognize {
+                formula,
+                endpoint,
+                model,
+            } => self.recognize_object(formula, &endpoint, &model),
+        }
+    }
+
+    /// The pixel size of the selected picture's image.
+    fn object_pixels(&self) -> Option<(u32, u32)> {
+        let bytes = self.object_bytes()?;
+        strict_ooxml::edit::picture_pixels(&bytes)
+    }
+
+    /// The image bytes of the selected picture.
+    fn object_bytes(&self) -> Option<Vec<u8>> {
+        use strict_ooxml::model::{DrawingKind, Graphic};
+        let drawing = self.drawing_at(self.object.as_ref()?)?;
+        let graphic = match &drawing.kind {
+            DrawingKind::Inline(v) => &v.graphic,
+            DrawingKind::Anchor(v) => &v.graphic,
+            DrawingKind::Opaque(_) => return None,
+        };
+        let Graphic::Picture(picture) = graphic.as_ref() else {
+            return None;
+        };
+        let part = picture.blip.as_ref()?.resolved.as_ref()?;
+        match &self.session {
+            Session::Edit(editor) => editor.media_bytes(part).ok(),
+            Session::View(document) => document.package().read_part(part).ok(),
+        }
+    }
+
+    /// Recognises the selected picture with a vision model and puts what it
+    /// reads in its place: text, or the formula as a Word equation.
+    #[cfg(feature = "ocr")]
+    fn recognize_object(&mut self, formula: bool, endpoint: &str, model: &str) -> Outcome {
+        use strict_ooxml::{OcrImage, TextRecovery};
+        let Some(bytes) = self.object_bytes() else {
+            self.note("note.recognize_failed", "no picture bytes", true);
+            return Outcome::Quiet;
+        };
+        let image = match strict_ooxml::edit::picture_format(&bytes) {
+            Some((strict_ooxml::model::MediaKind::Png, ..)) => OcrImage::png(bytes),
+            Some((strict_ooxml::model::MediaKind::Jpeg, ..)) => OcrImage::jpeg(bytes),
+            Some(_) => {
+                let Some(png) = crate::raster::picture_png(&bytes) else {
+                    self.note(
+                        "note.recognize_failed",
+                        "the picture could not be read",
+                        true,
+                    );
+                    return Outcome::Quiet;
+                };
+                OcrImage::png(png)
+            }
+            None => {
+                self.note("note.recognize_failed", "not a picture format", true);
+                return Outcome::Quiet;
+            }
+        };
+        let mut config = strict_ooxml::OllamaConfig::from_env();
+        endpoint.clone_into(&mut config.endpoint);
+        model.clone_into(&mut config.model);
+        let vision = strict_ooxml::OllamaVision::new(config);
+        self.send(Reply::Busy(Some(Busy::Recognize)));
+        let answer = if formula {
+            vision.recover_formula(&image)
+        } else {
+            vision.recover_region(&image)
+        };
+        self.send(Reply::Busy(None));
+        let text = match answer {
+            Ok(Some(recovered)) => recovered.text,
+            Ok(None) => {
+                self.note("note.recognized_nothing", String::new(), false);
+                return Outcome::Quiet;
+            }
+            Err(error) => {
+                self.note("note.recognize_failed", error.to_string(), true);
+                return Outcome::Quiet;
+            }
+        };
+        let replacement = if formula {
+            match strict_ooxml::math_from_mathml(&text) {
+                Ok(expression) => Replacement::Formula(expression),
+                Err(error) => {
+                    self.note("note.recognize_failed", error.to_string(), true);
+                    return Outcome::Quiet;
+                }
+            }
+        } else {
+            Replacement::Text(text.clone())
+        };
+        // A drawing between runs is replaced in one step, one undo.
+        if let Some(outcome) = self.replace_object_whole(&replacement) {
+            return outcome;
+        }
+        if let Replacement::Formula(expression) = replacement {
+            if matches!(self.delete_object(), Outcome::Quiet) {
+                return Outcome::Quiet;
+            }
+            let Some(caret) = self.caret.clone() else {
+                return Outcome::Edited;
+            };
+            let commands =
+                self.inline_at_caret(&caret, strict_ooxml::model::Inline::Math(expression));
+            if self.transact(&commands) {
+                self.caret = Some(Logical {
+                    paragraph: caret.paragraph,
+                    offset: caret.offset,
+                });
+            }
+            return Outcome::Edited;
+        }
+        if matches!(self.delete_object(), Outcome::Quiet) {
+            return Outcome::Quiet;
+        }
+        self.paste(&text);
+        Outcome::Edited
+    }
+
+    /// Replaces the selected drawing, when it stands between runs, by text
+    /// (a paragraph split at each line break) or a formula, in one
+    /// transaction. `None` for a drawing inside a run.
+    #[cfg(feature = "ocr")]
+    fn replace_object_whole(&mut self, replacement: &Replacement) -> Option<Outcome> {
+        use strict_ooxml::edit::InlinePoint;
+        use strict_ooxml::model::{Inline, Run, RunContent, Space, TextNode};
+        let object = self.object.clone()?;
+        let ([index], None) = (object.inline.as_slice(), object.content) else {
+            return None;
+        };
+        let index = *index;
+        let at = object.paragraph.clone();
+        let offset = self.object_offset(&object)?;
+        let paragraph = self.paragraph(&at)?;
+        // New text takes the look of the run before the drawing, or after.
+        let props = paragraph
+            .inlines
+            .get(..index)
+            .and_then(|before| {
+                before.iter().rev().find_map(|inline| match inline {
+                    Inline::Run(run) => Some(run.props.clone()),
+                    _ => None,
+                })
+            })
+            .or_else(|| {
+                paragraph
+                    .inlines
+                    .get(index + 1..)?
+                    .iter()
+                    .find_map(|inline| match inline {
+                        Inline::Run(run) => Some(run.props.clone()),
+                        _ => None,
+                    })
+            })
+            .unwrap_or_default();
+        let run = |text: &str| {
+            Box::new(Inline::Run(Run {
+                props: props.clone(),
+                content: vec![RunContent::Text(TextNode {
+                    text: text.to_owned(),
+                    space: Space::Preserve,
+                })],
+                revision: None,
+                location: SourceLocation::unknown(),
+            }))
+        };
+        let mut commands = vec![Edit::DeleteInline {
+            at: at.clone(),
+            index,
+        }];
+        let mut caret = Logical {
+            paragraph: at.clone(),
+            offset,
+        };
+        match replacement {
+            Replacement::Formula(expression) => {
+                commands.push(Edit::InsertInline {
+                    at: at.clone(),
+                    index,
+                    inline: Box::new(Inline::Math(expression.clone())),
+                });
+            }
+            Replacement::Text(text) => {
+                let text = text.replace("\r\n", "\n").replace('\r', "\n");
+                let lines: Vec<String> = text
+                    .split('\n')
+                    .map(|line| {
+                        line.chars()
+                            .map(|c| if c == '\t' { ' ' } else { c })
+                            .filter(|c| !c.is_control())
+                            .collect()
+                    })
+                    .collect();
+                let mut here = at.clone();
+                let mut slot = index;
+                for (number, line) in lines.iter().enumerate() {
+                    if number > 0 {
+                        // The rest of the paragraph goes on after this line.
+                        let previous = lines.get(number - 1).map_or(0, |l| l.chars().count());
+                        commands.push(Edit::SplitAt {
+                            at: here.clone(),
+                            point: InlinePoint {
+                                inline: vec![slot],
+                                content: 0,
+                                offset: previous,
+                            },
+                        });
+                        here.block += 1;
+                        slot = 0;
+                    }
+                    commands.push(Edit::InsertInline {
+                        at: here.clone(),
+                        index: slot,
+                        inline: run(line),
+                    });
+                }
+                caret = Logical {
+                    paragraph: here,
+                    offset: if lines.len() > 1 { 0 } else { offset }
+                        + lines.last().map_or(0, |l| l.chars().count()),
+                };
+            }
+        }
+        if !self.transact(&commands) {
+            return Some(Outcome::Quiet);
+        }
+        self.object = None;
+        self.anchor = None;
+        self.caret = Some(caret);
+        Some(Outcome::Edited)
+    }
+
+    #[cfg(not(feature = "ocr"))]
+    fn recognize_object(&mut self, _formula: bool, _endpoint: &str, _model: &str) -> Outcome {
+        self.note(
+            "note.recognize_failed",
+            "a build without the `ocr` feature",
+            true,
+        );
+        Outcome::Quiet
+    }
+
+    /// Changes the selected picture's pixels: the picture shows new bytes,
+    /// its frame turned or cut to match. A crop the document gave the picture
+    /// is made in its pixels first.
+    fn edit_picture(&mut self, edit: PictureEdit) -> Outcome {
+        use strict_ooxml::edit::Definition;
+        use strict_ooxml::model::{DrawingKind, Emu, Extent, Graphic};
+        let Some(object) = self.object.clone() else {
+            return Outcome::Quiet;
+        };
+        let (Some(mut drawing), Some(bytes)) = (self.drawing_at(&object), self.object_bytes())
+        else {
+            return Outcome::Quiet;
+        };
+        let (frame, graphic) = match &mut drawing.kind {
+            DrawingKind::Inline(v) => (&mut v.extent, &mut v.graphic),
+            DrawingKind::Anchor(v) => (&mut v.extent, &mut v.graphic),
+            DrawingKind::Opaque(_) => return Outcome::Quiet,
+        };
+        let Graphic::Picture(picture) = graphic.as_mut() else {
+            return Outcome::Quiet;
+        };
+        #[allow(clippy::cast_precision_loss)]
+        let bytes = match picture.src_rect.take() {
+            Some(crop) => {
+                let side = |value: i32| value as f32 / 100_000.0;
+                let sides = [
+                    side(crop.left),
+                    side(crop.top),
+                    side(crop.right),
+                    side(crop.bottom),
+                ];
+                crate::raster::picture_cropped(&bytes, sides).unwrap_or(bytes)
+            }
+            None => bytes,
+        };
+        let size = frame.map_or((0, 0), |extent| (extent.cx.0, extent.cy.0));
+        let (edited, size) = match edit {
+            PictureEdit::Rotate { clockwise } => (
+                crate::raster::picture_rotated(&bytes, clockwise),
+                (size.1, size.0),
+            ),
+            PictureEdit::Flip { vertical } => {
+                (crate::raster::picture_flipped(&bytes, vertical), size)
+            }
+            PictureEdit::Adjust {
+                brightness,
+                contrast,
+            } => (
+                crate::raster::picture_adjusted(&bytes, brightness, contrast),
+                size,
+            ),
+            PictureEdit::Crop { sides } => {
+                let [left, top, right, bottom] = sides.map(|s| f64::from(s.clamp(0.0, 0.95)));
+                #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+                let keep =
+                    |value: i64, cut: f64| ((value as f64) * (1.0 - cut).max(0.02)).round() as i64;
+                (
+                    crate::raster::picture_cropped(&bytes, sides),
+                    (keep(size.0, left + right), keep(size.1, top + bottom)),
+                )
+            }
+        };
+        let Some(edited) = edited else {
+            self.note(
+                "note.picture_refused",
+                "the picture could not be read",
+                true,
+            );
+            return Outcome::Quiet;
+        };
+        let extent = Extent {
+            cx: Emu(size.0.max(1)),
+            cy: Emu(size.1.max(1)),
+        };
+        *frame = Some(extent);
+        if picture.extent.is_some() {
+            picture.extent = Some(extent);
+        }
+        let Some(editor) = self.editor() else {
+            return Outcome::Quiet;
+        };
+        let Ok(item) = editor.add_media(edited) else {
+            return Outcome::Quiet;
+        };
+        set_picture_part(&mut drawing, &item.part);
+        let command = Edit::Drawing {
+            at: object.paragraph.clone(),
+            inline: object.inline.clone(),
+            content: object.content,
+            drawing: Box::new(drawing),
+        };
+        let outcome = self.define_and_transact(&[Definition::AddMedia(Box::new(item))], &[command]);
+        self.object = Some(object);
+        outcome
+    }
+
+    /// Gives the picture with drawing id `id` new bytes: its width stays,
+    /// its height follows the new picture's proportions.
+    fn replace_picture(&mut self, id: u32, bytes: Vec<u8>) -> Outcome {
+        use strict_ooxml::edit::{picture_pixels, Definition};
+        use strict_ooxml::model::{DrawingKind, Emu, Extent, Graphic};
+        let found = self
+            .paragraphs(&Story::Body)
+            .into_iter()
+            .find_map(|paragraph| {
+                self.objects_of(&paragraph)
+                    .into_iter()
+                    .find_map(|(_, object)| {
+                        let drawing = self.drawing_at(&object)?;
+                        (drawing_id(&drawing) == id).then_some((object, drawing))
+                    })
+            });
+        let Some((object, mut drawing)) = found else {
+            self.note(
+                "note.picture_refused",
+                "the picture is no longer there",
+                true,
+            );
+            return Outcome::Quiet;
+        };
+        let pixels = picture_pixels(&bytes);
+        let (frame, graphic) = match &mut drawing.kind {
+            DrawingKind::Inline(v) => (&mut v.extent, &mut v.graphic),
+            DrawingKind::Anchor(v) => (&mut v.extent, &mut v.graphic),
+            DrawingKind::Opaque(_) => return Outcome::Quiet,
+        };
+        if let (Some(extent), Some((w, h))) = (frame.as_mut(), pixels) {
+            extent.cy = Emu((extent.cx.0 * i64::from(h) / i64::from(w.max(1))).max(1));
+            let extent: Extent = *extent;
+            if let Graphic::Picture(picture) = graphic.as_mut() {
+                picture.src_rect = None;
+                if picture.extent.is_some() {
+                    picture.extent = Some(extent);
+                }
+            }
+        }
+        let Some(editor) = self.editor() else {
+            return Outcome::Quiet;
+        };
+        let item = match editor.add_media(bytes) {
+            Ok(item) => item,
+            Err(error) => {
+                self.note("note.picture_refused", format!("{error:?}"), true);
+                return Outcome::Quiet;
+            }
+        };
+        set_picture_part(&mut drawing, &item.part);
+        let command = Edit::Drawing {
+            at: object.paragraph.clone(),
+            inline: object.inline.clone(),
+            content: object.content,
+            drawing: Box::new(drawing),
+        };
+        let outcome = self.define_and_transact(&[Definition::AddMedia(Box::new(item))], &[command]);
+        if matches!(outcome, Outcome::Edited) {
+            self.object = Some(object);
+        }
+        outcome
+    }
+
+    /// Moves the selected floating drawing by page pixels. An offset it has
+    /// grows; a position given by alignment becomes an offset where it is
+    /// drawn: from the column across, from the page down.
+    fn move_floating(&mut self, dx: f64, dy: f64) -> Outcome {
+        use strict_ooxml::model::drawing::Position;
+        use strict_ooxml::model::{DrawingKind, Emu};
+        let Some(object) = self.object.clone() else {
+            return Outcome::Quiet;
+        };
+        let (Some(mut drawing), Some(rect)) = (
+            self.drawing_at(&object),
+            self.object_view()
+                .and_then(|view| view.rects.first().copied()),
+        ) else {
+            return Outcome::Quiet;
+        };
+        let DrawingKind::Anchor(anchor) = &mut drawing.kind else {
+            return Outcome::Quiet;
+        };
+        #[allow(clippy::cast_possible_truncation)]
+        let emu = |px: f64| (px * 9525.0).round() as i64;
+        let column = f64::from(self.text_left()) / 15.0;
+        let across = anchor.position_h.get_or_insert_with(Position::default);
+        match across.offset {
+            Some(offset) if across.align.is_none() => across.offset = Some(Emu(offset.0 + emu(dx))),
+            _ => {
+                *across = Position {
+                    relative_from: Some(std::sync::Arc::from("column")),
+                    offset: Some(Emu(emu(rect.x - column + dx))),
+                    ..Position::default()
+                };
+            }
+        }
+        let down = anchor.position_v.get_or_insert_with(Position::default);
+        match down.offset {
+            Some(offset) if down.align.is_none() => down.offset = Some(Emu(offset.0 + emu(dy))),
+            _ => {
+                *down = Position {
+                    relative_from: Some(std::sync::Arc::from("page")),
+                    offset: Some(Emu(emu(rect.y + dy))),
+                    ..Position::default()
+                };
+            }
+        }
+        anchor.simple_pos = false;
+        let command = Edit::Drawing {
+            at: object.paragraph.clone(),
+            inline: object.inline.clone(),
+            content: object.content,
+            drawing: Box::new(drawing),
+        };
+        if self.transact(&[command]) {
+            self.object = Some(object);
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    /// Moves the selected drawing to another place in the text.
+    fn move_in_text(&mut self, page: usize, x: f64, y: f64) -> Outcome {
+        let Some(object) = self.object.clone() else {
+            return Outcome::Quiet;
+        };
+        let revision = self.session.revision();
+        let Some(target) = self
+            .map
+            .as_ref()
+            .and_then(|map| map.hit_test(revision, page, x, y).ok().flatten())
+        else {
+            return Outcome::Quiet;
+        };
+        let mut target = self.logical(&target);
+        let (Some(drawing), Some(offset)) = (self.drawing_at(&object), self.object_offset(&object))
+        else {
+            return Outcome::Quiet;
+        };
+        // Dropped on itself: nothing moves.
+        if target.paragraph == object.paragraph && (offset..=offset + 1).contains(&target.offset) {
+            return Outcome::Quiet;
+        }
+        if matches!(self.delete_object(), Outcome::Quiet) {
+            return Outcome::Quiet;
+        }
+        if target.paragraph == object.paragraph && target.offset > offset {
+            target.offset -= 1;
+        }
+        // The media part stays indexed after the delete, so the drawing
+        // goes back as it is.
+        if self.insert_drawing(&target, drawing, None) {
+            self.caret = Some(target.clone());
+            self.object = self
+                .objects_of(&target.paragraph)
+                .into_iter()
+                .find(|(at, _)| *at == target.offset)
+                .map(|(_, object)| object);
+        }
+        Outcome::Edited
+    }
+
+    /// Sets how text flows around the selected drawing. A drawing taken out
+    /// of the line floats where it was drawn, from its column and paragraph.
+    fn wrap_object(&mut self, style: WrapStyle) -> Outcome {
+        let Some(object) = self.object.clone() else {
+            return Outcome::Quiet;
+        };
+        let Some(drawing) = self.drawing_at(&object) else {
+            return Outcome::Quiet;
+        };
+        if wrap_style(&drawing) == style {
+            return Outcome::Quiet;
+        }
+        // Where it stands now, from the column's left edge, in EMU.
+        let left = self
+            .object_view()
+            .and_then(|view| view.rects.first().copied())
+            .map_or(0, |rect| {
+                let column = f64::from(self.text_left()) / 15.0;
+                #[allow(clippy::cast_possible_truncation)]
+                let emu = ((rect.x - column) * 9525.0).round() as i64;
+                emu.max(0)
+            });
+        let drawing = rewrapped(drawing, style, left);
+        let command = Edit::Drawing {
+            at: object.paragraph.clone(),
+            inline: object.inline.clone(),
+            content: object.content,
+            drawing: Box::new(drawing),
+        };
+        if self.transact(&[command]) {
+            self.object = Some(object);
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    /// The left margin of the last section, in twips.
+    fn text_left(&self) -> i32 {
+        self.session
+            .document()
+            .sections
+            .last()
+            .and_then(|section| section.properties.page_margins.as_ref()?.left)
+            .map_or(1440, |twips| twips.0)
+    }
+
+    fn resize_object(&mut self, width: i64, height: i64) -> Outcome {
+        use strict_ooxml::model::{DrawingKind, Emu, Extent, Graphic};
+        let Some(object) = self.object.clone() else {
+            return Outcome::Quiet;
+        };
+        let Some(mut drawing) = self.drawing_at(&object) else {
+            return Outcome::Quiet;
+        };
+        if width <= 0 || height <= 0 {
+            return Outcome::Quiet;
+        }
+        let extent = Extent {
+            cx: Emu(width),
+            cy: Emu(height),
+        };
+        let (frame, graphic) = match &mut drawing.kind {
+            DrawingKind::Inline(v) => (&mut v.extent, &mut v.graphic),
+            DrawingKind::Anchor(v) => (&mut v.extent, &mut v.graphic),
+            DrawingKind::Opaque(_) => return Outcome::Quiet,
+        };
+        *frame = Some(extent);
+        if let Graphic::Picture(picture) = graphic.as_mut() {
+            if picture.extent.is_some() {
+                picture.extent = Some(extent);
+            }
+        }
+        let command = Edit::Drawing {
+            at: object.paragraph.clone(),
+            inline: object.inline.clone(),
+            content: object.content,
+            drawing: Box::new(drawing),
+        };
+        if self.transact(&[command]) {
+            self.object = Some(object);
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    fn insert_picture(&mut self, bytes: Vec<u8>, name: &str) -> Outcome {
+        use strict_ooxml::edit::{
+            picture_drawing, picture_pixels, unused_drawing_id, Definition, EMU_PER_PX,
+        };
+        use strict_ooxml::model::{Emu, Inline};
+        if self.selection().is_some() && matches!(self.delete_selection(), Outcome::Quiet) {
+            return Outcome::Quiet;
+        }
+        let Some(caret) = self.caret.clone() else {
+            return Outcome::Quiet;
+        };
+        let (pixels_wide, pixels_high) = picture_pixels(&bytes).unwrap_or((96, 96));
+        // At its own size, but no wider than the text.
+        let room = i64::from(self.text_width().max(1440)) * 635;
+        let mut width = i64::from(pixels_wide) * EMU_PER_PX;
+        let mut height = i64::from(pixels_high) * EMU_PER_PX;
+        if width > room {
+            height = height * room / width;
+            width = room;
+        }
+        let Some(editor) = self.editor() else {
+            return Outcome::Quiet;
+        };
+        let item = match editor.add_media(bytes) {
+            Ok(item) => item,
+            Err(error) => {
+                self.note("note.picture_refused", format!("{error:?}"), true);
+                return Outcome::Quiet;
+            }
+        };
+        let id = unused_drawing_id(self.session.document());
+        let drawing = picture_drawing(&item, Emu(width), Emu(height.max(1)), id, name);
+        let commands = self.inline_at_caret(&caret, Inline::Drawing(drawing));
+        let outcome = self.define_and_transact(&[Definition::AddMedia(Box::new(item))], &commands);
+        if matches!(outcome, Outcome::Edited) {
+            // The new picture is selected, the caret before it.
+            self.anchor = None;
+            self.caret = Some(caret.clone());
+            self.object = self
+                .pieces(&caret.paragraph)
+                .iter()
+                .scan(0, |before, piece| {
+                    let start = *before;
+                    *before += piece.len();
+                    Some((start, piece.clone()))
+                })
+                .find(|(start, piece)| {
+                    *start == caret.offset && piece.text.starts_with(nav::OBJECT)
+                })
+                .map(|(_, piece)| DrawingPosition {
+                    paragraph: caret.paragraph.clone(),
+                    inline: piece.inline.clone(),
+                    content: (piece.kind == nav::PieceKind::RunAtom).then_some(piece.content),
+                });
+        }
+        outcome
     }
 
     fn backspace(&mut self) -> Outcome {
@@ -2242,6 +3387,136 @@ impl<'a, 's> Worker<'a, 's> {
         self.paragraph_edit(|properties| properties.alignment = Some(alignment))
     }
 
+    /// Lists the selected paragraphs in `preset`'s format, or takes them out
+    /// of their list. Paragraphs already in one list change that list's
+    /// format, all its items with them; others join the list of the
+    /// paragraph before them when it has this format, else a new list. One
+    /// undo step either way.
+    fn list(&mut self, preset: Option<ListPreset>) -> Outcome {
+        use strict_ooxml::edit::{
+            list_definition, list_instance, list_level, unused_abstract_num_id, unused_num_id,
+            Definition,
+        };
+        use strict_ooxml::model::props::NumPr;
+        use strict_ooxml::model::{Ilvl, NumId};
+        let targets = self.selected_paragraphs();
+        let document = self.session.document();
+        let levels: Vec<(Address, Paragraph, Option<ListLevel>)> = targets
+            .iter()
+            .filter_map(|at| {
+                let paragraph = self.paragraph(at)?.clone();
+                let level = list_level(document, &paragraph);
+                Some((at.clone(), paragraph, level))
+            })
+            .collect();
+        let Some(preset) = preset else {
+            let commands: Vec<Edit> = levels
+                .iter()
+                .filter(|(_, _, level)| level.is_some())
+                .map(|(at, paragraph, level)| {
+                    let mut properties = paragraph.props.clone();
+                    // A list the style gives is switched off with list 0.
+                    properties.numbering =
+                        level
+                            .as_ref()
+                            .filter(|level| level.from_style)
+                            .map(|_| NumPr {
+                                num_id: Some(NumId(0)),
+                                ilvl: None,
+                            });
+                    Edit::ParagraphProperties {
+                        at: at.clone(),
+                        properties: Box::new(properties),
+                    }
+                })
+                .collect();
+            return if self.transact(&commands) {
+                Outcome::Edited
+            } else {
+                Outcome::Quiet
+            };
+        };
+        // Every paragraph already in one list: that list takes the format.
+        let lists: Vec<&ListLevel> = levels.iter().filter_map(|(_, _, l)| l.as_ref()).collect();
+        if let Some(first) = lists.first() {
+            if lists.len() == levels.len() && lists.iter().all(|l| l.num_id == first.num_id) {
+                let definition = list_definition(first.abstract_id, preset);
+                return self.define_and_transact(
+                    &[Definition::ReplaceAbstractNum(Box::new(definition))],
+                    &[],
+                );
+            }
+        }
+        // The list of the paragraph before, if it has this format.
+        let before = targets.first().and_then(|first| {
+            let paragraphs = self.paragraphs(&first.story);
+            let index = paragraphs.iter().position(|a| a == first)?;
+            let previous = paragraphs.get(index.checked_sub(1)?)?;
+            let level = list_level(document, self.paragraph(previous)?)?;
+            (ListPreset::matching(&level) == Some(preset) && level.ilvl == 0)
+                .then_some(level.num_id)
+        });
+        let mut definitions = Vec::new();
+        let num_id = before.unwrap_or_else(|| {
+            let abstract_id = unused_abstract_num_id(document);
+            let num_id = unused_num_id(document);
+            definitions.push(Definition::CreateAbstractNum(Box::new(list_definition(
+                abstract_id,
+                preset,
+            ))));
+            definitions.push(Definition::CreateNum(Box::new(list_instance(
+                num_id,
+                abstract_id,
+            ))));
+            num_id
+        });
+        let commands: Vec<Edit> = levels
+            .iter()
+            .map(|(at, paragraph, level)| {
+                let mut properties = paragraph.props.clone();
+                properties.numbering = Some(NumPr {
+                    num_id: Some(num_id),
+                    ilvl: Some(Ilvl(level.as_ref().map_or(0, |level| level.ilvl))),
+                });
+                // The list's indents replace the paragraph's own, as in Word.
+                if level.is_none() {
+                    properties.indentation = None;
+                }
+                Edit::ParagraphProperties {
+                    at: at.clone(),
+                    properties: Box::new(properties),
+                }
+            })
+            .collect();
+        self.define_and_transact(&definitions, &commands)
+    }
+
+    fn define_and_transact(
+        &mut self,
+        definitions: &[strict_ooxml::edit::Definition],
+        commands: &[Edit],
+    ) -> Outcome {
+        let Some(editor) = self.editor() else {
+            return Outcome::Quiet;
+        };
+        let revision = editor.revision();
+        match editor.define_and_transact(revision, definitions, commands) {
+            Ok(change) => {
+                if change.revision == revision {
+                    return Outcome::Quiet;
+                }
+                self.undo_depth += 1;
+                self.redo_depth = 0;
+                self.stale = true;
+                Outcome::Edited
+            }
+            Err(failure) => {
+                self.note("note.edit_refused", format!("{:?}", failure.error), true);
+                Outcome::Quiet
+            }
+        }
+    }
+
     fn set_style(&mut self, id: &str) -> Outcome {
         let style = StyleId::new(id);
         if !self.session.document().styles.contains(&style) {
@@ -2561,10 +3836,41 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn copy(&mut self, cut: bool) -> Outcome {
+        // A selected drawing alone.
+        if let Some(object) = self.object.clone() {
+            let objects: Vec<ClipObject> = self.clip_object(&object, 0, 0).into_iter().collect();
+            let image = objects
+                .first()
+                .and_then(|o| o.bytes.as_deref())
+                .and_then(crate::raster::picture_pixels_rgba);
+            self.send(Reply::ClipboardObjects(Box::new(ClipObjects {
+                text: String::new(),
+                objects,
+                image,
+            })));
+            if cut && self.read_only.is_none() {
+                return self.delete_object();
+            }
+            return Outcome::Quiet;
+        }
         let Some(text) = self.cells_text().or_else(|| self.selected_text()) else {
             return Outcome::Quiet;
         };
-        self.send(Reply::Clipboard(text));
+        // A picture has no text to carry; it goes along as a drawing.
+        let text: String = text.chars().filter(|c| *c != nav::OBJECT).collect();
+        let objects = if self.cells.is_none() {
+            self.selected_clip_objects()
+        } else {
+            Vec::new()
+        };
+        self.send(Reply::Clipboard(text.clone()));
+        if !objects.is_empty() {
+            self.send(Reply::ClipboardObjects(Box::new(ClipObjects {
+                text,
+                objects,
+                image: None,
+            })));
+        }
         if cut {
             if self.read_only.is_some() {
                 return Outcome::Quiet;
@@ -2575,6 +3881,147 @@ impl<'a, 's> Worker<'a, 's> {
             return self.delete_selection();
         }
         Outcome::Quiet
+    }
+
+    /// A drawing as the clipboard keeps it.
+    fn clip_object(
+        &self,
+        object: &DrawingPosition,
+        line: usize,
+        offset: usize,
+    ) -> Option<ClipObject> {
+        let drawing = self.drawing_at(object)?;
+        let bytes = picture_part(&drawing).and_then(|part| self.media_bytes(&part));
+        Some(ClipObject {
+            line,
+            offset,
+            drawing,
+            bytes,
+        })
+    }
+
+    /// A media part's bytes, the session's added pictures included.
+    fn media_bytes(&self, part: &strict_ooxml_core::part::PartId) -> Option<Vec<u8>> {
+        match &self.session {
+            Session::Edit(editor) => editor.media_bytes(part).ok(),
+            Session::View(document) => document.package().read_part(part).ok(),
+        }
+    }
+
+    /// The drawings inside the selection, where each is in the copied text.
+    fn selected_clip_objects(&self) -> Vec<ClipObject> {
+        let Some((start, end)) = self.selection() else {
+            return Vec::new();
+        };
+        let paragraphs = self.paragraphs(&start.paragraph.story);
+        let from = paragraphs.iter().position(|a| *a == start.paragraph);
+        let to = paragraphs.iter().position(|a| *a == end.paragraph);
+        let (Some(from), Some(to)) = (from, to) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (index, paragraph) in paragraphs.iter().enumerate().take(to + 1).skip(from) {
+            let line_start = if index == from { start.offset } else { 0 };
+            let mut earlier = 0;
+            for (offset, object) in self.objects_of(paragraph) {
+                let inside =
+                    (index > from || offset >= start.offset) && (index < to || offset < end.offset);
+                if !inside {
+                    continue;
+                }
+                // Offsets in the copied text, which leaves drawings out.
+                let at = offset - line_start - earlier;
+                earlier += 1;
+                if let Some(clip) = self.clip_object(&object, index - from, at) {
+                    out.push(clip);
+                }
+            }
+        }
+        out
+    }
+
+    /// Pastes the text, then puts each drawing back at its place in it.
+    fn paste_objects(&mut self, clip: &ClipObjects) -> Outcome {
+        if self.selection().is_some() && matches!(self.delete_selection(), Outcome::Quiet) {
+            return Outcome::Quiet;
+        }
+        let Some(start) = self.caret.clone() else {
+            return Outcome::Quiet;
+        };
+        let mut outcome = if clip.text.is_empty() {
+            Outcome::Quiet
+        } else {
+            self.paste(&clip.text)
+        };
+        let end = self.caret.clone();
+        let paragraphs = self.paragraphs(&start.paragraph.story);
+        let Some(first) = paragraphs.iter().position(|a| *a == start.paragraph) else {
+            return outcome;
+        };
+        // Last first, so earlier offsets stay where they are.
+        for object in clip.objects.iter().rev() {
+            let Some(paragraph) = paragraphs.get(first + object.line).cloned() else {
+                continue;
+            };
+            let offset = if object.line == 0 {
+                start.offset + object.offset
+            } else {
+                object.offset
+            };
+            if self.insert_drawing(
+                &Logical { paragraph, offset },
+                object.drawing.clone(),
+                object.bytes.clone(),
+            ) {
+                outcome = Outcome::Edited;
+            }
+        }
+        // The caret after what was pasted, the drawings counted.
+        if let Some(mut end) = end {
+            end.offset += clip
+                .objects
+                .iter()
+                .filter(|o| {
+                    o.line + first
+                        == paragraphs
+                            .iter()
+                            .position(|a| *a == end.paragraph)
+                            .unwrap_or(0)
+                })
+                .count();
+            self.caret = Some(end);
+        }
+        self.anchor = None;
+        outcome
+    }
+
+    /// Puts a drawing at a caret, its picture's bytes kept as a new media
+    /// part, under a drawing id of its own.
+    fn insert_drawing(
+        &mut self,
+        at: &Logical,
+        mut drawing: strict_ooxml::model::Drawing,
+        bytes: Option<Vec<u8>>,
+    ) -> bool {
+        use strict_ooxml::edit::{unused_drawing_id, Definition};
+        let id = unused_drawing_id(self.session.document());
+        let mut definitions = Vec::new();
+        if let Some(bytes) = bytes {
+            let Some(editor) = self.editor() else {
+                return false;
+            };
+            let Ok(item) = editor.add_media(bytes) else {
+                return false;
+            };
+            set_picture_part(&mut drawing, &item.part);
+            definitions.push(Definition::AddMedia(Box::new(item)));
+        }
+        set_drawing_id(&mut drawing, id);
+        let commands = self.inline_at_caret(at, strict_ooxml::model::Inline::Drawing(drawing));
+        matches!(
+            self.define_and_transact(&definitions, &commands),
+            Outcome::Edited
+        )
     }
 
     fn paste(&mut self, text: &str) -> Outcome {
@@ -3348,6 +4795,189 @@ impl<'a, 's> Worker<'a, 's> {
     }
 }
 
+/// A drawing's id (`wp:docPr/@id`), 0 when it has none.
+fn drawing_id(drawing: &strict_ooxml::model::Drawing) -> u32 {
+    use strict_ooxml::model::DrawingKind;
+    let doc_pr = match &drawing.kind {
+        DrawingKind::Inline(v) => v.doc_pr.as_ref(),
+        DrawingKind::Anchor(v) => v.doc_pr.as_ref(),
+        DrawingKind::Opaque(_) => None,
+    };
+    doc_pr.and_then(|doc_pr| doc_pr.id).unwrap_or(0)
+}
+
+/// How text flows around a drawing now.
+fn wrap_style(drawing: &strict_ooxml::model::Drawing) -> WrapStyle {
+    use strict_ooxml::model::drawing::WrapKind;
+    use strict_ooxml::model::DrawingKind;
+    match &drawing.kind {
+        DrawingKind::Anchor(anchor) => match anchor.wrap.as_ref().map(|wrap| wrap.kind) {
+            Some(WrapKind::Square) => WrapStyle::Square,
+            Some(WrapKind::Tight | WrapKind::Through) => WrapStyle::Tight,
+            Some(WrapKind::TopAndBottom) => WrapStyle::TopAndBottom,
+            _ if anchor.behind_doc => WrapStyle::Behind,
+            _ => WrapStyle::Front,
+        },
+        _ => WrapStyle::Inline,
+    }
+}
+
+/// The drawing with text flowing around it as `style` says: in line, or
+/// floating `left` EMU from its column's edge, at its paragraph's top.
+fn rewrapped(
+    drawing: strict_ooxml::model::Drawing,
+    style: WrapStyle,
+    left: i64,
+) -> strict_ooxml::model::Drawing {
+    use strict_ooxml::model::drawing::{AnchorDrawing, Position, Wrap, WrapKind};
+    use strict_ooxml::model::{Drawing, DrawingKind, Emu, InlineDrawing};
+    let location = drawing.location.clone();
+    let (extent, effect_extent, doc_pr, graphic_uri, graphic, anchor) = match drawing.kind {
+        DrawingKind::Inline(v) => (
+            v.extent,
+            v.effect_extent,
+            v.doc_pr,
+            v.graphic_uri,
+            v.graphic,
+            None,
+        ),
+        DrawingKind::Anchor(v) => (
+            v.extent,
+            v.effect_extent,
+            v.doc_pr.clone(),
+            v.graphic_uri.clone(),
+            v.graphic.clone(),
+            Some(v),
+        ),
+        DrawingKind::Opaque(o) => {
+            return Drawing {
+                kind: DrawingKind::Opaque(o),
+                location,
+            }
+        }
+    };
+    if style == WrapStyle::Inline {
+        return Drawing {
+            kind: DrawingKind::Inline(InlineDrawing {
+                extent,
+                effect_extent,
+                doc_pr,
+                dist_top: Some(0),
+                dist_bottom: Some(0),
+                dist_left: Some(0),
+                dist_right: Some(0),
+                graphic_uri,
+                graphic,
+                location: location.clone(),
+            }),
+            location,
+        };
+    }
+    let kind = match style {
+        WrapStyle::Square => WrapKind::Square,
+        WrapStyle::Tight => WrapKind::Tight,
+        WrapStyle::TopAndBottom => WrapKind::TopAndBottom,
+        _ => WrapKind::None,
+    };
+    let wrap = Wrap {
+        kind,
+        wrap_text: matches!(kind, WrapKind::Square | WrapKind::Tight)
+            .then(|| std::sync::Arc::from("bothSides")),
+        dist_left: None,
+        dist_right: None,
+        dist_top: None,
+        dist_bottom: None,
+        polygon: Vec::new(),
+        polygon_edited: None,
+    };
+    // An anchored drawing keeps its place and only changes its wrap.
+    let mut anchor = anchor.unwrap_or_else(|| AnchorDrawing {
+        extent,
+        effect_extent,
+        doc_pr,
+        simple_pos: false,
+        simple_pos_point: None,
+        hidden: None,
+        position_h: Some(Position {
+            relative_from: Some(std::sync::Arc::from("column")),
+            offset: Some(Emu(left)),
+            ..Position::default()
+        }),
+        position_v: Some(Position {
+            relative_from: Some(std::sync::Arc::from("paragraph")),
+            offset: Some(Emu(0)),
+            ..Position::default()
+        }),
+        wrap: None,
+        behind_doc: false,
+        relative_height: Some(251_658_240),
+        dist_top: Some(0),
+        dist_bottom: Some(0),
+        dist_left: Some(114_300),
+        dist_right: Some(114_300),
+        allow_overlap: true,
+        layout_in_cell: true,
+        locked: false,
+        graphic_uri,
+        graphic,
+        size_rel_h: None,
+        size_rel_v: None,
+        location: location.clone(),
+    });
+    anchor.wrap = Some(wrap);
+    anchor.behind_doc = style == WrapStyle::Behind;
+    Drawing {
+        kind: DrawingKind::Anchor(anchor),
+        location,
+    }
+}
+
+/// The media part a picture drawing shows.
+fn picture_part(drawing: &strict_ooxml::model::Drawing) -> Option<strict_ooxml_core::part::PartId> {
+    use strict_ooxml::model::{DrawingKind, Graphic};
+    let graphic = match &drawing.kind {
+        DrawingKind::Inline(v) => &v.graphic,
+        DrawingKind::Anchor(v) => &v.graphic,
+        DrawingKind::Opaque(_) => return None,
+    };
+    match graphic.as_ref() {
+        Graphic::Picture(picture) => picture.blip.as_ref()?.resolved.clone(),
+        _ => None,
+    }
+}
+
+/// Points a picture drawing at another media part.
+fn set_picture_part(
+    drawing: &mut strict_ooxml::model::Drawing,
+    part: &strict_ooxml_core::part::PartId,
+) {
+    use strict_ooxml::model::{DrawingKind, Graphic};
+    let graphic = match &mut drawing.kind {
+        DrawingKind::Inline(v) => &mut v.graphic,
+        DrawingKind::Anchor(v) => &mut v.graphic,
+        DrawingKind::Opaque(_) => return,
+    };
+    if let Graphic::Picture(picture) = graphic.as_mut() {
+        if let Some(blip) = picture.blip.as_mut() {
+            blip.resolved = Some(part.clone());
+            blip.embed = None;
+        }
+    }
+}
+
+/// Gives a drawing a `wp:docPr/@id`.
+fn set_drawing_id(drawing: &mut strict_ooxml::model::Drawing, id: u32) {
+    use strict_ooxml::model::DrawingKind;
+    let doc_pr = match &mut drawing.kind {
+        DrawingKind::Inline(v) => &mut v.doc_pr,
+        DrawingKind::Anchor(v) => &mut v.doc_pr,
+        DrawingKind::Opaque(_) => return,
+    };
+    if let Some(doc_pr) = doc_pr.as_mut() {
+        doc_pr.id = Some(id);
+    }
+}
+
 /// How far apart, in page pixels, the caret probes the lines above or below.
 const PROBE_STEP: f64 = 3.0;
 
@@ -3556,6 +5186,297 @@ mod tests {
         let (requests, replies) = spawn(Source::New, false, OpenControl::new(), ctx);
         let _ = state(&replies);
         (requests, replies)
+    }
+
+    /// A small picture's PNG bytes.
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut encoder = png::Encoder::new(&mut bytes, width, height);
+        encoder.set_color(png::ColorType::Rgba);
+        let mut writer = encoder.write_header().expect("header");
+        let pixels = vec![200u8; (width * height * 4) as usize];
+        writer.write_image_data(&pixels).expect("pixels");
+        drop(writer);
+        bytes
+    }
+
+    fn object(replies: &Receiver<Reply>) -> Option<ObjectView> {
+        wait(replies, |reply| match reply {
+            Reply::Cursor(cursor) => Some(cursor.object),
+            Reply::Note(note) if note.error => panic!("{}: {}", note.key, note.detail),
+            _ => None,
+        })
+    }
+
+    /// A picture goes in at the caret selected; a click on it selects it,
+    /// its size changes, and Delete takes it out leaving the text.
+    #[test]
+    fn a_picture_is_inserted_selected_resized_and_deleted() {
+        let (requests, replies) = new_document();
+        for c in "ab".chars() {
+            requests.send(Request::Type(c.to_string())).unwrap();
+        }
+        requests
+            .send(Request::Move {
+                motion: Motion::Left,
+                extend: false,
+            })
+            .unwrap();
+        requests
+            .send(Request::Object(ObjectCommand::InsertPicture {
+                bytes: png(40, 20),
+                name: "dot".to_owned(),
+            }))
+            .unwrap();
+        let inserted = loop {
+            if let Some(view) = object(&replies) {
+                break view;
+            }
+        };
+        assert!(inserted.picture);
+        assert_eq!((inserted.width, inserted.height), (40 * 9525, 20 * 9525));
+        let rect = *inserted.rects.first().expect("drawn");
+        assert!((rect.width - 40.0).abs() < 0.5, "{rect:?}");
+        // Elsewhere, then back on it.
+        requests
+            .send(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            })
+            .unwrap();
+        assert!(object(&replies).is_none());
+        requests
+            .send(Request::Click {
+                page: rect.page,
+                x: rect.x + rect.width / 2.0,
+                y: rect.y + rect.height / 2.0,
+                extend: false,
+                column: false,
+            })
+            .unwrap();
+        assert!(object(&replies).is_some());
+        requests
+            .send(Request::Object(ObjectCommand::Resize {
+                width: 80 * 9525,
+                height: 40 * 9525,
+            }))
+            .unwrap();
+        let resized = loop {
+            if let Some(view) = object(&replies).filter(|v| v.width == 80 * 9525) {
+                break view;
+            }
+        };
+        assert!((resized.rects[0].width - 80.0).abs() < 0.5);
+        requests.send(Request::Delete).unwrap();
+        assert_eq!(body_text(&requests, &replies), "ab");
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    fn cursor(replies: &Receiver<Reply>) -> Box<Cursor> {
+        wait(replies, |reply| match reply {
+            Reply::Cursor(cursor) => Some(cursor),
+            Reply::Note(note) if note.error => panic!("{}: {}", note.key, note.detail),
+            _ => None,
+        })
+    }
+
+    fn picture_selected(replies: &Receiver<Reply>) -> ObjectView {
+        loop {
+            if let Some(view) = object(replies) {
+                return view;
+            }
+        }
+    }
+
+    /// A picture at the end of the document: the caret goes after it, a
+    /// copy of text and picture pastes both, its pixels turn, crop and
+    /// change, and it floats and comes back in line.
+    #[test]
+    fn pictures_take_carets_copies_edits_and_wrapping() {
+        let (requests, replies) = new_document();
+        send_all(
+            &requests,
+            vec![
+                Request::Type("x".to_owned()),
+                Request::Object(ObjectCommand::InsertPicture {
+                    bytes: png(40, 20),
+                    name: "dot".to_owned(),
+                }),
+            ],
+        );
+        let view = picture_selected(&replies);
+        let frame = view.rects[0];
+        // End of the document: after the picture, on its right edge.
+        requests
+            .send(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            })
+            .unwrap();
+        let at_end = loop {
+            let cursor = cursor(&replies);
+            if cursor.object.is_none() {
+                break cursor;
+            }
+        };
+        let caret = at_end.carets.first().expect("a caret");
+        assert!(
+            (caret.x - (frame.x + frame.width)).abs() < 0.5,
+            "{caret:?} {frame:?}"
+        );
+        // Text and picture copied together paste together.
+        requests.send(Request::SelectAll).unwrap();
+        requests.send(Request::Copy { cut: false }).unwrap();
+        let clip = wait(&replies, |reply| match reply {
+            Reply::ClipboardObjects(clip) => Some(clip),
+            _ => None,
+        });
+        assert_eq!((clip.text.as_str(), clip.objects.len()), ("x", 1));
+        assert_eq!((clip.objects[0].line, clip.objects[0].offset), (0, 1));
+        send_all(
+            &requests,
+            vec![
+                Request::Move {
+                    motion: Motion::DocEnd,
+                    extend: false,
+                },
+                Request::PasteObjects(clip),
+                Request::SelectAll,
+            ],
+        );
+        let all = loop {
+            let cursor = cursor(&replies);
+            if cursor.selection.len() >= 3 {
+                break cursor;
+            }
+        };
+        // Two pictures inside the selection are lit with it.
+        let pictures = all
+            .selection
+            .iter()
+            .filter(|r| (r.width - 40.0).abs() < 0.5 && (r.height - 20.0).abs() < 0.5)
+            .count();
+        assert_eq!(pictures, 2, "{:?}", all.selection);
+        // The first picture: turned a quarter, its frame turns too.
+        requests
+            .send(Request::Click {
+                page: frame.page,
+                x: frame.x + 5.0,
+                y: frame.y + 5.0,
+                extend: false,
+                column: false,
+            })
+            .unwrap();
+        let _ = picture_selected(&replies);
+        requests
+            .send(Request::Object(ObjectCommand::Edit(PictureEdit::Rotate {
+                clockwise: true,
+            })))
+            .unwrap();
+        let turned = loop {
+            let view = picture_selected(&replies);
+            if view.height > view.width {
+                break view;
+            }
+        };
+        assert_eq!((turned.width, turned.height), (20 * 9525, 40 * 9525));
+        // A crop of the bottom half keeps the top half's frame.
+        requests
+            .send(Request::Object(ObjectCommand::Edit(PictureEdit::Crop {
+                sides: [0.0, 0.0, 0.0, 0.5],
+            })))
+            .unwrap();
+        let cropped = loop {
+            let view = picture_selected(&replies);
+            if view.height == 20 * 9525 {
+                break view;
+            }
+        };
+        assert_eq!(cropped.width, 20 * 9525);
+        requests
+            .send(Request::Object(ObjectCommand::Edit(PictureEdit::Adjust {
+                brightness: 0.2,
+                contrast: 0.2,
+            })))
+            .unwrap();
+        let _ = picture_selected(&replies);
+        // Floating with text around it, then back in the line.
+        let mut last = None;
+        for style in [WrapStyle::Square, WrapStyle::Behind, WrapStyle::Inline] {
+            requests
+                .send(Request::Object(ObjectCommand::Wrap(style)))
+                .unwrap();
+            loop {
+                let view = picture_selected(&replies);
+                if view.wrap == style {
+                    last = Some(view);
+                    break;
+                }
+            }
+        }
+        // In the text, dragged before the "x": it is first in the line.
+        let here = last.expect("in line").rects[0];
+        requests
+            .send(Request::Object(ObjectCommand::MoveTo {
+                page: here.page,
+                x: here.x - 30.0,
+                y: here.y + here.height - 2.0,
+            }))
+            .unwrap();
+        let moved = loop {
+            let view = picture_selected(&replies);
+            if view.rects[0].x < here.x - 1.0 {
+                break view;
+            }
+        };
+        // Floating, dragged 50 px right and 30 down.
+        requests
+            .send(Request::Object(ObjectCommand::Wrap(WrapStyle::Square)))
+            .unwrap();
+        let floating = loop {
+            let view = picture_selected(&replies);
+            if view.wrap == WrapStyle::Square {
+                break view;
+            }
+        };
+        let before = floating.rects[0];
+        requests
+            .send(Request::Object(ObjectCommand::Move { dx: 50.0, dy: 30.0 }))
+            .unwrap();
+        loop {
+            let view = picture_selected(&replies);
+            let after = view.rects[0];
+            if (after.x - before.x - 50.0).abs() < 1.0 && (after.y - before.y - 30.0).abs() < 1.0 {
+                break;
+            }
+        }
+        let _ = moved;
+        // Edited elsewhere: exported, then replaced by its id; the width
+        // stays and the height follows the new picture.
+        requests
+            .send(Request::Object(ObjectCommand::Export {
+                purpose: ExportPurpose::External,
+            }))
+            .unwrap();
+        let (id, extension) = wait(&replies, |reply| match reply {
+            Reply::Picture { id, extension, .. } => Some((id, extension)),
+            _ => None,
+        });
+        assert_eq!(extension, "png");
+        assert!(id > 0);
+        requests
+            .send(Request::Object(ObjectCommand::Replace {
+                id,
+                bytes: png(30, 30),
+            }))
+            .unwrap();
+        loop {
+            let view = picture_selected(&replies);
+            if view.height == view.width {
+                break;
+            }
+        }
+        requests.send(Request::Shutdown).unwrap();
     }
 
     /// What Punto Switcher does when it corrects a word: one backspace per

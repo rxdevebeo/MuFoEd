@@ -6,15 +6,16 @@
 //! words; small buttons in a column share one width; menus and split buttons
 //! look like the buttons they sit beside; every button has an outline.
 
-use eframe::egui::{self, pos2, vec2, Color32, FontFamily, FontId, Rect, Sense, Stroke};
+use eframe::egui::{self, pos2, vec2, Color32, FontFamily, FontId, Rect, RichText, Sense, Stroke};
+use strict_ooxml::edit::ListPreset;
 
 use crate::app::{Action, Dialog, Zoom};
 use crate::i18n::I18n;
 use crate::icons::{self, Icon};
 use crate::theme::{self, Palette};
 use crate::worker::{
-    Align, CaretFormat, EditState, FormatChange, Insert, PageChange, Request, StyleEntry,
-    TableCommand, FONT_SIZES,
+    Align, CaretFormat, EditState, ExportPurpose, FormatChange, Insert, ObjectCommand, ObjectView,
+    PageChange, PictureEdit, Request, StyleEntry, TableCommand, WrapStyle, FONT_SIZES,
 };
 
 /// Ribbon tabs.
@@ -26,6 +27,8 @@ pub(crate) enum RibbonTab {
     Review,
     View,
     Recognition,
+    /// The picture tools, shown while a drawing is selected.
+    Picture,
 }
 
 impl RibbonTab {
@@ -46,6 +49,7 @@ impl RibbonTab {
             Self::Review => "ribbon.review",
             Self::View => "ribbon.view",
             Self::Recognition => "ribbon.recognition",
+            Self::Picture => "ribbon.picture",
         }
     }
 }
@@ -66,6 +70,10 @@ pub(crate) struct RibbonState<'a> {
     pub(crate) system_fonts: bool,
     /// Last colours picked, for the split buttons.
     pub(crate) font_color: [u8; 3],
+    /// The selected drawing.
+    pub(crate) object: Option<&'a ObjectView>,
+    /// Its handles crop instead of resizing.
+    pub(crate) crop: bool,
 }
 
 impl RibbonState<'_> {
@@ -126,6 +134,7 @@ fn text_width(ui: &egui::Ui, text: &str, font: &FontId) -> f32 {
 pub(crate) fn tab_strip(
     ui: &mut egui::Ui,
     tab: &mut RibbonTab,
+    contextual: bool,
     i18n: &I18n,
     palette: Palette,
 ) -> bool {
@@ -144,8 +153,10 @@ pub(crate) fn tab_strip(
             file = true;
         }
         ui.add_space(6.0);
-        for candidate in RibbonTab::ALL {
+        let contextual = contextual.then_some(RibbonTab::Picture);
+        for candidate in RibbonTab::ALL.into_iter().chain(contextual) {
             let selected = *tab == candidate;
+            let tool = candidate == RibbonTab::Picture;
             let font = if selected {
                 FontId::new(13.5, FontFamily::Name(theme::BOLD.into()))
             } else {
@@ -167,6 +178,9 @@ pub(crate) fn tab_strip(
             };
             let fill = if selected {
                 palette.ribbon
+            } else if tool {
+                // A contextual tab is tinted, as Word tints its tools.
+                theme::ACCENT.gamma_multiply(0.18)
             } else if response.hovered() {
                 palette.hover
             } else {
@@ -240,6 +254,7 @@ pub(crate) fn body(
                         RibbonTab::Review => review(ui, state, actions),
                         RibbonTab::View => view(ui, state, actions),
                         RibbonTab::Recognition => recognition(ui, state, actions),
+                        RibbonTab::Picture => picture(ui, state, actions),
                     }
                 });
             });
@@ -456,6 +471,7 @@ fn big_clicked(
 }
 
 /// One small button of a column.
+#[derive(Clone)]
 struct Small<'a> {
     icon: Icon,
     label: &'a str,
@@ -480,6 +496,12 @@ impl<'a> Small<'a> {
 
     fn menu(mut self) -> Self {
         self.menu = true;
+        self
+    }
+
+    /// Lit, for a mode that is on.
+    fn with_on(mut self, on: bool) -> Self {
+        self.on = on;
         self
     }
 }
@@ -778,6 +800,81 @@ fn check(
     response.clicked()
 }
 
+/// The bullets (`bullet`) or numbering split button: the square switches
+/// the caret's list of that kind on or off, the arrow opens the formats. The
+/// square is lit, and its tip names the format, while the caret is in such a
+/// list.
+fn list_button(ui: &mut egui::Ui, s: &RibbonState<'_>, bullet: bool, actions: &mut Vec<Action>) {
+    let editable = s.editable();
+    let p = s.palette;
+    let current = s
+        .format
+        .list
+        .as_ref()
+        .filter(|list| s.document && list.bullet == bullet);
+    let (icon, name) = if bullet {
+        (Icon::Bullets, s.t("tip.bullets"))
+    } else {
+        (Icon::Numbering, s.t("tip.numbering"))
+    };
+    let tip = current.map_or_else(
+        || name.to_owned(),
+        |list| {
+            s.i18n.tf(
+                "tip.list_current",
+                &[
+                    ("list", &name),
+                    ("sample", &list.sample),
+                    ("level", &(list.level + 1)),
+                ],
+            )
+        },
+    );
+    if square(
+        ui,
+        &Square::icon(icon, &tip, editable).on(current.is_some()),
+        true,
+        p,
+        |_, _, _| {},
+    ) {
+        let preset = if current.is_some() {
+            None
+        } else if bullet {
+            Some(ListPreset::Bullet)
+        } else {
+            Some(ListPreset::Decimal)
+        };
+        doc(actions, Request::List(preset));
+    }
+    split_arrow(ui, s.t("tip.list_formats"), editable, p, |ui| {
+        ui.set_min_width(150.0);
+        let selected = current.and_then(|list| list.preset);
+        ui.horizontal_wrapped(|ui| {
+            ui.set_max_width(150.0);
+            for preset in ListPreset::ALL
+                .into_iter()
+                .filter(|preset| preset.is_bullet() == bullet)
+            {
+                let label = RichText::new(preset.sample()).size(16.0);
+                let button = egui::Button::selectable(selected == Some(preset), label)
+                    .min_size(vec2(44.0, 36.0));
+                if ui.add(button).clicked() {
+                    doc(actions, Request::List(Some(preset)));
+                    ui.close();
+                }
+            }
+        });
+        ui.separator();
+        if ui
+            .add_enabled(current.is_some(), egui::Button::new(s.t("cmd.list_none")))
+            .clicked()
+        {
+            doc(actions, Request::List(None));
+            ui.close();
+        }
+    });
+}
+
 fn doc(actions: &mut Vec<Action>, request: Request) {
     actions.push(Action::Doc(request));
 }
@@ -822,6 +919,10 @@ fn home(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
     group(ui, s.t("group.font"), p, |ui| font_group(ui, s, actions));
     group(ui, s.t("group.paragraph"), p, |ui| {
         column(ui, |ui| {
+            ui.horizontal(|ui| {
+                list_button(ui, s, true, actions);
+                list_button(ui, s, false, actions);
+            });
             ui.horizontal(|ui| {
                 for (icon, align, tip) in [
                     (Icon::AlignLeft, Align::Left, "tip.align_left"),
@@ -1365,6 +1466,18 @@ fn insert(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
             doc(actions, Request::Page(PageChange::SectionBreak));
         }
     });
+    group(ui, s.t("group.illustrations"), p, |ui| {
+        if big_clicked(
+            ui,
+            Icon::Picture,
+            s.t("cmd.picture"),
+            s.t("tip.picture"),
+            editable,
+            p,
+        ) {
+            actions.push(Action::InsertPicture);
+        }
+    });
     group(ui, s.t("group.tables"), p, |ui| {
         if big_clicked(
             ui,
@@ -1412,6 +1525,251 @@ fn insert(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
             p,
         ) {
             actions.push(Action::Open(Dialog::Symbols));
+        }
+    });
+}
+
+// ----- Picture --------------------------------------------------------------
+
+/// EMU per centimetre.
+const EMU_PER_CM: f64 = 360_000.0;
+
+/// A size in centimetres, edited in place: the value is the drawing's until
+/// the field is touched, then the field's until it is let go, when the new
+/// size is returned.
+fn size_field(ui: &mut egui::Ui, id: &str, emu: i64, unit: &str) -> Option<i64> {
+    let id = ui.id().with(id);
+    #[allow(clippy::cast_precision_loss)]
+    let current = emu as f64 / EMU_PER_CM;
+    let mut value = ui.data(|data| data.get_temp::<f64>(id)).unwrap_or(current);
+    let response = ui.add_sized(
+        vec2(86.0, ROW),
+        egui::DragValue::new(&mut value)
+            .range(0.05..=200.0)
+            .speed(0.02)
+            .fixed_decimals(2)
+            .suffix(format!(" {unit}")),
+    );
+    let editing = response.dragged() || response.has_focus();
+    if editing {
+        ui.data_mut(|data| data.insert_temp(id, value));
+    } else {
+        ui.data_mut(|data| data.remove::<f64>(id));
+    }
+    let done = response.drag_stopped() || response.lost_focus() || (response.changed() && !editing);
+    #[allow(clippy::cast_possible_truncation)]
+    let emu_now = (value * EMU_PER_CM).round() as i64;
+    (done && (emu_now - emu).abs() > 100).then_some(emu_now)
+}
+
+fn picture(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
+    let editable = s.editable();
+    let p = s.palette;
+    let Some(object) = s.object else {
+        return;
+    };
+    group(ui, s.t("group.size"), p, |ui| {
+        column(ui, |ui| {
+            let unit = s.t("unit.cm");
+            // Either side keeps the proportions.
+            #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+            let other = |side: i64, from: i64, to: i64| {
+                (side as f64 * to as f64 / from.max(1) as f64).round() as i64
+            };
+            ui.horizontal(|ui| {
+                ui.add_sized(vec2(64.0, ROW), egui::Label::new(s.t("label.height")));
+                if let Some(height) = size_field(ui, "picture-height", object.height, unit) {
+                    if editable {
+                        let width = other(object.width, object.height, height);
+                        doc(
+                            actions,
+                            Request::Object(ObjectCommand::Resize { width, height }),
+                        );
+                    }
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.add_sized(vec2(64.0, ROW), egui::Label::new(s.t("label.width")));
+                if let Some(width) = size_field(ui, "picture-width", object.width, unit) {
+                    if editable {
+                        let height = other(object.height, object.width, width);
+                        doc(
+                            actions,
+                            Request::Object(ObjectCommand::Resize { width, height }),
+                        );
+                    }
+                }
+            });
+            let item = Small::new(
+                Icon::OriginalSize,
+                s.t("cmd.original_size"),
+                s.t("tip.original_size"),
+                editable && object.picture,
+            );
+            let width = 64.0 + 86.0 + GAP;
+            if small_one(ui, &item, width, p).clicked() && editable && object.picture {
+                doc(actions, Request::Object(ObjectCommand::ResetSize));
+            }
+        });
+    });
+    let pixels = editable && object.picture;
+    let edit = |actions: &mut Vec<Action>, edit: PictureEdit| {
+        doc(actions, Request::Object(ObjectCommand::Edit(edit)));
+    };
+    group(ui, s.t("group.adjust_picture"), p, |ui| {
+        column(ui, |ui| {
+            let crop =
+                Small::new(Icon::Crop, s.t("cmd.crop"), s.t("tip.crop"), pixels).with_on(s.crop);
+            let rotate =
+                Small::new(Icon::Rotate, s.t("cmd.rotate"), s.t("tip.rotate"), pixels).menu();
+            let width = small_width(ui, &[crop.clone(), rotate.clone()]);
+            if small_one(ui, &crop, width, p).clicked() && pixels {
+                actions.push(Action::ToggleCrop);
+            }
+            small_menu(ui, &rotate, width, p, |ui| {
+                for (key, value) in [
+                    ("cmd.rotate_right", PictureEdit::Rotate { clockwise: true }),
+                    ("cmd.rotate_left", PictureEdit::Rotate { clockwise: false }),
+                    ("cmd.flip_horizontal", PictureEdit::Flip { vertical: false }),
+                    ("cmd.flip_vertical", PictureEdit::Flip { vertical: true }),
+                ] {
+                    if ui.button(s.t(key)).clicked() {
+                        edit(actions, value);
+                        ui.close();
+                    }
+                }
+            });
+        });
+        column(ui, |ui| {
+            let brightness = Small::new(
+                Icon::Brightness,
+                s.t("cmd.brightness"),
+                s.t("tip.brightness"),
+                pixels,
+            )
+            .menu();
+            let contrast = Small::new(
+                Icon::Contrast,
+                s.t("cmd.contrast"),
+                s.t("tip.contrast"),
+                pixels,
+            )
+            .menu();
+            let width = small_width(ui, &[brightness.clone(), contrast.clone()]);
+            for (item, is_brightness) in [(brightness, true), (contrast, false)] {
+                small_menu(ui, &item, width, p, |ui| {
+                    if ui.button(s.t("cmd.adjust_more")).clicked() {
+                        actions.push(Action::AdjustDialog);
+                        ui.close();
+                    }
+                    ui.separator();
+                    for step in [-40i8, -20, 20, 40] {
+                        let label = format!("{step:+}%");
+                        if ui.button(label).clicked() {
+                            let amount = f32::from(step) / 100.0;
+                            edit(
+                                actions,
+                                if is_brightness {
+                                    PictureEdit::Adjust {
+                                        brightness: amount,
+                                        contrast: 0.0,
+                                    }
+                                } else {
+                                    PictureEdit::Adjust {
+                                        brightness: 0.0,
+                                        contrast: amount,
+                                    }
+                                },
+                            );
+                            ui.close();
+                        }
+                    }
+                });
+            }
+        });
+    });
+    group(ui, s.t("group.arrange"), p, |ui| {
+        big_menu(
+            ui,
+            Icon::Wrap,
+            s.t("cmd.wrap"),
+            s.t("tip.wrap"),
+            editable,
+            p,
+            |ui| {
+                for style in WrapStyle::ALL {
+                    if ui
+                        .selectable_label(object.wrap == style, s.t(style.key()))
+                        .clicked()
+                    {
+                        doc(actions, Request::Object(ObjectCommand::Wrap(style)));
+                        ui.close();
+                    }
+                }
+            },
+        );
+    });
+    group(ui, s.t("group.edit_picture"), p, |ui| {
+        column(ui, |ui| {
+            let items = [
+                Small::new(
+                    Icon::SaveAs,
+                    s.t("cmd.save_picture"),
+                    s.t("tip.save_picture"),
+                    object.picture,
+                ),
+                Small::new(
+                    Icon::Open,
+                    s.t("cmd.external_edit"),
+                    s.t("tip.external_edit"),
+                    pixels,
+                ),
+                Small::new(
+                    Icon::Delete,
+                    s.t("cmd.delete_picture"),
+                    s.t("tip.delete_picture"),
+                    editable,
+                ),
+            ];
+            match small_column(ui, &items, p) {
+                Some(0) => doc(
+                    actions,
+                    Request::Object(ObjectCommand::Export {
+                        purpose: ExportPurpose::Save,
+                    }),
+                ),
+                Some(1) => doc(
+                    actions,
+                    Request::Object(ObjectCommand::Export {
+                        purpose: ExportPurpose::External,
+                    }),
+                ),
+                Some(_) => doc(actions, Request::Object(ObjectCommand::Delete)),
+                None => {}
+            }
+        });
+    });
+    group(ui, s.t("group.recognize_picture"), p, |ui| {
+        let can = editable && object.picture && cfg!(feature = "ocr");
+        if big_clicked(
+            ui,
+            Icon::Scan,
+            s.t("cmd.picture_text"),
+            s.t("tip.picture_text"),
+            can,
+            p,
+        ) {
+            actions.push(Action::RecognizePicture { formula: false });
+        }
+        if big_clicked(
+            ui,
+            Icon::Formula,
+            s.t("cmd.picture_formula"),
+            s.t("tip.picture_formula"),
+            can,
+            p,
+        ) {
+            actions.push(Action::RecognizePicture { formula: true });
         }
     });
 }

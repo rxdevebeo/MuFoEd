@@ -23,6 +23,10 @@ pub(crate) enum PieceKind {
     InlineAtom,
 }
 
+/// The character a drawing stands for in a paragraph's text: one caret
+/// position, like a tab.
+pub(crate) const OBJECT: char = '\u{FFFC}';
+
 /// One piece of a paragraph in reading order: a text node, or an item that
 /// takes one caret position (a tab, a line break).
 #[derive(Clone, Debug)]
@@ -54,6 +58,7 @@ fn atom_char(content: &RunContent) -> Option<char> {
             Some('\n')
         }
         RunContent::NoBreakHyphen => Some('\u{2011}'),
+        RunContent::Drawing(_) => Some(OBJECT),
         _ => None,
     }
 }
@@ -81,17 +86,18 @@ fn walk_pieces(inlines: &[Inline], path: &mut Vec<usize>, out: &mut Vec<Piece>) 
                     }
                 }
             }
-            Inline::Tab | Inline::Break(_) if path.len() == 1 => out.push(Piece {
-                kind: PieceKind::InlineAtom,
-                inline: path.clone(),
-                content: 0,
-                text: if matches!(inline, Inline::Tab) {
-                    "\t"
-                } else {
-                    "\n"
-                }
-                .to_owned(),
-            }),
+            Inline::Tab | Inline::Break(_) | Inline::Drawing(_) if path.len() == 1 => {
+                out.push(Piece {
+                    kind: PieceKind::InlineAtom,
+                    inline: path.clone(),
+                    content: 0,
+                    text: match inline {
+                        Inline::Tab => "\t".to_owned(),
+                        Inline::Drawing(_) => OBJECT.to_string(),
+                        _ => "\n".to_owned(),
+                    },
+                });
+            }
             Inline::Hyperlink(link) => walk_pieces(&link.inlines, path, out),
             Inline::SdtInline(sdt) => walk_pieces(&sdt.inlines, path, out),
             Inline::Directional(wrapper) => walk_pieces(&wrapper.inlines, path, out),

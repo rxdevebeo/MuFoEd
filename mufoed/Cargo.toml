@@ -34,6 +34,9 @@ serde_json.workspace = true
 sys-locale = "0.3"
 unicode-segmentation = "1.12"
 
+[dev-dependencies]
+png.workspace = true
+
 [target.'cfg(windows)'.dependencies]
 # The watchdog's stack capture of a frozen interface thread (`stack.rs`).
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_LibraryLoader"] }

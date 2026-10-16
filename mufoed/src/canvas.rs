@@ -13,9 +13,9 @@ use std::sync::OnceLock;
 use eframe::egui::{self, pos2, vec2, Color32, Rect, Sense, Stroke};
 
 use crate::raster;
-use crate::tab::{DocTab, PageTexture, Rastered};
+use crate::tab::{DocTab, Moving, PageTexture, Rastered, Resize};
 use crate::theme::Palette;
-use crate::worker::Request;
+use crate::worker::{ObjectCommand, PictureEdit, Request};
 
 /// Painting for the screen: the rasterizer has the faces, so they are not
 /// embedded in each page.
@@ -131,6 +131,92 @@ fn request_bitmap(ctx: &egui::Context, tab: &mut DocTab, index: usize, scale: f3
         });
         ctx.request_repaint();
     });
+}
+
+/// The eight handles of a frame: corners nw, ne, se, sw, then edges n, e,
+/// s, w.
+fn handles(frame: Rect) -> [egui::Pos2; 8] {
+    [
+        frame.left_top(),
+        frame.right_top(),
+        frame.right_bottom(),
+        frame.left_bottom(),
+        frame.center_top(),
+        frame.right_center(),
+        frame.center_bottom(),
+        frame.left_center(),
+    ]
+}
+
+/// The pointer shape over a handle.
+fn handle_cursor(handle: usize) -> egui::CursorIcon {
+    match handle {
+        0 | 2 => egui::CursorIcon::ResizeNwSe,
+        1 | 3 => egui::CursorIcon::ResizeNeSw,
+        4 | 6 => egui::CursorIcon::ResizeVertical,
+        _ => egui::CursorIcon::ResizeHorizontal,
+    }
+}
+
+/// The frame a resize gives: the dragged edges follow the pointer, the
+/// others stay; unless Shift frees them, the proportions are kept.
+fn resized(resize: &Resize) -> Rect {
+    let delta = resize.pointer - resize.origin;
+    let frame = resize.frame;
+    let (mut left, mut top, mut right, mut bottom) =
+        (frame.left(), frame.top(), frame.right(), frame.bottom());
+    let (west, north, east, south) = match resize.handle {
+        0 => (true, true, false, false),
+        1 => (false, true, true, false),
+        2 => (false, false, true, true),
+        3 => (true, false, false, true),
+        4 => (false, true, false, false),
+        5 => (false, false, true, false),
+        6 => (false, false, false, true),
+        _ => (true, false, false, false),
+    };
+    if west {
+        left = (left + delta.x).min(right - 4.0);
+    }
+    if east {
+        right = (right + delta.x).max(left + 4.0);
+    }
+    if north {
+        top = (top + delta.y).min(bottom - 4.0);
+    }
+    if south {
+        bottom = (bottom + delta.y).max(top + 4.0);
+    }
+    if resize.crop {
+        // A crop stays inside the picture.
+        return Rect::from_min_max(
+            pos2(left.max(frame.left()), top.max(frame.top())),
+            pos2(right.min(frame.right()), bottom.min(frame.bottom())),
+        );
+    }
+    if !resize.free && frame.width() > 0.0 && frame.height() > 0.0 {
+        // The dragged side decides (the larger change, at a corner); the
+        // other follows the aspect.
+        let wide = (right - left) / frame.width();
+        let high = (bottom - top) / frame.height();
+        let scale = match resize.handle {
+            4 | 6 => high,
+            5 | 7 => wide,
+            _ => wide.max(high),
+        };
+        let (width, height) = (frame.width() * scale, frame.height() * scale);
+        if west {
+            left = right - width;
+        } else {
+            right = left + width;
+        }
+        if north {
+            top = bottom - height;
+        } else {
+            bottom = top + height;
+        }
+    }
+    Rect::from_min_max(pos2(left, top), pos2(right, bottom))
 }
 
 /// Draws the desk for `tab`; requests go to its worker.
@@ -265,6 +351,103 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                     }
                     ctx.request_repaint_after(std::time::Duration::from_millis(400));
                 }
+                // A selected drawing: its frame and handles, or the frame a
+                // resize is dragging out.
+                let object_frame = tab.cursor.as_ref().and_then(|cursor| {
+                    let object = cursor.object.as_ref()?;
+                    let rect = object.rects.first()?;
+                    to_screen(rect.page, rect.x, rect.y, rect.width, rect.height)
+                        .map(|frame| (frame, (object.width, object.height)))
+                });
+                let floating = tab
+                    .cursor
+                    .as_ref()
+                    .and_then(|cursor| cursor.object.as_ref())
+                    .is_some_and(|object| object.wrap != crate::worker::WrapStyle::Inline);
+                // A drawing being dragged: where it would go.
+                if let Some(moving) = &tab.view.moving {
+                    let ghost = moving.frame.translate(moving.pointer - moving.origin);
+                    painter.rect_stroke(
+                        ghost,
+                        0.0,
+                        Stroke::new(1.5, crate::theme::ACCENT),
+                        egui::StrokeKind::Outside,
+                    );
+                    if !moving.floating {
+                        // In the text it goes where a click there would put
+                        // the caret.
+                        painter.line_segment(
+                            [
+                                moving.pointer - vec2(0.0, 10.0),
+                                moving.pointer + vec2(0.0, 10.0),
+                            ],
+                            Stroke::new(2.0, crate::theme::ACCENT),
+                        );
+                    }
+                }
+                if object_frame.is_none() {
+                    tab.view.crop = false;
+                }
+                if let Some((frame, _)) = object_frame {
+                    let accent = crate::theme::ACCENT;
+                    let shown = tab.view.resize.as_ref().map_or(frame, resized);
+                    // Cropping: what goes is shaded.
+                    if tab.view.crop && shown != frame {
+                        let shade = Color32::from_black_alpha(110);
+                        for part in [
+                            Rect::from_min_max(frame.left_top(), pos2(frame.right(), shown.top())),
+                            Rect::from_min_max(
+                                pos2(frame.left(), shown.bottom()),
+                                frame.right_bottom(),
+                            ),
+                            Rect::from_min_max(
+                                pos2(frame.left(), shown.top()),
+                                pos2(shown.left(), shown.bottom()),
+                            ),
+                            Rect::from_min_max(
+                                pos2(shown.right(), shown.top()),
+                                pos2(frame.right(), shown.bottom()),
+                            ),
+                        ] {
+                            painter.rect_filled(part, 0.0, shade);
+                        }
+                    }
+                    painter.rect_stroke(
+                        shown,
+                        0.0,
+                        Stroke::new(1.5, accent),
+                        egui::StrokeKind::Outside,
+                    );
+                    for handle in handles(shown) {
+                        if tab.view.crop {
+                            // Crop handles are black bars, as in Word.
+                            let bar = Rect::from_center_size(handle, vec2(9.0, 9.0));
+                            painter.rect_filled(bar, 0.0, Color32::BLACK);
+                            painter.rect_stroke(
+                                bar,
+                                0.0,
+                                Stroke::new(1.0, Color32::WHITE),
+                                egui::StrokeKind::Inside,
+                            );
+                            continue;
+                        }
+                        let square = Rect::from_center_size(handle, vec2(7.0, 7.0));
+                        painter.rect_filled(square, 1.0, Color32::WHITE);
+                        painter.rect_stroke(
+                            square,
+                            1.0,
+                            Stroke::new(1.0, accent),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
+                }
+                let on_handle = |pos: egui::Pos2| {
+                    let (frame, size) = object_frame?;
+                    handles(frame)
+                        .iter()
+                        .position(|handle| handle.distance(pos) <= 6.0)
+                        .map(|index| (index, frame, size))
+                };
                 if let Some(page) = tab.view.scroll_to_page.take() {
                     if let Some(rect) = rects.get(page) {
                         ui.scroll_to_rect(rect.translate(offset), Some(egui::Align::TOP));
@@ -287,7 +470,97 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                 };
                 let shift = ui.input(|input| input.modifiers.shift);
                 let column = ui.input(|input| input.modifiers.command);
-                if response.double_clicked() {
+                // A handle of the selected drawing resizes it. The drag is
+                // known only once the pointer has moved, so the handle is
+                // looked for where the button went down.
+                let pressed = response.interact_pointer_pos();
+                if response.drag_started() && !tab.view.crop {
+                    // Dragging the selected drawing's body moves it.
+                    let origin = ui.input(|input| input.pointer.press_origin());
+                    if let (Some(origin), Some((frame, _))) = (origin, object_frame) {
+                        if frame.contains(origin) && on_handle(origin).is_none() {
+                            tab.view.moving = Some(Moving {
+                                frame,
+                                origin,
+                                pointer: pressed.unwrap_or(origin),
+                                floating,
+                            });
+                        }
+                    }
+                }
+                if response.drag_started() && tab.view.moving.is_none() {
+                    let origin = ui.input(|input| input.pointer.press_origin());
+                    if let Some((handle, frame, size)) = origin.and_then(on_handle) {
+                        if let Some(origin) = origin {
+                            tab.view.resize = Some(Resize {
+                                handle,
+                                frame,
+                                pointer: pressed.unwrap_or(origin),
+                                origin,
+                                size,
+                                free: shift,
+                                crop: tab.view.crop,
+                            });
+                        }
+                    }
+                }
+                if let Some(resize) = tab.view.resize.as_mut() {
+                    if let Some(pos) = pressed {
+                        resize.pointer = pos;
+                    }
+                    resize.free = shift;
+                    ctx.set_cursor_icon(handle_cursor(resize.handle));
+                    if response.drag_stopped() {
+                        let resize = *resize;
+                        tab.view.resize = None;
+                        let frame = resized(&resize);
+                        if resize.crop && resize.frame.width() > 0.0 && resize.frame.height() > 0.0
+                        {
+                            let old = resize.frame;
+                            let sides = [
+                                (frame.left() - old.left()) / old.width(),
+                                (frame.top() - old.top()) / old.height(),
+                                (old.right() - frame.right()) / old.width(),
+                                (old.bottom() - frame.bottom()) / old.height(),
+                            ];
+                            if sides.iter().any(|side| *side > 0.002) {
+                                tab.send(Request::Object(ObjectCommand::Edit(PictureEdit::Crop {
+                                    sides,
+                                })));
+                            }
+                        } else if resize.frame.width() > 0.0 && resize.frame.height() > 0.0 {
+                            #[allow(clippy::cast_possible_truncation)]
+                            let scale = |emu: i64, to: f32, from: f32| {
+                                (emu as f64 * f64::from(to) / f64::from(from)).round() as i64
+                            };
+                            tab.send(Request::Object(ObjectCommand::Resize {
+                                width: scale(resize.size.0, frame.width(), resize.frame.width()),
+                                height: scale(resize.size.1, frame.height(), resize.frame.height()),
+                            }));
+                        }
+                    }
+                } else if let Some(moving) = tab.view.moving.as_mut() {
+                    if let Some(pos) = pressed {
+                        moving.pointer = pos;
+                    }
+                    ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+                    if response.drag_stopped() {
+                        let moving = *moving;
+                        tab.view.moving = None;
+                        let delta = moving.pointer - moving.origin;
+                        if delta.length() > 2.0 {
+                            if moving.floating {
+                                let z = f64::from(tab.zoom);
+                                tab.send(Request::Object(ObjectCommand::Move {
+                                    dx: f64::from(delta.x) / z,
+                                    dy: f64::from(delta.y) / z,
+                                }));
+                            } else if let Some((page, x, y)) = hit(moving.pointer) {
+                                tab.send(Request::Object(ObjectCommand::MoveTo { page, x, y }));
+                            }
+                        }
+                    }
+                } else if response.double_clicked() {
                     if let Some((page, x, y)) = response.interact_pointer_pos().and_then(hit) {
                         tab.send(Request::SelectWord { page, x, y });
                     }
@@ -328,8 +601,17 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                 if response.drag_stopped() {
                     tab.view.last_drag = None;
                 }
-                if response.hovered() {
-                    ctx.set_cursor_icon(egui::CursorIcon::Text);
+                if response.hovered() && tab.view.resize.is_none() {
+                    let pointer = ui.input(|input| input.pointer.hover_pos());
+                    let over_handle = pointer.and_then(on_handle).map(|(handle, _, _)| handle);
+                    let over_object = pointer
+                        .zip(object_frame)
+                        .is_some_and(|(pos, (frame, _))| frame.contains(pos));
+                    ctx.set_cursor_icon(match over_handle {
+                        Some(handle) => handle_cursor(handle),
+                        None if over_object => egui::CursorIcon::Grab,
+                        None => egui::CursorIcon::Text,
+                    });
                     let zoom = ui.input(egui::InputState::zoom_delta);
                     if (zoom - 1.0).abs() > f32::EPSILON {
                         tab.zoom = (tab.zoom * zoom).clamp(0.25, 5.0);

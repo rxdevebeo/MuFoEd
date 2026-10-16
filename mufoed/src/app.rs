@@ -15,8 +15,8 @@ use crate::settings::{self, Settings};
 use crate::tab::{AfterSave, DocTab, Status, TabEvent};
 use crate::theme::{self, Palette};
 use crate::worker::{
-    Align, Busy, CaretFormat, EditState, FindQuery, FormatChange, Insert, Motion, Request,
-    SaveFormat,
+    Align, Busy, CaretFormat, EditState, ExportPurpose, FindQuery, FormatChange, Insert, Motion,
+    ObjectCommand, PictureEdit, Request, SaveFormat,
 };
 
 /// Everything a click can ask for.
@@ -24,7 +24,9 @@ pub(crate) enum Action {
     New,
     OpenDialog,
     OpenPath(PathBuf),
-    ImportDialog { ocr: bool },
+    ImportDialog {
+        ocr: bool,
+    },
     Save,
     SaveAs,
     Export(SaveFormat),
@@ -33,6 +35,15 @@ pub(crate) enum Action {
     Doc(Request),
     Paste,
     InsertDocument,
+    InsertPicture,
+    /// Crop the selected picture with its handles, or stop.
+    ToggleCrop,
+    /// Brightness and contrast with sliders and a preview.
+    AdjustDialog,
+    /// Recognise the selected picture with the configured model.
+    RecognizePicture {
+        formula: bool,
+    },
     InsertDate,
     Open(Dialog),
     ToggleReport,
@@ -44,6 +55,51 @@ pub(crate) enum Action {
     FontColor([u8; 3]),
     Backstage(bool),
     Activate(Option<usize>),
+}
+
+/// A picture being edited in another program, by its file.
+struct ExternalEdit {
+    /// The document tab.
+    tab: u64,
+    /// The picture's drawing id.
+    id: u32,
+    path: PathBuf,
+    /// When the file last changed.
+    modified: Option<std::time::SystemTime>,
+}
+
+/// Opens a picture file in the system's editor for pictures (on Windows the
+/// "Edit" verb: Paint, unless the user chose another), not its viewer.
+fn open_in_editor(path: &std::path::Path) -> Result<(), String> {
+    let mut command;
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let quoted = path.display().to_string().replace('\'', "''");
+        command = std::process::Command::new("powershell");
+        command
+            .args(["-NoProfile", "-NonInteractive", "-Command"])
+            .arg(format!(
+                "try {{ Start-Process -FilePath '{quoted}' -Verb Edit -ErrorAction Stop }} \
+                 catch {{ Start-Process -FilePath '{quoted}' }}"
+            ))
+            // No console window flashes up.
+            .creation_flags(0x0800_0000);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        command = std::process::Command::new("open");
+        command.arg(path);
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        command = std::process::Command::new("xdg-open");
+        command.arg(path);
+    }
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 /// Zoom commands.
@@ -68,6 +124,29 @@ pub(crate) enum Dialog {
     Import(Box<ImportDialog>),
     ConfirmClose { tab: u64 },
     ConfirmExit,
+    Adjust(Box<AdjustDialog>),
+}
+
+/// Brightness and contrast of the selected picture, previewed on a small
+/// copy of it.
+#[derive(Clone, Default)]
+pub(crate) struct AdjustDialog {
+    /// The picture, small; `None` until its bytes arrive.
+    base: Option<resvg::tiny_skia::Pixmap>,
+    /// Percent, -100..=100.
+    brightness: f32,
+    contrast: f32,
+    /// The preview and the values it shows.
+    texture: Option<(egui::TextureHandle, f32, f32)>,
+}
+
+impl std::fmt::Debug for AdjustDialog {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AdjustDialog")
+            .field("brightness", &self.brightness)
+            .field("contrast", &self.contrast)
+            .finish_non_exhaustive()
+    }
 }
 
 /// The import dialog's fields.
@@ -123,6 +202,16 @@ pub(crate) struct App {
     applied_dark: Option<bool>,
     /// Document faces for the navigation pane.
     doc_fonts: crate::docfonts::DocumentFonts,
+    /// What the last copy carried besides text.
+    clip: Option<Box<crate::worker::ClipObjects>>,
+    /// A drawing was selected in the last frame.
+    object_selected: bool,
+    /// The ribbon tab to go back to once no drawing is selected.
+    tab_before_picture: RibbonTab,
+    /// Pictures open in an outside editor.
+    external: Vec<ExternalEdit>,
+    /// When they were last looked at.
+    external_checked: f64,
     window_title: String,
     /// This frame's input in its order, Tab keys included, when the Tab keys
     /// were taken from egui before it could move focus with them.
@@ -167,6 +256,11 @@ impl App {
             startup: files,
             applied_dark: None,
             doc_fonts: crate::docfonts::DocumentFonts::new(interface_fonts),
+            clip: None,
+            object_selected: false,
+            tab_before_picture: RibbonTab::Home,
+            external: Vec::new(),
+            external_checked: 0.0,
             window_title: String::new(),
             frame_events: None,
         };
@@ -431,7 +525,14 @@ impl App {
                     }
                 }
             }
-            Action::Paste => ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste),
+            Action::Paste => match self.drawings_paste() {
+                Some(request) => {
+                    if let Some(tab) = self.active_tab() {
+                        tab.send(request);
+                    }
+                }
+                None => ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste),
+            },
             Action::InsertDocument => {
                 let picked = rfd::FileDialog::new()
                     .set_title(self.t("dialog.insert_title"))
@@ -439,6 +540,60 @@ impl App {
                     .pick_file();
                 if let (Some(path), Some(tab)) = (picked, self.active_tab()) {
                     tab.send(Request::Insert(Insert::Document(path)));
+                }
+            }
+            Action::InsertPicture => {
+                let picked = rfd::FileDialog::new()
+                    .set_title(self.t("dialog.picture_title"))
+                    .add_filter(
+                        self.t("filter.pictures"),
+                        &["png", "jpg", "jpeg", "gif", "bmp"],
+                    )
+                    .pick_file();
+                if let Some(path) = picked {
+                    match std::fs::read(&path) {
+                        Ok(bytes) => {
+                            let name = path
+                                .file_stem()
+                                .and_then(|stem| stem.to_str())
+                                .unwrap_or("Picture")
+                                .to_owned();
+                            if let Some(tab) = self.active_tab() {
+                                tab.send(Request::Object(ObjectCommand::InsertPicture {
+                                    bytes,
+                                    name,
+                                }));
+                            }
+                        }
+                        Err(error) => {
+                            let text = self.i18n.tf("status.open_failed", &[("error", &error)]);
+                            self.say(text, true, now);
+                        }
+                    }
+                }
+            }
+            Action::AdjustDialog => {
+                self.dialog = Some(Dialog::Adjust(Box::default()));
+                if let Some(tab) = self.active_tab() {
+                    tab.send(Request::Object(ObjectCommand::Export {
+                        purpose: ExportPurpose::Preview,
+                    }));
+                }
+            }
+            Action::ToggleCrop => {
+                if let Some(tab) = self.active_tab_mut() {
+                    tab.view.crop = !tab.view.crop;
+                }
+            }
+            Action::RecognizePicture { formula } => {
+                let endpoint = self.settings.ocr_endpoint.clone();
+                let model = self.settings.ocr_model.clone();
+                if let Some(tab) = self.active_tab() {
+                    tab.send(Request::Object(ObjectCommand::Recognize {
+                        formula,
+                        endpoint,
+                        model,
+                    }));
                 }
             }
             Action::InsertDate => {
@@ -517,6 +672,7 @@ impl App {
     fn poll_tabs(&mut self, ctx: &egui::Context, now: f64) {
         let mut close = Vec::new();
         let mut messages = Vec::new();
+        let mut pictures = Vec::new();
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             for event in tab.poll() {
                 match event {
@@ -531,7 +687,26 @@ impl App {
                         }
                         messages.push((text, note.error));
                     }
-                    TabEvent::Clipboard(text) => ctx.copy_text(text),
+                    TabEvent::Clipboard(text) => {
+                        // A copy without drawings replaces the last one's.
+                        self.clip = None;
+                        ctx.copy_text(text);
+                    }
+                    TabEvent::ClipboardObjects(clip) => {
+                        if let Some((width, height, rgba)) = &clip.image {
+                            ctx.copy_image(egui::ColorImage::from_rgba_premultiplied(
+                                [*width, *height],
+                                rgba,
+                            ));
+                        }
+                        self.clip = Some(clip);
+                    }
+                    TabEvent::Picture {
+                        id,
+                        bytes,
+                        extension,
+                        purpose,
+                    } => pictures.push((tab.id, id, bytes, extension, purpose)),
                     TabEvent::Saved { path, format } => {
                         let key = if format == SaveFormat::Docx {
                             "status.saved"
@@ -565,12 +740,119 @@ impl App {
         for (text, error) in messages {
             self.say(text, error, now);
         }
+        for (tab, id, bytes, extension, purpose) in pictures {
+            match purpose {
+                ExportPurpose::External => self.edit_externally(tab, id, &bytes, extension, now),
+                ExportPurpose::Save => self.save_picture(&bytes, extension, now),
+                ExportPurpose::Preview => {
+                    if let Some(Dialog::Adjust(dialog)) = self.dialog.as_mut() {
+                        dialog.base = crate::raster::picture_preview(&bytes, 320);
+                        dialog.texture = None;
+                    }
+                }
+            }
+        }
+        self.watch_external(now);
+        if !self.external.is_empty() {
+            ctx.request_repaint_after(std::time::Duration::from_secs(1));
+        }
         if !close.is_empty() {
             self.settings.save();
         }
         for index in close.into_iter().rev() {
             self.close_tab(index, true);
         }
+    }
+
+    /// Saves a picture's bytes where the user says.
+    fn save_picture(&mut self, bytes: &[u8], extension: &str, now: f64) {
+        let picked = rfd::FileDialog::new()
+            .set_title(self.t("dialog.save_picture_title"))
+            .set_file_name(format!("picture.{extension}"))
+            .add_filter(self.t("filter.pictures"), &[extension])
+            .save_file();
+        if let Some(path) = picked {
+            match std::fs::write(&path, bytes) {
+                Ok(()) => {
+                    let text = self
+                        .i18n
+                        .tf("status.exported", &[("file", &path.display())]);
+                    self.say(text, false, now);
+                }
+                Err(error) => {
+                    let text = self.i18n.tf("status.open_failed", &[("error", &error)]);
+                    self.say(text, true, now);
+                }
+            }
+        }
+    }
+
+    /// Writes a picture to a file of its own, opens it in the system's
+    /// picture editor and watches it: each save there comes back into the
+    /// document.
+    fn edit_externally(&mut self, tab: u64, id: u32, bytes: &[u8], extension: &str, now: f64) {
+        let dir = std::env::temp_dir().join("mufoed-pictures");
+        let path = dir.join(format!("picture-{tab}-{id}.{extension}"));
+        let written = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, bytes));
+        if let Err(error) = written {
+            let text = self.i18n.tf("status.open_failed", &[("error", &error)]);
+            self.say(text, true, now);
+            return;
+        }
+        let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        match open_in_editor(&path) {
+            Ok(()) => {
+                self.external.retain(|watch| watch.path != path);
+                self.external.push(ExternalEdit {
+                    tab,
+                    id,
+                    path,
+                    modified,
+                });
+                let text = self.t("status.external_edit").to_owned();
+                self.say(text, false, now);
+            }
+            Err(error) => {
+                let text = self.i18n.tf("status.open_failed", &[("error", &error)]);
+                self.say(text, true, now);
+            }
+        }
+    }
+
+    /// Brings pictures saved in an outside editor back, once a second.
+    fn watch_external(&mut self, now: f64) {
+        if self.external.is_empty() || now - self.external_checked < 1.0 {
+            return;
+        }
+        self.external_checked = now;
+        let tabs: Vec<u64> = self.tabs.iter().map(|tab| tab.id).collect();
+        self.external.retain(|watch| tabs.contains(&watch.tab));
+        let mut changed = Vec::new();
+        for watch in &mut self.external {
+            let modified = std::fs::metadata(&watch.path)
+                .and_then(|m| m.modified())
+                .ok();
+            if modified.is_some() && modified != watch.modified {
+                watch.modified = modified;
+                if let Ok(bytes) = std::fs::read(&watch.path) {
+                    changed.push((watch.tab, watch.id, bytes));
+                }
+            }
+        }
+        for (tab, id, bytes) in changed {
+            if let Some(tab) = self.tabs.iter().find(|t| t.id == tab) {
+                tab.send(Request::Object(ObjectCommand::Replace { id, bytes }));
+            }
+        }
+    }
+
+    /// The copied drawings alone, when the clipboard holds no text of ours
+    /// (a lone picture): a paste then brings them back.
+    fn drawings_paste(&self) -> Option<Request> {
+        self.clip
+            .as_ref()
+            .filter(|clip| clip.text.is_empty() && !clip.objects.is_empty())
+            .map(|clip| Request::PasteObjects(clip.clone()))
     }
 
     /// Keys for the open document and the window-wide shortcuts.
@@ -583,6 +865,8 @@ impl App {
             .frame_events
             .take()
             .unwrap_or_else(|| ctx.input(|input| input.events.clone()));
+        let mut pasted = false;
+        let mut paste_key = false;
         for event in events {
             match event {
                 egui::Event::Text(text) if document => {
@@ -595,7 +879,18 @@ impl App {
                     actions.push(Action::Doc(Request::Copy { cut: true }));
                 }
                 egui::Event::Paste(text) if document => {
-                    actions.push(Action::Doc(Request::Paste(text)));
+                    pasted = true;
+                    // Text this editor copied with drawings in it brings
+                    // them back.
+                    let same = |clip: &crate::worker::ClipObjects| {
+                        clip.text.replace("\r\n", "\n") == text.replace("\r\n", "\n")
+                    };
+                    match self.clip.as_ref().filter(|clip| same(clip)) {
+                        Some(clip) => {
+                            actions.push(Action::Doc(Request::PasteObjects(clip.clone())));
+                        }
+                        None => actions.push(Action::Doc(Request::Paste(text))),
+                    }
                 }
                 egui::Event::Key {
                     key,
@@ -605,6 +900,7 @@ impl App {
                 } => {
                     let command = modifiers.command;
                     let shift = modifiers.shift;
+                    paste_key |= command && key == Key::V;
                     // Window-wide shortcuts first.
                     if command && !typing_elsewhere {
                         let global = match key {
@@ -711,6 +1007,12 @@ impl App {
                     }
                 }
                 _ => {}
+            }
+        }
+        // Ctrl+V with no text to paste: a copied picture of ours.
+        if paste_key && !pasted && document {
+            if let Some(request) = self.drawings_paste() {
+                actions.push(Action::Doc(request));
             }
         }
     }
@@ -1047,7 +1349,24 @@ impl App {
 
     fn ribbon_ui(&mut self, ui: &mut egui::Ui, palette: Palette, actions: &mut Vec<Action>) {
         ui.horizontal(|ui| {
-            if ribbon::tab_strip(ui, &mut self.ribbon_tab, &self.i18n, palette) {
+            // The picture tools stay while a drawing is selected.
+            let selected = self
+                .active_tab()
+                .and_then(|tab| tab.cursor.as_ref())
+                .is_some_and(|cursor| cursor.object.is_some());
+            // Selecting a drawing opens its tools; letting it go returns to
+            // the tab that was open before.
+            if selected && !self.object_selected {
+                if self.ribbon_tab != RibbonTab::Picture {
+                    self.tab_before_picture = self.ribbon_tab;
+                }
+                self.ribbon_tab = RibbonTab::Picture;
+            }
+            if !selected && self.ribbon_tab == RibbonTab::Picture {
+                self.ribbon_tab = self.tab_before_picture;
+            }
+            self.object_selected = selected;
+            if ribbon::tab_strip(ui, &mut self.ribbon_tab, selected, &self.i18n, palette) {
                 actions.push(Action::Backstage(true));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1140,6 +1459,10 @@ impl App {
             zoom: tab.map_or(1.0, |tab| tab.zoom),
             system_fonts: self.settings.system_fonts,
             font_color: self.font_color,
+            object: tab
+                .and_then(|tab| tab.cursor.as_ref())
+                .and_then(|cursor| cursor.object.as_ref()),
+            crop: tab.is_some_and(|tab| tab.view.crop),
         };
         ui.add_space(2.0);
         ribbon::body(ui, self.ribbon_tab, &state, actions);
@@ -1175,6 +1498,7 @@ impl App {
                             self.t(match busy {
                                 Busy::Layout => "status.layout",
                                 Busy::Map => "status.map",
+                                Busy::Recognize => "status.recognizing",
                             })
                             .to_owned(),
                         ));
@@ -1845,6 +2169,88 @@ impl App {
                     keep = false;
                 } else {
                     next = Some(Dialog::Table { rows, columns });
+                }
+            }
+            Dialog::Adjust(mut dialog) => {
+                let mut apply = false;
+                let response = modal("adjust").show(ctx, |ui| {
+                    ui.heading(t("adjust.title"));
+                    ui.add_space(6.0);
+                    let stale = dialog.texture.as_ref().is_none_or(|(_, b, c)| {
+                        (*b - dialog.brightness).abs() > f32::EPSILON
+                            || (*c - dialog.contrast).abs() > f32::EPSILON
+                    });
+                    if stale {
+                        if let Some(base) = &dialog.base {
+                            let pixels = crate::raster::adjusted_pixmap(
+                                base,
+                                dialog.brightness / 100.0,
+                                dialog.contrast / 100.0,
+                            );
+                            let image = egui::ColorImage::from_rgba_premultiplied(
+                                [pixels.width() as usize, pixels.height() as usize],
+                                pixels.data(),
+                            );
+                            let texture = ui.ctx().load_texture(
+                                "adjust-preview",
+                                image,
+                                egui::TextureOptions::LINEAR,
+                            );
+                            dialog.texture = Some((texture, dialog.brightness, dialog.contrast));
+                        }
+                    }
+                    match &dialog.texture {
+                        Some((texture, _, _)) => {
+                            ui.add(egui::Image::new(texture).max_size(vec2(320.0, 240.0)));
+                        }
+                        None => {
+                            ui.add_sized(vec2(320.0, 120.0), egui::Spinner::new());
+                        }
+                    }
+                    ui.add_space(6.0);
+                    egui::Grid::new("adjust-grid")
+                        .num_columns(2)
+                        .show(ui, |ui| {
+                            ui.label(t("cmd.brightness"));
+                            ui.add(
+                                egui::Slider::new(&mut dialog.brightness, -100.0..=100.0)
+                                    .suffix(" %"),
+                            );
+                            ui.end_row();
+                            ui.label(t("cmd.contrast"));
+                            ui.add(
+                                egui::Slider::new(&mut dialog.contrast, -100.0..=100.0)
+                                    .suffix(" %"),
+                            );
+                            ui.end_row();
+                        });
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(t("button.reset")).clicked() {
+                            dialog.brightness = 0.0;
+                            dialog.contrast = 0.0;
+                        }
+                        if ui.button(t("button.ok")).clicked() {
+                            apply = true;
+                            ui.close();
+                        }
+                        if ui.button(t("button.cancel")).clicked() {
+                            ui.close();
+                        }
+                    });
+                });
+                if apply && (dialog.brightness != 0.0 || dialog.contrast != 0.0) {
+                    actions.push(Action::Doc(Request::Object(ObjectCommand::Edit(
+                        PictureEdit::Adjust {
+                            brightness: dialog.brightness / 100.0,
+                            contrast: dialog.contrast / 100.0,
+                        },
+                    ))));
+                }
+                if response.should_close() || apply {
+                    keep = false;
+                } else {
+                    next = Some(Dialog::Adjust(dialog));
                 }
             }
             Dialog::Symbols => {

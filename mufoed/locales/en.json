@@ -13,7 +13,8 @@
       "layout": "Layout",
       "review": "Review",
       "view": "View",
-      "recognition": "Recognition"
+      "recognition": "Recognition",
+      "picture": "Picture"
     },
     "group": {
       "clipboard": "Clipboard",
@@ -36,7 +37,13 @@
       "import": "Import",
       "engine": "Model",
       "export": "Export",
-      "table": "Table"
+      "table": "Table",
+      "illustrations": "Illustrations",
+      "size": "Size",
+      "edit_picture": "Edit",
+      "recognize_picture": "Recognition",
+      "adjust_picture": "Adjust",
+      "arrange": "Arrange"
     },
     "cmd": {
       "new": "New",
@@ -87,7 +94,25 @@
       "select_table": "Select Table",
       "row_above": "Row Above",
       "row_below": "Row Below",
-      "delete_rows": "Delete Rows"
+      "delete_rows": "Delete Rows",
+      "list_none": "No list",
+      "picture": "Picture",
+      "original_size": "Original size",
+      "delete_picture": "Delete",
+      "picture_text": "Text",
+      "picture_formula": "Formula",
+      "crop": "Crop",
+      "rotate": "Rotate",
+      "rotate_right": "Rotate right 90°",
+      "rotate_left": "Rotate left 90°",
+      "flip_horizontal": "Flip horizontally",
+      "flip_vertical": "Flip vertically",
+      "brightness": "Brightness",
+      "contrast": "Contrast",
+      "wrap": "Wrap text",
+      "save_picture": "Save as…",
+      "external_edit": "Edit elsewhere",
+      "adjust_more": "Adjust…"
     },
     "tip": {
       "start_page": "Start page",
@@ -155,7 +180,23 @@
       "select_table": "Select the whole table",
       "row_above": "Insert a row above this one",
       "row_below": "Insert a row below this one (Tab in the last cell)",
-      "delete_rows": "Delete the selected rows"
+      "delete_rows": "Delete the selected rows",
+      "bullets": "Bulleted list",
+      "numbering": "Numbered list",
+      "list_current": "{list}: “{sample}”, level {level}. Click to remove the list",
+      "list_formats": "List format",
+      "picture": "Insert a picture from a file (PNG, JPEG, GIF, BMP)",
+      "original_size": "Give the picture its image's own size",
+      "delete_picture": "Delete the selected picture (Delete)",
+      "picture_text": "Recognise the text in the picture and put it in place of the picture",
+      "picture_formula": "Recognise the formula in the picture (MathML) and put it in as a Word equation",
+      "crop": "Crop the picture: drag the black handles inwards",
+      "rotate": "Rotate or flip the picture",
+      "brightness": "Make the picture lighter or darker",
+      "contrast": "Raise or lower the picture's contrast",
+      "wrap": "How text flows around the picture",
+      "save_picture": "Save the picture to a file",
+      "external_edit": "Open the picture in a picture editor; what is saved there comes back into the document"
     },
     "font": {
       "default": "(from style)"
@@ -195,7 +236,9 @@
       "open_failed": "Could not open: {error}",
       "layout": "Laying out pages…",
       "map": "Preparing for editing…",
-      "page_counting": "Page {page} of …"
+      "page_counting": "Page {page} of …",
+      "recognizing": "Recognising the picture…",
+      "external_edit": "The picture is open in another editor: save it there and it updates in the document"
     },
     "format": {
       "new": "New document",
@@ -230,7 +273,10 @@
       "no_revisions": "The document has no tracked changes",
       "save_failed": "Could not save",
       "not_in_table": "Put the caret in a table",
-      "cannot_edit_here": "This edit cannot be made here"
+      "cannot_edit_here": "This edit cannot be made here",
+      "picture_refused": "The picture was not inserted",
+      "recognize_failed": "The picture was not recognised",
+      "recognized_nothing": "Nothing was recognised in the picture"
     },
     "nav": {
       "title": "Navigation",
@@ -333,7 +379,8 @@
       "convert": "Convert",
       "save": "Save",
       "dont_save": "Don't Save",
-      "exit_anyway": "Exit Without Saving"
+      "exit_anyway": "Exit Without Saving",
+      "reset": "Reset"
     },
     "confirm": {
       "title": "Unsaved changes",
@@ -355,12 +402,33 @@
       "recognize_title": "Recognize a Scanned Document",
       "save_title": "Save as Strict DOCX",
       "export_title": "Export",
-      "insert_title": "Insert Document"
+      "insert_title": "Insert Document",
+      "picture_title": "Insert picture",
+      "save_picture_title": "Save picture"
     },
     "filter": {
       "all_supported": "All supported",
       "docx": "Word document (Strict)",
-      "text": "Text"
+      "text": "Text",
+      "pictures": "Pictures"
+    },
+    "label": {
+      "height": "Height",
+      "width": "Width"
+    },
+    "unit": {
+      "cm": "cm"
+    },
+    "wrap": {
+      "inline": "In line with text",
+      "square": "Square",
+      "tight": "Tight",
+      "top_bottom": "Top and bottom",
+      "behind": "Behind text",
+      "front": "In front of text"
+    },
+    "adjust": {
+      "title": "Brightness and contrast"
     }
   }
 }

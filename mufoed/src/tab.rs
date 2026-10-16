@@ -27,7 +27,17 @@ pub(crate) enum Status {
 pub(crate) enum TabEvent {
     Note(Note),
     Clipboard(String),
-    Saved { path: PathBuf, format: SaveFormat },
+    ClipboardObjects(Box<crate::worker::ClipObjects>),
+    Picture {
+        id: u32,
+        bytes: Vec<u8>,
+        extension: &'static str,
+        purpose: crate::worker::ExportPurpose,
+    },
+    Saved {
+        path: PathBuf,
+        format: SaveFormat,
+    },
     Loaded,
     Failed(String),
 }
@@ -74,6 +84,42 @@ pub(crate) struct ViewState {
     pub(crate) current_page: usize,
     /// When the caret last moved, for the blink phase.
     pub(crate) caret_moved: f64,
+    /// A drawing's frame being dragged by a handle.
+    pub(crate) resize: Option<Resize>,
+    /// The handles crop the selected picture instead of resizing it.
+    pub(crate) crop: bool,
+    /// The selected drawing being dragged to another place.
+    pub(crate) moving: Option<Moving>,
+}
+
+/// Dragging a selected drawing by its body.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Moving {
+    /// The frame on screen when the drag began.
+    pub(crate) frame: egui::Rect,
+    pub(crate) origin: egui::Pos2,
+    pub(crate) pointer: egui::Pos2,
+    /// A floating drawing moves on the page; one in the text moves in it.
+    pub(crate) floating: bool,
+}
+
+/// Resizing a selected drawing by one of its eight handles.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Resize {
+    /// 0..8: corners nw, ne, se, sw, then edges n, e, s, w.
+    pub(crate) handle: usize,
+    /// The frame on screen when the drag began.
+    pub(crate) frame: egui::Rect,
+    /// Where the pointer is now.
+    pub(crate) pointer: egui::Pos2,
+    /// Where it began.
+    pub(crate) origin: egui::Pos2,
+    /// The drawing's size then, in EMU.
+    pub(crate) size: (i64, i64),
+    /// Shift held: the sides move freely; otherwise the proportions stay.
+    pub(crate) free: bool,
+    /// Cropping: the sides move freely, inside the picture.
+    pub(crate) crop: bool,
 }
 
 impl ViewState {
@@ -91,6 +137,9 @@ impl ViewState {
             viewport: egui::vec2(800.0, 600.0),
             current_page: 0,
             caret_moved: 0.0,
+            resize: None,
+            crop: false,
+            moving: None,
         }
     }
 }
@@ -221,6 +270,18 @@ impl DocTab {
             Reply::Busy(busy) => self.busy = busy,
             Reply::Note(note) => events.push(TabEvent::Note(note)),
             Reply::Clipboard(text) => events.push(TabEvent::Clipboard(text)),
+            Reply::ClipboardObjects(clip) => events.push(TabEvent::ClipboardObjects(clip)),
+            Reply::Picture {
+                id,
+                bytes,
+                extension,
+                purpose,
+            } => events.push(TabEvent::Picture {
+                id,
+                bytes,
+                extension,
+                purpose,
+            }),
             Reply::Saved { path, format } => {
                 if format == SaveFormat::Docx {
                     self.path = Some(path.clone());

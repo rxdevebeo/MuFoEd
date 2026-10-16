@@ -22,6 +22,17 @@ pub(crate) enum Icon {
     Paste,
     AlignLeft,
     AlignCenter,
+    Bullets,
+    Numbering,
+    Picture,
+    Crop,
+    Rotate,
+    Brightness,
+    Contrast,
+    Wrap,
+    Formula,
+    Delete,
+    OriginalSize,
     AlignRight,
     Justify,
     PageBreak,
@@ -363,6 +374,157 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
             color,
             thin * 1.4,
         ),
+        Icon::Picture => {
+            // A framed landscape: a sun and a hill.
+            let frame = r.shrink(r.width() * 0.04);
+            painter.rect_stroke(
+                frame,
+                1.5,
+                stroke(color, thin * 1.3),
+                egui::StrokeKind::Inside,
+            );
+            painter.circle_filled(
+                frame.left_top() + vec2(frame.width() * 0.3, frame.height() * 0.32),
+                frame.width() * 0.1,
+                accent,
+            );
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    frame.left_bottom() + vec2(thin * 1.5, -thin * 1.5),
+                    frame.left_bottom() + vec2(frame.width() * 0.42, -frame.height() * 0.5),
+                    frame.left_bottom() + vec2(frame.width() * 0.62, -frame.height() * 0.3),
+                    frame.left_bottom() + vec2(frame.width() * 0.78, -frame.height() * 0.45),
+                    frame.right_bottom() + vec2(-thin * 1.5, -thin * 1.5),
+                ],
+                color,
+                Stroke::NONE,
+            ));
+        }
+        Icon::Crop => {
+            // Two corner brackets crossing, as crop marks.
+            let s = stroke(color, thin * 1.6);
+            let (l, t, rr, b) = (
+                r.left() + r.width() * 0.22,
+                r.top() + r.height() * 0.22,
+                r.right() - r.width() * 0.22,
+                r.bottom() - r.height() * 0.22,
+            );
+            painter.line_segment([pos2(l, r.top()), pos2(l, b)], s);
+            painter.line_segment([pos2(l, b), pos2(r.right(), b)], s);
+            let s = stroke(accent, thin * 1.6);
+            painter.line_segment([pos2(r.left(), t), pos2(rr, t)], s);
+            painter.line_segment([pos2(rr, t), pos2(rr, r.bottom())], s);
+        }
+        Icon::Rotate => {
+            let c = r.center();
+            let radius = r.width() * 0.34;
+            let points: Vec<egui::Pos2> = (0..=20u8)
+                .map(|i| {
+                    let a = std::f32::consts::PI * (0.15 + 1.45 * f32::from(i) / 20.0);
+                    c + vec2(a.cos(), -a.sin()) * radius
+                })
+                .collect();
+            let tip = points.last().copied().unwrap_or(c);
+            painter.add(egui::Shape::line(points, stroke(color, thin * 1.5)));
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    tip + vec2(-radius * 0.45, -radius * 0.05),
+                    tip + vec2(radius * 0.3, -radius * 0.4),
+                    tip + vec2(radius * 0.15, radius * 0.4),
+                ],
+                accent,
+                Stroke::NONE,
+            ));
+        }
+        Icon::Brightness => {
+            let c = r.center();
+            painter.circle_filled(c, r.width() * 0.2, accent);
+            for i in 0..8u8 {
+                let a = std::f32::consts::FRAC_PI_4 * f32::from(i);
+                let d = vec2(a.cos(), a.sin());
+                painter.line_segment(
+                    [c + d * r.width() * 0.3, c + d * r.width() * 0.45],
+                    stroke(color, thin * 1.3),
+                );
+            }
+        }
+        Icon::Contrast => {
+            let c = r.center();
+            let radius = r.width() * 0.4;
+            painter.circle_stroke(c, radius, stroke(color, thin * 1.3));
+            let half: Vec<egui::Pos2> = (0..=16u8)
+                .map(|i| {
+                    let a = std::f32::consts::PI * (-0.5 + f32::from(i) / 16.0);
+                    c + vec2(a.cos(), a.sin()) * radius
+                })
+                .collect();
+            painter.add(egui::Shape::convex_polygon(half, color, Stroke::NONE));
+        }
+        Icon::Wrap => {
+            // A picture with lines of text beside and around it.
+            let pic = Rect::from_min_size(
+                r.left_top() + vec2(0.0, r.height() * 0.3),
+                vec2(r.width() * 0.45, r.height() * 0.4),
+            );
+            painter.rect_filled(pic, 1.0, accent);
+            let s = stroke(color, thin * 1.3);
+            for (i, full) in [(0.12, true), (0.4, false), (0.6, false), (0.88, true)] {
+                let y = r.top() + r.height() * i;
+                let x0 = if full {
+                    r.left()
+                } else {
+                    r.left() + r.width() * 0.55
+                };
+                painter.line_segment([pos2(x0, y), pos2(r.right(), y)], s);
+            }
+        }
+        Icon::Formula => {
+            painter.text(
+                r.center(),
+                egui::Align2::CENTER_CENTER,
+                "\u{2211}",
+                egui::FontId::proportional(r.height() * 0.95),
+                accent,
+            );
+        }
+        Icon::Delete => {
+            let c = r.center();
+            let s = r.width() * 0.32;
+            for (a, b) in [(vec2(-s, -s), vec2(s, s)), (vec2(-s, s), vec2(s, -s))] {
+                painter.line_segment(
+                    [c + a, c + b],
+                    stroke(Color32::from_rgb(200, 50, 50), thin * 2.2),
+                );
+            }
+        }
+        Icon::OriginalSize => {
+            let outer = r.shrink(r.width() * 0.04);
+            painter.rect_stroke(outer, 1.0, stroke(color, thin), egui::StrokeKind::Inside);
+            let inner = Rect::from_center_size(outer.center(), outer.size() * 0.5);
+            painter.rect_filled(inner, 1.0, accent);
+        }
+        Icon::Bullets | Icon::Numbering => {
+            // Three items: a marker in the accent colour, then a line.
+            let step = r.height() / 3.0;
+            for index in 0..3u8 {
+                let y = r.top() + step * (f32::from(index) + 0.5);
+                if icon == Icon::Bullets {
+                    painter.circle_filled(pos2(r.left() + r.width() * 0.1, y), thin * 1.6, accent);
+                } else {
+                    painter.text(
+                        pos2(r.left() + r.width() * 0.12, y),
+                        egui::Align2::CENTER_CENTER,
+                        (index + 1).to_string(),
+                        egui::FontId::proportional(step * 1.05),
+                        accent,
+                    );
+                }
+                painter.line_segment(
+                    [pos2(r.left() + r.width() * 0.32, y), pos2(r.right(), y)],
+                    stroke(color, thin * 1.4),
+                );
+            }
+        }
         Icon::AlignCenter => lines(
             painter,
             r,
