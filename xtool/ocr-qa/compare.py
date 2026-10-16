@@ -11,7 +11,11 @@ each part with the CLI's `to-pdf`, and sets it beside the scan's page:
 - `ink_iou`: how far the ink lies where the scan's does, on a 40x56 grid of
   the page (1 = same cells inked); fonts differ, so this measures where the
   blocks are, not the letters;
-- `ink_ratio`: the part's inked cells over the scan's (text lost or spread).
+- `ink_ratio`: the part's inked cells over the scan's (text lost or spread);
+- `text_share`: of what the model read on the page, the share that is text
+  of the document rather than a picture's description - a page kept as a
+  picture of the scan matches the scan's ink and keeps none of its text, so
+  ink alone would reward it.
 
 Writes `page-NNN.png` (scan | ours), `summary.json`, `results.csv` and
 `index.html` with the pages worst first. Needs pypdfium2, numpy and Pillow.
@@ -99,6 +103,16 @@ def split_docx(docx: Path, out: Path) -> list[Path]:
     return paths
 
 
+def text_counts(docx: Path) -> tuple[int, int]:
+    """Characters of document text, and of picture descriptions."""
+    with zipfile.ZipFile(docx) as archive:
+        xml = archive.read("word/document.xml").decode("utf-8", "replace")
+    descriptions = sum(len(html.unescape(value)) for value in re.findall(r'descr="([^"]*)"', xml))
+    text = sum(len(html.unescape(value)) for value in re.findall(r"<w:t(?:\s[^>]*)?>([^<]*)</w:t>", xml))
+    # A picture's description is written twice (docPr and pic:cNvPr).
+    return text, descriptions // 2
+
+
 def ink_grid(image: Image.Image) -> np.ndarray:
     pixels = np.asarray(image.convert("RGB")).astype(int)
     luma = 0.299 * pixels[..., 0] + 0.587 * pixels[..., 1] + 0.114 * pixels[..., 2]
@@ -156,47 +170,52 @@ def main(argv: list[str]) -> int:
         scan = render(args.source, page - 1)
         if not pdf.exists():
             rows.append({"page": page, "pages": 0, "ink_iou": 0.0, "ink_ratio": 0.0,
-                         "error": run.stderr.strip()[-300:]})
+                         "text_share": 0.0, "error": run.stderr.strip()[-300:]})
             continue
         ours_doc = pypdfium2.PdfDocument(str(pdf))
         ours = [ours_doc[i].render(scale=DPI / 72).to_pil().convert("RGB")
                 for i in range(min(len(ours_doc), 3))]
         a, b = ink_grid(scan), ink_grid(ours[0])
         union = (a | b).sum()
+        text, described = text_counts(part)
         rows.append({
             "page": page,
             "pages": len(ours_doc),
             "ink_iou": round(float((a & b).sum() / union) if union else 1.0, 3),
             "ink_ratio": round(float(b.sum() / a.sum()) if a.sum() else 0.0, 3),
+            "text_share": round(text / (text + described), 3) if text + described else 1.0,
             "error": "",
         })
         sheet([scan] + ours).save(args.out / f"page-{page:03}.png")
-    worst = sorted(rows, key=lambda row: (row["pages"] == 1, row["ink_iou"]))
+    worst = sorted(rows, key=lambda row: (row["pages"] == 1, row["text_share"] >= 0.5, row["ink_iou"]))
     summary = {
         "pages": len(rows),
         "parts": len(parts),
         "overflowing": sum(row["pages"] > 1 for row in rows),
         "failed": sum(row["pages"] == 0 for row in rows),
         "mean_ink_iou": round(float(np.mean([row["ink_iou"] for row in rows])) if rows else 0.0, 3),
+        "mean_text_share": round(float(np.mean([row["text_share"] for row in rows])) if rows else 0.0, 3),
+        "pictured": sum(row["text_share"] < 0.5 for row in rows),
+        "result_pages": sum(row["pages"] for row in rows),
         "median_ink_iou": round(float(np.median([row["ink_iou"] for row in rows])) if rows else 0.0, 3),
     }
     (args.out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     with (args.out / "results.csv").open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["page", "pages", "ink_iou", "ink_ratio", "error"])
+        writer = csv.DictWriter(handle, fieldnames=["page", "pages", "ink_iou", "ink_ratio", "text_share", "error"])
         writer.writeheader()
         writer.writerows(rows)
     items = "\n".join(
         f"<tr><td>{row['page']}</td><td>{row['pages']}</td><td>{row['ink_iou']}</td>"
-        f"<td>{row['ink_ratio']}</td><td>{html.escape(row['error'])}"
+        f"<td>{row['ink_ratio']}</td><td>{row['text_share']}</td><td>{html.escape(row['error'])}"
         f"<a href='page-{row['page']:03}.png'><img src='page-{row['page']:03}.png' height='260'></a></td></tr>"
         for row in worst)
     (args.out / "index.html").write_text(
         "<!doctype html><meta charset='utf-8'><title>OCR compare</title>"
         "<style>body{font-family:sans-serif}td{vertical-align:top;padding:4px}</style>"
         f"<h1>Scan vs recognised</h1><pre>{html.escape(json.dumps(summary, indent=2))}</pre>"
-        "<p>Worst first: pages that overflow, then by ink overlap. Each picture is the scan "
+        "<p>Worst first: pages that overflow, then pages mostly kept as pictures (text share under 0.5), then by ink overlap. Each picture is the scan "
         "and the pages our DOCX took for it.</p>"
-        f"<table><tr><th>page</th><th>pages</th><th>ink IoU</th><th>ink ratio</th><th></th></tr>{items}</table>",
+        f"<table><tr><th>page</th><th>pages</th><th>ink IoU</th><th>ink ratio</th><th>text share</th><th></th></tr>{items}</table>",
         encoding="utf-8")
     print(json.dumps(summary))
     return 0
