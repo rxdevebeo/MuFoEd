@@ -160,7 +160,17 @@ impl VisualMap {
             })
             .map(|(p, _)| p.clone()))
     }
-    /// Find the closest selectable text boundary on a page.
+    /// Find the selectable text boundary a click at this point means, as a
+    /// word processor places a caret: the nearest line vertically (distance
+    /// zero inside a line's box); on it, the stretch of text the click is in
+    /// or to the right of (the one starting nearest to its left, or the
+    /// leftmost when it is left of them all); in that stretch, the nearest
+    /// boundary.
+    ///
+    /// Nearest-point-overall sent a click below a table to its last row, kept
+    /// the down arrow inside a cell, and made the right part of an empty
+    /// cell - whose only boundary sits at its left edge - belong to the next
+    /// cell, so the bottom right cell could not be reached at all.
     pub fn hit_test(
         &self,
         revision: u64,
@@ -172,27 +182,40 @@ impl VisualMap {
         if !x.is_finite() || !y.is_finite() {
             return Err(EditError::InvalidRange);
         }
-        let closest = self
-            .spans
+        let distance = |s: &Span| {
+            if y < s.rect.y {
+                s.rect.y - y
+            } else {
+                (y - s.rect.y - s.rect.height).max(0.0)
+            }
+        };
+        let on_page = || self.spans.iter().filter(|s| s.rect.page == page);
+        let Some(nearest) = on_page().map(distance).min_by(f64::total_cmp) else {
+            return Ok(None);
+        };
+        // Lines within a hundredth of a pixel of the nearest are as near.
+        let line: Vec<&Span> = on_page().filter(|s| distance(s) - nearest < 1e-2).collect();
+        let start = |s: &&Span| {
+            s.stops
+                .iter()
+                .map(|(_, px)| *px)
+                .fold(f64::INFINITY, f64::min)
+        };
+        let chosen = line
             .iter()
-            .filter(|s| s.rect.page == page)
-            .filter_map(|s| {
-                let dy = if y < s.rect.y {
-                    s.rect.y - y
-                } else {
-                    (y - s.rect.y - s.rect.height).max(0.0)
-                };
-                s.stops
-                    .iter()
-                    .map(|(offset, px)| {
-                        let mut p = s.position.clone();
-                        p.offset = *offset;
-                        ((x - px).powi(2) + dy.powi(2), p)
-                    })
-                    .min_by(|a, b| a.0.total_cmp(&b.0))
-            })
-            .min_by(|a, b| a.0.total_cmp(&b.0));
-        Ok(closest.map(|(_, p)| p))
+            .filter(|s| start(s) <= x + 0.5)
+            .max_by(|a, b| start(a).total_cmp(&start(b)))
+            .or_else(|| line.iter().min_by(|a, b| start(a).total_cmp(&start(b))));
+        Ok(chosen.and_then(|s| {
+            s.stops
+                .iter()
+                .min_by(|a, b| (x - a.1).abs().total_cmp(&(x - b.1).abs()))
+                .map(|(offset, _)| {
+                    let mut p = s.position.clone();
+                    p.offset = *offset;
+                    p
+                })
+        }))
     }
     /// Geometry for one logical caret, including repeated header occurrences.
     pub fn caret(
@@ -527,32 +550,45 @@ fn same_placement(a: &[PlacedPage], b: &[PlacedPage]) -> bool {
         })
 }
 
-#[allow(clippy::float_cmp)]
+/// Two coordinates of one placement computed along different paths.
+///
+/// The attribution copy adds runs, so the layout sums the same line heights
+/// in a different order and a coordinate can differ in its last bit (a table
+/// of six empty rows put its rules 2.8e-14 px apart, and exact equality turned
+/// every caret off). A millionth of a pixel is far below anything that moves
+/// a glyph and far above that rounding.
+fn close(a: f64, b: f64) -> bool {
+    (a - b).abs() <= 1e-6
+}
+
 fn same_items(a: &[Item], b: &[Item]) -> bool {
+    let all = |a: &[f64], b: &[f64]| a.iter().zip(b).all(|(a, b)| close(*a, *b));
     a.len() == b.len()
         && a.iter().zip(b).all(|(a, b)| match (a, b) {
             (Item::Group(a), Item::Group(b)) => {
-                a.matrix == b.matrix
-                    && a.bounds == b.bounds
-                    && a.clip == b.clip
+                all(&a.matrix, &b.matrix)
+                    && all(&a.bounds, &b.bounds)
+                    && match (a.clip, b.clip) {
+                        (Some(a), Some(b)) => all(&a, &b),
+                        (None, None) => true,
+                        _ => false,
+                    }
                     && same_items(&a.items, &b.items)
             }
             (Item::Text(a), Item::Text(b)) => {
                 a.text == b.text
-                    && a.x == b.x
-                    && a.baseline == b.baseline
-                    && a.width == b.width
-                    && a.size_px == b.size_px
+                    && all(
+                        &[a.x, a.baseline, a.width, a.size_px],
+                        &[b.x, b.baseline, b.width, b.size_px],
+                    )
             }
-            (Item::Rect(a), Item::Rect(b)) => a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h,
+            (Item::Rect(a), Item::Rect(b)) => all(&[a.x, a.y, a.w, a.h], &[b.x, b.y, b.w, b.h]),
             (Item::Line(a), Item::Line(b)) => {
-                a.x1 == b.x1 && a.x2 == b.x2 && a.y1 == b.y1 && a.y2 == b.y2
+                all(&[a.x1, a.x2, a.y1, a.y2], &[b.x1, b.x2, b.y1, b.y2])
             }
-            (Item::Image(a), Item::Image(b)) => {
-                a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h
-            }
+            (Item::Image(a), Item::Image(b)) => all(&[a.x, a.y, a.w, a.h], &[b.x, b.y, b.w, b.h]),
             (Item::Path(a), Item::Path(b)) => {
-                a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h && a.d == b.d
+                all(&[a.x, a.y, a.w, a.h], &[b.x, b.y, b.w, b.h]) && a.d == b.d
             }
             _ => false,
         })

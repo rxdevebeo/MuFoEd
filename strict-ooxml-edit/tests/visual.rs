@@ -213,3 +213,108 @@ fn empty_paragraph_has_a_caret_without_changing_neighbor_layout() {
     };
     assert_eq!(map.caret(1, &pos).unwrap().len(), 1);
 }
+
+/// Six empty bordered rows: the attribution copy puts a zero-width space in
+/// each, and the layout then sums the row heights along another path. The
+/// rules below the rows came out 2.8e-14 px apart, exact comparison refused
+/// the map, and an editor lost its caret after inserting a table.
+#[test]
+fn empty_table_rows_keep_their_carets_despite_float_rounding() {
+    let border = r#"w:val="single" w:sz="4" w:space="0" w:color="auto""#;
+    // Word's Normal: 1.08 lines and 8 pt after, the fractions that round.
+    let empty =
+        r#"<w:p><w:pPr><w:spacing w:after="160" w:line="259" w:lineRule="auto"/></w:pPr></w:p>"#;
+    let row = format!("<w:tr><w:tc>{empty}</w:tc></w:tr>").repeat(6);
+    let body = format!(
+        "<w:p><w:r><w:t>before</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblBorders>\
+         <w:top {border}/><w:start {border}/><w:bottom {border}/><w:end {border}/>\
+         <w:insideH {border}/><w:insideV {border}/></w:tblBorders></w:tblPr>\
+         <w:tblGrid><w:gridCol w:w=\"9355\"/></w:tblGrid>{row}</w:tbl>{empty}"
+    );
+    let bytes = DocxBuilder::strict().body(&body).build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let mut d = parse_document(&package, &ParseOptions::default()).unwrap();
+    let editor = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let map = editor
+        .visual_map(0, &RenderOptions::default(), Some(&package))
+        .unwrap();
+    for row in 0..6 {
+        let pos = TextPosition {
+            paragraph: Address {
+                story: strict_ooxml_edit::Story::Body,
+                containers: vec![strict_ooxml_edit::Container::Cell {
+                    table: 1,
+                    row,
+                    cell: 0,
+                }],
+                block: 0,
+            },
+            inline: vec![],
+            content: 0,
+            offset: 0,
+        };
+        assert_eq!(map.caret(0, &pos).unwrap().len(), 1, "row {row}");
+    }
+}
+
+/// A click on an empty cell's line puts the caret in that cell - the
+/// bottom right one included, whose only caret stop is at its left edge while
+/// the paragraph below the table is nearer the click in a straight line.
+#[test]
+fn a_click_inside_any_empty_cell_lands_in_that_cell() {
+    let border = r#"w:val="single" w:sz="4" w:space="0" w:color="auto""#;
+    let empty =
+        r#"<w:p><w:pPr><w:spacing w:after="160" w:line="259" w:lineRule="auto"/></w:pPr></w:p>"#;
+    let cells = format!("<w:tc>{empty}</w:tc>").repeat(4);
+    let rows = format!("<w:tr>{cells}</w:tr>").repeat(4);
+    let body = format!(
+        "<w:p><w:r><w:t>before</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblBorders>\
+         <w:top {border}/><w:start {border}/><w:bottom {border}/><w:end {border}/>\
+         <w:insideH {border}/><w:insideV {border}/></w:tblBorders></w:tblPr>\
+         <w:tblGrid>{}</w:tblGrid>{rows}</w:tbl>{empty}",
+        "<w:gridCol w:w=\"2338\"/>".repeat(4)
+    );
+    let bytes = DocxBuilder::strict().body(&body).build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let mut d = parse_document(&package, &ParseOptions::default()).unwrap();
+    let editor = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let map = editor
+        .visual_map(0, &RenderOptions::default(), Some(&package))
+        .unwrap();
+    // A cell is 2338 twips wide: about 156 px at 96 dpi.
+    let cell_px = 2338.0 / 15.0;
+    for row in 0..4 {
+        for cell in 0..4 {
+            let pos = TextPosition {
+                paragraph: Address {
+                    story: strict_ooxml_edit::Story::Body,
+                    containers: vec![strict_ooxml_edit::Container::Cell {
+                        table: 1,
+                        row,
+                        cell,
+                    }],
+                    block: 0,
+                },
+                inline: vec![],
+                content: 0,
+                offset: 0,
+            };
+            let caret = map.caret(0, &pos).unwrap()[0];
+            // Three quarters of the way across the cell, on its line; in the
+            // last row also below the line, where the paragraph after the
+            // table is the nearest thing in a straight line.
+            let x = caret.x + cell_px * 0.75;
+            let mut ys = vec![caret.y + caret.height / 2.0];
+            if row == 3 {
+                ys.push(caret.y + caret.height + 6.0);
+            }
+            for y in ys {
+                assert_eq!(
+                    map.hit_test(0, caret.page, x, y).unwrap(),
+                    Some(pos.clone()),
+                    "row {row} cell {cell} y {y}"
+                );
+            }
+        }
+    }
+}
