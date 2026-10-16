@@ -379,6 +379,7 @@ fn paragraphs_of(
     // the line before added each column's height again - a two-page brochure
     // took eleven.
     let mut furthest: Option<f64> = None;
+    let edges = text_edges(lines);
     for (at, line) in lines.iter().enumerate() {
         // Spaces on the baseline of the line before show nothing, and as a
         // paragraph of their own each took a line's height: a letter's row of
@@ -433,6 +434,7 @@ fn paragraphs_of(
                 );
             }
             let mut fresh = new_paragraph(line, heading, origin);
+            align_paragraph(&mut fresh, line, edges);
             if let Some(furthest) = furthest {
                 set_paragraph_gap(&mut fresh, line, line.baseline - furthest, pitch / body);
             }
@@ -811,6 +813,44 @@ fn set_line_gap(paragraph: &mut Paragraph, line: &GlyphLine, pitch: f64) {
     let spacing = paragraph.props.spacing.get_or_insert_with(Spacing::default);
     spacing.line = Some(Twips(to_twips(pitch)));
     spacing.line_rule = Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact);
+}
+
+/// The left and right edges of the lines' text.
+fn text_edges(lines: &[GlyphLine]) -> Option<(f64, f64)> {
+    let inked = lines.iter().filter(|line| !line.text().trim().is_empty());
+    let left = inked.clone().map(|line| line.x).reduce(f64::min)?;
+    let right = inked.map(|line| line.x + line.width).reduce(f64::max)?;
+    (right - left > 1.0).then_some((left, right))
+}
+
+/// Aligns a paragraph whose first line stands at the right edge or in the
+/// middle of the text, rather than indenting it to where it starts: a
+/// substitute font a little wider than the source's then ran past the right
+/// margin, and a cover's right-aligned title broke word by word and its date
+/// letter by letter.
+fn align_paragraph(paragraph: &mut Paragraph, line: &GlyphLine, edges: Option<(f64, f64)>) {
+    let Some((left, right)) = edges else {
+        return;
+    };
+    if line.text().trim().is_empty() {
+        return;
+    }
+    let span = right - left;
+    let indent = line.x - left;
+    let end = line.x + line.width;
+    let alignment = if (end - right).abs() <= (span * 0.004).max(1.5) && indent > span * 0.15 {
+        Justification::End
+    } else if ((line.x + end) / 2.0 - (left + right) / 2.0).abs() <= span * 0.01 + 1.0
+        && indent > span * 0.08
+    {
+        Justification::Center
+    } else {
+        return;
+    };
+    paragraph.props.alignment = Some(alignment);
+    if let Some(indentation) = paragraph.props.indentation.as_mut() {
+        indentation.start = None;
+    }
 }
 
 /// Sets the room above a paragraph, so its first baseline lands where the PDF
