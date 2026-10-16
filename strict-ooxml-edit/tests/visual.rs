@@ -318,3 +318,65 @@ fn a_click_inside_any_empty_cell_lands_in_that_cell() {
         }
     }
 }
+
+fn tab_map(body: &str) -> (strict_ooxml_edit::VisualMap, Package) {
+    let bytes = DocxBuilder::strict().body(body).build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let mut d = parse_document(&package, &ParseOptions::default()).unwrap();
+    let editor = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let map = editor
+        .visual_map(0, &RenderOptions::default(), Some(&package))
+        .unwrap();
+    (map, package)
+}
+
+fn at(inline: Vec<usize>, content: usize, offset: usize) -> TextPosition {
+    TextPosition {
+        paragraph: Address::body(0),
+        inline,
+        content,
+        offset,
+    }
+}
+
+/// A tab that ends a paragraph has a caret after it, a default stop to the
+/// right of the text, and a click right of it lands there.
+#[test]
+fn a_trailing_tab_has_a_caret_after_it() {
+    let (map, _package) = tab_map("<w:p><w:r><w:t>a</w:t></w:r><w:r><w:tab/></w:r></w:p>");
+    let line_start = map.caret(0, &at(vec![0], 0, 0)).unwrap()[0];
+    let text_end = map.caret(0, &at(vec![0], 0, 1)).unwrap()[0];
+    let after = map.caret(0, &at(vec![1], 0, 1)).unwrap();
+    assert_eq!(after.len(), 1, "a caret after the tab");
+    // The default stop is 720 twips: 48 px from the line's left edge.
+    assert!(
+        (after[0].x - line_start.x - 48.0).abs() < 0.5,
+        "after the tab at {}, line starts at {}",
+        after[0].x,
+        line_start.x
+    );
+    assert!((after[0].y - text_end.y).abs() < 0.5, "on the same line");
+    let hit = map
+        .hit_test(0, 0, after[0].x + 200.0, after[0].y + after[0].height / 2.0)
+        .unwrap();
+    assert_eq!(hit, Some(at(vec![1], 0, 1)));
+}
+
+/// A line of tabs only: carets before, between and after them, one default
+/// stop apart.
+#[test]
+fn a_line_of_tabs_only_has_a_caret_at_every_stop() {
+    let (map, _package) = tab_map("<w:p><w:r><w:tab/><w:tab/></w:r></w:p>");
+    let x = |position: TextPosition| {
+        let rects = map.caret(0, &position).unwrap();
+        assert_eq!(rects.len(), 1, "{position:?}");
+        rects[0].x
+    };
+    let start = x(at(vec![0], 0, 0));
+    let middle = x(at(vec![0], 0, 1));
+    let between = x(at(vec![0], 1, 0));
+    let end = x(at(vec![0], 1, 1));
+    assert!((middle - between).abs() < 1e-6, "{middle} {between}");
+    assert!((middle - start - 48.0).abs() < 0.5, "{start} {middle}");
+    assert!((end - middle - 48.0).abs() < 0.5, "{middle} {end}");
+}

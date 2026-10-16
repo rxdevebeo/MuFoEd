@@ -10,6 +10,12 @@ use strict_ooxml_render_svg::{MediaSource, RenderOptions};
 use strict_ooxml_wml::model::{Block, Color, Document, DrawingKind, Graphic, Inline, RunContent};
 use unicode_segmentation::UnicodeSegmentation;
 /// A position in a modeled text node, using Unicode scalar offsets.
+///
+/// Beside a tab or a break with no text next to it - a tab that ends a
+/// paragraph, a line of tabs only - there is no text node to stand in, and
+/// the position names the tab itself: `inline` and `content` as for a text
+/// node of its run (for a tab between runs, its inline path and content 0),
+/// `offset` 0 before it and 1 after it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextPosition {
     /// Paragraph block address.
@@ -79,6 +85,8 @@ struct Node {
     text: String,
     cursor: usize,
     drawing: Option<DrawingPosition>,
+    /// A mark beside a tab or a break: 0 before it, 1 after it.
+    edge: Option<usize>,
 }
 impl VisualMap {
     /// Select across text nodes in logical story order. Reversed endpoints are
@@ -326,7 +334,8 @@ impl Editor<'_> {
             page.items.retain(|item| {
                 !matches!(item, Item::Text(t) if
                 t.run.color.as_ref().and_then(|key| nodes.get(key))
-                    .is_some_and(|n| n.drawing.is_none() && n.position.inline.is_empty()))
+                    .is_some_and(|n| n.drawing.is_none()
+                        && (n.position.inline.is_empty() || n.edge.is_some())))
             });
         }
         if !same_placement(&original, &comparable) {
@@ -421,6 +430,9 @@ fn logical_nodes(nodes: &BTreeMap<String, Node>) -> Vec<(TextPosition, Vec<usize
         .values()
         .filter(|n| n.drawing.is_none())
         .map(|n| {
+            if let Some(edge) = n.edge {
+                return (n.position.clone(), vec![edge]);
+            }
             let mut boundaries = vec![0];
             let mut offset = 0;
             for grapheme in n.text.graphemes(true) {
@@ -446,6 +458,16 @@ fn text_span(
         width: text.width,
         height: (metrics.ascender + metrics.descender) * text.size_px,
     };
+    if let Some(edge) = node.edge {
+        if text.width.abs() > 1e-7 {
+            return Err(VisualError::Attribution);
+        }
+        return Ok(Span {
+            position: node.position.clone(),
+            rect,
+            stops: vec![(edge, text.x)],
+        });
+    }
     if node.position.inline.is_empty() {
         if text.width.abs() > 1e-7 {
             return Err(VisualError::Attribution);
@@ -707,6 +729,7 @@ fn stamp_empty(
             text: String::new(),
             cursor: 0,
             drawing: None,
+            edge: None,
         },
     );
     Ok(())
@@ -727,6 +750,31 @@ fn next_color(
     }
     Err(VisualError::Edit(EditError::LimitExceeded))
 }
+/// Whether a run content takes one caret position without being text.
+fn is_atom(content: &RunContent) -> bool {
+    matches!(
+        content,
+        RunContent::Tab
+            | RunContent::Ptab { .. }
+            | RunContent::Break(_)
+            | RunContent::ClearingBreak(_)
+            | RunContent::CarriageReturn
+            | RunContent::NoBreakHyphen
+    )
+}
+
+/// A tab or a break of the attribution copy, waiting to learn whether text
+/// stands beside it.
+struct Atom {
+    /// Index in the copy's inline list.
+    at: usize,
+    position: TextPosition,
+    props: strict_ooxml_wml::model::props::RunProperties,
+    /// Keys reserved for the marks before and after it, in reading order.
+    keys: [String; 2],
+}
+
+#[allow(clippy::too_many_lines)]
 fn stamp_inlines(
     inlines: &mut Vec<Inline>,
     address: &Address,
@@ -735,6 +783,9 @@ fn stamp_inlines(
     nodes: &mut BTreeMap<String, Node>,
 ) -> Result<(), VisualError> {
     let original = std::mem::take(inlines);
+    let mut texts = HashSet::new();
+    let mut atoms: Vec<Atom> = Vec::new();
+    let mut props = strict_ooxml_wml::model::props::RunProperties::default();
     for (index, mut inline) in original.into_iter().enumerate() {
         let mut path = parents.to_vec();
         path.push(index);
@@ -748,6 +799,7 @@ fn stamp_inlines(
                     inlines.push(inline);
                     continue;
                 }
+                props.clone_from(&r.props);
                 for (content, c) in r.content.iter().enumerate() {
                     let mut run = r.clone();
                     run.content = vec![c.clone()];
@@ -767,8 +819,22 @@ fn stamp_inlines(
                                 text: t.text.clone(),
                                 cursor: 0,
                                 drawing: None,
+                                edge: None,
                             },
                         );
+                        texts.insert(inlines.len());
+                    } else if is_atom(c) {
+                        atoms.push(Atom {
+                            at: inlines.len(),
+                            position: TextPosition {
+                                paragraph: address.clone(),
+                                inline: path.clone(),
+                                content,
+                                offset: 0,
+                            },
+                            props: r.props.clone(),
+                            keys: [next_color(used, nodes)?, next_color(used, nodes)?],
+                        });
                     }
                     if let Some(RunContent::Drawing(d)) = run.content.first_mut() {
                         stamp_drawing(d, address, &path, Some(content), used, nodes)?;
@@ -784,6 +850,17 @@ fn stamp_inlines(
             Inline::SdtInline(v) => stamp_inlines(&mut v.inlines, address, &path, used, nodes)?,
             Inline::Directional(v) => stamp_inlines(&mut v.inlines, address, &path, used, nodes)?,
             Inline::Drawing(d) => stamp_drawing(d, address, &path, None, used, nodes)?,
+            Inline::Tab | Inline::Break(_) => atoms.push(Atom {
+                at: inlines.len(),
+                position: TextPosition {
+                    paragraph: address.clone(),
+                    inline: path.clone(),
+                    content: 0,
+                    offset: 0,
+                },
+                props: props.clone(),
+                keys: [next_color(used, nodes)?, next_color(used, nodes)?],
+            }),
             _ => {}
         }
         // Drawings embedded in runs are traversed separately, preserving their index.
@@ -796,8 +873,61 @@ fn stamp_inlines(
         }
         inlines.push(inline);
     }
+    // A tab or a break with no text on a side gets a zero-width mark there,
+    // in the font of the run it belongs to so the line keeps its height;
+    // text beside it already places the caret. The keys were reserved when
+    // the tab was met, so the marks sort in reading order; the inserts go
+    // from the end, so the indices before them hold.
+    for atom in atoms.into_iter().rev() {
+        let Atom {
+            at,
+            position,
+            props,
+            keys: [before, after],
+        } = atom;
+        if !texts.contains(&(at + 1)) {
+            inlines.insert(at + 1, edge_mark(&props, &after));
+            nodes.insert(after, edge_node(&position, 1));
+        }
+        if at == 0 || !texts.contains(&(at - 1)) {
+            inlines.insert(at, edge_mark(&props, &before));
+            nodes.insert(before, edge_node(&position, 0));
+        }
+    }
     Ok(())
 }
+
+/// A zero-width run marking one side of a tab or a break with `key`.
+fn edge_mark(props: &strict_ooxml_wml::model::props::RunProperties, key: &str) -> Inline {
+    use strict_ooxml_wml::model::{Run, Space, TextNode};
+    let mut props = props.clone();
+    props.color = Some(Color::new(hex_digits(key).to_owned()));
+    props.color_theme = None;
+    Inline::Run(Run {
+        props,
+        content: vec![RunContent::Text(TextNode {
+            text: "\u{200b}".into(),
+            space: Space::Preserve,
+        })],
+        revision: None,
+        location: strict_ooxml_core::error::SourceLocation::unknown(),
+    })
+}
+
+/// The node of a mark: the tab's own position, 0 before it, 1 after it.
+fn edge_node(position: &TextPosition, edge: usize) -> Node {
+    Node {
+        position: TextPosition {
+            offset: edge,
+            ..position.clone()
+        },
+        text: String::new(),
+        cursor: 0,
+        drawing: None,
+        edge: Some(edge),
+    }
+}
+
 fn stamp_drawing(
     d: &mut strict_ooxml_wml::model::Drawing,
     address: &Address,
@@ -887,6 +1017,7 @@ fn stamp_drawing(
                 inline: inline.to_vec(),
                 content,
             }),
+            edge: None,
         },
     );
     walk(graphic, address, inline, content, &[], used, nodes)
