@@ -85,7 +85,7 @@ fn a_figure_in_the_middle_of_a_page_stands_where_the_page_put_it() {
         })
         .flat_map(|run| run.content.iter())
         .filter_map(|content| match content {
-            RunContent::Text(node) => Some(node.text.to_string()),
+            RunContent::Text(node) => Some(node.text.clone()),
             _ => None,
         })
         .collect();
