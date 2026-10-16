@@ -263,6 +263,10 @@ pub(crate) struct App {
     exit_confirmed: bool,
     /// Files named on the command line, opened on the first frame.
     startup: Vec<PathBuf>,
+    /// `MUFOED_SHOT`: the window saved as a picture, then closed.
+    shot: Option<crate::shot::Shot>,
+    /// `MUFOED_DIALOG`: a dialog opened once the files are.
+    startup_dialog: Option<String>,
     applied_dark: Option<bool>,
     /// Document faces for the navigation pane.
     doc_fonts: std::cell::RefCell<crate::docfonts::DocumentFonts>,
@@ -328,6 +332,8 @@ impl App {
             next_id: 1,
             exit_confirmed: false,
             startup: files,
+            shot: crate::shot::Shot::from_env(),
+            startup_dialog: crate::shot::dialog(),
             applied_dark: None,
             doc_fonts: std::cell::RefCell::new(crate::docfonts::DocumentFonts::new(
                 interface_fonts,
@@ -1279,6 +1285,41 @@ impl App {
     }
 }
 
+impl App {
+    /// A dialog by the name `MUFOED_DIALOG` gives, to look at.
+    fn open_named_dialog(&mut self, name: &str, actions: &mut Vec<Action>) {
+        self.dialog = match name {
+            "table" => Some(Dialog::Table {
+                rows: 3,
+                columns: 4,
+            }),
+            "columns" => Some(Dialog::Columns {
+                count: 2,
+                space_cm: 1.25,
+                separator: false,
+            }),
+            "page-start" => Some(Dialog::PageStart {
+                start: 1,
+                restart: false,
+            }),
+            "bookmarks" => Some(Dialog::Bookmarks {
+                name: String::new(),
+                selected: None,
+            }),
+            "symbols" => Some(Dialog::Symbols),
+            "words" => Some(Dialog::WordCount),
+            "settings" => Some(Dialog::Settings),
+            "about" => Some(Dialog::About),
+            "exit" => Some(Dialog::ConfirmExit),
+            "print" => {
+                actions.push(Action::PrintDialog);
+                None
+            }
+            _ => None,
+        };
+    }
+}
+
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -1295,10 +1336,17 @@ impl eframe::App for App {
         for path in std::mem::take(&mut self.startup) {
             self.open_path(&ctx, path, now);
         }
+        if let Some(shot) = self.shot.as_mut() {
+            shot.frame(&ctx);
+        }
+        let startup_dialog = self.startup_dialog.take();
         self.poll_tabs(&ctx, now);
         self.handle_drops(&ctx, now);
         self.handle_close_request(&ctx);
         let mut actions = Vec::new();
+        if let Some(name) = startup_dialog {
+            self.open_named_dialog(&name, &mut actions);
+        }
         self.keyboard(&ctx, &mut actions);
         let palette = self.palette();
 
@@ -2488,15 +2536,14 @@ impl App {
         let mut keep = true;
         let mut next: Option<Dialog> = None;
         let t = |key: &'static str| self.i18n.t(key).to_owned();
-        let modal = |id: &str| egui::Modal::new(egui::Id::new(id.to_owned()));
+        let modal = |id: &str| crate::dialog::modal(ctx, id);
         match dialog {
             Dialog::Table {
                 mut rows,
                 mut columns,
             } => {
                 let response = modal("table").show(ctx, |ui| {
-                    ui.heading(t("table.title"));
-                    ui.add_space(6.0);
+                    crate::dialog::title(ui, &t("table.title"));
                     // A grid to pick the size from, as in Word.
                     let cell = 18.0;
                     let (rect, response) =
@@ -2551,11 +2598,11 @@ impl App {
                                 .prefix(format!("{} ", t("table.columns"))),
                         );
                     });
-                    ui.horizontal(|ui| {
-                        if ui.button(t("button.insert")).clicked() {
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary(ui, &t("button.insert")).clicked() {
                             chosen = true;
                         }
-                        if ui.button(t("button.cancel")).clicked() {
+                        if crate::dialog::button(ui, &t("button.cancel")).clicked() {
                             ui.close();
                         }
                     });
@@ -2581,35 +2628,30 @@ impl App {
                 let mut apply = false;
                 let response = modal("columns").show(ctx, |ui| {
                     ui.set_min_width(300.0);
-                    ui.heading(t("columns.title"));
-                    ui.add_space(10.0);
-                    egui::Grid::new("columns-grid")
-                        .num_columns(2)
-                        .spacing(vec2(16.0, 10.0))
-                        .show(ui, |ui| {
-                            ui.label(t("columns.count"));
-                            ui.add(egui::DragValue::new(&mut count).range(1..=6));
-                            ui.end_row();
-                            ui.label(t("columns.space"));
-                            ui.add(
-                                egui::DragValue::new(&mut space_cm)
-                                    .range(0.0..=5.0)
-                                    .speed(0.05)
-                                    .fixed_decimals(2)
-                                    .suffix(format!(" {}", t("unit.cm"))),
-                            );
-                            ui.end_row();
-                            ui.label("");
-                            ui.checkbox(&mut separator, t("columns.separator"));
-                            ui.end_row();
-                        });
-                    ui.add_space(14.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(t("button.ok")).clicked() {
+                    crate::dialog::title(ui, &t("columns.title"));
+                    crate::dialog::form("columns-grid").show(ui, |ui| {
+                        ui.label(t("columns.count"));
+                        ui.add(egui::DragValue::new(&mut count).range(1..=6));
+                        ui.end_row();
+                        ui.label(t("columns.space"));
+                        ui.add(
+                            egui::DragValue::new(&mut space_cm)
+                                .range(0.0..=5.0)
+                                .speed(0.05)
+                                .fixed_decimals(2)
+                                .suffix(format!(" {}", t("unit.cm"))),
+                        );
+                        ui.end_row();
+                        ui.label("");
+                        ui.checkbox(&mut separator, t("columns.separator"));
+                        ui.end_row();
+                    });
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary(ui, &t("button.ok")).clicked() {
                             apply = true;
                             ui.close();
                         }
-                        if ui.button(t("button.cancel")).clicked() {
+                        if crate::dialog::button(ui, &t("button.cancel")).clicked() {
                             ui.close();
                         }
                     });
@@ -2645,8 +2687,7 @@ impl App {
                 let mut request = None;
                 let response = modal("bookmarks").show(ctx, |ui| {
                     ui.set_min_width(340.0);
-                    ui.heading(t("bookmark.title"));
-                    ui.add_space(8.0);
+                    crate::dialog::title(ui, &t("bookmark.title"));
                     ui.label(t("bookmark.name"));
                     let field = ui.add(
                         egui::TextEdit::singleline(&mut name)
@@ -2713,9 +2754,11 @@ impl App {
                                 Some(ReferenceCommand::DeleteBookmark(name.trim().to_owned()));
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button(t("button.close")).clicked() {
-                                ui.close();
-                            }
+                            crate::dialog::buttons(ui, |ui| {
+                                if crate::dialog::button(ui, &t("button.close")).clicked() {
+                                    ui.close();
+                                }
+                            });
                         });
                     });
                 });
@@ -2740,79 +2783,74 @@ impl App {
                     .is_some_and(|tab| tab.busy == Some(Busy::Layout));
                 let response = modal("print").show(ctx, |ui| {
                     ui.set_min_width(360.0);
-                    ui.heading(t("print.title"));
-                    ui.add_space(6.0);
-                    egui::Grid::new("print-grid")
-                        .num_columns(2)
-                        .spacing(vec2(12.0, 8.0))
-                        .show(ui, |ui| {
-                            ui.label(t("print.printer"));
-                            let selected = dialog
-                                .printers
-                                .get(dialog.printer)
-                                .cloned()
-                                .unwrap_or_default();
-                            egui::ComboBox::from_id_salt("print-printer")
-                                .width(240.0)
-                                .selected_text(selected)
-                                .show_ui(ui, |ui| {
-                                    for (index, name) in dialog.printers.iter().enumerate() {
-                                        ui.selectable_value(&mut dialog.printer, index, name);
-                                    }
-                                });
-                            ui.end_row();
-                            ui.label(t("print.copies"));
-                            ui.horizontal(|ui| {
-                                ui.add(egui::DragValue::new(&mut dialog.copies).range(1..=999));
-                                ui.checkbox(&mut dialog.collate, t("print.collate"));
+                    crate::dialog::title(ui, &t("print.title"));
+                    crate::dialog::form("print-grid").show(ui, |ui| {
+                        ui.label(t("print.printer"));
+                        let selected = dialog
+                            .printers
+                            .get(dialog.printer)
+                            .cloned()
+                            .unwrap_or_default();
+                        egui::ComboBox::from_id_salt("print-printer")
+                            .width(240.0)
+                            .selected_text(selected)
+                            .show_ui(ui, |ui| {
+                                for (index, name) in dialog.printers.iter().enumerate() {
+                                    ui.selectable_value(&mut dialog.printer, index, name);
+                                }
                             });
-                            ui.end_row();
-                            ui.label(t("print.range"));
-                            ui.vertical(|ui| {
-                                ui.radio_value(
-                                    &mut dialog.range,
-                                    PrintRange::All,
-                                    self.i18n.tf("print.all", &[("count", &pages_total)]),
-                                );
-                                ui.radio_value(
-                                    &mut dialog.range,
-                                    PrintRange::Current,
-                                    t("print.current"),
-                                );
-                                ui.horizontal(|ui| {
-                                    ui.radio_value(
-                                        &mut dialog.range,
-                                        PrintRange::Pages,
-                                        t("print.pages"),
-                                    );
-                                    let field = ui.add_enabled(
-                                        dialog.range == PrintRange::Pages,
-                                        egui::TextEdit::singleline(&mut dialog.pages)
-                                            .hint_text("1-3, 5")
-                                            .desired_width(120.0),
-                                    );
-                                    if field.gained_focus() {
-                                        dialog.range = PrintRange::Pages;
-                                    }
-                                });
-                            });
-                            ui.end_row();
+                        ui.end_row();
+                        ui.label(t("print.copies"));
+                        ui.horizontal(|ui| {
+                            ui.add(egui::DragValue::new(&mut dialog.copies).range(1..=999));
+                            ui.checkbox(&mut dialog.collate, t("print.collate"));
                         });
+                        ui.end_row();
+                        crate::dialog::label_top(ui, &t("print.range"));
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing.y = 4.0;
+                            ui.radio_value(
+                                &mut dialog.range,
+                                PrintRange::All,
+                                self.i18n.tf("print.all", &[("count", &pages_total)]),
+                            );
+                            ui.radio_value(
+                                &mut dialog.range,
+                                PrintRange::Current,
+                                t("print.current"),
+                            );
+                            ui.horizontal(|ui| {
+                                ui.radio_value(
+                                    &mut dialog.range,
+                                    PrintRange::Pages,
+                                    t("print.pages"),
+                                );
+                                let field = ui.add_enabled(
+                                    dialog.range == PrintRange::Pages,
+                                    egui::TextEdit::singleline(&mut dialog.pages)
+                                        .hint_text("1-3, 5")
+                                        .desired_width(120.0),
+                                );
+                                if field.gained_focus() {
+                                    dialog.range = PrintRange::Pages;
+                                }
+                            });
+                        });
+                        ui.end_row();
+                    });
                     if laying_out {
                         ui.label(RichText::new(t("print.wait_layout")).weak());
                     }
                     if let Some(error) = &dialog.error {
                         ui.colored_label(Color32::from_rgb(200, 50, 50), error);
                     }
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(!laying_out, egui::Button::new(t("print.print")))
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary_enabled(ui, !laying_out, &t("print.print"))
                             .clicked()
                         {
                             go = true;
                         }
-                        if ui.button(t("button.cancel")).clicked() {
+                        if crate::dialog::button(ui, &t("button.cancel")).clicked() {
                             ui.close();
                         }
                     });
@@ -2859,20 +2897,18 @@ impl App {
             } => {
                 let mut apply = false;
                 let response = modal("page-start").show(ctx, |ui| {
-                    ui.heading(t("page_number.format_title"));
-                    ui.add_space(6.0);
+                    crate::dialog::title(ui, &t("page_number.format_title"));
                     ui.radio_value(&mut restart, false, t("page_number.continue"));
                     ui.horizontal(|ui| {
                         ui.radio_value(&mut restart, true, t("page_number.start_at"));
                         ui.add_enabled(restart, egui::DragValue::new(&mut start).range(0..=9999));
                     });
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(t("button.ok")).clicked() {
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary(ui, &t("button.ok")).clicked() {
                             apply = true;
                             ui.close();
                         }
-                        if ui.button(t("button.cancel")).clicked() {
+                        if crate::dialog::button(ui, &t("button.cancel")).clicked() {
                             ui.close();
                         }
                     });
@@ -2891,8 +2927,7 @@ impl App {
             Dialog::Adjust(mut dialog) => {
                 let mut apply = false;
                 let response = modal("adjust").show(ctx, |ui| {
-                    ui.heading(t("adjust.title"));
-                    ui.add_space(6.0);
+                    crate::dialog::title(ui, &t("adjust.title"));
                     let stale = dialog.texture.as_ref().is_none_or(|(_, b, c)| {
                         (*b - dialog.brightness).abs() > f32::EPSILON
                             || (*c - dialog.contrast).abs() > f32::EPSILON
@@ -2941,17 +2976,16 @@ impl App {
                             );
                             ui.end_row();
                         });
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(t("button.reset")).clicked() {
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary(ui, &t("button.reset")).clicked() {
                             dialog.brightness = 0.0;
                             dialog.contrast = 0.0;
                         }
-                        if ui.button(t("button.ok")).clicked() {
+                        if crate::dialog::primary(ui, &t("button.ok")).clicked() {
                             apply = true;
                             ui.close();
                         }
-                        if ui.button(t("button.cancel")).clicked() {
+                        if crate::dialog::button(ui, &t("button.cancel")).clicked() {
                             ui.close();
                         }
                     });
@@ -2972,7 +3006,7 @@ impl App {
             }
             Dialog::Symbols => {
                 let response = modal("symbols").show(ctx, |ui| {
-                    ui.heading(t("symbols.title"));
+                    crate::dialog::title(ui, &t("symbols.title"));
                     let mut picked = None;
                     egui::Grid::new("symbols-grid")
                         .spacing(vec2(2.0, 2.0))
@@ -2994,9 +3028,11 @@ impl App {
                                 }
                             }
                         });
-                    if ui.button(t("button.close")).clicked() {
-                        ui.close();
-                    }
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::button(ui, &t("button.close")).clicked() {
+                            ui.close();
+                        }
+                    });
                     picked
                 });
                 if let Some(symbol) = response.inner {
@@ -3012,24 +3048,23 @@ impl App {
                     (tab.pages.len(), tab.state.words, tab.state.characters)
                 });
                 let response = modal("words").show(ctx, |ui| {
-                    ui.heading(t("words.title"));
-                    egui::Grid::new("words-grid")
-                        .num_columns(2)
-                        .spacing(vec2(24.0, 6.0))
-                        .show(ui, |ui| {
-                            ui.label(t("info.pages"));
-                            ui.label(pages.to_string());
-                            ui.end_row();
-                            ui.label(t("info.words"));
-                            ui.label(words.to_string());
-                            ui.end_row();
-                            ui.label(t("info.characters"));
-                            ui.label(characters.to_string());
-                            ui.end_row();
-                        });
-                    if ui.button(t("button.close")).clicked() {
-                        ui.close();
-                    }
+                    crate::dialog::title(ui, &t("words.title"));
+                    crate::dialog::form("words-grid").show(ui, |ui| {
+                        ui.label(t("info.pages"));
+                        ui.label(pages.to_string());
+                        ui.end_row();
+                        ui.label(t("info.words"));
+                        ui.label(words.to_string());
+                        ui.end_row();
+                        ui.label(t("info.characters"));
+                        ui.label(characters.to_string());
+                        ui.end_row();
+                    });
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::button(ui, &t("button.close")).clicked() {
+                            ui.close();
+                        }
+                    });
                 });
                 keep = !response.should_close();
                 if keep {
@@ -3040,51 +3075,47 @@ impl App {
                 let mut language = None;
                 let response = modal("settings").show(ctx, |ui| {
                     ui.set_width(420.0);
-                    ui.heading(t("settings.title"));
-                    ui.add_space(6.0);
-                    egui::Grid::new("settings-grid")
-                        .num_columns(2)
-                        .spacing(vec2(12.0, 8.0))
-                        .show(ui, |ui| {
-                            ui.label(t("settings.language"));
-                            let current = self.i18n.language().to_owned();
-                            egui::ComboBox::from_id_salt("settings-language")
-                                .selected_text(
-                                    self.i18n
-                                        .languages()
-                                        .find(|(code, _)| *code == current)
-                                        .map_or(current.clone(), |(_, name)| name.to_owned()),
-                                )
-                                .show_ui(ui, |ui| {
-                                    for (code, name) in self.i18n.languages() {
-                                        if ui.selectable_label(code == current, name).clicked() {
-                                            language = Some(code.to_owned());
-                                        }
+                    crate::dialog::title(ui, &t("settings.title"));
+                    crate::dialog::form("settings-grid").show(ui, |ui| {
+                        ui.label(t("settings.language"));
+                        let current = self.i18n.language().to_owned();
+                        egui::ComboBox::from_id_salt("settings-language")
+                            .selected_text(
+                                self.i18n
+                                    .languages()
+                                    .find(|(code, _)| *code == current)
+                                    .map_or(current.clone(), |(_, name)| name.to_owned()),
+                            )
+                            .show_ui(ui, |ui| {
+                                for (code, name) in self.i18n.languages() {
+                                    if ui.selectable_label(code == current, name).clicked() {
+                                        language = Some(code.to_owned());
                                     }
-                                });
-                            ui.end_row();
-                            ui.label(t("settings.theme"));
-                            ui.checkbox(&mut self.settings.dark, t("settings.dark"));
-                            ui.end_row();
-                            ui.label(t("settings.fonts"));
-                            ui.checkbox(&mut self.settings.system_fonts, t("cmd.system_fonts"));
-                            ui.end_row();
-                            ui.label(t("settings.ocr_endpoint"));
-                            ui.text_edit_singleline(&mut self.settings.ocr_endpoint);
-                            ui.end_row();
-                            ui.label(t("settings.ocr_model"));
-                            ui.text_edit_singleline(&mut self.settings.ocr_model);
-                            ui.end_row();
-                            ui.label(t("settings.author"));
-                            ui.text_edit_singleline(&mut self.settings.author);
-                            ui.end_row();
-                            ui.label(t("settings.ocr_language"));
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.settings.ocr_language)
-                                    .hint_text("ru, en, de…"),
-                            );
-                            ui.end_row();
-                        });
+                                }
+                            });
+                        ui.end_row();
+                        ui.label(t("settings.theme"));
+                        ui.checkbox(&mut self.settings.dark, t("settings.dark"));
+                        ui.end_row();
+                        ui.label(t("settings.fonts"));
+                        ui.checkbox(&mut self.settings.system_fonts, t("cmd.system_fonts"));
+                        ui.end_row();
+                        ui.label(t("settings.ocr_endpoint"));
+                        ui.text_edit_singleline(&mut self.settings.ocr_endpoint);
+                        ui.end_row();
+                        ui.label(t("settings.ocr_model"));
+                        ui.text_edit_singleline(&mut self.settings.ocr_model);
+                        ui.end_row();
+                        ui.label(t("settings.author"));
+                        ui.text_edit_singleline(&mut self.settings.author);
+                        ui.end_row();
+                        ui.label(t("settings.ocr_language"));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.settings.ocr_language)
+                                .hint_text("ru, en, de…"),
+                        );
+                        ui.end_row();
+                    });
                     ui.add_space(4.0);
                     ui.label(RichText::new(t("settings.locales_hint")).weak().size(11.5));
                     if let Some(dir) = settings::config_dir() {
@@ -3094,10 +3125,11 @@ impl App {
                                 .size(11.0),
                         );
                     }
-                    ui.add_space(6.0);
-                    if ui.button(t("button.ok")).clicked() {
-                        ui.close();
-                    }
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary(ui, &t("button.ok")).clicked() {
+                            ui.close();
+                        }
+                    });
                 });
                 if let Some(code) = language {
                     actions.push(Action::Language(code));
@@ -3115,7 +3147,7 @@ impl App {
             Dialog::About => {
                 let response = modal("about").show(ctx, |ui| {
                     ui.set_width(440.0);
-                    ui.heading("MultiFormatEditor (MuFoEd)");
+                    crate::dialog::title(ui, "MultiFormatEditor (MuFoEd)");
                     ui.label(format!(
                         "{} {}",
                         t("about.version"),
@@ -3125,10 +3157,11 @@ impl App {
                     ui.label(t("about.text"));
                     ui.add_space(6.0);
                     ui.label(RichText::new(t("about.features")).size(12.0));
-                    ui.add_space(6.0);
-                    if ui.button(t("button.close")).clicked() {
-                        ui.close();
-                    }
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::button(ui, &t("button.close")).clicked() {
+                            ui.close();
+                        }
+                    });
                 });
                 keep = !response.should_close();
                 if keep {
@@ -3139,7 +3172,7 @@ impl App {
                 let mut start = false;
                 let response = modal("import").show(ctx, |ui| {
                     ui.set_width(460.0);
-                    ui.heading(t("import.title"));
+                    crate::dialog::title(ui, &t("import.title"));
                     ui.label(t(import.kind.key()));
                     ui.label(
                         RichText::new(import.path.display().to_string())
@@ -3192,17 +3225,16 @@ impl App {
                     if !cfg!(feature = "ocr") {
                         ui.label(RichText::new(t("import.no_ocr_build")).weak());
                     }
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(t("button.convert")).clicked() {
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary(ui, &t("button.convert")).clicked() {
                             start = true;
                             ui.close();
                         }
-                        if ui.button(t("cmd.ocr_settings")).clicked() {
+                        if crate::dialog::button(ui, &t("cmd.ocr_settings")).clicked() {
                             next = Some(Dialog::Settings);
                             ui.close();
                         }
-                        if ui.button(t("button.cancel")).clicked() {
+                        if crate::dialog::button(ui, &t("button.cancel")).clicked() {
                             ui.close();
                         }
                     });
@@ -3224,17 +3256,16 @@ impl App {
                     .unwrap_or_default();
                 let mut choice = None;
                 let response = modal("confirm-close").show(ctx, |ui| {
-                    ui.heading(t("confirm.title"));
+                    crate::dialog::title(ui, &t("confirm.title"));
                     ui.label(self.i18n.tf("confirm.save_changes", &[("file", &title)]));
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(t("button.save")).clicked() {
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary(ui, &t("button.save")).clicked() {
                             choice = Some(0);
                         }
-                        if ui.button(t("button.dont_save")).clicked() {
+                        if crate::dialog::button(ui, &t("button.dont_save")).clicked() {
                             choice = Some(1);
                         }
-                        if ui.button(t("button.cancel")).clicked() {
+                        if crate::dialog::button(ui, &t("button.cancel")).clicked() {
                             choice = Some(2);
                         }
                     });
@@ -3270,17 +3301,16 @@ impl App {
                     .map(|tab| tab.title.clone())
                     .collect();
                 let response = modal("confirm-exit").show(ctx, |ui| {
-                    ui.heading(t("confirm.exit_title"));
+                    crate::dialog::title(ui, &t("confirm.exit_title"));
                     ui.label(t("confirm.exit_text"));
                     for name in &names {
                         ui.label(format!("• {name}"));
                     }
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(t("button.exit_anyway")).clicked() {
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary(ui, &t("button.exit_anyway")).clicked() {
                             choice = Some(true);
                         }
-                        if ui.button(t("button.cancel")).clicked() {
+                        if crate::dialog::button(ui, &t("button.cancel")).clicked() {
                             choice = Some(false);
                         }
                     });

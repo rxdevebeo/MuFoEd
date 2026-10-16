@@ -29,6 +29,7 @@
 
 mod app;
 mod canvas;
+mod dialog;
 mod docfonts;
 mod formats;
 mod i18n;
@@ -39,6 +40,7 @@ mod raster;
 mod ribbon;
 mod ruler;
 mod settings;
+mod shot;
 mod stack;
 mod tab;
 mod theme;
