@@ -349,6 +349,14 @@ fn paragraphs_of(
                 );
             }
             let mut fresh = new_paragraph(line, heading, origin);
+            if let Some(previous) = previous {
+                set_paragraph_gap(
+                    &mut fresh,
+                    line,
+                    line.baseline - previous.baseline,
+                    pitch / body,
+                );
+            }
             if let Some(item) = marker_item.filter(|item| item.numbered) {
                 crate::lists::mark(&mut fresh, item);
             }
@@ -719,11 +727,37 @@ fn set_line_gap(paragraph: &mut Paragraph, line: &GlyphLine, pitch: f64) {
     if !(pitch >= line.size * 0.8 && pitch <= line.size * 3.0) {
         return;
     }
-    paragraph.props.spacing = Some(Spacing {
-        line: Some(Twips(to_twips(pitch))),
-        line_rule: Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact),
-        ..Spacing::default()
-    });
+    let spacing = paragraph.props.spacing.get_or_insert_with(Spacing::default);
+    spacing.line = Some(Twips(to_twips(pitch)));
+    spacing.line_rule = Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact);
+}
+
+/// Sets the room above a paragraph, so its first baseline lands where the PDF
+/// put it: `gap` is the distance from the baseline above. The line is given
+/// its own height exactly (the page's tightest pitch for its size, `ratio`
+/// times it) and the rest of the gap goes above it. Word's space before and
+/// after, and the room an inline picture took, were lost without it, and a
+/// letter's text ran up under its letterhead and its names over its stamp.
+/// A line above this one's baseline (another column, a margin line moved)
+/// sets nothing.
+fn set_paragraph_gap(paragraph: &mut Paragraph, line: &GlyphLine, gap: f64, ratio: f64) {
+    let ratio = if ratio.is_finite() {
+        ratio.clamp(1.0, 1.6)
+    } else {
+        1.2
+    };
+    let height = line.size * ratio;
+    if !(gap.is_finite() && gap >= line.size * 0.8) || line.size <= 0.0 {
+        return;
+    }
+    let exact = gap.min(height);
+    let spacing = paragraph.props.spacing.get_or_insert_with(Spacing::default);
+    spacing.line = Some(Twips(to_twips(exact)));
+    spacing.line_rule = Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact);
+    let before = gap - exact;
+    if before > 0.5 {
+        spacing.before = Some(Twips(to_twips(before)));
+    }
 }
 
 /// Appends a line's glyphs as runs.
@@ -1495,6 +1529,28 @@ mod fragment_tests {
             width,
             glyphs: vec![glyph],
         }
+    }
+
+    #[test]
+    fn a_paragraph_keeps_the_room_above_it() {
+        use strict_ooxml_wml::model::values::{LineSpacingRule, Twips};
+        let line = run("Names", 72.0, 30.0);
+        let spacing = |gap: f64| {
+            let mut paragraph = super::new_paragraph(&line, None, 0.0);
+            super::set_paragraph_gap(&mut paragraph, &line, gap, 1.2);
+            paragraph.props.spacing
+        };
+        // 9 pt at 1.2 is a 10.8 pt line; the other 39.2 pt of a 50 pt gap
+        // (the room a row of signatures took) go above it.
+        let wide = spacing(50.0).expect("spacing");
+        assert_eq!(wide.line, Some(Twips(216)));
+        assert_eq!(wide.line_rule, Some(LineSpacingRule::Exact));
+        assert_eq!(wide.before, Some(Twips(784)));
+        // A tight gap is the line's own height, and nothing goes above.
+        let tight = spacing(10.0).expect("spacing");
+        assert_eq!((tight.line, tight.before), (Some(Twips(200)), None));
+        // A line above this one (another column) sets nothing.
+        assert!(spacing(-300.0).is_none());
     }
 
     #[test]
