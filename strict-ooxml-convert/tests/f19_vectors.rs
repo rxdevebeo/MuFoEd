@@ -79,6 +79,38 @@ fn red_box(svg: &str) -> (f64, f64, f64, f64) {
     (x, y, width, height)
 }
 
+/// The box of the red path's points: its `d` read as coordinate pairs,
+/// moved by its translation.
+fn red_outline(svg: &str) -> (f64, f64, f64, f64) {
+    let document = roxmltree::Document::parse(svg).expect("svg");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "path"
+                && node
+                    .attribute("fill")
+                    .is_some_and(|fill| fill.eq_ignore_ascii_case("#ff0000"))
+        })
+        .expect("a red path");
+    let numbers: Vec<f64> = node
+        .attribute("d")
+        .unwrap_or("")
+        .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+        .filter_map(|token| token.parse().ok())
+        .collect();
+    let (dx, dy) = translate(node.attribute("transform").unwrap_or(""));
+    let xs = numbers.iter().step_by(2);
+    let ys = numbers.iter().skip(1).step_by(2);
+    let (min_x, max_x) = xs.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
+        (lo.min(*v), hi.max(*v))
+    });
+    let (min_y, max_y) = ys.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
+        (lo.min(*v), hi.max(*v))
+    });
+    (dx + min_x, dy + min_y, max_x - min_x, max_y - min_y)
+}
+
 fn number_after(text: &str, marker: char) -> Option<f64> {
     let rest = text.split(marker).nth(1)?;
     let token = rest.split_whitespace().next()?;
@@ -147,20 +179,23 @@ fn pdf_red_box(bytes: &[u8]) -> (f64, f64, f64, f64) {
 }
 
 #[test]
-fn f19_text_and_vector_is_not_lossless_when_vector_missing() {
-    // A triangle is not a supported rectangle. Dropping it without a name
-    // would be a silent loss, including on a page that still has readable text.
+fn f19_a_triangle_survives_as_its_outline() {
+    // A triangle is no rectangle: it is kept as a custom geometry of its
+    // outline, where the page drew it, and the text is kept once.
+    // 100..160 by 100..150 pt up a 792 pt page: at 96 px per inch x = 133.333,
+    // y from the top = 856, size 80 by 66.667.
     for mode in [Mode::Visual, Mode::Semantic] {
         let (svg, report, _pdf) =
             round_trip(mode, "1 0 0 rg 100 100 m 160 100 l 130 150 l h f 0 0 0 rg");
         assert!(
-            report.contains("vector.unsupported"),
-            "{mode:?} names the triangle: {report}"
+            !report.contains("vector.unsupported"),
+            "{mode:?} keeps the triangle: {report}"
         );
-        assert!(
-            !report.contains("nothing inferred or lost"),
-            "{mode:?} must not call the page lossless: {report}"
-        );
+        let (x, y, w, h) = red_outline(&svg);
+        assert!((x - 133.333).abs() <= 0.5, "{mode:?} x {x}");
+        assert!((y - 856.0).abs() <= 0.5, "{mode:?} y {y}");
+        assert!((w - 80.0).abs() <= 0.5, "{mode:?} w {w}");
+        assert!((h - 66.667).abs() <= 0.5, "{mode:?} h {h}");
         assert_eq!(visible_text(&svg), "Here", "{mode:?} keeps the text once");
     }
 }
@@ -194,13 +229,13 @@ fn f19_supported_rectangle_survives() {
 }
 
 #[test]
-fn f19_unsupported_cubic_is_named() {
+fn f19_a_cubic_is_kept_flattened() {
     let (_svg, report, _pdf) = round_trip(
         Mode::Visual,
         "1 0 0 rg 100 100 m 120 140 140 140 160 100 c f 0 0 0 rg",
     );
     assert!(
-        report.contains("vector.unsupported"),
-        "cubic is named: {report}"
+        !report.contains("vector.unsupported"),
+        "the curve is kept: {report}"
     );
 }

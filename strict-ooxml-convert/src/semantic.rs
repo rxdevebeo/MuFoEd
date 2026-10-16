@@ -186,19 +186,6 @@ pub(crate) fn build(
             anchored = anchored_images_of(page, &lines, &mut media, report, options);
         }
         let page_start = blocks.len();
-        // Drawn shapes are anchored to the page as well, behind its text, and
-        // before its pictures (a PDF paints its backgrounds first): placed in
-        // the flow, a multi-column page's shapes went after all of its text,
-        // onto whatever page that text reached, and a dark box no longer lay
-        // under its white words.
-        let shapes = crate::vectors::placed_blocks_for(page, report)
-            .into_iter()
-            .flat_map(|(_, block)| match block {
-                Block::Paragraph(paragraph) => paragraph.inlines,
-                _ => Vec::new(),
-            });
-        anchored.splice(0..0, shapes);
-
         // A page laid out as a design (side-by-side blocks, boxes, grids)
         // keeps its text where it stood, in text boxes; as one flow its
         // blocks stacked onto page after page.
@@ -217,6 +204,7 @@ pub(crate) fn build(
                     frames.len()
                 ),
             );
+            anchored.splice(0..0, page_shapes(page, report, true));
             anchored.extend(frames);
             // Anchors take no room in the flow, so the page is a page of its
             // own: it starts one, and the page after it starts another.
@@ -243,6 +231,13 @@ pub(crate) fn build(
             options.max_table_cells,
             report,
         );
+        // Drawn shapes are anchored to the page as well, behind its text, and
+        // before its pictures (a PDF paints its backgrounds first): placed in
+        // the flow, a multi-column page's shapes went after all of its text,
+        // onto whatever page that text reached, and a dark box no longer lay
+        // under its white words. Thin rules are a table's borders where the
+        // page has tables.
+        anchored.splice(0..0, page_shapes(page, report, plan.tables.is_empty()));
         let interleave = matches!(column_plan, crate::columns::ColumnPlan::Single);
         if interleave {
             figures.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -813,6 +808,17 @@ fn set_line_gap(paragraph: &mut Paragraph, line: &GlyphLine, pitch: f64) {
     let spacing = paragraph.props.spacing.get_or_insert_with(Spacing::default);
     spacing.line = Some(Twips(to_twips(pitch)));
     spacing.line_rule = Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact);
+}
+
+/// A page's drawn shapes as anchored drawings.
+fn page_shapes(page: &PdfPage, report: &mut ConversionReport, rules: bool) -> Vec<Inline> {
+    crate::vectors::placed_blocks_for(page, report, rules)
+        .into_iter()
+        .flat_map(|(_, block)| match block {
+            Block::Paragraph(paragraph) => paragraph.inlines,
+            _ => Vec::new(),
+        })
+        .collect()
 }
 
 /// The left and right edges of the lines' text.
