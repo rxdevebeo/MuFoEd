@@ -8,6 +8,70 @@ use strict_ooxml_wml::model::{
 
 use super::address::{addresses, read_paragraph, story_blocks, visit_boxes, visit_drawings, Story};
 use super::ids::IdIndex;
+use strict_ooxml_wml::model::StyleId;
+
+/// One broken invariant, keyed so that the same defect is recognised after
+/// edits move it: by the style, bookmark, note, media part or paragraph id it
+/// concerns, or by its kind alone where it has none.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum Violation {
+    /// A broken model invariant and its key.
+    Model(Invariant, String),
+    /// A reference to a style the document does not define.
+    Style(StyleId),
+    /// Text with a character XML cannot carry.
+    Text,
+}
+
+impl Violation {
+    pub(crate) fn model(invariant: Invariant, key: &str) -> Self {
+        Self::Model(invariant, key.to_owned())
+    }
+
+    fn error(&self) -> EditError {
+        match self {
+            Self::Model(invariant, _) => EditError::InvalidModel(*invariant),
+            Self::Style(id) => EditError::UnknownStyle(id.clone()),
+            Self::Text => EditError::InvalidText,
+        }
+    }
+}
+
+/// The defects a document came with, which edits may keep but not add to.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Tolerance {
+    known: HashSet<Violation>,
+}
+
+impl Tolerance {
+    /// The defects, as the errors an edit introducing them would get.
+    pub(crate) fn errors(&self) -> Vec<EditError> {
+        let mut out: Vec<EditError> = self.known.iter().map(Violation::error).collect();
+        out.sort_by_key(|error| format!("{error:?}"));
+        out
+    }
+}
+
+/// Where a check reports what it finds: collected as the source's own
+/// defects when an editor opens a document, or refused unless the source
+/// already had it.
+pub(crate) enum Sink<'a> {
+    Collect(&'a mut Tolerance),
+    Check(&'a Tolerance),
+}
+
+impl Sink<'_> {
+    pub(crate) fn report(&mut self, violation: Violation) -> Result<(), EditError> {
+        match self {
+            Self::Collect(tolerance) => {
+                tolerance.known.insert(violation);
+                Ok(())
+            }
+            Self::Check(tolerance) if tolerance.known.contains(&violation) => Ok(()),
+            Self::Check(_) => Err(violation.error()),
+        }
+    }
+}
 
 pub(super) fn contains_boundary(b: &Block) -> bool {
     match b {
@@ -21,11 +85,15 @@ pub(super) fn contains_boundary(b: &Block) -> bool {
         _ => false,
     }
 }
-pub(crate) fn validate(document: &Document, limits: &ResourceLimits) -> Result<(), EditError> {
-    crate::validate_body(document)?;
+pub(crate) fn validate(
+    document: &Document,
+    limits: &ResourceLimits,
+    sink: &mut Sink<'_>,
+) -> Result<(), EditError> {
+    crate::validate_body(document, sink)?;
     strict_ooxml_wml::nesting::check_document(document, limits)
         .map_err(|_| EditError::LimitExceeded)?;
-    validate_global_references(document)?;
+    validate_global_references(document, sink)?;
     for story in std::iter::once(&document.body.blocks)
         .chain(document.headers_footers.iter().map(|h| &h.blocks))
         .chain(
@@ -36,9 +104,9 @@ pub(crate) fn validate(document: &Document, limits: &ResourceLimits) -> Result<(
                 .map(|n| &n.blocks),
         )
     {
-        crate::validate_blocks(story, document, &mut HashSet::new(), 0)?;
-        validate_structure(story, document)?;
-        validate_boundaries(story)?;
+        crate::validate_blocks(story, document, &mut HashSet::new(), 0, sink)?;
+        validate_structure(story, document, sink)?;
+        validate_boundaries(story, sink)?;
     }
     let mut stories = vec![Story::Body];
     stories.extend(
@@ -50,33 +118,38 @@ pub(crate) fn validate(document: &Document, limits: &ResourceLimits) -> Result<(
     stories.extend(document.footnotes.iter().map(|n| Story::Footnote(n.id)));
     stories.extend(document.endnotes.iter().map(|n| Story::Endnote(n.id)));
     for story in stories {
-        validate_story_ids(document, &story)?;
+        validate_story_ids(document, &story, sink)?;
     }
     Ok(())
 }
 /// Paragraph identities are unique within `story`, a text id needs a paragraph
 /// id, and frames are not negative.
-fn validate_story_ids(document: &Document, story: &Story) -> Result<(), EditError> {
+fn validate_story_ids(
+    document: &Document,
+    story: &Story,
+    sink: &mut Sink<'_>,
+) -> Result<(), EditError> {
     let mut ids = HashSet::new();
     let mut text_ids = HashSet::new();
     for address in addresses(document, story)? {
         let p = read_paragraph(document, &address)?;
-        if p.para_id
-            .as_ref()
-            .is_some_and(|id| !ids.insert(id.as_str().to_ascii_uppercase()))
-        {
-            return Err(EditError::InvalidModel(Invariant::DuplicateId));
+        if let Some(id) = &p.para_id {
+            let id = id.as_str().to_ascii_uppercase();
+            if !ids.insert(id.clone()) {
+                sink.report(Violation::model(Invariant::DuplicateId, &id))?;
+            }
         }
         if let Some(id) = &p.text_id {
             if p.para_id.is_none() {
-                return Err(EditError::InvalidModel(Invariant::TextIdWithoutParaId));
+                sink.report(Violation::model(Invariant::TextIdWithoutParaId, ""))?;
             }
-            if !text_ids.insert(id.as_str().to_ascii_uppercase()) {
-                return Err(EditError::InvalidModel(Invariant::DuplicateId));
+            let id = id.as_str().to_ascii_uppercase();
+            if !text_ids.insert(id.clone()) {
+                sink.report(Violation::model(Invariant::DuplicateId, &id))?;
             }
         }
         if negative_frame(p) {
-            return Err(EditError::InvalidModel(Invariant::Frame));
+            sink.report(Violation::model(Invariant::Frame, ""))?;
         }
     }
     Ok(())
@@ -97,6 +170,7 @@ fn negative_frame(p: &Paragraph) -> bool {
 /// section structure and the header and footer references with it, so that
 /// patch gets the full [`validate`]. Styles, numbering and the rest of the
 /// global references are not edited by any command.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn validate_patch(
     document: &Document,
     limits: &ResourceLimits,
@@ -104,23 +178,24 @@ pub(super) fn validate_patch(
     story: &Story,
     before: &[Block],
     after: &[Block],
+    sink: &mut Sink<'_>,
 ) -> Result<(), EditError> {
     if before.iter().chain(after).any(contains_boundary) {
-        return validate(document, limits);
+        return validate(document, limits, sink);
     }
     strict_ooxml_wml::nesting::check_blocks(after, limits).map_err(|_| EditError::LimitExceeded)?;
-    crate::validate_blocks(after, document, &mut HashSet::new(), 0)?;
-    validate_structure(after, document)?;
+    crate::validate_blocks(after, document, &mut HashSet::new(), 0, sink)?;
+    validate_structure(after, document, sink)?;
     let mut frames = false;
     each_paragraph(after, &mut |p| frames |= negative_frame(p));
     if frames {
-        return Err(EditError::InvalidModel(Invariant::Frame));
+        sink.report(Violation::model(Invariant::Frame, ""))?;
     }
-    if !identities_kept(ids, before, after)? {
-        validate_story_ids(document, story)?;
+    if !identities_kept(ids, before, after, sink)? {
+        validate_story_ids(document, story, sink)?;
     }
     if boundary_marks(before) != boundary_marks(after) {
-        validate_boundaries(story_blocks(document, story)?)?;
+        validate_boundaries(story_blocks(document, story)?, sink)?;
     }
     Ok(())
 }
@@ -176,7 +251,12 @@ fn identities(blocks: &[Block]) -> Vec<Identity> {
 /// is new to this range; it is unique in the story if `ids` (already updated
 /// for the patch) counts it once in the whole document. A text id needs a
 /// paragraph id, and new text ids - which no command mints - need the walk.
-fn identities_kept(ids: &IdIndex, before: &[Block], after: &[Block]) -> Result<bool, EditError> {
+fn identities_kept(
+    ids: &IdIndex,
+    before: &[Block],
+    after: &[Block],
+    sink: &mut Sink<'_>,
+) -> Result<bool, EditError> {
     let old = identities(before);
     let new = identities(after);
     if old == new {
@@ -186,7 +266,8 @@ fn identities_kept(ids: &IdIndex, before: &[Block], after: &[Block]) -> Result<b
         .iter()
         .any(|(para, text)| para.is_none() && text.is_some())
     {
-        return Err(EditError::InvalidModel(Invariant::TextIdWithoutParaId));
+        sink.report(Violation::model(Invariant::TextIdWithoutParaId, ""))?;
+        return Ok(false);
     }
     let paragraphs = grown(&old, &new, |(para, _)| para.as_deref());
     let texts = grown(&old, &new, |(_, text)| text.as_deref());
@@ -274,30 +355,34 @@ fn boundary_marks(blocks: &[Block]) -> Vec<Mark> {
     walk(blocks, &mut out);
     out
 }
-fn validate_global_references(document: &Document) -> Result<(), EditError> {
+fn validate_global_references(document: &Document, sink: &mut Sink<'_>) -> Result<(), EditError> {
     for style in document.styles.iter() {
         let mut ancestors = vec![];
         let mut parent = style.based_on.as_ref();
+        let mut broken = false;
         while let Some(id) = parent {
             if id == &style.id || ancestors.contains(id) || ancestors.len() >= 64 {
-                return Err(EditError::InvalidModel(Invariant::StyleChain));
+                sink.report(Violation::model(Invariant::StyleChain, style.id.as_str()))?;
+                broken = true;
+                break;
             }
-            let definition = document
-                .styles
-                .get(id)
-                .ok_or_else(|| EditError::UnknownStyle(id.clone()))?;
+            let Some(definition) = document.styles.get(id) else {
+                sink.report(Violation::Style(id.clone()))?;
+                broken = true;
+                break;
+            };
             ancestors.push(id.clone());
             parent = definition.based_on.as_ref();
         }
-        if ancestors != style.based_on_chain {
-            return Err(EditError::InvalidModel(Invariant::StyleChain));
+        if !broken && ancestors != style.based_on_chain {
+            sink.report(Violation::model(Invariant::StyleChain, style.id.as_str()))?;
         }
-        if let Some(id) = [&style.next, &style.link]
+        for id in [&style.next, &style.link]
             .into_iter()
             .flatten()
-            .find(|id| document.styles.get(id).is_none())
+            .filter(|id| document.styles.get(id).is_none())
         {
-            return Err(EditError::UnknownStyle(id.clone()));
+            sink.report(Violation::Style(id.clone()))?;
         }
     }
     for number in document.numbering.nums() {
@@ -307,7 +392,10 @@ fn validate_global_references(document: &Document) -> Result<(), EditError> {
             .is_none()
             || number.overrides.iter().any(|v| !v.ilvl.is_valid())
         {
-            return Err(EditError::InvalidModel(Invariant::Numbering));
+            sink.report(Violation::model(
+                Invariant::Numbering,
+                &number.num_id.0.to_string(),
+            ))?;
         }
     }
     for section in &document.sections {
@@ -322,14 +410,19 @@ fn validate_global_references(document: &Document) -> Result<(), EditError> {
                     .and_then(|part| document.header_footer(part))
                     .is_none_or(|part| part.is_header != header)
                 {
-                    return Err(EditError::InvalidModel(Invariant::HeaderFooterReference));
+                    sink.report(Violation::model(Invariant::HeaderFooterReference, ""))?;
                 }
             }
         }
     }
     Ok(())
 }
-fn validate_structure(blocks: &[Block], document: &Document) -> Result<(), EditError> {
+#[allow(clippy::too_many_lines)]
+fn validate_structure(
+    blocks: &[Block],
+    document: &Document,
+    sink: &mut Sink<'_>,
+) -> Result<(), EditError> {
     for b in blocks {
         match b {
             Block::Paragraph(p) => {
@@ -338,27 +431,28 @@ fn validate_structure(blocks: &[Block], document: &Document) -> Result<(), EditE
                         s.style_type == strict_ooxml_wml::model::StyleType::Paragraph
                     })
                 }) {
-                    return Err(EditError::UnknownStyle(id.clone()));
+                    sink.report(Violation::Style(id.clone()))?;
                 }
-                validate_inlines(&p.inlines, document)?;
+                validate_inlines(&p.inlines, document, sink)?;
                 if let Some(n) = p.props.numbering {
                     if n.ilvl.is_some_and(|v| !v.is_valid())
                         || n.num_id
                             .is_some_and(|id| id.0 != 0 && document.numbering.num(id).is_none())
                     {
-                        return Err(EditError::InvalidModel(Invariant::Numbering));
+                        let key = n.num_id.map_or_else(String::new, |id| id.0.to_string());
+                        sink.report(Violation::model(Invariant::Numbering, &key))?;
                     }
                 }
             }
             Block::Table(t) => {
                 if t.rows.is_empty() {
-                    return Err(EditError::InvalidModel(Invariant::TableTopology));
+                    sink.report(Violation::model(Invariant::TableTopology, ""))?;
                 }
                 if t.grid
                     .iter()
                     .any(|g| g.width.is_some_and(|v| v.value() <= 0))
                 {
-                    return Err(EditError::InvalidModel(Invariant::Grid));
+                    sink.report(Violation::model(Invariant::Grid, ""))?;
                 }
                 if let Some(id) = t.props.style.as_ref().filter(|id| {
                     !document
@@ -366,26 +460,25 @@ fn validate_structure(blocks: &[Block], document: &Document) -> Result<(), EditE
                         .get(id)
                         .is_some_and(|s| s.style_type == strict_ooxml_wml::model::StyleType::Table)
                 }) {
-                    return Err(EditError::UnknownStyle(id.clone()));
+                    sink.report(Violation::Style(id.clone()))?;
                 }
                 let mut previous = std::collections::BTreeSet::new();
                 for r in &t.rows {
                     if r.cells.is_empty() {
-                        return Err(EditError::InvalidModel(Invariant::TableTopology));
+                        sink.report(Violation::model(Invariant::TableTopology, ""))?;
                     }
-                    let mut column = usize::try_from(r.props.grid_before.unwrap_or(0))
-                        .map_err(|_| EditError::InvalidModel(Invariant::TableTopology))?;
+                    let mut column = usize::try_from(r.props.grid_before.unwrap_or(0)).unwrap_or(0);
                     let mut next = std::collections::BTreeSet::new();
                     for c in &r.cells {
                         let span = usize::from(c.props.grid_span.unwrap_or(1));
                         if span == 0 || !matches!(c.blocks.last(), Some(Block::Paragraph(_))) {
-                            return Err(EditError::InvalidModel(Invariant::TableTopology));
+                            sink.report(Violation::model(Invariant::TableTopology, ""))?;
                         }
                         let region = (column, span);
                         match c.props.vertical_merge {
                             Some(strict_ooxml_wml::model::VerticalMerge::Continue) => {
                                 if !previous.contains(&region) {
-                                    return Err(EditError::InvalidModel(Invariant::TableTopology));
+                                    sink.report(Violation::model(Invariant::TableTopology, ""))?;
                                 }
                                 next.insert(region);
                             }
@@ -395,24 +488,27 @@ fn validate_structure(blocks: &[Block], document: &Document) -> Result<(), EditE
                             None => {}
                         }
                         column += span;
-                        validate_structure(&c.blocks, document)?;
+                        validate_structure(&c.blocks, document, sink)?;
                     }
-                    let end = column
-                        + usize::try_from(r.props.grid_after.unwrap_or(0))
-                            .map_err(|_| EditError::InvalidModel(Invariant::TableTopology))?;
+                    let end =
+                        column + usize::try_from(r.props.grid_after.unwrap_or(0)).unwrap_or(0);
                     if !t.grid.is_empty() && end > t.grid.len() {
-                        return Err(EditError::InvalidModel(Invariant::TableTopology));
+                        sink.report(Violation::model(Invariant::TableTopology, ""))?;
                     }
                     previous = next;
                 }
             }
-            Block::SdtBlock(s) => validate_structure(&s.blocks, document)?,
+            Block::SdtBlock(s) => validate_structure(&s.blocks, document, sink)?,
             _ => {}
         }
     }
     Ok(())
 }
-fn validate_inlines(inlines: &[Inline], document: &Document) -> Result<(), EditError> {
+fn validate_inlines(
+    inlines: &[Inline],
+    document: &Document,
+    sink: &mut Sink<'_>,
+) -> Result<(), EditError> {
     for i in inlines {
         match i {
             Inline::Run(r) => {
@@ -421,17 +517,17 @@ fn validate_inlines(inlines: &[Inline], document: &Document) -> Result<(), EditE
                         s.style_type == strict_ooxml_wml::model::StyleType::Character
                     })
                 }) {
-                    return Err(EditError::UnknownStyle(id.clone()));
+                    sink.report(Violation::Style(id.clone()))?;
                 }
                 for c in &r.content {
                     match c {
-                        RunContent::Drawing(d) => validate_drawing(d, document)?,
+                        RunContent::Drawing(d) => validate_drawing(d, document, sink)?,
                         RunContent::Text(t) => {
                             if t.text
                                 .chars()
                                 .any(|v| !strict_ooxml_core::xml::escape::is_xml_char(v))
                             {
-                                return Err(EditError::InvalidText);
+                                sink.report(Violation::Text)?;
                             }
                         }
                         RunContent::FootnoteRef(id) => {
@@ -440,7 +536,10 @@ fn validate_inlines(inlines: &[Inline], document: &Document) -> Result<(), EditE
                                 .and_then(|id| document.footnotes.get(id))
                                 .is_none()
                             {
-                                return Err(EditError::InvalidModel(Invariant::NoteReference));
+                                sink.report(Violation::model(
+                                    Invariant::NoteReference,
+                                    &format!("{}{id}", "f"),
+                                ))?;
                             }
                         }
                         RunContent::EndnoteRef(id) => {
@@ -449,25 +548,31 @@ fn validate_inlines(inlines: &[Inline], document: &Document) -> Result<(), EditE
                                 .and_then(|id| document.endnotes.get(id))
                                 .is_none()
                             {
-                                return Err(EditError::InvalidModel(Invariant::NoteReference));
+                                sink.report(Violation::model(
+                                    Invariant::NoteReference,
+                                    &format!("{}{id}", "e"),
+                                ))?;
                             }
                         }
                         _ => {}
                     }
                 }
             }
-            Inline::Hyperlink(v) => validate_inlines(&v.inlines, document)?,
-            Inline::Field(v) => validate_inlines(&v.inlines, document)?,
-            Inline::SdtInline(v) => validate_inlines(&v.inlines, document)?,
-            Inline::Directional(v) => validate_inlines(&v.inlines, document)?,
-            Inline::Drawing(d) => validate_drawing(d, document)?,
+            Inline::Hyperlink(v) => validate_inlines(&v.inlines, document, sink)?,
+            Inline::Field(v) => validate_inlines(&v.inlines, document, sink)?,
+            Inline::SdtInline(v) => validate_inlines(&v.inlines, document, sink)?,
+            Inline::Directional(v) => validate_inlines(&v.inlines, document, sink)?,
+            Inline::Drawing(d) => validate_drawing(d, document, sink)?,
             Inline::FootnoteRef(id) => {
                 if i32::try_from(*id)
                     .ok()
                     .and_then(|id| document.footnotes.get(id))
                     .is_none()
                 {
-                    return Err(EditError::InvalidModel(Invariant::NoteReference));
+                    sink.report(Violation::model(
+                        Invariant::NoteReference,
+                        &format!("{}{id}", "f"),
+                    ))?;
                 }
             }
             Inline::EndnoteRef(id) => {
@@ -476,7 +581,10 @@ fn validate_inlines(inlines: &[Inline], document: &Document) -> Result<(), EditE
                     .and_then(|id| document.endnotes.get(id))
                     .is_none()
                 {
-                    return Err(EditError::InvalidModel(Invariant::NoteReference));
+                    sink.report(Violation::model(
+                        Invariant::NoteReference,
+                        &format!("{}{id}", "e"),
+                    ))?;
                 }
             }
             _ => {}
@@ -484,27 +592,32 @@ fn validate_inlines(inlines: &[Inline], document: &Document) -> Result<(), EditE
     }
     Ok(())
 }
-fn validate_drawing(drawing: &Drawing, document: &Document) -> Result<(), EditError> {
-    fn graphic(value: &Graphic, document: &Document) -> Result<(), EditError> {
+fn validate_drawing(
+    drawing: &Drawing,
+    document: &Document,
+    sink: &mut Sink<'_>,
+) -> Result<(), EditError> {
+    fn graphic(value: &Graphic, document: &Document, sink: &mut Sink<'_>) -> Result<(), EditError> {
         match value {
             Graphic::Picture(p) => {
-                if p.blip
+                if let Some(part) = p
+                    .blip
                     .as_ref()
                     .and_then(|b| b.resolved.as_ref())
-                    .is_some_and(|part| document.media.get(part).is_none())
+                    .filter(|part| document.media.get(part).is_none())
                 {
-                    return Err(EditError::InvalidModel(Invariant::Drawing));
+                    sink.report(Violation::model(Invariant::Drawing, part.as_str()))?;
                 }
             }
             Graphic::Shape(s) => {
                 if let Some(t) = &s.text {
-                    validate_structure(&t.blocks, document)?;
-                    validate_boundaries(&t.blocks)?;
+                    validate_structure(&t.blocks, document, sink)?;
+                    validate_boundaries(&t.blocks, sink)?;
                 }
             }
             Graphic::Group(g) => {
                 for child in &g.children {
-                    graphic(child, document)?;
+                    graphic(child, document, sink)?;
                 }
             }
             _ => {}
@@ -516,12 +629,14 @@ fn validate_drawing(drawing: &Drawing, document: &Document) -> Result<(), EditEr
         DrawingKind::Anchor(v) => (v.extent, v.graphic.as_ref()),
         DrawingKind::Opaque(_) => return Ok(()),
     };
-    if extent.is_some_and(|v| v.cx.value() <= 0 || v.cy.value() <= 0) {
-        return Err(EditError::InvalidModel(Invariant::Drawing));
+    // `ST_PositiveCoordinate` is zero or more: an empty drawing is valid.
+    if extent.is_some_and(|v| v.cx.value() < 0 || v.cy.value() < 0) {
+        sink.report(Violation::model(Invariant::Drawing, "extent"))?;
     }
-    graphic(payload, document)
+    graphic(payload, document, sink)
 }
-fn validate_boundaries(blocks: &[Block]) -> Result<(), EditError> {
+#[allow(clippy::too_many_lines)]
+fn validate_boundaries(blocks: &[Block], sink: &mut Sink<'_>) -> Result<(), EditError> {
     #[derive(Default)]
     struct Boundaries {
         bookmarks: HashSet<String>,
@@ -529,28 +644,32 @@ fn validate_boundaries(blocks: &[Block]) -> Result<(), EditError> {
         comments: HashSet<String>,
         fields: Vec<bool>,
     }
-    fn inlines(items: &[Inline], state: &mut Boundaries) -> Result<(), EditError> {
+    fn inlines(
+        items: &[Inline],
+        state: &mut Boundaries,
+        sink: &mut Sink<'_>,
+    ) -> Result<(), EditError> {
         for i in items {
             match i {
                 Inline::BookmarkStart(v) => {
                     let id = v.id.as_str().to_owned();
-                    if !state.seen.insert(id.clone()) || !state.bookmarks.insert(id) {
-                        return Err(EditError::InvalidModel(Invariant::Bookmark));
+                    if !state.seen.insert(id.clone()) || !state.bookmarks.insert(id.clone()) {
+                        sink.report(Violation::model(Invariant::Bookmark, &id))?;
                     }
                 }
                 Inline::BookmarkEnd(v) => {
                     if !state.bookmarks.remove(v.as_str()) {
-                        return Err(EditError::InvalidModel(Invariant::Bookmark));
+                        sink.report(Violation::model(Invariant::Bookmark, v.as_str()))?;
                     }
                 }
                 Inline::CommentRangeStart(v) => {
                     if !state.comments.insert(v.as_str().to_owned()) {
-                        return Err(EditError::InvalidModel(Invariant::Comment));
+                        sink.report(Violation::model(Invariant::Comment, v.as_str()))?;
                     }
                 }
                 Inline::CommentRangeEnd(v) => {
                     if !state.comments.remove(v.as_str()) {
-                        return Err(EditError::InvalidModel(Invariant::Comment));
+                        sink.report(Violation::model(Invariant::Comment, v.as_str()))?;
                     }
                 }
                 Inline::Run(r) => {
@@ -559,34 +678,27 @@ fn validate_boundaries(blocks: &[Block]) -> Result<(), EditError> {
                             use strict_ooxml_wml::model::FieldCharType;
                             match v.kind {
                                 FieldCharType::Begin => state.fields.push(false),
-                                FieldCharType::Separate => {
-                                    let separated = state
-                                        .fields
-                                        .last_mut()
-                                        .ok_or(EditError::InvalidModel(Invariant::Field))?;
-                                    if *separated {
-                                        return Err(EditError::InvalidModel(Invariant::Field));
-                                    }
-                                    *separated = true;
-                                }
+                                FieldCharType::Separate => match state.fields.last_mut() {
+                                    Some(separated) if !*separated => *separated = true,
+                                    _ => sink.report(Violation::model(Invariant::Field, ""))?,
+                                },
                                 FieldCharType::End => {
-                                    state
-                                        .fields
-                                        .pop()
-                                        .ok_or(EditError::InvalidModel(Invariant::Field))?;
+                                    if state.fields.pop().is_none() {
+                                        sink.report(Violation::model(Invariant::Field, ""))?;
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                Inline::Hyperlink(v) => inlines(&v.inlines, state)?,
-                Inline::SdtInline(v) => inlines(&v.inlines, state)?,
-                Inline::Directional(v) => inlines(&v.inlines, state)?,
+                Inline::Hyperlink(v) => inlines(&v.inlines, state, sink)?,
+                Inline::SdtInline(v) => inlines(&v.inlines, state, sink)?,
+                Inline::Directional(v) => inlines(&v.inlines, state, sink)?,
                 Inline::Field(v) => {
                     let mut child = Boundaries::default();
-                    inlines(&v.inlines, &mut child)?;
+                    inlines(&v.inlines, &mut child, sink)?;
                     if !child.fields.is_empty() || !child.bookmarks.is_empty() {
-                        return Err(EditError::InvalidModel(Invariant::Field));
+                        sink.report(Violation::model(Invariant::Field, ""))?;
                     }
                 }
                 _ => {}
@@ -594,32 +706,41 @@ fn validate_boundaries(blocks: &[Block]) -> Result<(), EditError> {
         }
         Ok(())
     }
-    fn walk(blocks: &[Block], state: &mut Boundaries) -> Result<(), EditError> {
+    fn walk(
+        blocks: &[Block],
+        state: &mut Boundaries,
+        sink: &mut Sink<'_>,
+    ) -> Result<(), EditError> {
         for b in blocks {
             match b {
-                Block::Paragraph(p) => inlines(&p.inlines, state)?,
+                Block::Paragraph(p) => inlines(&p.inlines, state, sink)?,
                 Block::Table(t) => {
                     for r in &t.rows {
                         for c in &r.cells {
-                            walk(&c.blocks, state)?;
+                            walk(&c.blocks, state, sink)?;
                         }
                     }
                 }
-                Block::SdtBlock(s) => walk(&s.blocks, state)?,
+                Block::SdtBlock(s) => walk(&s.blocks, state, sink)?,
                 _ => {}
             }
         }
         Ok(())
     }
     let mut state = Boundaries::default();
-    walk(blocks, &mut state)?;
-    if !state.bookmarks.is_empty() {
-        Err(EditError::InvalidModel(Invariant::Bookmark))
-    } else if !state.comments.is_empty() {
-        Err(EditError::InvalidModel(Invariant::Comment))
-    } else if !state.fields.is_empty() {
-        Err(EditError::InvalidModel(Invariant::Field))
-    } else {
-        Ok(())
+    walk(blocks, &mut state, sink)?;
+    let mut open: Vec<String> = state.bookmarks.into_iter().collect();
+    open.sort();
+    for id in open {
+        sink.report(Violation::model(Invariant::Bookmark, &id))?;
     }
+    let mut open: Vec<String> = state.comments.into_iter().collect();
+    open.sort();
+    for id in open {
+        sink.report(Violation::model(Invariant::Comment, &id))?;
+    }
+    if !state.fields.is_empty() {
+        sink.report(Violation::model(Invariant::Field, ""))?;
+    }
+    Ok(())
 }

@@ -236,8 +236,31 @@ fn failed_edit_preserves_redo_and_repeated_format_is_noop() {
     assert_eq!(s.document().body, after);
 }
 
+/// A document that breaks the model's invariants is still opened: its
+/// defects are listed, edits that keep them go through, and an edit that adds
+/// a defect of its own is refused.
 #[test]
-fn model_validation_rejects_duplicate_ids_missing_style_and_wrong_sections() {
+fn source_defects_are_kept_but_not_added_to() {
+    use strict_ooxml_edit::{Address, Edit, Editor};
+    let text_edit = |paragraph: usize| Edit::Text {
+        at: Address::body(paragraph),
+        range: 0..0,
+        text: "x".into(),
+    };
+    let restyle = |paragraph: usize, id: &str| {
+        let mut d = simple();
+        let Block::Paragraph(p) = &mut d.body.blocks[paragraph] else {
+            unreachable!()
+        };
+        let mut properties = p.props.clone();
+        properties.style = Some(StyleId::new(id));
+        Edit::ParagraphProperties {
+            at: Address::body(paragraph),
+            properties: Box::new(properties),
+        }
+    };
+
+    // Duplicate paragraph ids.
     let mut d = simple();
     for b in &mut d.body.blocks {
         let Block::Paragraph(p) = b else {
@@ -245,29 +268,53 @@ fn model_validation_rejects_duplicate_ids_missing_style_and_wrong_sections() {
         };
         p.para_id = Some(ParaId::new("0000000A"));
     }
-    assert!(matches!(
-        EditSession::new(&mut d, EditLimits::default()),
-        Err(EditError::InvalidModel(Invariant::DuplicateId))
-    ));
+    let mut editor = Editor::new(&mut d, EditLimits::default()).expect("opened");
+    assert!(editor
+        .source_defects()
+        .contains(&EditError::InvalidModel(Invariant::DuplicateId)));
+    editor
+        .transact(0, &[text_edit(1)])
+        .expect("an edit keeping the defect");
+    assert_eq!(editor.validate(), Ok(()));
+
+    // A style the document names but does not define.
     let mut d = simple();
     let Block::Paragraph(p) = &mut d.body.blocks[0] else {
         unreachable!()
     };
     p.props.style = Some(StyleId::new("missing"));
+    let mut editor = Editor::new(&mut d, EditLimits::default()).expect("opened");
+    assert_eq!(
+        editor.source_defects(),
+        vec![EditError::UnknownStyle(StyleId::new("missing"))]
+    );
+    editor
+        .transact(0, &[text_edit(0)])
+        .expect("typing in that paragraph");
+    // Naming the same missing style elsewhere adds no new defect...
+    editor
+        .transact(1, &[restyle(1, "missing")])
+        .expect("the same defect");
+    // ...a different one does.
     assert!(matches!(
-        EditSession::new(&mut d, EditLimits::default()),
-        Err(EditError::UnknownStyle(id)) if id.as_str() == "missing"
+        editor.transact(2, &[restyle(1, "absent-too")]),
+        Err(EditError::UnknownStyle(id)) if id.as_str() == "absent-too"
     ));
+
+    // Sections that disagree with the section breaks.
     let mut d = simple();
     let Block::Paragraph(p) = &mut d.body.blocks[0] else {
         unreachable!()
     };
     p.props.section = Some(strict_ooxml_wml::model::SectionProperties::default());
     d.sections.clear();
-    assert!(matches!(
-        EditSession::new(&mut d, EditLimits::default()),
-        Err(EditError::InvalidModel(Invariant::Sections))
-    ));
+    let mut editor = Editor::new(&mut d, EditLimits::default()).expect("opened");
+    assert!(editor
+        .source_defects()
+        .contains(&EditError::InvalidModel(Invariant::Sections)));
+    editor
+        .transact(0, &[text_edit(1)])
+        .expect("an edit keeping the defect");
 }
 
 #[test]

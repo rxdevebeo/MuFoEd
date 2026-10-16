@@ -19,3 +19,4 @@ pub(crate) use apply::complex_fields;
 pub use command::{Edit, EditFailure, InlinePoint};
 pub use editor::Editor;
 pub(crate) use revisions::has_revision;
+pub(crate) use validate::{Sink, Violation};

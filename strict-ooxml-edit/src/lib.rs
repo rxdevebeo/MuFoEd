@@ -206,7 +206,7 @@ impl std::fmt::Display for Unsupported {
     }
 }
 /// The model invariant an edit found broken or would break.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Invariant {
     /// A paragraph id, or a text id, appears twice in a story.
@@ -238,7 +238,7 @@ pub enum Invariant {
     Grid,
     /// A footnote or endnote reference names no note.
     NoteReference,
-    /// A picture names no media part, or a drawing extent is not positive.
+    /// A picture names no media part, or a drawing extent is negative.
     Drawing,
     /// A style or numbering definition to create already has its id.
     DefinitionExists,
@@ -265,7 +265,7 @@ impl std::fmt::Display for Invariant {
             Self::Frame => "a negative frame size",
             Self::Grid => "a non-positive grid column width",
             Self::NoteReference => "a note reference without its note",
-            Self::Drawing => "a picture without its media or a drawing of non-positive size",
+            Self::Drawing => "a picture without its media or a drawing of negative size",
             Self::DefinitionExists => "a definition id that is already taken",
             Self::DefinitionMissing => "a definition that is not there",
             Self::DefinitionInUse => "a definition still in use",
@@ -740,9 +740,9 @@ fn format_text(
     }
     paragraph.inlines = out;
 }
-fn validate_body(document: &Document) -> Result<(), EditError> {
+fn validate_body(document: &Document, sink: &mut structured::Sink<'_>) -> Result<(), EditError> {
     let mut ids = HashSet::new();
-    validate_blocks(&document.body.blocks, document, &mut ids, 0)?;
+    validate_blocks(&document.body.blocks, document, &mut ids, 0, sink)?;
     let boundaries: Vec<_> = document
         .body
         .blocks
@@ -758,11 +758,11 @@ fn validate_body(document: &Document) -> Result<(), EditError> {
     if (!boundaries.is_empty() || !document.sections.is_empty())
         && document.sections.len() != boundaries.len() + 1
     {
-        return Err(EditError::InvalidModel(Invariant::Sections));
+        sink.report(structured::Violation::model(Invariant::Sections, ""))?;
     }
     for (boundary, section) in boundaries.iter().zip(&document.sections) {
         if **boundary != section.properties {
-            return Err(EditError::InvalidModel(Invariant::Sections));
+            sink.report(structured::Violation::model(Invariant::Sections, ""))?;
         }
     }
     Ok(())
@@ -772,6 +772,7 @@ fn validate_blocks(
     document: &Document,
     ids: &mut HashSet<String>,
     depth: usize,
+    sink: &mut structured::Sink<'_>,
 ) -> Result<(), EditError> {
     if depth > 128 {
         return Err(EditError::LimitExceeded);
@@ -780,8 +781,9 @@ fn validate_blocks(
         match block {
             Block::Paragraph(p) => {
                 if let Some(id) = &p.para_id {
-                    if !ids.insert(id.as_str().to_ascii_uppercase()) {
-                        return Err(EditError::InvalidModel(Invariant::DuplicateId));
+                    let id = id.as_str().to_ascii_uppercase();
+                    if !ids.insert(id.clone()) {
+                        sink.report(structured::Violation::model(Invariant::DuplicateId, &id))?;
                     }
                 }
                 if let Some(id) = p
@@ -790,7 +792,7 @@ fn validate_blocks(
                     .as_ref()
                     .filter(|id| document.styles.get(id).is_none())
                 {
-                    return Err(EditError::UnknownStyle(id.clone()));
+                    sink.report(structured::Violation::Style(id.clone()))?;
                 }
                 for inline in &p.inlines {
                     if let Inline::Run(run) = inline {
@@ -800,7 +802,7 @@ fn validate_blocks(
                             .as_ref()
                             .filter(|id| document.styles.get(id).is_none())
                         {
-                            return Err(EditError::UnknownStyle(id.clone()));
+                            sink.report(structured::Violation::Style(id.clone()))?;
                         }
                     }
                 }
@@ -808,11 +810,11 @@ fn validate_blocks(
             Block::Table(table) => {
                 for row in &table.rows {
                     for cell in &row.cells {
-                        validate_blocks(&cell.blocks, document, ids, depth + 1)?;
+                        validate_blocks(&cell.blocks, document, ids, depth + 1, sink)?;
                     }
                 }
             }
-            Block::SdtBlock(sdt) => validate_blocks(&sdt.blocks, document, ids, depth + 1)?,
+            Block::SdtBlock(sdt) => validate_blocks(&sdt.blocks, document, ids, depth + 1, sink)?,
             _ => {}
         }
     }

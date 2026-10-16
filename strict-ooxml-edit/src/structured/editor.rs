@@ -8,7 +8,7 @@ use super::apply::apply;
 use super::command::{Edit, EditFailure};
 use super::ids::IdIndex;
 use super::notes::split_shared_notes;
-use super::validate::{validate, validate_patch};
+use super::validate::{validate, validate_patch, Sink, Tolerance};
 
 /// Structural editor over the live WML document; `EditSession` is a body-only
 /// view of it.
@@ -27,6 +27,10 @@ pub struct Editor<'a> {
     notes_settled: bool,
     /// The paragraph identities in the document, kept by every patch.
     ids: IdIndex,
+    /// The invariants the document broke when it was opened. An editor takes
+    /// any document the parser produced; an edit may keep these defects but
+    /// may not add one.
+    tolerance: Tolerance,
     /// Where each identified paragraph of one story is, as of one revision:
     /// built by the first [`find`](Editor::find) after a change, so the next
     /// ones do not walk the story again.
@@ -63,8 +67,20 @@ struct Snapshot {
 }
 impl<'a> Editor<'a> {
     /// Opens an exclusive session.
+    ///
+    /// Any document the parser produced is accepted: what it breaks of the
+    /// model's invariants (a style it names but does not define, a bookmark
+    /// end without its start, a picture whose media is missing) is recorded
+    /// and listed by [`source_defects`](Editor::source_defects). Edits may
+    /// keep those defects; one that adds a defect is refused, as before. Only
+    /// a model past the resource limits is refused here.
     pub fn new(document: &'a mut Document, limits: EditLimits) -> Result<Self, EditError> {
-        validate(document, &limits.resource)?;
+        let mut tolerance = Tolerance::default();
+        validate(
+            document,
+            &limits.resource,
+            &mut Sink::Collect(&mut tolerance),
+        )?;
         let notes_settled = has_no_notes(document);
         let ids = IdIndex::of(document);
         Ok(Self {
@@ -78,6 +94,7 @@ impl<'a> Editor<'a> {
             input_pipeline: strict_ooxml_core::pipeline::PipelineSummary::new(),
             notes_settled,
             ids,
+            tolerance,
             found: std::sync::Mutex::new(None),
         })
     }
@@ -111,9 +128,19 @@ impl<'a> Editor<'a> {
         self.trim_history();
         self
     }
-    /// Explicitly validates the current model and all editable stories.
+    /// Explicitly validates the current model and all editable stories:
+    /// it may break only what the document broke when it was opened.
     pub fn validate(&self) -> Result<(), EditError> {
-        validate(self.document, &self.limits.resource)
+        validate(
+            self.document,
+            &self.limits.resource,
+            &mut Sink::Check(&self.tolerance),
+        )
+    }
+    /// The invariants the document broke when the editor opened it, as the
+    /// errors an edit introducing them would get. Empty for a coherent model.
+    pub fn source_defects(&self) -> Vec<EditError> {
+        self.tolerance.errors()
     }
     /// Reads a paragraph without bypassing the command protocol.
     pub fn paragraph(&self, at: &Address) -> Result<&Paragraph, EditError> {
@@ -243,8 +270,13 @@ impl<'a> Editor<'a> {
                 &patch.story,
                 &patch.before,
                 &patch.after,
+                &mut Sink::Check(&self.tolerance),
             ),
-            _ => validate(self.document, &self.limits.resource),
+            _ => validate(
+                self.document,
+                &self.limits.resource,
+                &mut Sink::Check(&self.tolerance),
+            ),
         };
         if let Err(error) = checked {
             self.restore(&patches);
@@ -283,7 +315,11 @@ impl<'a> Editor<'a> {
             crate::definitions::apply(&mut candidate, definition)?;
         }
         strict_ooxml_wml::resolve::refresh_definitions(&mut candidate);
-        validate(&candidate, &self.limits.resource)?;
+        validate(
+            &candidate,
+            &self.limits.resource,
+            &mut Sink::Check(&self.tolerance),
+        )?;
         self.commit_whole(candidate)
             .map_err(|failure| failure.error)
     }
@@ -316,7 +352,11 @@ impl<'a> Editor<'a> {
             };
             apply(&mut candidate, &insert, self.limits, &mut ids)?;
         }
-        validate(&candidate, &self.limits.resource)?;
+        validate(
+            &candidate,
+            &self.limits.resource,
+            &mut Sink::Check(&self.tolerance),
+        )?;
         let before = self.revision;
         let change = self.commit_whole(candidate)?;
         if self.revision != before {
@@ -343,7 +383,12 @@ impl<'a> Editor<'a> {
             })?;
         }
         split_shared_notes(&mut candidate).map_err(EditFailure::batch)?;
-        validate(&candidate, &self.limits.resource).map_err(EditFailure::batch)?;
+        validate(
+            &candidate,
+            &self.limits.resource,
+            &mut Sink::Check(&self.tolerance),
+        )
+        .map_err(EditFailure::batch)?;
         let revision = self.revision;
         let change = self.commit_whole(candidate)?;
         if self.revision != revision {
