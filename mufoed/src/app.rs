@@ -121,6 +121,9 @@ pub(crate) struct App {
     startup: Vec<PathBuf>,
     applied_dark: Option<bool>,
     window_title: String,
+    /// This frame's input in its order, Tab keys included, when the Tab keys
+    /// were taken from egui before it could move focus with them.
+    frame_events: Option<Vec<egui::Event>>,
 }
 
 impl App {
@@ -161,6 +164,7 @@ impl App {
             startup: files,
             applied_dark: None,
             window_title: String::new(),
+            frame_events: None,
         };
         if !problems.is_empty() {
             app.status = Some(StatusLine {
@@ -571,7 +575,10 @@ impl App {
         let typing_elsewhere = ctx.egui_wants_keyboard_input();
         let modal = self.dialog.is_some() || self.backstage;
         let document = !typing_elsewhere && !modal && self.active_tab().is_some_and(DocTab::ready);
-        let events = ctx.input(|input| input.events.clone());
+        let events = self
+            .frame_events
+            .take()
+            .unwrap_or_else(|| ctx.input(|input| input.events.clone()));
         for event in events {
             match event {
                 egui::Event::Text(text) if document => {
@@ -674,7 +681,7 @@ impl App {
                         Key::Delete => Some(Request::Delete),
                         Key::Enter if command => Some(Request::Insert(Insert::PageBreak)),
                         Key::Enter => Some(Request::Enter),
-                        Key::Tab if !command => Some(Request::Type("\t".to_owned())),
+                        Key::Tab if !command => Some(Request::Tab { back: shift }),
                         Key::B if command => Some(Request::Format(FormatChange::Bold)),
                         Key::I if command => Some(Request::Format(FormatChange::Italic)),
                         Key::U if command => Some(Request::Format(FormatChange::Underline)),
@@ -848,6 +855,25 @@ impl eframe::App for App {
         for action in actions {
             self.run(&ctx, action, now);
         }
+    }
+
+    /// Tab belongs to the document (a tab character, the next cell) and to
+    /// Ctrl+Tab between documents; egui would move keyboard focus to the
+    /// next button with it before the frame starts, and Enter would then
+    /// press that button. Unless a text field has focus, Tab is taken out
+    /// of egui's input here and handled with the other keys.
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        if ctx.egui_wants_keyboard_input() || self.dialog.is_some() {
+            return;
+        }
+        let is_tab = |event: &egui::Event| matches!(event, egui::Event::Key { key: Key::Tab, .. });
+        if !raw_input.events.iter().any(is_tab) {
+            return;
+        }
+        // The keys are handled in the order they came: a Tab between two
+        // letters typed in one frame stays between them.
+        self.frame_events = Some(raw_input.events.clone());
+        raw_input.events.retain(|event| !is_tab(event));
     }
 
     fn on_exit(&mut self) {

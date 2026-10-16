@@ -8,7 +8,7 @@ use crate::icons::{self, Icon};
 use crate::theme::{self, Palette};
 use crate::worker::{
     Align, CaretFormat, EditState, FormatChange, Insert, PageChange, Request, StyleEntry,
-    FONT_SIZES,
+    TableCommand, FONT_SIZES,
 };
 
 /// Ribbon tabs.
@@ -1070,6 +1070,61 @@ fn layout(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
         ) {
             doc(actions, Request::Page(PageChange::SectionBreak));
         }
+    });
+    table_group(ui, s, actions);
+}
+
+fn table_group(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
+    let t = |key| s.i18n.t(key);
+    let on = s.document;
+    let editable = on && s.state.read_only.is_none();
+    let p = s.palette;
+    group(ui, t("group.table"), p, |ui| {
+        ui.vertical(|ui| {
+            for (key, tip, command) in [
+                ("cmd.select_row", "tip.select_row", TableCommand::SelectRow),
+                (
+                    "cmd.select_column",
+                    "tip.select_column",
+                    TableCommand::SelectColumn,
+                ),
+                (
+                    "cmd.select_table",
+                    "tip.select_table",
+                    TableCommand::SelectTable,
+                ),
+            ] {
+                if small(ui, Icon::SelectAll, t(key), t(tip), on, p) {
+                    doc(actions, Request::Table(command));
+                }
+            }
+        });
+        ui.vertical(|ui| {
+            for (icon, key, tip, command) in [
+                (
+                    Icon::Table,
+                    "cmd.row_above",
+                    "tip.row_above",
+                    TableCommand::RowAbove,
+                ),
+                (
+                    Icon::Table,
+                    "cmd.row_below",
+                    "tip.row_below",
+                    TableCommand::RowBelow,
+                ),
+                (
+                    Icon::Close,
+                    "cmd.delete_rows",
+                    "tip.delete_rows",
+                    TableCommand::DeleteRows,
+                ),
+            ] {
+                if small(ui, icon, t(key), t(tip), editable, p) {
+                    doc(actions, Request::Table(command));
+                }
+            }
+        });
     });
 }
 

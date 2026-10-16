@@ -1,7 +1,11 @@
 {
-  "meta": { "name": "English" },
+  "meta": {
+    "name": "English"
+  },
   "strings": {
-    "app": { "name": "MultiFormatEditor" },
+    "app": {
+      "name": "MultiFormatEditor"
+    },
     "ribbon": {
       "file": "File",
       "home": "Home",
@@ -31,7 +35,8 @@
       "interface": "Interface",
       "import": "Import",
       "engine": "Model",
-      "export": "Export"
+      "export": "Export",
+      "table": "Table"
     },
     "cmd": {
       "new": "New",
@@ -76,7 +81,13 @@
       "ocr_settings": "Recognition Settings",
       "export_pdf": "Export to PDF",
       "export_svg": "Export to SVG",
-      "export_txt": "Export to Text"
+      "export_txt": "Export to Text",
+      "select_row": "Select Row",
+      "select_column": "Select Column",
+      "select_table": "Select Table",
+      "row_above": "Row Above",
+      "row_below": "Row Below",
+      "delete_rows": "Delete Rows"
     },
     "tip": {
       "start_page": "Start page",
@@ -138,9 +149,17 @@
       "export_pdf": "Save as PDF with embedded fonts (Ctrl+P)",
       "export_svg": "Save pages as SVG",
       "export_txt": "Save as plain text",
-      "warnings": "Rendering warnings - click to open the report"
+      "warnings": "Rendering warnings - click to open the report",
+      "select_row": "Select the table row (or click left of the row)",
+      "select_column": "Select the table column (or Ctrl+click in a cell)",
+      "select_table": "Select the whole table",
+      "row_above": "Insert a row above this one",
+      "row_below": "Insert a row below this one (Tab in the last cell)",
+      "delete_rows": "Delete the selected rows"
     },
-    "font": { "default": "(from style)" },
+    "font": {
+      "default": "(from style)"
+    },
     "menu": {
       "font_color": "Font color",
       "automatic": "Automatic",
@@ -183,8 +202,12 @@
       "pdf": "PDF (converted)",
       "djvu": "DjVu (converted)"
     },
-    "doc": { "untitled": "Document {n}" },
-    "error": { "unknown_format": "Unknown file format: {file}" },
+    "doc": {
+      "untitled": "Document {n}"
+    },
+    "error": {
+      "unknown_format": "Unknown file format: {file}"
+    },
     "note": {
       "read_only": "The document is open read-only",
       "render_failed": "Rendering failed",
@@ -202,7 +225,9 @@
       "replaced": "Occurrences replaced",
       "revisions_done": "Tracked changes processed",
       "no_revisions": "The document has no tracked changes",
-      "save_failed": "Could not save"
+      "save_failed": "Could not save",
+      "not_in_table": "Put the caret in a table",
+      "cannot_edit_here": "This edit cannot be made here"
     },
     "nav": {
       "title": "Navigation",
@@ -260,8 +285,12 @@
       "rows": "Rows:",
       "columns": "Columns:"
     },
-    "symbols": { "title": "Symbol" },
-    "words": { "title": "Word Count" },
+    "symbols": {
+      "title": "Symbol"
+    },
+    "words": {
+      "title": "Word Count"
+    },
     "settings": {
       "title": "Options",
       "language": "Interface language",
@@ -312,7 +341,9 @@
       "title": "Opening \"{file}\"…",
       "converting": "Conversion and recognition can take a while"
     },
-    "failed": { "title": "The document did not open" },
+    "failed": {
+      "title": "The document did not open"
+    },
     "dialog": {
       "open_title": "Open Document",
       "import_title": "Import PDF or DjVu",

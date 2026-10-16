@@ -22,6 +22,11 @@ What it shows:
   inserting another document, page orientation / size / margins, find and
   replace, accept / reject tracked changes, undo and redo - all through the
   transactional editor (`strict_ooxml::edit`).
+- **Tables**: Tab / Shift+Tab walk the cells (Tab in the last cell adds a
+  row); a click left of a row selects it, Ctrl+click a column, a drag across
+  cells a block of them; selected cells are cleared, copied (tabs between
+  cells) and formatted together; rows are inserted above / below and deleted
+  from the Layout tab. Outside tables Tab inserts a tab.
 - **Save**: Strict DOCX; export to PDF (embedded fonts), SVG pages, plain text.
 
 ## Localization

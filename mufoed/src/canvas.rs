@@ -250,6 +250,7 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                     ))
                 };
                 let shift = ui.input(|input| input.modifiers.shift);
+                let column = ui.input(|input| input.modifiers.command);
                 if response.double_clicked() {
                     if let Some((page, x, y)) = response.interact_pointer_pos().and_then(hit) {
                         tab.send(Request::SelectWord { page, x, y });
@@ -262,6 +263,7 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                                 x,
                                 y,
                                 extend: shift,
+                                column,
                             });
                             tab.view.last_drag = Some(pos);
                             tab.view.caret_moved = now;
@@ -280,6 +282,7 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                                     x,
                                     y,
                                     extend: true,
+                                    column: false,
                                 });
                             }
                             tab.view.last_drag = Some(pos);

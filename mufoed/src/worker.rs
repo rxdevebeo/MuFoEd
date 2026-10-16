@@ -13,14 +13,15 @@
 //! offset stays where the user put it.
 
 use std::collections::hash_map::DefaultHasher;
+use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 
 use strict_ooxml::edit::{
-    Address, Edit, EditLimits, FormatPatch, OperationLimits, Operations, ReplacePolicy, SavePolicy,
-    SearchQuery, SearchScope, Story, TextPosition, TextQuery, VisualMap, VisualRect,
+    Address, Container, Edit, EditLimits, FormatPatch, OperationLimits, Operations, ReplacePolicy,
+    SavePolicy, SearchQuery, SearchScope, Story, TextPosition, TextQuery, VisualMap, VisualRect,
 };
 use strict_ooxml::model::props::{
     CellProperties, PageSize, ParagraphProperties, RowProperties, SectionProperties,
@@ -39,17 +40,19 @@ use strict_ooxml::{
 use strict_ooxml_core::error::SourceLocation;
 
 use crate::formats::{self, Kind, Source};
-use crate::nav::{self, TextNodeRef};
+use crate::nav;
 
 /// What the interface asks of a document.
 #[derive(Debug)]
 pub(crate) enum Request {
-    /// Put the caret at a page point; `extend` keeps the selection anchor.
+    /// Put the caret at a page point; `extend` keeps the selection anchor,
+    /// `column` selects the table column under the point.
     Click {
         page: usize,
         x: f64,
         y: f64,
         extend: bool,
+        column: bool,
     },
     /// Select the word at a page point.
     SelectWord {
@@ -66,6 +69,11 @@ pub(crate) enum Request {
     Backspace,
     Delete,
     Enter,
+    /// Tab, or Shift+Tab with `back`.
+    Tab {
+        back: bool,
+    },
+    Table(TableCommand),
     Format(FormatChange),
     Align(Align),
     Style(String),
@@ -99,6 +107,91 @@ pub(crate) enum Request {
         format: SaveFormat,
     },
     Shutdown,
+}
+
+/// Table commands of the Layout tab.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TableCommand {
+    SelectRow,
+    SelectColumn,
+    SelectTable,
+    RowAbove,
+    RowBelow,
+    DeleteRows,
+}
+
+impl TableCommand {
+    fn selects(self) -> bool {
+        matches!(
+            self,
+            Self::SelectRow | Self::SelectColumn | Self::SelectTable
+        )
+    }
+}
+
+/// A table: its story, the containers around it, its block index there.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TableRef {
+    story: Story,
+    parents: Vec<Container>,
+    block: usize,
+}
+
+impl TableRef {
+    fn address(&self) -> Address {
+        Address {
+            story: self.story.clone(),
+            containers: self.parents.clone(),
+            block: self.block,
+        }
+    }
+}
+
+/// A cell of a table.
+#[derive(Clone, Debug)]
+struct CellRef {
+    table: TableRef,
+    row: usize,
+    cell: usize,
+}
+
+/// The innermost table cell a paragraph is in.
+fn cell_of(paragraph: &Address) -> Option<CellRef> {
+    let (last, parents) = paragraph.containers.split_last()?;
+    let Container::Cell { table, row, cell } = last else {
+        return None;
+    };
+    Some(CellRef {
+        table: TableRef {
+            story: paragraph.story.clone(),
+            parents: parents.to_vec(),
+            block: *table,
+        },
+        row: *row,
+        cell: *cell,
+    })
+}
+
+/// A rectangle of selected cells, inclusive.
+#[derive(Clone, Debug)]
+struct CellSelection {
+    table: TableRef,
+    rows: (usize, usize),
+    cols: (usize, usize),
+}
+
+impl CellSelection {
+    fn contains(&self, row: usize, cell: usize) -> bool {
+        (self.rows.0..=self.rows.1).contains(&row) && (self.cols.0..=self.cols.1).contains(&cell)
+    }
+
+    fn corner(&self) -> CellRef {
+        CellRef {
+            table: self.table.clone(),
+            row: self.rows.0,
+            cell: self.cols.0,
+        }
+    }
 }
 
 /// Caret movements.
@@ -475,6 +568,10 @@ struct Worker<'a, 's> {
     page_sizes: Vec<(f64, f64)>,
     caret: Option<Logical>,
     anchor: Option<Logical>,
+    /// Whole cells selected, instead of text.
+    cells: Option<CellSelection>,
+    /// The cell a click started in, for selecting cells by dragging.
+    cell_origin: Option<CellRef>,
     goal_x: Option<f64>,
     undo_depth: usize,
     redo_depth: usize,
@@ -505,6 +602,8 @@ impl<'a, 's> Worker<'a, 's> {
             page_sizes: Vec::new(),
             caret: None,
             anchor: None,
+            cells: None,
+            cell_origin: None,
             goal_x: None,
             undo_depth: 0,
             redo_depth: 0,
@@ -587,12 +686,20 @@ impl<'a, 's> Worker<'a, 's> {
     fn handle(&mut self, request: Request) -> Outcome {
         match request {
             Request::Shutdown => Outcome::Quit,
-            Request::Click { page, x, y, extend } => self.click(page, x, y, extend),
+            Request::Click {
+                page,
+                x,
+                y,
+                extend,
+                column,
+            } => self.click(page, x, y, extend, column),
+            Request::Table(command) if command.selects() => self.table_command(command),
             Request::SelectWord { page, x, y } => self.select_word(page, x, y),
             Request::Move { motion, extend } => self.motion(motion, extend),
             Request::SelectAll => self.select_all(),
             Request::GoTo(paragraph) => {
                 self.anchor = None;
+                self.cells = None;
                 self.caret = Some(Logical {
                     paragraph,
                     offset: 0,
@@ -633,6 +740,8 @@ impl<'a, 's> Worker<'a, 's> {
             Request::Backspace => self.backspace(),
             Request::Delete => self.delete_forward(),
             Request::Enter => self.enter(),
+            Request::Tab { back } => self.tab(back),
+            Request::Table(command) => self.table_command(command),
             Request::Format(change) => self.format(&change),
             Request::Align(align) => self.align(align),
             Request::Style(id) => self.set_style(&id),
@@ -731,7 +840,7 @@ impl<'a, 's> Worker<'a, 's> {
             let Some(level) = heading_level(document, paragraph) else {
                 continue;
             };
-            let text: String = nav::text_nodes(paragraph)
+            let text: String = nav::pieces(paragraph)
                 .iter()
                 .map(|node| node.text.as_str())
                 .collect();
@@ -787,59 +896,83 @@ impl<'a, 's> Worker<'a, 's> {
         self.paragraphs(&Story::Body).into_iter().next()
     }
 
-    fn nodes(&self, at: &Address) -> Vec<TextNodeRef> {
-        self.paragraph(at).map(nav::text_nodes).unwrap_or_default()
+    fn pieces(&self, at: &Address) -> Vec<nav::Piece> {
+        self.paragraph(at).map(nav::pieces).unwrap_or_default()
     }
 
+    /// The paragraph's text, a tab or a break counting as one character.
     fn text_of(&self, at: &Address) -> String {
-        self.nodes(at)
+        self.pieces(at)
             .iter()
-            .map(|node| node.text.as_str())
+            .map(|piece| piece.text.as_str())
             .collect()
     }
 
-    /// The kernel position of a caret.
+    /// The kernel point of a caret, where the kernel has one.
+    fn point(&self, logical: &Logical) -> Option<strict_ooxml::edit::InlinePoint> {
+        nav::point_at(&self.pieces(&logical.paragraph), logical.offset)
+    }
+
+    /// The text position the visual map knows a caret by: in the text node
+    /// at the offset, or the nearest one before it (after a tab that ends a
+    /// paragraph there is no text to stand in).
     fn position(&self, logical: &Logical) -> TextPosition {
-        let nodes = self.nodes(&logical.paragraph);
+        let pieces = self.pieces(&logical.paragraph);
         let mut before = 0;
-        for node in &nodes {
-            let len = node.len();
-            if logical.offset <= before + len {
-                return TextPosition {
-                    paragraph: logical.paragraph.clone(),
-                    inline: node.inline.clone(),
-                    content: node.content,
-                    offset: logical.offset - before,
-                };
+        let mut fallback = None;
+        for piece in &pieces {
+            let end = before + piece.len();
+            if piece.kind == nav::PieceKind::Text {
+                if (before..=end).contains(&logical.offset) {
+                    return TextPosition {
+                        paragraph: logical.paragraph.clone(),
+                        inline: piece.inline.clone(),
+                        content: piece.content,
+                        offset: logical.offset - before,
+                    };
+                }
+                if before <= logical.offset || fallback.is_none() {
+                    let offset = if before <= logical.offset {
+                        piece.len()
+                    } else {
+                        0
+                    };
+                    fallback = Some(TextPosition {
+                        paragraph: logical.paragraph.clone(),
+                        inline: piece.inline.clone(),
+                        content: piece.content,
+                        offset,
+                    });
+                }
             }
-            before += len;
+            before = end;
         }
-        match nodes.last() {
-            Some(node) => TextPosition {
-                paragraph: logical.paragraph.clone(),
-                inline: node.inline.clone(),
-                content: node.content,
-                offset: node.len(),
-            },
-            None => TextPosition {
-                paragraph: logical.paragraph.clone(),
-                inline: Vec::new(),
-                content: 0,
-                offset: 0,
-            },
-        }
+        fallback.unwrap_or(TextPosition {
+            paragraph: logical.paragraph.clone(),
+            inline: Vec::new(),
+            content: 0,
+            offset: 0,
+        })
     }
 
     /// The caret a kernel position stands for.
     fn logical(&self, position: &TextPosition) -> Logical {
-        let nodes = self.nodes(&position.paragraph);
-        let index = nav::node_index(&nodes, position);
-        let before: usize = index.map_or(0, |index| {
-            nodes.iter().take(index).map(TextNodeRef::len).sum()
-        });
+        let mut before = 0;
+        for piece in self.pieces(&position.paragraph) {
+            if piece.kind == nav::PieceKind::Text
+                && piece.inline == position.inline
+                && piece.content == position.content
+            {
+                return Logical {
+                    paragraph: position.paragraph.clone(),
+                    offset: before + position.offset,
+                };
+            }
+            before += piece.len();
+        }
         Logical {
             paragraph: position.paragraph.clone(),
-            offset: before + if index.is_some() { position.offset } else { 0 },
+            offset: 0,
         }
     }
 
@@ -901,6 +1034,12 @@ impl<'a, 's> Worker<'a, 's> {
                 (carets, selection)
             }
             _ => (Vec::new(), Vec::new()),
+        };
+        // Selected cells show as cells, without a caret.
+        let (carets, selection) = if self.cells.is_some() {
+            (Vec::new(), self.cell_rects())
+        } else {
+            (carets, selection)
         };
         let format = self.caret_format();
         self.send(Reply::Cursor(Box::new(Cursor {
@@ -981,7 +1120,7 @@ impl<'a, 's> Worker<'a, 's> {
 
     // ----- navigation ---------------------------------------------------
 
-    fn click(&mut self, page: usize, x: f64, y: f64, extend: bool) -> Outcome {
+    fn click(&mut self, page: usize, x: f64, y: f64, extend: bool, column: bool) -> Outcome {
         self.ensure_layout();
         let revision = self.session.revision();
         let Some(map) = &self.map else {
@@ -990,14 +1129,66 @@ impl<'a, 's> Worker<'a, 's> {
         let Ok(Some(position)) = map.hit_test(revision, page, x, y) else {
             return Outcome::Quiet;
         };
+        let line_start = map
+            .caret(revision, &position)
+            .ok()
+            .and_then(|rects| rects.into_iter().find(|rect| rect.page == page))
+            .map(|rect| rect.x - position.offset as f64);
         let logical = self.logical(&position);
-        self.place(logical, extend);
         self.goal_x = None;
+        let cell = cell_of(&logical.paragraph);
+        // Ctrl+click: the column under the pointer.
+        if column {
+            if let Some(cell) = cell {
+                self.caret = Some(logical);
+                self.cell_origin = None;
+                let rows = self
+                    .table_cells(&cell.table)
+                    .keys()
+                    .map(|(row, _)| row + 1)
+                    .max()
+                    .unwrap_or(1);
+                return self.select_cells(&cell.table, (0, rows - 1), (cell.cell, cell.cell));
+            }
+        }
+        if extend {
+            // Dragging from one cell into another selects whole cells.
+            if let (Some(origin), Some(cell)) = (self.cell_origin.clone(), cell.clone()) {
+                if origin.table == cell.table && (origin.row, origin.cell) != (cell.row, cell.cell)
+                {
+                    self.caret = Some(logical);
+                    return self.select_cells(
+                        &cell.table,
+                        (origin.row, cell.row),
+                        (origin.cell, cell.cell),
+                    );
+                }
+            }
+            self.cells = None;
+            self.place(logical, true);
+            return Outcome::Moved;
+        }
+        self.cells = None;
+        self.cell_origin.clone_from(&cell);
+        // A click left of a row's first cell, in the margin, selects the row.
+        if let (Some(cell), Some(start)) = (cell, line_start) {
+            if cell.cell == 0 && logical.offset == 0 && x < start - 0.12 * self.options.scale {
+                self.caret = Some(logical);
+                let columns = self
+                    .table_cells(&cell.table)
+                    .keys()
+                    .map(|(_, c)| c + 1)
+                    .max()
+                    .unwrap_or(1);
+                return self.select_cells(&cell.table, (cell.row, cell.row), (0, columns - 1));
+            }
+        }
+        self.place(logical, false);
         Outcome::Moved
     }
 
     fn select_word(&mut self, page: usize, x: f64, y: f64) -> Outcome {
-        if matches!(self.click(page, x, y, false), Outcome::Quiet) {
+        if matches!(self.click(page, x, y, false, false), Outcome::Quiet) {
             return Outcome::Quiet;
         }
         let Some(caret) = self.caret.clone() else {
@@ -1029,6 +1220,7 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn select_all(&mut self) -> Outcome {
+        self.cells = None;
         let paragraphs = self.paragraphs(&Story::Body);
         let (Some(first), Some(last)) = (paragraphs.first(), paragraphs.last()) else {
             return Outcome::Quiet;
@@ -1061,6 +1253,9 @@ impl<'a, 's> Worker<'a, 's> {
     #[allow(clippy::too_many_lines)]
     fn motion(&mut self, motion: Motion, extend: bool) -> Outcome {
         self.ensure_layout();
+        if self.cells.is_some() {
+            self.collapse_cells();
+        }
         // Without extending, a horizontal move collapses the selection to its edge.
         if !extend {
             if let Some((start, end)) = self.selection() {
@@ -1182,44 +1377,44 @@ impl<'a, 's> Worker<'a, 's> {
             return Outcome::Quiet;
         };
         let x = *self.goal_x.get_or_insert(rect.x);
-        let line = rect.height.max(4.0);
         let pages = self.page_sizes.len();
         let height = |page: usize| self.page_sizes.get(page).map_or(0.0, |size| size.1);
+        let down = matches!(motion, Motion::Down | Motion::PageDown);
+        // Page keys jump most of a page first; then, for every key, the probe
+        // walks on in small steps until it reaches another line. One step of
+        // half a line is not enough: a table cell's spacing after its text,
+        // or a paragraph's, is often taller than that.
         let (mut page, mut y) = match motion {
-            Motion::Up => (rect.page, rect.y - line * 0.5),
-            Motion::Down => (rect.page, rect.y + rect.height + line * 0.5),
             Motion::PageUp => (rect.page, rect.y - height(rect.page) * 0.8),
-            _ => (rect.page, rect.y + height(rect.page) * 0.8),
+            Motion::PageDown => (rect.page, rect.y + rect.height + height(rect.page) * 0.8),
+            Motion::Up => (rect.page, rect.y),
+            _ => (rect.page, rect.y + rect.height),
         };
-        if y < 0.0 {
-            if page == 0 {
-                y = 0.0;
-            } else {
+        // Far enough for any gap between lines, short of skipping a page.
+        for _ in 0..400 {
+            y += if down { PROBE_STEP } else { -PROBE_STEP };
+            if y < 0.0 {
+                if page == 0 {
+                    break;
+                }
                 page -= 1;
                 y += height(page);
+            } else if y > height(page) {
+                if page + 1 >= pages {
+                    break;
+                }
+                y -= height(page);
+                page += 1;
             }
-        } else if y > height(page) && page + 1 < pages {
-            y -= height(page);
-            page += 1;
-        }
-        let Some(mut target) = self.hit(page, x, y) else {
-            return Outcome::Quiet;
-        };
-        // The closest line to a point above the first line is the first line;
-        // keep going to the previous page in that case.
-        if self.caret.as_ref() == Some(&target) || self.same_line(&target, &rect) {
-            let next = match motion {
-                Motion::Up | Motion::PageUp if page > 0 => self.hit(page - 1, x, height(page - 1)),
-                Motion::Down | Motion::PageDown if page + 1 < pages => self.hit(page + 1, x, 0.0),
-                _ => None,
+            let Some(target) = self.hit(page, x, y) else {
+                continue;
             };
-            match next {
-                Some(next) => target = next,
-                None => return Outcome::Quiet,
+            if self.caret.as_ref() != Some(&target) && !self.same_line(&target, &rect) {
+                self.place(target, extend);
+                return Outcome::Moved;
             }
         }
-        self.place(target, extend);
-        Outcome::Moved
+        Outcome::Quiet
     }
 
     fn same_line(&self, target: &Logical, rect: &VisualRect) -> bool {
@@ -1267,36 +1462,100 @@ impl<'a, 's> Worker<'a, 's> {
         }
     }
 
-    /// Commands that replace `start..end` with `text`, and whether they apply.
+    /// Commands that put `text` in place of the offsets `start..end` of one
+    /// paragraph.
+    ///
+    /// Inside runs that is one `ReplaceAt` between kernel points; it removes
+    /// tabs and breaks inside runs as well. Tabs and breaks between runs have
+    /// no kernel point beside them, so a range of only those is deleted
+    /// inline by inline, and text typed there goes in as a run of its own.
+    fn paragraph_replace(
+        &self,
+        at: &Address,
+        start: usize,
+        end: usize,
+        text: &str,
+    ) -> Result<Vec<Edit>, &'static str> {
+        let pieces = self.pieces(at);
+        if pieces.is_empty() {
+            return Ok(if text.is_empty() {
+                Vec::new()
+            } else {
+                vec![Edit::Text {
+                    at: at.clone(),
+                    range: 0..0,
+                    text: text.to_owned(),
+                }]
+            });
+        }
+        if let (Some(from), Some(to)) = (nav::point_at(&pieces, start), nav::point_at(&pieces, end))
+        {
+            if start == end && text.is_empty() {
+                return Ok(Vec::new());
+            }
+            return Ok(vec![Edit::ReplaceAt {
+                at: at.clone(),
+                from,
+                to,
+                text: text.to_owned(),
+            }]);
+        }
+        let mut atoms = Vec::new();
+        let mut insert_at = None;
+        let mut before = 0;
+        for piece in &pieces {
+            let piece_end = before + piece.len();
+            let top = piece.inline.first().copied().unwrap_or(0);
+            if piece.kind == nav::PieceKind::InlineAtom && before >= start && piece_end <= end {
+                atoms.push(top);
+            } else if before < end && piece_end > start {
+                return Err("note.cannot_edit_here");
+            }
+            if piece_end == start && insert_at.is_none() {
+                insert_at = Some(top + 1);
+            }
+            if before == end && insert_at.is_none() {
+                insert_at = Some(top);
+            }
+            before = piece_end;
+        }
+        let mut commands: Vec<Edit> = atoms
+            .iter()
+            .rev()
+            .map(|index| Edit::DeleteInline {
+                at: at.clone(),
+                index: *index,
+            })
+            .collect();
+        if !text.is_empty() {
+            let index = atoms.first().copied().or(insert_at).unwrap_or(0);
+            let props = self
+                .paragraph(at)
+                .and_then(|paragraph| {
+                    paragraph.inlines.iter().find_map(|inline| match inline {
+                        strict_ooxml::model::Inline::Run(run) => Some(run.props.clone()),
+                        _ => None,
+                    })
+                })
+                .unwrap_or_default();
+            commands.push(Edit::InsertInline {
+                at: at.clone(),
+                index,
+                inline: Box::new(strict_ooxml::model::Inline::Run(text_run(props, text))),
+            });
+        }
+        Ok(commands)
+    }
+
+    /// Commands that replace `start..end` with `text`.
     fn replace_commands(
         &self,
         start: &Logical,
         end: &Logical,
         text: &str,
     ) -> Result<Vec<Edit>, &'static str> {
-        let first = self
-            .paragraph(&start.paragraph)
-            .ok_or("note.no_paragraph")?;
-        let start_position = self.position(start);
         if start.paragraph == end.paragraph {
-            if start_position.inline.is_empty() {
-                // An empty paragraph: nothing to remove, only text to add.
-                return Ok(if text.is_empty() {
-                    Vec::new()
-                } else {
-                    vec![Edit::Text {
-                        at: start.paragraph.clone(),
-                        range: 0..0,
-                        text: text.to_owned(),
-                    }]
-                });
-            }
-            return Ok(vec![Edit::ReplaceAt {
-                at: start.paragraph.clone(),
-                from: nav::point_of(&start_position),
-                to: nav::point_of(&self.position(end)),
-                text: text.to_owned(),
-            }]);
+            return self.paragraph_replace(&start.paragraph, start.offset, end.offset, text);
         }
         // Across paragraphs: only siblings of one container, one after the other.
         let paragraphs = self.paragraphs(&start.paragraph.story);
@@ -1316,38 +1575,12 @@ impl<'a, 's> Worker<'a, 's> {
         if !siblings {
             return Err("note.selection_structure");
         }
-        let mut commands = Vec::new();
-        let last = self.paragraph(&end.paragraph).ok_or("note.no_paragraph")?;
-        if let Some(from_point) = nav::start_point(last) {
-            let end_position = self.position(end);
-            if !end_position.inline.is_empty() {
-                commands.push(Edit::ReplaceAt {
-                    at: end.paragraph.clone(),
-                    from: from_point,
-                    to: nav::point_of(&end_position),
-                    text: String::new(),
-                });
-            }
-        }
+        let first_len = self.text_of(&start.paragraph).chars().count();
+        let mut commands = self.paragraph_replace(&end.paragraph, 0, end.offset, "")?;
         for middle in span.iter().skip(1).take(span.len().saturating_sub(2)).rev() {
             commands.push(Edit::Delete { at: middle.clone() });
         }
-        match nav::end_point(first) {
-            Some(to_point) if !start_position.inline.is_empty() => {
-                commands.push(Edit::ReplaceAt {
-                    at: start.paragraph.clone(),
-                    from: nav::point_of(&start_position),
-                    to: to_point,
-                    text: text.to_owned(),
-                });
-            }
-            _ if !text.is_empty() => commands.push(Edit::Text {
-                at: start.paragraph.clone(),
-                range: 0..0,
-                text: text.to_owned(),
-            }),
-            _ => {}
-        }
+        commands.extend(self.paragraph_replace(&start.paragraph, start.offset, first_len, text)?);
         commands.push(Edit::Join {
             at: start.paragraph.clone(),
         });
@@ -1356,37 +1589,21 @@ impl<'a, 's> Worker<'a, 's> {
 
     /// Replaces the selection (or inserts at the caret) with `text`.
     fn put_text(&mut self, text: &str) -> bool {
+        if self.cells.is_some() {
+            self.collapse_cells();
+        }
         let Some(caret) = self.caret.clone() else {
             return false;
         };
         let (start, end) = self.selection().unwrap_or_else(|| (caret.clone(), caret));
-        let commands = if start == end {
-            let position = self.position(&start);
-            if text.is_empty() {
+        if start == end && text.is_empty() {
+            return false;
+        }
+        let commands = match self.replace_commands(&start, &end, text) {
+            Ok(commands) => commands,
+            Err(key) => {
+                self.note(key, String::new(), true);
                 return false;
-            }
-            if position.inline.is_empty() {
-                vec![Edit::Text {
-                    at: start.paragraph.clone(),
-                    range: 0..0,
-                    text: text.to_owned(),
-                }]
-            } else {
-                vec![Edit::TextNode {
-                    at: start.paragraph.clone(),
-                    inline: position.inline.clone(),
-                    content: position.content,
-                    range: position.offset..position.offset,
-                    text: text.to_owned(),
-                }]
-            }
-        } else {
-            match self.replace_commands(&start, &end, text) {
-                Ok(commands) => commands,
-                Err(key) => {
-                    self.note(key, String::new(), true);
-                    return false;
-                }
             }
         };
         if commands.is_empty() || self.transact(&commands) {
@@ -1402,11 +1619,7 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn type_text(&mut self, text: &str) -> Outcome {
-        let clean: String = text
-            .chars()
-            .map(|c| if c == '\t' { ' ' } else { c })
-            .filter(|c| !c.is_control())
-            .collect();
+        let clean: String = text.chars().filter(|c| !c.is_control()).collect();
         if clean.is_empty() {
             return Outcome::Quiet;
         }
@@ -1417,7 +1630,78 @@ impl<'a, 's> Worker<'a, 's> {
         }
     }
 
+    /// Tab: the next cell in a table (a new row after the last), otherwise a
+    /// tab character. Shift+Tab: the previous cell.
+    fn tab(&mut self, back: bool) -> Outcome {
+        if self.in_cell().is_some() {
+            return self.next_cell(back);
+        }
+        if back {
+            return Outcome::Quiet;
+        }
+        if self.selection().is_some() && matches!(self.delete_selection(), Outcome::Quiet) {
+            return Outcome::Quiet;
+        }
+        let Some(caret) = self.caret.clone() else {
+            return Outcome::Quiet;
+        };
+        let at = caret.paragraph.clone();
+        let tab = || Box::new(strict_ooxml::model::Inline::Tab);
+        // Split there, put the tab first in the right half, join again: the
+        // kernel inserts inlines between runs, and this makes the caret's
+        // point a boundary between runs wherever it was.
+        #[allow(clippy::single_match_else)]
+        let commands = match self.point(&caret) {
+            Some(point) => {
+                let mut right = at.clone();
+                right.block += 1;
+                vec![
+                    Edit::SplitAt {
+                        at: at.clone(),
+                        point,
+                    },
+                    Edit::InsertInline {
+                        at: right,
+                        index: 0,
+                        inline: tab(),
+                    },
+                    Edit::Join { at: at.clone() },
+                ]
+            }
+            None => {
+                // An empty paragraph, or the caret beside tabs between runs.
+                let pieces = self.pieces(&at);
+                let mut before = 0;
+                let mut index = 0;
+                for piece in &pieces {
+                    before += piece.len();
+                    if before == caret.offset {
+                        index = piece.inline.first().copied().unwrap_or(0) + 1;
+                    }
+                }
+                vec![Edit::InsertInline {
+                    at: at.clone(),
+                    index,
+                    inline: tab(),
+                }]
+            }
+        };
+        if self.transact(&commands) {
+            self.anchor = None;
+            self.caret = Some(Logical {
+                paragraph: at,
+                offset: caret.offset + 1,
+            });
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
     fn backspace(&mut self) -> Outcome {
+        if self.cells.is_some() {
+            return self.clear_cells();
+        }
         if self.selection().is_some() {
             return self.delete_selection();
         }
@@ -1457,6 +1741,9 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn delete_forward(&mut self) -> Outcome {
+        if self.cells.is_some() {
+            return self.clear_cells();
+        }
         if self.selection().is_some() {
             return self.delete_selection();
         }
@@ -1513,6 +1800,9 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn enter(&mut self) -> Outcome {
+        if self.cells.is_some() {
+            self.collapse_cells();
+        }
         if self.selection().is_some() && matches!(self.delete_selection(), Outcome::Quiet) {
             return Outcome::Quiet;
         }
@@ -1528,16 +1818,18 @@ impl<'a, 's> Worker<'a, 's> {
         let Some(caret) = self.caret.clone() else {
             return false;
         };
-        let position = self.position(&caret);
-        let command = if position.inline.is_empty() {
-            Edit::Split {
+        let command = match self.point(&caret) {
+            Some(point) => Edit::SplitAt {
+                at: caret.paragraph.clone(),
+                point,
+            },
+            None if self.pieces(&caret.paragraph).is_empty() => Edit::Split {
                 at: caret.paragraph.clone(),
                 offset: 0,
-            }
-        } else {
-            Edit::SplitAt {
-                at: caret.paragraph.clone(),
-                point: nav::point_of(&position),
+            },
+            None => {
+                self.note("note.cannot_edit_here", String::new(), true);
+                return false;
             }
         };
         if !self.transact(&[command]) {
@@ -1554,7 +1846,7 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     /// `(paragraph, from, to)` ranges a character format applies to: the
-    /// selection, or the word at the caret.
+    /// selected cells, the selection, or the word at the caret.
     fn format_ranges(
         &self,
     ) -> Vec<(
@@ -1562,6 +1854,18 @@ impl<'a, 's> Worker<'a, 's> {
         strict_ooxml::edit::InlinePoint,
         strict_ooxml::edit::InlinePoint,
     )> {
+        let whole = |address: &Address| {
+            let pieces = self.pieces(address);
+            let len: usize = pieces.iter().map(nav::Piece::len).sum();
+            Some((
+                address.clone(),
+                nav::point_at(&pieces, 0)?,
+                nav::point_at(&pieces, len)?,
+            ))
+        };
+        if self.cells.is_some() {
+            return self.cell_paragraphs().iter().filter_map(whole).collect();
+        }
         let mut out = Vec::new();
         if let Some((start, end)) = self.selection() {
             let paragraphs = self.paragraphs(&start.paragraph.story);
@@ -1571,44 +1875,23 @@ impl<'a, 's> Worker<'a, 's> {
                 return out;
             };
             for (index, address) in paragraphs.iter().enumerate().take(to + 1).skip(from) {
-                let Some(paragraph) = self.paragraph(address) else {
-                    continue;
-                };
-                let range_start = if index == from {
-                    let position = self.position(&start);
-                    (!position.inline.is_empty()).then(|| nav::point_of(&position))
-                } else {
-                    nav::start_point(paragraph)
-                };
-                let range_end = if index == to {
-                    let position = self.position(&end);
-                    (!position.inline.is_empty()).then(|| nav::point_of(&position))
-                } else {
-                    nav::end_point(paragraph)
-                };
-                if let (Some(a), Some(b)) = (range_start, range_end) {
+                let pieces = self.pieces(address);
+                let len: usize = pieces.iter().map(nav::Piece::len).sum();
+                let a = if index == from { start.offset } else { 0 };
+                let b = if index == to { end.offset } else { len };
+                if let (Some(a), Some(b)) = (nav::point_at(&pieces, a), nav::point_at(&pieces, b)) {
                     out.push((address.clone(), a, b));
                 }
             }
         } else if let Some(caret) = &self.caret {
             let text = self.text_of(&caret.paragraph);
             if let Some(range) = nav::word_at(&text, caret.offset) {
-                let a = self.position(&Logical {
-                    paragraph: caret.paragraph.clone(),
-                    offset: range.start,
-                });
-                // The end of a word is the start of what follows it; take the
-                // position inside the word's own node.
-                let b = self.position(&Logical {
-                    paragraph: caret.paragraph.clone(),
-                    offset: range.end,
-                });
-                if !a.inline.is_empty() && !b.inline.is_empty() {
-                    out.push((
-                        caret.paragraph.clone(),
-                        nav::point_of(&a),
-                        nav::point_of(&b),
-                    ));
+                let pieces = self.pieces(&caret.paragraph);
+                if let (Some(a), Some(b)) = (
+                    nav::point_at(&pieces, range.start),
+                    nav::point_at(&pieces, range.end),
+                ) {
+                    out.push((caret.paragraph.clone(), a, b));
                 }
             }
         }
@@ -1707,6 +1990,9 @@ impl<'a, 's> Worker<'a, 's> {
 
     /// Paragraphs the selection touches, or the caret's.
     fn selected_paragraphs(&self) -> Vec<Address> {
+        if self.cells.is_some() {
+            return self.cell_paragraphs();
+        }
         if let Some((start, end)) = self.selection() {
             let paragraphs = self.paragraphs(&start.paragraph.story);
             let from = paragraphs.iter().position(|a| *a == start.paragraph);
@@ -2031,8 +2317,10 @@ impl<'a, 's> Worker<'a, 's> {
                 self.anchor = None;
                 // The caret's paragraph may be gone; keep what still exists.
                 let keep = self.caret.as_ref().and_then(|caret| {
-                    let len = self.paragraph(&caret.paragraph)?;
-                    let len: usize = nav::text_nodes(len).iter().map(TextNodeRef::len).sum();
+                    let len: usize = nav::pieces(self.paragraph(&caret.paragraph)?)
+                        .iter()
+                        .map(nav::Piece::len)
+                        .sum();
                     Some(Logical {
                         paragraph: caret.paragraph.clone(),
                         offset: caret.offset.min(len),
@@ -2073,13 +2361,16 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn copy(&mut self, cut: bool) -> Outcome {
-        let Some(text) = self.selected_text() else {
+        let Some(text) = self.cells_text().or_else(|| self.selected_text()) else {
             return Outcome::Quiet;
         };
         self.send(Reply::Clipboard(text));
         if cut {
             if self.read_only.is_some() {
                 return Outcome::Quiet;
+            }
+            if self.cells.is_some() {
+                return self.clear_cells();
             }
             return self.delete_selection();
         }
@@ -2110,6 +2401,467 @@ impl<'a, 's> Worker<'a, 's> {
         } else {
             Outcome::Quiet
         }
+    }
+
+    // ----- tables -------------------------------------------------------
+
+    /// The table cell the caret is in: the story, the containers around the
+    /// table, the table's block index, the row and the cell.
+    fn in_cell(&self) -> Option<CellRef> {
+        let caret = self.caret.as_ref()?;
+        cell_of(&caret.paragraph)
+    }
+
+    /// Every paragraph of a table, by `(row, cell)`, in story order.
+    fn table_cells(&self, table: &TableRef) -> BTreeMap<(usize, usize), Vec<Address>> {
+        let mut cells: BTreeMap<(usize, usize), Vec<Address>> = BTreeMap::new();
+        for address in self.paragraphs(&table.story) {
+            let depth = table.parents.len();
+            if address.containers.len() <= depth
+                || address.containers.get(..depth) != Some(table.parents.as_slice())
+            {
+                continue;
+            }
+            if let Some(Container::Cell {
+                table: index,
+                row,
+                cell,
+            }) = address.containers.get(depth)
+            {
+                if *index == table.block {
+                    cells.entry((*row, *cell)).or_default().push(address);
+                }
+            }
+        }
+        cells
+    }
+
+    /// The table model itself, for building rows like its own.
+    fn table_model(&self, table: &TableRef) -> Option<Table> {
+        let document = self.session.document();
+        let mut blocks: &[Block] = match &table.story {
+            Story::Body => &document.body.blocks,
+            Story::HeaderFooter(part) => &document.header_footer(part)?.blocks,
+            _ => return None,
+        };
+        for container in &table.parents {
+            blocks = match container {
+                Container::Cell { table, row, cell } => match blocks.get(*table)? {
+                    Block::Table(t) => &t.rows.get(*row)?.cells.get(*cell)?.blocks,
+                    _ => return None,
+                },
+                Container::Sdt(index) => match blocks.get(*index)? {
+                    Block::SdtBlock(sdt) => &sdt.blocks,
+                    _ => return None,
+                },
+                Container::TextBox { .. } => return None,
+            };
+        }
+        match blocks.get(table.block)? {
+            Block::Table(t) => Some(t.clone()),
+            _ => None,
+        }
+    }
+
+    /// Puts the caret in a cell, its text selected as Word does on Tab.
+    fn enter_cell(&mut self, paragraphs: &[Address], select: bool) {
+        let (Some(first), Some(last)) = (paragraphs.first(), paragraphs.last()) else {
+            return;
+        };
+        let end = self.text_of(last).chars().count();
+        self.cells = None;
+        self.anchor = (select && (end > 0 || first != last)).then(|| Logical {
+            paragraph: first.clone(),
+            offset: 0,
+        });
+        self.caret = Some(if self.anchor.is_some() {
+            Logical {
+                paragraph: last.clone(),
+                offset: end,
+            }
+        } else {
+            Logical {
+                paragraph: first.clone(),
+                offset: 0,
+            }
+        });
+    }
+
+    fn next_cell(&mut self, back: bool) -> Outcome {
+        let Some(here) = self.in_cell() else {
+            return Outcome::Quiet;
+        };
+        let cells = self.table_cells(&here.table);
+        let key = (here.row, here.cell);
+        let target = if back {
+            cells.range(..key).next_back()
+        } else {
+            cells
+                .range((std::ops::Bound::Excluded(key), std::ops::Bound::Unbounded))
+                .next()
+        };
+        if let Some((_, paragraphs)) = target {
+            let paragraphs = paragraphs.clone();
+            self.enter_cell(&paragraphs, true);
+            return Outcome::Moved;
+        }
+        if back {
+            return Outcome::Quiet;
+        }
+        // Tab in the last cell adds a row, as in Word.
+        let rows = cells.keys().map(|(row, _)| row + 1).max().unwrap_or(0);
+        if self.insert_row(&here.table, rows) {
+            let mut first = here.table.address();
+            first.containers.push(Container::Cell {
+                table: here.table.block,
+                row: rows,
+                cell: 0,
+            });
+            first.block = 0;
+            self.cells = None;
+            self.anchor = None;
+            self.caret = Some(Logical {
+                paragraph: first,
+                offset: 0,
+            });
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    /// Inserts a row shaped like its neighbour, with empty cells, at `index`.
+    fn insert_row(&mut self, table: &TableRef, index: usize) -> bool {
+        let Some(model) = self.table_model(table) else {
+            return false;
+        };
+        let template = model
+            .rows
+            .get(index.saturating_sub(1))
+            .or_else(|| model.rows.first());
+        let Some(template) = template else {
+            return false;
+        };
+        let mut row = template.clone();
+        row.location = SourceLocation::unknown();
+        for cell in &mut row.cells {
+            let props = cell
+                .blocks
+                .iter()
+                .find_map(|block| block.as_paragraph().map(|p| p.props.clone()))
+                .unwrap_or_default();
+            let mut paragraph = empty_paragraph();
+            paragraph.props = props;
+            paragraph.props.section = None;
+            cell.blocks = vec![Block::Paragraph(paragraph)];
+            cell.location = SourceLocation::unknown();
+        }
+        self.transact(&[Edit::InsertRow {
+            at: table.address(),
+            index,
+            row: Box::new(row),
+        }])
+    }
+
+    fn table_command(&mut self, command: TableCommand) -> Outcome {
+        let here = self
+            .in_cell()
+            .or_else(|| self.cells.as_ref().map(CellSelection::corner));
+        let Some(here) = here else {
+            self.note("note.not_in_table", String::new(), false);
+            return Outcome::Quiet;
+        };
+        let cells = self.table_cells(&here.table);
+        let rows = cells.keys().map(|(row, _)| row + 1).max().unwrap_or(0);
+        let columns = cells.keys().map(|(_, cell)| cell + 1).max().unwrap_or(0);
+        let row_span = self.cells.as_ref().map_or((here.row, here.row), |s| s.rows);
+        match command {
+            TableCommand::SelectRow => self.select_cells(
+                &here.table,
+                (here.row, here.row),
+                (0, columns.saturating_sub(1)),
+            ),
+            TableCommand::SelectColumn => self.select_cells(
+                &here.table,
+                (0, rows.saturating_sub(1)),
+                (here.cell, here.cell),
+            ),
+            TableCommand::SelectTable => self.select_cells(
+                &here.table,
+                (0, rows.saturating_sub(1)),
+                (0, columns.saturating_sub(1)),
+            ),
+            TableCommand::RowAbove | TableCommand::RowBelow => {
+                let index = if command == TableCommand::RowAbove {
+                    row_span.0
+                } else {
+                    row_span.1 + 1
+                };
+                if self.insert_row(&here.table, index) {
+                    self.cells = None;
+                    let mut first = here.table.address();
+                    first.containers.push(Container::Cell {
+                        table: here.table.block,
+                        row: index,
+                        cell: 0,
+                    });
+                    first.block = 0;
+                    self.anchor = None;
+                    self.caret = Some(Logical {
+                        paragraph: first,
+                        offset: 0,
+                    });
+                    Outcome::Edited
+                } else {
+                    Outcome::Quiet
+                }
+            }
+            TableCommand::DeleteRows => {
+                let (first, last) = row_span;
+                let commands: Vec<Edit> = if first == 0 && last + 1 >= rows {
+                    // Every row: the table goes.
+                    vec![Edit::Delete {
+                        at: here.table.address(),
+                    }]
+                } else {
+                    (first..=last)
+                        .rev()
+                        .map(|index| Edit::DeleteRow {
+                            at: here.table.address(),
+                            index,
+                        })
+                        .collect()
+                };
+                if self.transact(&commands) {
+                    self.cells = None;
+                    self.anchor = None;
+                    let fallback = here.table.address();
+                    let target = if first == 0 && last + 1 >= rows {
+                        fallback
+                    } else {
+                        let row = if first < rows - (last - first + 1) {
+                            first
+                        } else {
+                            first.saturating_sub(1)
+                        };
+                        let mut at = fallback;
+                        at.containers.push(Container::Cell {
+                            table: here.table.block,
+                            row,
+                            cell: 0,
+                        });
+                        at.block = 0;
+                        at
+                    };
+                    self.caret = Some(Logical {
+                        paragraph: target,
+                        offset: 0,
+                    });
+                    self.clamp_caret();
+                    Outcome::Edited
+                } else {
+                    Outcome::Quiet
+                }
+            }
+        }
+    }
+
+    fn select_cells(
+        &mut self,
+        table: &TableRef,
+        rows: (usize, usize),
+        cols: (usize, usize),
+    ) -> Outcome {
+        let rows = (rows.0.min(rows.1), rows.0.max(rows.1));
+        let cols = (cols.0.min(cols.1), cols.0.max(cols.1));
+        self.cells = Some(CellSelection {
+            table: table.clone(),
+            rows,
+            cols,
+        });
+        self.anchor = None;
+        Outcome::Moved
+    }
+
+    /// Paragraphs of the selected cells, in story order.
+    fn cell_paragraphs(&self) -> Vec<Address> {
+        let Some(selection) = &self.cells else {
+            return Vec::new();
+        };
+        self.table_cells(&selection.table)
+            .into_iter()
+            .filter(|((row, cell), _)| selection.contains(*row, *cell))
+            .flat_map(|(_, paragraphs)| paragraphs)
+            .collect()
+    }
+
+    /// Leaves cell selection for a caret at the start of its first cell.
+    fn collapse_cells(&mut self) {
+        let first = self.cell_paragraphs().into_iter().next();
+        self.cells = None;
+        if let Some(paragraph) = first {
+            self.anchor = None;
+            self.caret = Some(Logical {
+                paragraph,
+                offset: 0,
+            });
+        }
+    }
+
+    /// Empties the selected cells, keeping the cells themselves.
+    fn clear_cells(&mut self) -> Outcome {
+        let mut commands = Vec::new();
+        for address in self.cell_paragraphs() {
+            let len = self.text_of(&address).chars().count();
+            match self.paragraph_replace(&address, 0, len, "") {
+                Ok(more) => commands.extend(more),
+                Err(key) => {
+                    self.note(key, String::new(), true);
+                    return Outcome::Quiet;
+                }
+            }
+        }
+        if commands.is_empty() || self.transact(&commands) {
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    /// The selected cells' text: tabs between cells, lines between rows.
+    fn cells_text(&self) -> Option<String> {
+        let selection = self.cells.as_ref()?;
+        let mut out = String::new();
+        let mut last_row = None;
+        for ((row, cell), paragraphs) in self.table_cells(&selection.table) {
+            if !selection.contains(row, cell) {
+                continue;
+            }
+            match last_row {
+                Some(previous) if previous != row => out.push('\n'),
+                Some(_) => out.push('\t'),
+                None => {}
+            }
+            last_row = Some(row);
+            let text: Vec<String> = paragraphs.iter().map(|p| self.text_of(p)).collect();
+            out.push_str(&text.join(" "));
+        }
+        Some(out)
+    }
+
+    /// Rectangles of the selected cells, from the carets of their lines and
+    /// the table's grid.
+    fn cell_rects(&self) -> Vec<VisualRect> {
+        let Some(selection) = &self.cells else {
+            return Vec::new();
+        };
+        let Some(map) = &self.map else {
+            return Vec::new();
+        };
+        let revision = self.session.revision();
+        let cells = self.table_cells(&selection.table);
+        // The caret boxes of every cell, by (row, cell).
+        let mut boxes: BTreeMap<(usize, usize), VisualRect> = BTreeMap::new();
+        for (key, paragraphs) in &cells {
+            let mut found: Option<VisualRect> = None;
+            for paragraph in paragraphs {
+                let len = self.text_of(paragraph).chars().count();
+                for offset in [0, len] {
+                    let position = self.position(&Logical {
+                        paragraph: paragraph.clone(),
+                        offset,
+                    });
+                    for rect in map.caret(revision, &position).unwrap_or_default() {
+                        found = Some(match found {
+                            None => rect,
+                            Some(f) if f.page == rect.page => {
+                                let left = f.x.min(rect.x);
+                                let top = f.y.min(rect.y);
+                                let right = (f.x + f.width).max(rect.x + rect.width);
+                                let bottom = (f.y + f.height).max(rect.y + rect.height);
+                                VisualRect {
+                                    page: f.page,
+                                    x: left,
+                                    y: top,
+                                    width: right - left,
+                                    height: bottom - top,
+                                }
+                            }
+                            Some(f) => f,
+                        });
+                    }
+                }
+            }
+            if let Some(found) = found {
+                boxes.insert(*key, found);
+            }
+        }
+        let grid: Vec<f64> = self
+            .table_model(&selection.table)
+            .map(|t| {
+                t.grid
+                    .iter()
+                    .map(|col| {
+                        f64::from(col.width.map_or(1440, |w| w.0)) * self.options.scale / 1440.0
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        // Text starts a cell margin in from the cell's edge.
+        let pad = 0.075 * self.options.scale;
+        let mut out = Vec::new();
+        for ((row, cell), rect) in &boxes {
+            if !selection.contains(*row, *cell) {
+                continue;
+            }
+            let left = rect.x - pad;
+            let right = boxes
+                .get(&(*row, cell + 1))
+                .filter(|next| next.page == rect.page)
+                .map_or_else(
+                    || left + grid.get(*cell).copied().unwrap_or(rect.width + 2.0 * pad),
+                    |next| next.x - pad,
+                );
+            let top = boxes
+                .iter()
+                .filter(|((r, _), b)| r == row && b.page == rect.page)
+                .map(|(_, b)| b.y)
+                .fold(rect.y, f64::min)
+                - 2.0;
+            let bottom = boxes
+                .iter()
+                .filter(|((r, _), b)| *r == row + 1 && b.page == rect.page)
+                .map(|(_, b)| b.y - 2.0)
+                .reduce(f64::min)
+                .unwrap_or_else(|| {
+                    // The last row: as tall as the one above it, at least.
+                    let content = boxes
+                        .iter()
+                        .filter(|((r, _), b)| r == row && b.page == rect.page)
+                        .map(|(_, b)| b.y + b.height)
+                        .fold(rect.y + rect.height, f64::max)
+                        + 4.0;
+                    let above = row.checked_sub(1).and_then(|previous| {
+                        let top_of = |r: usize| {
+                            boxes
+                                .iter()
+                                .filter(|((rr, _), b)| *rr == r && b.page == rect.page)
+                                .map(|(_, b)| b.y)
+                                .reduce(f64::min)
+                        };
+                        Some(top + (top_of(*row)? - top_of(previous)?))
+                    });
+                    above.map_or(content, |above| above.max(content))
+                });
+            out.push(VisualRect {
+                page: rect.page,
+                x: left,
+                y: top,
+                width: (right - left).max(1.0),
+                height: (bottom - top).max(1.0),
+            });
+        }
+        out
     }
 
     // ----- search -------------------------------------------------------
@@ -2395,6 +3147,9 @@ impl<'a, 's> Worker<'a, 's> {
     }
 }
 
+/// How far apart, in page pixels, the caret probes the lines above or below.
+const PROBE_STEP: f64 = 3.0;
+
 /// Word-processor font sizes, for grow and shrink.
 pub(crate) const FONT_SIZES: &[f32] = &[
     8.0, 9.0, 10.0, 10.5, 11.0, 12.0, 14.0, 16.0, 18.0, 20.0, 22.0, 24.0, 26.0, 28.0, 36.0, 48.0,
@@ -2462,6 +3217,24 @@ fn heading_level(document: &Document, paragraph: &Paragraph) -> Option<u8> {
         style.clone_from(&definition.based_on);
     }
     None
+}
+
+/// A run holding `text` with `props`.
+fn text_run(
+    props: strict_ooxml::model::props::RunProperties,
+    text: &str,
+) -> strict_ooxml::model::Run {
+    strict_ooxml::model::Run {
+        props,
+        content: vec![strict_ooxml::model::RunContent::Text(
+            strict_ooxml::model::TextNode {
+                text: text.to_owned(),
+                space: strict_ooxml::model::Space::Preserve,
+            },
+        )],
+        revision: None,
+        location: SourceLocation::unknown(),
+    }
 }
 
 fn empty_paragraph() -> Paragraph {
@@ -2617,6 +3390,272 @@ mod tests {
         requests.send(Request::Shutdown).unwrap();
     }
 
+    /// After inserting a table the caret map must still build: without it
+    /// the mouse, the arrows and the caret are gone.
+    #[test]
+    fn the_caret_map_survives_inserted_tables() {
+        for (rows, columns) in [(1, 6), (6, 1), (4, 4), (8, 2)] {
+            let ctx = eframe::egui::Context::default();
+            let (requests, replies) = spawn(Source::New, false, OpenControl::new(), ctx);
+            let errors = |replies: &Receiver<Reply>| -> (EditState, Vec<String>) {
+                let mut errors = Vec::new();
+                let state = wait(replies, |reply| match reply {
+                    Reply::State(state) => Some(state),
+                    Reply::Note(note) if note.error => {
+                        errors.push(format!("{} {}", note.key, note.detail));
+                        None
+                    }
+                    _ => None,
+                });
+                (state, errors)
+            };
+            let _ = errors(&replies);
+            requests.send(Request::Type("До".into())).unwrap();
+            let _ = errors(&replies);
+            requests
+                .send(Request::Insert(Insert::Table { rows, columns }))
+                .unwrap();
+            let (_, problems) = errors(&replies);
+            assert!(problems.is_empty(), "{rows}x{columns}: {problems:?}");
+            requests.send(Request::Type("ячейка".into())).unwrap();
+            let (state, problems) = errors(&replies);
+            assert!(problems.is_empty(), "{rows}x{columns}: {problems:?}");
+            assert_eq!(state.words, 2, "{rows}x{columns}");
+            requests.send(Request::Shutdown).unwrap();
+        }
+    }
+
+    /// Down from a table's last row reaches the paragraph after it, as in
+    /// Word; so does typing there.
+    #[test]
+    fn the_caret_leaves_a_table_downwards() {
+        let ctx = eframe::egui::Context::default();
+        let (requests, replies) = spawn(Source::New, false, OpenControl::new(), ctx);
+        let _ = state(&replies);
+        requests.send(Request::Type("before".into())).unwrap();
+        let _ = state(&replies);
+        requests
+            .send(Request::Insert(Insert::Table {
+                rows: 2,
+                columns: 3,
+            }))
+            .unwrap();
+        let _ = state(&replies);
+        requests.send(Request::Type("cell".into())).unwrap();
+        let _ = state(&replies);
+        for _ in 0..3 {
+            requests
+                .send(Request::Move {
+                    motion: Motion::Down,
+                    extend: false,
+                })
+                .unwrap();
+        }
+        requests.send(Request::Type("after".into())).unwrap();
+        let _ = state(&replies);
+        let text = body_text(&requests, &replies);
+        assert!(text.ends_with("after"), "{text:?}");
+        assert!(!text.contains("cellafter"), "{text:?}");
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    fn send_all(requests: &Sender<Request>, all: Vec<Request>) {
+        for request in all {
+            requests.send(request).unwrap();
+        }
+    }
+
+    fn typed(text: &str) -> Vec<Request> {
+        text.chars().map(|c| Request::Type(c.to_string())).collect()
+    }
+
+    /// Waits until the worker has handled everything sent so far.
+    fn settle(requests: &Sender<Request>, replies: &Receiver<Reply>) -> String {
+        body_text(requests, replies)
+    }
+
+    #[test]
+    fn tab_inserts_a_tab_that_backspace_removes() {
+        let (requests, replies) = new_document();
+        send_all(&requests, typed("ab"));
+        send_all(
+            &requests,
+            vec![Request::Move {
+                motion: Motion::Left,
+                extend: false,
+            }],
+        );
+        requests.send(Request::Tab { back: false }).unwrap();
+        assert_eq!(settle(&requests, &replies), "a\tb");
+        // At the end of the paragraph, then typing after it.
+        requests.send(Request::Tab { back: false }).unwrap();
+        send_all(&requests, typed("c"));
+        assert_eq!(settle(&requests, &replies), "a\tb\tc");
+        // Backspace takes the c, then the tab.
+        send_all(&requests, vec![Request::Backspace, Request::Backspace]);
+        assert_eq!(settle(&requests, &replies), "a\tb");
+        // Delete in front of the first tab.
+        send_all(
+            &requests,
+            vec![
+                Request::Move {
+                    motion: Motion::Home,
+                    extend: false,
+                },
+                Request::Move {
+                    motion: Motion::Right,
+                    extend: false,
+                },
+                Request::Delete,
+            ],
+        );
+        assert_eq!(settle(&requests, &replies), "ab");
+        // A tab at the very end, removed again.
+        send_all(
+            &requests,
+            vec![Request::Tab { back: false }, Request::Backspace],
+        );
+        assert_eq!(settle(&requests, &replies), "ab");
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    #[test]
+    fn a_tab_inside_a_run_of_a_loaded_document_is_removable() {
+        let dir = std::env::temp_dir().join(format!("mufoed-tab-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tab.rtf");
+        std::fs::write(&path, b"{\\rtf1\\ansi one\\tab two\\par}").unwrap();
+        let ctx = eframe::egui::Context::default();
+        let (requests, replies) = spawn(
+            Source::File {
+                path,
+                import: formats::ImportOptions::default(),
+            },
+            false,
+            OpenControl::new(),
+            ctx,
+        );
+        let _ = state(&replies);
+        assert_eq!(settle(&requests, &replies), "one\ttwo");
+        send_all(
+            &requests,
+            vec![
+                Request::Move {
+                    motion: Motion::DocStart,
+                    extend: false,
+                },
+                Request::Move {
+                    motion: Motion::WordRight,
+                    extend: false,
+                },
+            ],
+        );
+        // WordRight stops after the tab, at "two".
+        requests.send(Request::Backspace).unwrap();
+        assert_eq!(settle(&requests, &replies), "onetwo");
+        requests.send(Request::Shutdown).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn tab_walks_the_cells_and_adds_a_row_after_the_last() {
+        let (requests, replies) = new_document();
+        send_all(
+            &requests,
+            vec![Request::Insert(Insert::Table {
+                rows: 1,
+                columns: 2,
+            })],
+        );
+        send_all(&requests, typed("a"));
+        requests.send(Request::Tab { back: false }).unwrap();
+        send_all(&requests, typed("b"));
+        requests.send(Request::Tab { back: false }).unwrap();
+        send_all(&requests, typed("c"));
+        // Shift+Tab goes back and selects "b"; typing replaces it.
+        send_all(
+            &requests,
+            vec![Request::Tab { back: true }, Request::Tab { back: true }],
+        );
+        send_all(&requests, typed("B"));
+        let text = settle(&requests, &replies);
+        assert_eq!(text, "\nB\nb\nc\n\n", "{text:?}");
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    #[test]
+    fn rows_and_columns_are_selected_copied_and_cleared() {
+        let (requests, replies) = new_document();
+        send_all(
+            &requests,
+            vec![Request::Insert(Insert::Table {
+                rows: 2,
+                columns: 2,
+            })],
+        );
+        for text in ["a", "b", "c", "d"] {
+            send_all(&requests, typed(text));
+            requests.send(Request::Tab { back: false }).unwrap();
+        }
+        // Tab after the last cell added a third row; go back to "a".
+        send_all(
+            &requests,
+            vec![Request::Move {
+                motion: Motion::DocStart,
+                extend: false,
+            }],
+        );
+        send_all(
+            &requests,
+            vec![
+                Request::Move {
+                    motion: Motion::Down,
+                    extend: false,
+                },
+                Request::Table(TableCommand::SelectColumn),
+                Request::Copy { cut: false },
+            ],
+        );
+        let column = wait(&replies, |reply| match reply {
+            Reply::Clipboard(text) => Some(text),
+            _ => None,
+        });
+        assert_eq!(column, "a\nc\n");
+        send_all(
+            &requests,
+            vec![
+                Request::Table(TableCommand::SelectRow),
+                Request::Copy { cut: false },
+            ],
+        );
+        let row = wait(&replies, |reply| match reply {
+            Reply::Clipboard(text) => Some(text),
+            _ => None,
+        });
+        assert_eq!(row, "a\tb");
+        requests.send(Request::Backspace).unwrap();
+        let text = settle(&requests, &replies);
+        assert_eq!(text, "\n\n\nc\nd\n\n\n", "{text:?}");
+        send_all(
+            &requests,
+            vec![
+                Request::Move {
+                    motion: Motion::DocStart,
+                    extend: false,
+                },
+                Request::Move {
+                    motion: Motion::Down,
+                    extend: false,
+                },
+                Request::Table(TableCommand::SelectRow),
+                Request::Table(TableCommand::DeleteRows),
+            ],
+        );
+        let text = settle(&requests, &replies);
+        assert!(text.starts_with("\nc\nd"), "{text:?}");
+        requests.send(Request::Shutdown).unwrap();
+    }
+
     #[test]
     fn a_new_document_is_typed_formatted_undone_and_saved() {
         let ctx = eframe::egui::Context::default();
@@ -2697,7 +3736,7 @@ mod tests {
             .iter()
             .filter_map(Block::as_paragraph)
             .map(|paragraph| {
-                nav::text_nodes(paragraph)
+                nav::pieces(paragraph)
                     .iter()
                     .map(|node| node.text.as_str())
                     .collect()

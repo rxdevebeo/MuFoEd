@@ -1,59 +1,140 @@
 //! Text positions inside a paragraph's inline tree.
 //!
 //! The editing kernel addresses text by `(paragraph, inline path, content
-//! index, scalar offset)`. Moving a caret through a paragraph needs the text
-//! nodes in reading order, which is what [`text_nodes`] lists; the wrappers it
-//! descends are the ones the visual map descends (hyperlinks, inline content
-//! controls and directional runs).
+//! index, scalar offset)`. Moving a caret through a paragraph needs its pieces
+//! in reading order - text nodes, and the tabs and breaks that each take one
+//! caret position - which is what [`pieces`] lists; the wrappers it descends
+//! are the ones the visual map descends (hyperlinks, inline content controls
+//! and directional runs).
 
-use strict_ooxml::edit::{InlinePoint, TextPosition};
+use strict_ooxml::edit::InlinePoint;
 use strict_ooxml::model::{Inline, Paragraph, Run, RunContent};
 use unicode_segmentation::UnicodeSegmentation;
 
-/// One text node: where it is and what it says.
+/// What a piece of a paragraph is, for addressing it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PieceKind {
+    /// A text node of a run.
+    Text,
+    /// A tab, a break or another one-character item inside a run.
+    RunAtom,
+    /// A tab or a break between runs (`Inline::Tab`, `Inline::Break`),
+    /// addressed by its top-level index.
+    InlineAtom,
+}
+
+/// One piece of a paragraph in reading order: a text node, or an item that
+/// takes one caret position (a tab, a line break).
 #[derive(Clone, Debug)]
-pub(crate) struct TextNodeRef {
+pub(crate) struct Piece {
+    pub(crate) kind: PieceKind,
     pub(crate) inline: Vec<usize>,
     pub(crate) content: usize,
+    /// The text, or the one character an atom stands for (`\t`, `\n`).
     pub(crate) text: String,
 }
 
-impl TextNodeRef {
-    /// Length in Unicode scalars, the kernel's unit.
+impl Piece {
     pub(crate) fn len(&self) -> usize {
         self.text.chars().count()
     }
 }
 
-/// The paragraph's text nodes in reading order.
-pub(crate) fn text_nodes(paragraph: &Paragraph) -> Vec<TextNodeRef> {
+/// The paragraph's pieces in reading order.
+pub(crate) fn pieces(paragraph: &Paragraph) -> Vec<Piece> {
     let mut out = Vec::new();
-    walk(&paragraph.inlines, &mut Vec::new(), &mut out);
+    walk_pieces(&paragraph.inlines, &mut Vec::new(), &mut out);
     out
 }
 
-fn walk(inlines: &[Inline], path: &mut Vec<usize>, out: &mut Vec<TextNodeRef>) {
+fn atom_char(content: &RunContent) -> Option<char> {
+    match content {
+        RunContent::Tab | RunContent::Ptab { .. } => Some('\t'),
+        RunContent::Break(_) | RunContent::ClearingBreak(_) | RunContent::CarriageReturn => {
+            Some('\n')
+        }
+        RunContent::NoBreakHyphen => Some('\u{2011}'),
+        _ => None,
+    }
+}
+
+fn walk_pieces(inlines: &[Inline], path: &mut Vec<usize>, out: &mut Vec<Piece>) {
     for (index, inline) in inlines.iter().enumerate() {
         path.push(index);
         match inline {
             Inline::Run(run) => {
                 for (content, item) in run.content.iter().enumerate() {
                     if let RunContent::Text(node) = item {
-                        out.push(TextNodeRef {
+                        out.push(Piece {
+                            kind: PieceKind::Text,
                             inline: path.clone(),
                             content,
                             text: node.text.clone(),
                         });
+                    } else if let Some(c) = atom_char(item) {
+                        out.push(Piece {
+                            kind: PieceKind::RunAtom,
+                            inline: path.clone(),
+                            content,
+                            text: c.to_string(),
+                        });
                     }
                 }
             }
-            Inline::Hyperlink(link) => walk(&link.inlines, path, out),
-            Inline::SdtInline(sdt) => walk(&sdt.inlines, path, out),
-            Inline::Directional(wrapper) => walk(&wrapper.inlines, path, out),
+            Inline::Tab | Inline::Break(_) if path.len() == 1 => out.push(Piece {
+                kind: PieceKind::InlineAtom,
+                inline: path.clone(),
+                content: 0,
+                text: if matches!(inline, Inline::Tab) {
+                    "\t"
+                } else {
+                    "\n"
+                }
+                .to_owned(),
+            }),
+            Inline::Hyperlink(link) => walk_pieces(&link.inlines, path, out),
+            Inline::SdtInline(sdt) => walk_pieces(&sdt.inlines, path, out),
+            Inline::Directional(wrapper) => walk_pieces(&wrapper.inlines, path, out),
             _ => {}
         }
         path.pop();
     }
+}
+
+/// The kernel point at a scalar offset into the paragraph's pieces, when one
+/// exists there: inside or at either end of a text node, or beside an atom
+/// inside a run. Beside atoms between runs only, there is none.
+pub(crate) fn point_at(pieces: &[Piece], offset: usize) -> Option<InlinePoint> {
+    let mut before = 0;
+    for piece in pieces {
+        let end = before + piece.len();
+        match piece.kind {
+            PieceKind::Text if (before..=end).contains(&offset) => {
+                return Some(InlinePoint {
+                    inline: piece.inline.clone(),
+                    content: piece.content,
+                    offset: offset - before,
+                });
+            }
+            PieceKind::RunAtom if offset == before => {
+                return Some(InlinePoint {
+                    inline: piece.inline.clone(),
+                    content: piece.content,
+                    offset: 0,
+                });
+            }
+            PieceKind::RunAtom if offset == end => {
+                return Some(InlinePoint {
+                    inline: piece.inline.clone(),
+                    content: piece.content + 1,
+                    offset: 0,
+                });
+            }
+            _ => {}
+        }
+        before = end;
+    }
+    None
 }
 
 /// The run at an inline path, descending the same wrappers.
@@ -73,81 +154,6 @@ pub(crate) fn run_at<'a>(paragraph: &'a Paragraph, path: &[usize]) -> Option<&'a
         Inline::Run(run) => Some(run),
         _ => None,
     }
-}
-
-/// The first run of the paragraph in reading order, with its path.
-fn first_run(inlines: &[Inline], path: &mut Vec<usize>) -> bool {
-    for (index, inline) in inlines.iter().enumerate() {
-        path.push(index);
-        let found = match inline {
-            Inline::Run(_) => true,
-            Inline::Hyperlink(link) => first_run(&link.inlines, path),
-            Inline::SdtInline(sdt) => first_run(&sdt.inlines, path),
-            Inline::Directional(wrapper) => first_run(&wrapper.inlines, path),
-            _ => false,
-        };
-        if found {
-            return true;
-        }
-        path.pop();
-    }
-    false
-}
-
-/// The last run of the paragraph in reading order, with its path.
-fn last_run<'a>(inlines: &'a [Inline], path: &mut Vec<usize>) -> Option<&'a Run> {
-    for (index, inline) in inlines.iter().enumerate().rev() {
-        path.push(index);
-        let found = match inline {
-            Inline::Run(run) => Some(run),
-            Inline::Hyperlink(link) => last_run(&link.inlines, path),
-            Inline::SdtInline(sdt) => last_run(&sdt.inlines, path),
-            Inline::Directional(wrapper) => last_run(&wrapper.inlines, path),
-            _ => None,
-        };
-        if found.is_some() {
-            return found;
-        }
-        path.pop();
-    }
-    None
-}
-
-/// The point before everything in the paragraph, when it has a run.
-pub(crate) fn start_point(paragraph: &Paragraph) -> Option<InlinePoint> {
-    let mut path = Vec::new();
-    first_run(&paragraph.inlines, &mut path).then_some(InlinePoint {
-        inline: path,
-        content: 0,
-        offset: 0,
-    })
-}
-
-/// The point after everything in the paragraph, when it has a run.
-pub(crate) fn end_point(paragraph: &Paragraph) -> Option<InlinePoint> {
-    let mut path = Vec::new();
-    let run = last_run(&paragraph.inlines, &mut path)?;
-    Some(InlinePoint {
-        inline: path,
-        content: run.content.len(),
-        offset: 0,
-    })
-}
-
-/// The kernel point a caret stands on.
-pub(crate) fn point_of(position: &TextPosition) -> InlinePoint {
-    InlinePoint {
-        inline: position.inline.clone(),
-        content: position.content,
-        offset: position.offset,
-    }
-}
-
-/// Index of the node a caret stands in.
-pub(crate) fn node_index(nodes: &[TextNodeRef], position: &TextPosition) -> Option<usize> {
-    nodes
-        .iter()
-        .position(|node| node.inline == position.inline && node.content == position.content)
 }
 
 /// Scalar offset of the grapheme boundary before `offset`.
