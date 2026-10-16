@@ -213,10 +213,16 @@
       "page_number": "Put page numbers in a header or footer",
       "close_header_footer": "Back to the document text (Esc)",
       "hf_first_page": "The section's first page has headers of its own",
-      "hf_even_odd": "Even pages have headers of their own"
+      "hf_even_odd": "Even pages have headers of their own",
+      "underline_style": "Underline style",
+      "strike_style": "Strikethrough style",
+      "indent_less": "Decrease indent (a list level up)",
+      "indent_more": "Increase indent (a list level down)"
     },
     "font": {
-      "default": "(from style)"
+      "default": "(from style)",
+      "document_fonts": "Document fonts",
+      "all_fonts": "All fonts"
     },
     "menu": {
       "font_color": "Font color",
@@ -492,6 +498,22 @@
     "hf": {
       "first_page": "Different first page",
       "even_odd": "Different odd and even pages"
+    },
+    "underline": {
+      "single": "Single",
+      "double": "Double",
+      "thick": "Thick",
+      "dotted": "Dotted",
+      "dash": "Dashed",
+      "dot_dash": "Dot-dash",
+      "wave": "Wave",
+      "words": "Words only",
+      "none": "No underline"
+    },
+    "strike": {
+      "single": "Single",
+      "double": "Double",
+      "none": "No strikethrough"
     }
   }
 }

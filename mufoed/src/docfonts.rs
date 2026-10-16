@@ -38,6 +38,20 @@ impl DocumentFonts {
         }
     }
 
+    /// The egui family that draws the regular face of `family`, once it can.
+    pub(crate) fn family_named(&mut self, ctx: &egui::Context, family: &str) -> Option<FontFamily> {
+        self.family(
+            ctx,
+            &HeadingFont {
+                family: family.to_owned(),
+                bold: false,
+                italic: false,
+                size_pt: 11.0,
+                color: None,
+            },
+        )
+    }
+
     /// The egui family that draws `font`, once it can.
     pub(crate) fn family(&mut self, ctx: &egui::Context, font: &HeadingFont) -> Option<FontFamily> {
         let key: Key = (font.family.clone(), font.bold, font.italic);

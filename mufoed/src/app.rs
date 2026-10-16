@@ -246,7 +246,7 @@ pub(crate) struct App {
     startup: Vec<PathBuf>,
     applied_dark: Option<bool>,
     /// Document faces for the navigation pane.
-    doc_fonts: crate::docfonts::DocumentFonts,
+    doc_fonts: std::cell::RefCell<crate::docfonts::DocumentFonts>,
     /// What the last copy carried besides text.
     clip: Option<Box<crate::worker::ClipObjects>>,
     /// The contextual tab shown in the last frame.
@@ -309,7 +309,9 @@ impl App {
             exit_confirmed: false,
             startup: files,
             applied_dark: None,
-            doc_fonts: crate::docfonts::DocumentFonts::new(interface_fonts),
+            doc_fonts: std::cell::RefCell::new(crate::docfonts::DocumentFonts::new(
+                interface_fonts,
+            )),
             clip: None,
             tool_shown: None,
             tab_before_tool: RibbonTab::Home,
@@ -1669,6 +1671,10 @@ impl App {
             header_footer: tab
                 .and_then(|tab| tab.cursor.as_ref())
                 .and_then(|cursor| cursor.header_footer.as_ref()),
+            fonts: &self.doc_fonts,
+            document_fonts: tab
+                .and_then(|tab| tab.info.as_ref())
+                .map_or(&[], |info| info.fonts.as_slice()),
         };
         ui.add_space(2.0);
         ribbon::body(ui, self.ribbon_tab, &state, actions);
@@ -1859,7 +1865,12 @@ impl App {
                         for entry in &tab.outline {
                             ui.horizontal(|ui| {
                                 ui.add_space(f32::from(entry.level) * 12.0);
-                                let text = heading_text(ui.ctx(), &mut self.doc_fonts, entry, dark);
+                                let text = heading_text(
+                                    ui.ctx(),
+                                    &mut self.doc_fonts.borrow_mut(),
+                                    entry,
+                                    dark,
+                                );
                                 if ui
                                     .add(egui::Button::new(text).frame(false).wrap())
                                     .clicked()

@@ -81,6 +81,10 @@ pub(crate) struct RibbonState<'a> {
     pub(crate) crop: bool,
     /// The header or footer being edited.
     pub(crate) header_footer: Option<&'a crate::worker::HeaderFooterView>,
+    /// Faces to draw font names in.
+    pub(crate) fonts: &'a std::cell::RefCell<crate::docfonts::DocumentFonts>,
+    /// The fonts the document names.
+    pub(crate) document_fonts: &'a [String],
 }
 
 impl RibbonState<'_> {
@@ -106,6 +110,143 @@ const FONT_FAMILIES: &[&str] = &[
     "Liberation Serif",
     "Liberation Sans",
 ];
+
+/// The font names to choose from: the document's first, then every
+/// installed family and the common Office ones (drawn with their bundled
+/// stand-ins where not installed), each in its own face.
+fn font_list(ui: &mut egui::Ui, s: &RibbonState<'_>, current: &str, actions: &mut Vec<Action>) {
+    let mut all: Vec<String> = FONT_FAMILIES.iter().map(|f| (*f).to_owned()).collect();
+    all.extend(crate::raster::installed_families().iter().cloned());
+    all.sort_by_key(|name| name.to_lowercase());
+    all.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    let sections = [
+        (s.t("font.document_fonts"), s.document_fonts.to_vec()),
+        (s.t("font.all_fonts"), all),
+    ];
+    for (title, names) in sections {
+        if names.is_empty() {
+            continue;
+        }
+        ui.label(RichText::new(title).size(11.5).weak());
+        for name in names {
+            let (rect, response) = ui.allocate_exact_size(vec2(260.0, 24.0), Sense::click());
+            if !ui.is_rect_visible(rect) {
+                continue;
+            }
+            let selected = name.eq_ignore_ascii_case(current);
+            if selected {
+                ui.painter().rect_filled(rect, 3.0, s.palette.pressed);
+            } else if response.hovered() {
+                ui.painter().rect_filled(rect, 3.0, s.palette.hover);
+            }
+            // The name in its own face, once that face is loaded.
+            let family = s
+                .fonts
+                .borrow_mut()
+                .family_named(ui.ctx(), &name)
+                .unwrap_or(FontFamily::Proportional);
+            ui.painter().text(
+                rect.left_center() + vec2(8.0, 0.0),
+                egui::Align2::LEFT_CENTER,
+                &name,
+                FontId::new(15.0, family),
+                ui.visuals().text_color(),
+            );
+            if response.clicked() {
+                doc(actions, Request::Format(FormatChange::Font(name.clone())));
+                ui.close();
+            }
+        }
+        ui.add_space(4.0);
+    }
+}
+
+/// Underline styles, each drawn as it looks.
+fn underline_menu(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
+    use strict_ooxml::model::values::Underline;
+    let styles = [
+        (Underline::Single, "underline.single"),
+        (Underline::Double, "underline.double"),
+        (Underline::Thick, "underline.thick"),
+        (Underline::Dotted, "underline.dotted"),
+        (Underline::Dash, "underline.dash"),
+        (Underline::DotDash, "underline.dot_dash"),
+        (Underline::Wave, "underline.wave"),
+        (Underline::Words, "underline.words"),
+    ];
+    for (style, key) in styles {
+        let (rect, response) = ui.allocate_exact_size(vec2(190.0, 26.0), Sense::click());
+        if s.format.underline_style == Some(style) {
+            ui.painter().rect_filled(rect, 3.0, s.palette.pressed);
+        } else if response.hovered() {
+            ui.painter().rect_filled(rect, 3.0, s.palette.hover);
+        }
+        let color = ui.visuals().text_color();
+        ui.painter().text(
+            rect.left_center() + vec2(10.0, -2.0),
+            egui::Align2::LEFT_CENTER,
+            s.t(key),
+            FontId::proportional(14.0),
+            color,
+        );
+        let y = rect.bottom() - 5.0;
+        let (x0, x1) = (rect.left() + 120.0, rect.right() - 10.0);
+        let thin = Stroke::new(1.0, color);
+        match style {
+            Underline::Double => {
+                ui.painter()
+                    .line_segment([pos2(x0, y - 2.0), pos2(x1, y - 2.0)], thin);
+                ui.painter().line_segment([pos2(x0, y), pos2(x1, y)], thin);
+            }
+            Underline::Thick => {
+                ui.painter()
+                    .line_segment([pos2(x0, y), pos2(x1, y)], Stroke::new(2.5, color));
+            }
+            Underline::Dotted | Underline::Dash | Underline::DotDash => {
+                let pattern: &[f32] = match style {
+                    Underline::Dotted => &[1.5, 2.0],
+                    Underline::Dash => &[5.0, 3.0],
+                    _ => &[5.0, 2.0, 1.5, 2.0],
+                };
+                let mut x = x0;
+                let mut index = 0;
+                while x < x1 {
+                    let length = pattern.get(index % pattern.len()).copied().unwrap_or(2.0);
+                    if index % 2 == 0 {
+                        ui.painter()
+                            .line_segment([pos2(x, y), pos2((x + length).min(x1), y)], thin);
+                    }
+                    x += length;
+                    index += 1;
+                }
+            }
+            Underline::Wave => {
+                let points: Vec<egui::Pos2> = (0..=40)
+                    .map(|i| {
+                        let t = f32::from(u8::try_from(i).unwrap_or(0)) / 40.0;
+                        pos2(x0 + (x1 - x0) * t, y - 1.5 * (t * 24.0).sin())
+                    })
+                    .collect();
+                ui.painter().add(egui::Shape::line(points, thin));
+            }
+            _ => {
+                ui.painter().line_segment([pos2(x0, y), pos2(x1, y)], thin);
+            }
+        }
+        if response.clicked() {
+            doc(
+                actions,
+                Request::Format(FormatChange::UnderlineStyle(Some(style))),
+            );
+            ui.close();
+        }
+    }
+    ui.separator();
+    if ui.button(s.t("underline.none")).clicked() {
+        doc(actions, Request::Format(FormatChange::UnderlineStyle(None)));
+        ui.close();
+    }
+}
 
 /// One row of a group.
 const ROW: f32 = 22.0;
@@ -929,6 +1070,21 @@ fn home(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
             ui.horizontal(|ui| {
                 list_button(ui, s, true, actions);
                 list_button(ui, s, false, actions);
+                ui.add_space(4.0);
+                for (icon, more, tip) in [
+                    (Icon::IndentLess, false, "tip.indent_less"),
+                    (Icon::IndentMore, true, "tip.indent_more"),
+                ] {
+                    if square(
+                        ui,
+                        &Square::icon(icon, s.t(tip), editable),
+                        false,
+                        p,
+                        |_, _, _| {},
+                    ) {
+                        doc(actions, Request::IndentStep(more));
+                    }
+                }
             });
             ui.horizontal(|ui| {
                 for (icon, align, tip) in [
@@ -1011,14 +1167,7 @@ fn font_group(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>)
                         current.clone()
                     })
                     .show_ui(ui, |ui| {
-                        for family in FONT_FAMILIES {
-                            if ui.selectable_label(current == *family, *family).clicked() {
-                                doc(
-                                    actions,
-                                    Request::Format(FormatChange::Font((*family).to_owned())),
-                                );
-                            }
-                        }
+                        font_list(ui, s, &current, actions);
                     })
                     .response
                     .on_hover_text(s.t("tip.font"));
@@ -1101,7 +1250,7 @@ fn font_group(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>)
             if square(
                 ui,
                 &Square::glyph("U", s.t("tip.underline"), editable).on(s.format.underline),
-                false,
+                true,
                 p,
                 |painter, rect, color| {
                     painter.line_segment(
@@ -1115,10 +1264,14 @@ fn font_group(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>)
             ) {
                 doc(actions, Request::Format(FormatChange::Underline));
             }
+            split_arrow(ui, s.t("tip.underline_style"), editable, p, |ui| {
+                underline_menu(ui, s, actions);
+            });
             if square(
                 ui,
-                &Square::glyph("S", s.t("tip.strike"), editable).on(s.format.strike),
-                false,
+                &Square::glyph("S", s.t("tip.strike"), editable)
+                    .on(s.format.strike || s.format.double_strike),
+                true,
                 p,
                 |painter, rect, color| {
                     painter.line_segment(
@@ -1132,6 +1285,46 @@ fn font_group(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>)
             ) {
                 doc(actions, Request::Format(FormatChange::Strike));
             }
+            split_arrow(ui, s.t("tip.strike_style"), editable, p, |ui| {
+                for (lines, key) in [
+                    (1u8, "strike.single"),
+                    (2, "strike.double"),
+                    (0, "strike.none"),
+                ] {
+                    let current = match lines {
+                        1 => s.format.strike,
+                        2 => s.format.double_strike,
+                        _ => !s.format.strike && !s.format.double_strike,
+                    };
+                    let (rect, response) =
+                        ui.allocate_exact_size(vec2(170.0, 26.0), Sense::click());
+                    if current {
+                        ui.painter().rect_filled(rect, 3.0, p.pressed);
+                    } else if response.hovered() {
+                        ui.painter().rect_filled(rect, 3.0, p.hover);
+                    }
+                    let color = ui.visuals().text_color();
+                    let text = ui.painter().text(
+                        rect.left_center() + vec2(10.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        s.t(key),
+                        FontId::proportional(14.0),
+                        color,
+                    );
+                    for line in 0..lines {
+                        let y =
+                            text.center().y + f32::from(line) * 3.0 - f32::from(lines - 1) * 1.5;
+                        ui.painter().line_segment(
+                            [pos2(text.left() - 2.0, y), pos2(text.right() + 2.0, y)],
+                            Stroke::new(1.0, color),
+                        );
+                    }
+                    if response.clicked() {
+                        doc(actions, Request::Format(FormatChange::StrikeStyle(lines)));
+                        ui.close();
+                    }
+                }
+            });
             if square(
                 ui,
                 &Square::glyph("x²", s.t("tip.superscript"), editable).on(s.format.superscript),

@@ -81,6 +81,9 @@ pub(crate) enum Request {
     Object(ObjectCommand),
     /// Headers, footers and page numbers.
     HeaderFooter(HeaderFooterCommand),
+    /// Indent the selected paragraphs one step more (or, `false`, less): a
+    /// list item a level deeper or shallower.
+    IndentStep(bool),
     /// Indents of the selected paragraphs, in twips: left, right and the
     /// first line's (negative: hanging).
     Indent([i32; 3]),
@@ -336,6 +339,10 @@ pub(crate) enum FormatChange {
     Strike,
     Superscript,
     Subscript,
+    /// An underline of this style, or none.
+    UnderlineStyle(Option<Underline>),
+    /// No strike, a single or a double one.
+    StrikeStyle(u8),
     Size(f32),
     Grow,
     Shrink,
@@ -503,6 +510,9 @@ pub(crate) struct CaretFormat {
     /// Points, when set directly.
     pub(crate) size: Option<f32>,
     pub(crate) font: Option<String>,
+    /// The underline's style, when underlined.
+    pub(crate) underline_style: Option<Underline>,
+    pub(crate) double_strike: bool,
     pub(crate) align: Option<Align>,
     /// Paragraph style id.
     pub(crate) style: Option<String>,
@@ -677,6 +687,8 @@ pub(crate) struct DocInfo {
     /// What the document breaks of the editing model's invariants; edits
     /// keep these but may not add to them.
     pub(crate) defects: Vec<String>,
+    /// The fonts the document names (its font table).
+    pub(crate) fonts: Vec<String>,
 }
 
 /// A note for the status bar: a localization key and a detail.
@@ -780,6 +792,18 @@ fn run(
         log: loaded.log,
         styles: styles_of(document.document()),
         defects: Vec::new(),
+        fonts: document
+            .document()
+            .font_table
+            .as_ref()
+            .map(|table| {
+                table
+                    .fonts
+                    .iter()
+                    .map(|font| font.name.to_string())
+                    .collect()
+            })
+            .unwrap_or_default(),
     };
     let read_only = match document.edit(EditLimits::default()) {
         Ok(mut editor) => {
@@ -953,6 +977,10 @@ struct Worker<'a, 's> {
     goal_x: Option<f64>,
     /// The selected drawing.
     object: Option<DrawingPosition>,
+    /// A superscript or subscript switched on (or off) with no selection:
+    /// the next text typed takes it. `Some(None)`: back to the baseline.
+    #[allow(clippy::option_option)]
+    pending_script: Option<Option<VertAlign>>,
     /// The story the caret edits: the body, or a header or footer.
     story: Story,
     /// Where the caret was in the body before a header was entered.
@@ -990,6 +1018,7 @@ impl<'a, 's> Worker<'a, 's> {
             cell_origin: None,
             goal_x: None,
             object: None,
+            pending_script: None,
             story: Story::Body,
             body_caret: None,
             undo_depth: 0,
@@ -1086,6 +1115,16 @@ impl<'a, 's> Worker<'a, 's> {
         if !keeps_object {
             self.object = None;
         }
+        // Moving the caret drops a script switched on for the next text.
+        if matches!(
+            request,
+            Request::Move { .. }
+                | Request::Click { .. }
+                | Request::SelectAll
+                | Request::SelectWord { .. }
+        ) {
+            self.pending_script = None;
+        }
         if self.object.is_some() {
             match &request {
                 Request::Backspace | Request::Delete => return self.delete_object(),
@@ -1153,6 +1192,7 @@ impl<'a, 's> Worker<'a, 's> {
             Request::Align(align) => self.align(align),
             Request::List(preset) => self.list(preset),
             Request::HeaderFooter(command) => self.header_footer(command),
+            Request::IndentStep(more) => self.indent_step(more),
             Request::Indent([left, right, first]) => {
                 use strict_ooxml::model::values::Indentation;
                 self.paragraph_edit(|properties| {
@@ -1551,6 +1591,7 @@ impl<'a, 's> Worker<'a, 's> {
         let props = nav::run_at(paragraph, &position.inline)
             .map(|run| &run.props)
             .or(paragraph.props.run_props.as_ref());
+        let pending = self.pending_script;
         let mut format = CaretFormat {
             align: paragraph
                 .props
@@ -1587,6 +1628,12 @@ impl<'a, 's> Worker<'a, 's> {
                 .as_ref()
                 .and_then(|fonts| fonts.ascii.as_deref().or(fonts.h_ansi.as_deref()))
                 .map(str::to_owned);
+            format.underline_style = props.underline.filter(|u| *u != Underline::None);
+            format.double_strike = props.double_strike == TriState::On;
+        }
+        if let Some(script) = pending {
+            format.superscript = script == Some(VertAlign::Superscript);
+            format.subscript = script == Some(VertAlign::Subscript);
         }
         format
     }
@@ -2174,7 +2221,105 @@ impl<'a, 's> Worker<'a, 's> {
         if clean.is_empty() {
             return Outcome::Quiet;
         }
+        if self.selection().is_none() {
+            if let Some(script) = self.pending_script.take() {
+                return self.type_with_script(&clean, script);
+            }
+        }
         if self.put_text(&clean) {
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    /// Types text as a run of its own, raised or lowered (or neither) as
+    /// switched on: the text it continues keeps its look otherwise.
+    fn type_with_script(&mut self, text: &str, script: Option<VertAlign>) -> Outcome {
+        use strict_ooxml::model::{Inline, Run, RunContent, Space, TextNode};
+        let Some(caret) = self.caret.clone() else {
+            return Outcome::Quiet;
+        };
+        let position = self.position(&caret);
+        let mut props = self
+            .paragraph(&caret.paragraph)
+            .and_then(|paragraph| nav::run_at(paragraph, &position.inline))
+            .map(|run| run.props.clone())
+            .unwrap_or_default();
+        props.vert_align = script;
+        let run = Inline::Run(Run {
+            props,
+            content: vec![RunContent::Text(TextNode {
+                text: text.to_owned(),
+                space: Space::Preserve,
+            })],
+            revision: None,
+            location: SourceLocation::unknown(),
+        });
+        let commands = self.inline_at_caret(&caret, run);
+        if self.transact(&commands) {
+            self.caret = Some(Logical {
+                paragraph: caret.paragraph,
+                offset: caret.offset + text.chars().count(),
+            });
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    /// One indent step more or less: a list item's level, else the left
+    /// indent by a default tab stop.
+    fn indent_step(&mut self, more: bool) -> Outcome {
+        use strict_ooxml::model::values::Indentation;
+        use strict_ooxml::model::Ilvl;
+        let step = self
+            .session
+            .document()
+            .settings
+            .default_tab_stop
+            .map_or(720, |t| t.0.max(1));
+        let document = self.session.document();
+        let mut commands = Vec::new();
+        for at in self.selected_paragraphs() {
+            let Some(paragraph) = self.paragraph(&at) else {
+                continue;
+            };
+            let mut properties = paragraph.props.clone();
+            if let Some(level) = strict_ooxml::edit::list_level(document, paragraph) {
+                let next = if more {
+                    (level.ilvl + 1).min(Ilvl::MAX)
+                } else {
+                    level.ilvl.saturating_sub(1)
+                };
+                properties.numbering = Some(strict_ooxml::model::props::NumPr {
+                    num_id: Some(level.num_id),
+                    ilvl: Some(Ilvl(next)),
+                });
+            } else {
+                let computed =
+                    strict_ooxml_render_svg::style::compute_paragraph(document, paragraph);
+                #[allow(clippy::cast_possible_truncation)]
+                let left = (computed.indent_start_pt * 20.0).round() as i32;
+                let next = if more {
+                    (left / step + 1) * step
+                } else {
+                    ((left + step - 1) / step - 1).max(0) * step
+                };
+                let mut indentation = properties.indentation.unwrap_or_default();
+                indentation.start = Some(Twips(next));
+                indentation.start_chars = None;
+                properties.indentation = Some(indentation);
+            }
+            if properties != paragraph.props {
+                commands.push(Edit::ParagraphProperties {
+                    at,
+                    properties: Box::new(properties),
+                });
+            }
+        }
+        let _ = Indentation::default;
+        if self.transact(&commands) {
             Outcome::Edited
         } else {
             Outcome::Quiet
@@ -3903,11 +4048,37 @@ impl<'a, 's> Worker<'a, 's> {
             FormatChange::Underline => {
                 patch.underline = Some((!current.underline).then_some(Underline::Single));
             }
+            FormatChange::Superscript | FormatChange::Subscript
+                if self.selection().is_none() && self.cells.is_none() =>
+            {
+                // No selection: the caret switches over; the next text
+                // typed takes it.
+                let (on, script) = if matches!(change, FormatChange::Superscript) {
+                    (current.superscript, VertAlign::Superscript)
+                } else {
+                    (current.subscript, VertAlign::Subscript)
+                };
+                self.pending_script = Some((!on).then_some(script));
+                return Outcome::Moved;
+            }
             FormatChange::Superscript => {
                 patch.vert_align = Some((!current.superscript).then_some(VertAlign::Superscript));
             }
             FormatChange::Subscript => {
                 patch.vert_align = Some((!current.subscript).then_some(VertAlign::Subscript));
+            }
+            FormatChange::UnderlineStyle(style) => patch.underline = Some(*style),
+            FormatChange::StrikeStyle(lines) => {
+                patch.strike = Some(if *lines == 1 {
+                    TriState::On
+                } else {
+                    TriState::Off
+                });
+                patch.double_strike = Some(if *lines == 2 {
+                    TriState::On
+                } else {
+                    TriState::Off
+                });
             }
             FormatChange::Size(points) => patch.size = Some(Some(half_points(*points))),
             FormatChange::Grow | FormatChange::Shrink => {
@@ -6239,7 +6410,10 @@ mod tests {
                 break view;
             }
         };
-        assert_eq!(view.kind, strict_ooxml::model::props::HeaderFooterKind::First);
+        assert_eq!(
+            view.kind,
+            strict_ooxml::model::props::HeaderFooterKind::First
+        );
         assert!(view.first_page);
         requests.send(Request::Shutdown).unwrap();
     }
@@ -6294,6 +6468,64 @@ mod tests {
             eprintln!("{file}: found {found} notes {notes:?}");
             requests.send(Request::Shutdown).unwrap();
         }
+    }
+
+    /// A superscript switched on with nothing selected raises what is typed
+    /// next, not the word before it; indent steps move the paragraph; an
+    /// underline style shows at the caret.
+    #[test]
+    fn scripts_indents_and_underline_styles() {
+        let (requests, replies) = new_document();
+        send_all(
+            &requests,
+            vec![
+                Request::Type("x".to_owned()),
+                Request::Format(FormatChange::Superscript),
+                Request::Type("2".to_owned()),
+            ],
+        );
+        let texts = loop {
+            let texts = page_texts(&replies);
+            if texts.iter().any(|(_, t)| t == "2") {
+                break texts;
+            }
+        };
+        let x = texts.iter().find(|(_, t)| t == "x").expect("x").0;
+        let two = texts.iter().find(|(_, t)| t == "2").expect("2").0;
+        assert!(two < x - 1.0, "{texts:?}");
+        // Indent one step in and out.
+        let left = |replies: &Receiver<Reply>| loop {
+            let cursor = cursor(replies);
+            if let Some(indent) = cursor.ruler.and_then(|r| r.indent) {
+                break indent[0];
+            }
+        };
+        requests.send(Request::IndentStep(true)).unwrap();
+        loop {
+            if left(&replies) == 720 {
+                break;
+            }
+        }
+        requests.send(Request::IndentStep(false)).unwrap();
+        loop {
+            if left(&replies) == 0 {
+                break;
+            }
+        }
+        // A wavy underline on the selection.
+        send_all(
+            &requests,
+            vec![
+                Request::SelectAll,
+                Request::Format(FormatChange::UnderlineStyle(Some(Underline::Wave))),
+            ],
+        );
+        loop {
+            if cursor(&replies).format.underline_style == Some(Underline::Wave) {
+                break;
+            }
+        }
+        requests.send(Request::Shutdown).unwrap();
     }
 
     /// What Punto Switcher does when it corrects a word: one backspace per

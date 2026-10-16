@@ -294,6 +294,22 @@ pub(crate) fn picture_cropped(bytes: &[u8], sides: [f32; 4]) -> Option<Vec<u8>> 
     source.clone_rect(rect)?.encode_png().ok()
 }
 
+/// The families of the installed fonts, sorted, each once.
+pub(crate) fn installed_families() -> &'static [String] {
+    static FAMILIES: OnceLock<Vec<String>> = OnceLock::new();
+    FAMILIES.get_or_init(|| {
+        let mut names: Vec<String> = options()
+            .fontdb
+            .faces()
+            .filter_map(|face| face.families.first().map(|(name, _)| name.clone()))
+            .filter(|name| !name.starts_with('@') && !name.is_empty())
+            .collect();
+        names.sort_by_key(|name| name.to_lowercase());
+        names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+        names
+    })
+}
+
 /// An installed face's program and its index in the file, found as the
 /// rasterizer finds it.
 pub(crate) fn installed_face(family: &str, bold: bool, italic: bool) -> Option<(Vec<u8>, u32)> {

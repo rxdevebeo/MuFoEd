@@ -24,6 +24,8 @@ pub(crate) enum Icon {
     AlignCenter,
     Bullets,
     Numbering,
+    IndentLess,
+    IndentMore,
     Picture,
     Print,
     Header,
@@ -574,6 +576,34 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
             painter.rect_stroke(outer, 1.0, stroke(color, thin), egui::StrokeKind::Inside);
             let inner = Rect::from_center_size(outer.center(), outer.size() * 0.5);
             painter.rect_filled(inner, 1.0, accent);
+        }
+        Icon::IndentLess | Icon::IndentMore => {
+            // Lines, the middle ones indented, and an arrow left or right.
+            let s = stroke(color, thin * 1.4);
+            for (i, indented) in [(0.12, false), (0.37, true), (0.62, true), (0.88, false)] {
+                let y = r.top() + r.height() * i;
+                let x0 = if indented {
+                    r.left() + r.width() * 0.42
+                } else {
+                    r.left()
+                };
+                painter.line_segment([pos2(x0, y), pos2(r.right(), y)], s);
+            }
+            let (y, w) = (r.top() + r.height() * 0.5, r.width() * 0.3);
+            let points = if icon == Icon::IndentMore {
+                vec![
+                    pos2(r.left(), y - w * 0.5),
+                    pos2(r.left() + w, y),
+                    pos2(r.left(), y + w * 0.5),
+                ]
+            } else {
+                vec![
+                    pos2(r.left() + w, y - w * 0.5),
+                    pos2(r.left(), y),
+                    pos2(r.left() + w, y + w * 0.5),
+                ]
+            };
+            painter.add(egui::Shape::convex_polygon(points, accent, Stroke::NONE));
         }
         Icon::Bullets | Icon::Numbering => {
             // Three items: a marker in the accent colour, then a line.
