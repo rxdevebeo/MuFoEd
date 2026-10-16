@@ -190,3 +190,53 @@ fn footnotes_restart_in_each_section_that_asks() {
         ("1".to_owned(), "a".to_owned())
     );
 }
+
+/// A number at a first-line indent (here past the text indent) stays there,
+/// and its tab takes the text on to the next stop, as Word lays it out: the
+/// marker no longer moves left of the margin with the text glued to it.
+#[test]
+fn a_number_at_a_first_line_indent_is_followed_by_its_tab() {
+    let doc = with_parts(
+        "<w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>\
+         <w:ind w:left=\"0\" w:firstLine=\"720\"/></w:pPr><w:r><w:t>Item</w:t></w:r></w:p>\
+         <w:p><w:pPr><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>\
+         <w:ind w:left=\"0\" w:firstLine=\"0\"/></w:pPr>\
+         <w:r><w:t>Other</w:t></w:r></w:p>",
+        &numbering(&level(0, "decimal", "%1.", "")),
+        "",
+    );
+    let pages = pages(&doc);
+    // 1-inch margin, number half an inch in: 96 + 48 px.
+    let number = text(&pages, "1.");
+    assert!((number.x - 144.0).abs() < 0.01, "{}", number.x);
+    // The next default stop after the number: one inch in, 192 px.
+    let item = text(&pages, "Item");
+    assert!((item.x - 192.0).abs() < 0.01, "{}", item.x);
+    // With no first-line indent the number stands on the margin and the
+    // text on the first stop after it, half an inch in.
+    let second = text(&pages, "2.");
+    assert!((second.x - 96.0).abs() < 0.01, "{}", second.x);
+    let other = text(&pages, "Other");
+    assert!((other.x - 144.0).abs() < 0.01, "{}", other.x);
+}
+
+/// `w:firstLineChars="0"` on a list item cancels a first-line indent in
+/// characters from its style; it does not zero the level's hanging indent,
+/// so the number still hangs left of the text.
+#[test]
+fn zero_first_line_characters_keep_the_levels_hanging_indent() {
+    let styles = "<w:style w:type=\"paragraph\" w:styleId=\"List\"><w:name w:val=\"List\"/>\
+        <w:pPr><w:ind w:firstLineChars=\"200\" w:firstLine=\"420\"/></w:pPr></w:style>";
+    let doc = with_parts(
+        "<w:p><w:pPr><w:pStyle w:val=\"List\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/>\
+         </w:numPr><w:ind w:firstLineChars=\"0\"/></w:pPr><w:r><w:t>Item</w:t></w:r></w:p>",
+        &numbering(&level(0, "decimal", "%1.", "")),
+        styles,
+    );
+    let pages = pages(&doc);
+    // The level: 1440 left, 720 hanging past the 1-inch margin.
+    let number = text(&pages, "1.");
+    assert!((number.x - 144.0).abs() < 0.01, "{}", number.x);
+    let item = text(&pages, "Item");
+    assert!((item.x - 192.0).abs() < 0.01, "{}", item.x);
+}

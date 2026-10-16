@@ -1587,7 +1587,22 @@ fn build_lines(
         line_y: 0.0,
     };
     let mut current = LineBuilder::new();
-    let mut x = if marker.is_some() { normal_x } else { first_x };
+    let marker_at = marker_position(
+        ctx,
+        computed,
+        marker.as_ref(),
+        &MarkerFrame {
+            first_x,
+            normal_x,
+            content_left,
+            default_tab,
+        },
+    );
+    let mut x = match (&marker, marker_at) {
+        (_, Some((_, text_x))) => text_x,
+        (Some(_), None) => normal_x,
+        (None, None) => first_x,
+    };
     for stop in &computed.tabs {
         if stop.alignment != TabAlignment::Bar {
             continue;
@@ -1911,10 +1926,13 @@ fn build_lines(
                 }
                 _ => first_x,
             };
-            // The text anchor stays where the paragraph declared it. A marker
-            // that would share that anchor, or that is wider than the hanging
-            // gap, moves left by the suffix clearance.
-            if marker_x + width + clearance > normal_x + 1e-6 {
+            // The text anchor stays where the paragraph declared it. A
+            // hanging marker that would share that anchor, or that is wider
+            // than the hanging gap, moves left by the suffix clearance; one
+            // at or past the anchor keeps its place, the text following it.
+            if let Some((at, _)) = marker_at {
+                marker_x = at;
+            } else if marker_x + width + clearance > normal_x + 1e-6 {
                 marker_x = normal_x - clearance - width;
             }
             if let Some((image, width)) = picture {
@@ -1949,6 +1967,64 @@ fn build_lines(
     let _ = para;
     (flows, anchors)
 }
+
+/// Where a paragraph's first line sets its numbering marker.
+struct MarkerFrame {
+    /// The number position: the first line's indent.
+    first_x: f64,
+    /// The text indent of the other lines.
+    normal_x: f64,
+    content_left: f64,
+    default_tab: i32,
+}
+
+/// The marker of a list item numbered at or past its text indent (a first
+/// line indent, or none), and where the first line's text then starts: after
+/// the marker's suffix (`w:suff`), a tab to the next stop, a space or
+/// nothing. `None` for a hanging marker, whose text stays on the indent, and
+/// for a picture bullet or a right-to-left paragraph.
+fn marker_position(
+    ctx: &LayoutContext<'_>,
+    computed: &ComputedParagraph,
+    marker: Option<&MarkerParts>,
+    frame: &MarkerFrame,
+) -> Option<(f64, f64)> {
+    let (text, run, suffix, picture, justification) = marker?;
+    if computed.bidi || picture.is_some() || frame.first_x + 1e-6 < frame.normal_x {
+        return None;
+    }
+    let width = ctx.measure(text, run);
+    let marker_x = match justification {
+        Some(strict_ooxml_wml::model::values::Justification::End) => frame.first_x - width,
+        Some(strict_ooxml_wml::model::values::Justification::Center) => frame.first_x - width / 2.0,
+        _ => frame.first_x,
+    };
+    let end = marker_x + width;
+    let text_x = match suffix.as_deref().unwrap_or("tab") {
+        "space" => end + ctx.measure(" ", run),
+        "nothing" => end,
+        _ => {
+            resolve_tab(
+                end,
+                computed,
+                frame.default_tab,
+                ctx.options.scale,
+                frame.content_left,
+            )
+            .x
+        }
+    };
+    Some((marker_x, text_x.max(end)))
+}
+
+/// A numbering marker: its text, run, suffix, picture bullet and alignment.
+type MarkerParts = (
+    String,
+    ComputedRun,
+    Option<String>,
+    Option<u32>,
+    Option<strict_ooxml_wml::model::values::Justification>,
+);
 
 /// The gap a numbering suffix keeps between the marker and the text.
 fn marker_clearance(ctx: &LayoutContext<'_>, run: &ComputedRun, suffix: Option<&str>) -> f64 {

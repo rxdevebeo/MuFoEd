@@ -844,10 +844,14 @@ fn apply_indentation(computed: &mut ComputedParagraph, indentation: &Indentation
     if let Some(value) = indentation.end_chars {
         computed.character_indents[1] = Some(value);
     }
+    // A first-line or hanging value of 0 characters only cancels one in
+    // characters inherited from a style; the indent in twips stands (a list
+    // item whose paragraph says `w:firstLineChars="0"` keeps its level's
+    // hanging indent, as WPS and Word lay it out).
     if let Some(value) = indentation.hanging_chars {
-        computed.character_indents[2] = Some(value.saturating_neg());
+        computed.character_indents[2] = (value != 0).then(|| value.saturating_neg());
     } else if let Some(value) = indentation.first_line_chars {
-        computed.character_indents[2] = Some(value);
+        computed.character_indents[2] = (value != 0).then_some(value);
     }
 }
 
