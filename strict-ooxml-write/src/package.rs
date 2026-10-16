@@ -48,6 +48,8 @@ pub const THEME_PART: &str = "/word/theme/theme1.xml";
 pub const FOOTNOTES_PART: &str = "/word/footnotes.xml";
 /// `/word/endnotes.xml`.
 pub const ENDNOTES_PART: &str = "/word/endnotes.xml";
+/// `/word/comments.xml`.
+pub const COMMENTS_PART: &str = "/word/comments.xml";
 
 const CONTENT_TYPE_MAIN: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
@@ -64,6 +66,8 @@ const CONTENT_TYPE_FOOTNOTES: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml";
 const CONTENT_TYPE_ENDNOTES: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml";
+const CONTENT_TYPE_COMMENTS: &str =
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml";
 const CONTENT_TYPE_HEADER: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml";
 const CONTENT_TYPE_FOOTER: &str =
@@ -590,6 +594,12 @@ pub fn write_package(
                 .endnotes
                 .iter()
                 .map(|note| (PartId::new(ENDNOTES_PART), &note.blocks)),
+        )
+        .chain(
+            document
+                .comments
+                .iter()
+                .map(|comment| (PartId::new(COMMENTS_PART), &comment.blocks)),
         );
     for (part, blocks) in stories {
         crate::body::check_block_nesting(blocks, &options.limits).map_err(|error| {
@@ -671,6 +681,10 @@ pub fn write_package(
     if !document.endnotes.is_empty() {
         rels.add(&RelType::Endnotes, "endnotes.xml".to_owned(), false);
         content_types.insert_override(PartId::new(ENDNOTES_PART), CONTENT_TYPE_ENDNOTES);
+    }
+    if !document.comments.is_empty() {
+        rels.add(&RelType::Comments, "comments.xml".to_owned(), false);
+        content_types.insert_override(PartId::new(COMMENTS_PART), CONTENT_TYPE_COMMENTS);
     }
     if options.write_font_table {
         rels.add(&RelType::FontTable, "fontTable.xml".to_owned(), false);
@@ -962,6 +976,26 @@ pub fn write_package(
             &foreign,
             &mut part_extra_copies,
             |ctx| parts::notes_part(ctx, &document.endnotes, false),
+        )?;
+    }
+    if !document.comments.is_empty() {
+        let mut foreign = UniqueIds::default();
+        for comment in &document.comments {
+            for id in passthrough::referenced_ids(&comment.blocks) {
+                foreign.insert(id);
+            }
+        }
+        let foreign = foreign.into_vec();
+        write_content_part_with_rels(
+            &mut zip,
+            &mut ctx,
+            source,
+            COMMENTS_PART,
+            "comments.xml",
+            document.source.comments.as_ref(),
+            &foreign,
+            &mut part_extra_copies,
+            |ctx| parts::comments_part(ctx, &document.comments),
         )?;
     }
     if options.write_font_table {

@@ -451,3 +451,64 @@ fn a_new_header_is_one_transaction_written_and_undone() {
         .iter()
         .all(|s| s.properties.headers.is_empty()));
 }
+
+/// A comment and its marks in one transaction: written to comments.xml
+/// with its author and text, read back, and undone in one step.
+#[test]
+fn a_comment_is_written_read_back_and_undone() {
+    use strict_ooxml_edit::{new_comment, Definition};
+    use strict_ooxml_wml::model::*;
+    let source = package();
+    let mut d = parse_document(&source, &ParseOptions::default()).unwrap();
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let comment = new_comment(
+        e.document(),
+        "Ann",
+        "A",
+        "2026-10-17T10:00:00Z",
+        "Check this\nTwice",
+    );
+    let id = comment.id.clone();
+    e.define_and_transact(
+        0,
+        &[Definition::AddComment(Box::new(comment))],
+        &[
+            Edit::InsertInline {
+                at: Address::body(0),
+                index: 1,
+                inline: Box::new(Inline::CommentRangeEnd(id.clone())),
+            },
+            Edit::InsertInline {
+                at: Address::body(0),
+                index: 2,
+                inline: Box::new(Inline::CommentReference(id.clone())),
+            },
+            Edit::InsertInline {
+                at: Address::body(0),
+                index: 0,
+                inline: Box::new(Inline::CommentRangeStart(id.clone())),
+            },
+        ],
+    )
+    .unwrap();
+    let saved = e
+        .save(
+            1,
+            Some(&source),
+            &WriteOptions::default(),
+            SavePolicy::AllowDegraded,
+        )
+        .unwrap();
+    let out = Package::open_reader(saved.bytes.as_slice(), &OpenOptions::default()).unwrap();
+    let reopened = parse_document(&out, &ParseOptions::default()).unwrap();
+    let read = reopened.comments.first().expect("the comment");
+    assert_eq!(read.author.as_deref(), Some("Ann"));
+    assert_eq!(read.blocks.len(), 2);
+    let paragraph = reopened.body.blocks[0].as_paragraph().unwrap();
+    assert!(paragraph
+        .inlines
+        .iter()
+        .any(|i| matches!(i, Inline::CommentRangeStart(c) if *c == id)));
+    e.undo(1).unwrap();
+    assert!(e.document().comments.is_empty());
+}

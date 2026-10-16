@@ -5967,6 +5967,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
         numbering: p.numbering,
         footnotes: p.footnotes,
         endnotes: p.endnotes,
+        comments: Vec::new(),
         settings: strict_ooxml_wml::model::settings::Settings {
             default_tab_stop: p.default_tab_stop,
             even_and_odd_headers: p.even_and_odd_headers,
@@ -5988,6 +5989,7 @@ pub(super) fn parse(input: &[u8], options: &RtfOptions) -> Result<RtfImported, R
             font_table: font_table_part,
             footnotes: footnotes_part,
             endnotes: endnotes_part,
+            comments: None,
             theme: None,
         },
     };

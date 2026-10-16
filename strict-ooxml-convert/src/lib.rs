@@ -116,6 +116,7 @@ pub(crate) fn empty_document() -> Document {
         numbering: NumberingTable::default(),
         footnotes: NoteTable::default(),
         endnotes: NoteTable::default(),
+        comments: Vec::new(),
         settings: Settings::default(),
         font_table: None,
         theme: None,
@@ -131,6 +132,7 @@ pub(crate) fn empty_document() -> Document {
             font_table: None,
             footnotes: None,
             endnotes: None,
+            comments: None,
             theme: None,
         },
     }

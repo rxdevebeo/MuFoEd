@@ -63,6 +63,7 @@ pub(crate) const OWNED_TYPES: &[RelType] = &[
     RelType::Footer,
     RelType::Footnotes,
     RelType::Endnotes,
+    RelType::Comments,
 ];
 
 /// A vendor part that is a SHADOW of one this writer regenerates, so it must not

@@ -27,6 +27,7 @@ fn document_with_target() -> Document {
         numbering: Default::default(),
         footnotes: Default::default(),
         endnotes: Default::default(),
+        comments: Vec::new(),
         settings: Default::default(),
         font_table: None,
         theme: None,
@@ -42,6 +43,7 @@ fn document_with_target() -> Document {
             font_table: None,
             footnotes: None,
             endnotes: None,
+            comments: None,
             theme: None,
         },
     }

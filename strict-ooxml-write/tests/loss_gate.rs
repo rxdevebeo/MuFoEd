@@ -35,6 +35,7 @@ fn empty_document() -> Document {
         numbering: Default::default(),
         footnotes: Default::default(),
         endnotes: Default::default(),
+        comments: Vec::new(),
         settings: Default::default(),
         font_table: None,
         theme: None,
@@ -50,6 +51,7 @@ fn empty_document() -> Document {
             font_table: None,
             footnotes: None,
             endnotes: None,
+            comments: None,
             theme: None,
         },
     }

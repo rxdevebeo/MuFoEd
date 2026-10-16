@@ -421,6 +421,7 @@ mod tests {
             numbering: crate::model::NumberingTable::default(),
             footnotes: crate::model::NoteTable::default(),
             endnotes: crate::model::NoteTable::default(),
+            comments: Vec::new(),
             settings: crate::model::Settings::default(),
             theme: None,
             font_table: None,
@@ -436,6 +437,7 @@ mod tests {
                 font_table: None,
                 footnotes: None,
                 endnotes: None,
+                comments: None,
                 theme: None,
             },
         }

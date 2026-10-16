@@ -269,3 +269,23 @@ mod tests {
         assert_eq!(props.num_format.as_deref(), Some("decimal"));
     }
 }
+
+/// A comment (`w:comment` in `comments.xml`): who wrote it, when, and its
+/// text. The text it is about lies between the `w:commentRangeStart` and
+/// `w:commentRangeEnd` with its id in a story; a `w:commentReference` run
+/// marks it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Comment {
+    /// `w:id`.
+    pub id: crate::model::CommentId,
+    /// `w:author`.
+    pub author: Option<std::sync::Arc<str>>,
+    /// `w:initials`.
+    pub initials: Option<std::sync::Arc<str>>,
+    /// `w:date`, as written (`2026-10-17T10:00:00Z`).
+    pub date: Option<std::sync::Arc<str>>,
+    /// The comment's text.
+    pub blocks: Vec<crate::model::Block>,
+    /// Source location.
+    pub location: strict_ooxml_core::error::SourceLocation,
+}

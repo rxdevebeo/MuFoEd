@@ -29,8 +29,8 @@ mod import;
 mod lists;
 mod media;
 pub use definitions::{
-    header_footer_reference, new_header_footer, restarted, unused_abstract_num_id, unused_num_id,
-    Definition,
+    comment_blocks, header_footer_reference, new_comment, new_header_footer, restarted,
+    unused_abstract_num_id, unused_num_id, Definition,
 };
 pub use lists::{list_definition, list_instance, list_level, ListLevel, ListPreset};
 pub use media::{

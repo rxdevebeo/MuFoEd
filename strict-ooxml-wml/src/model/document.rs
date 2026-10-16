@@ -52,6 +52,8 @@ pub struct DocumentSource {
     pub font_table: Option<PartId>,
     /// Footnotes part, if present.
     pub footnotes: Option<PartId>,
+    /// Comments part, if present.
+    pub comments: Option<PartId>,
     /// Endnotes part, if present.
     pub endnotes: Option<PartId>,
     /// Theme part, if present.
@@ -74,6 +76,8 @@ pub struct Document {
     pub footnotes: NoteTable,
     /// Endnote definitions (`endnotes.xml`).
     pub endnotes: NoteTable,
+    /// Comments (`comments.xml`), in the part's order.
+    pub comments: Vec<super::notes::Comment>,
     /// Document settings.
     pub settings: Settings,
     /// Parsed theme, if present.

@@ -554,6 +554,7 @@ fn document_accessors_and_tables() {
         font_table: None,
         footnotes: None,
         endnotes: None,
+        comments: None,
         theme: None,
     };
     let built = Document {
@@ -562,6 +563,7 @@ fn document_accessors_and_tables() {
         numbering: NumberingTable::new(),
         footnotes: strict_ooxml_wml::model::NoteTable::new(),
         endnotes: strict_ooxml_wml::model::NoteTable::new(),
+        comments: Vec::new(),
         settings: Settings::default(),
         font_table: None,
         theme: None,

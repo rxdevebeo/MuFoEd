@@ -1520,6 +1520,7 @@ mod tests {
             numbering: strict_ooxml_wml::model::NumberingTable::new(),
             footnotes: strict_ooxml_wml::model::NoteTable::new(),
             endnotes: strict_ooxml_wml::model::NoteTable::new(),
+            comments: Vec::new(),
             settings: strict_ooxml_wml::model::Settings::default(),
             font_table: None,
             theme: None,
@@ -1535,6 +1536,7 @@ mod tests {
                 font_table: None,
                 footnotes: None,
                 endnotes: None,
+                comments: None,
                 theme: None,
             },
         }

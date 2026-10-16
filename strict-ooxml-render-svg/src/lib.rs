@@ -753,6 +753,7 @@ mod tests {
             numbering: NumberingTable::default(),
             footnotes: NoteTable::default(),
             endnotes: NoteTable::default(),
+            comments: Vec::new(),
             settings: Settings::default(),
             theme: None,
             font_table: Option::<FontTable>::None,
@@ -768,6 +769,7 @@ mod tests {
                 font_table: None,
                 footnotes: None,
                 endnotes: None,
+                comments: None,
                 theme: None,
             },
         }

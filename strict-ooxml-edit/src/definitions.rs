@@ -46,6 +46,15 @@ pub enum Definition {
     /// section at it with `Edit::SectionProperties` in the same transaction
     /// ([`crate::Editor::define_and_transact`]).
     AddHeaderFooter(Box<strict_ooxml_wml::model::HeaderFooter>),
+    /// Adds a comment; its id must be new. Its range marks and reference go
+    /// into the text in the same transaction
+    /// ([`crate::Editor::define_and_transact`]).
+    AddComment(Box<strict_ooxml_wml::model::Comment>),
+    /// Replaces the comment with the same id (its text, author, date).
+    ReplaceComment(Box<strict_ooxml_wml::model::Comment>),
+    /// Deletes a comment; take its marks out of the text in the same
+    /// transaction.
+    DeleteComment(strict_ooxml_wml::model::CommentId),
     /// Different headers and footers for even and odd pages
     /// (`w:evenAndOddHeaders`), for the whole document.
     EvenAndOddHeaders(bool),
@@ -112,6 +121,55 @@ pub fn new_header_footer(
         )],
         location: strict_ooxml_core::error::SourceLocation::unknown(),
     }
+}
+
+/// A comment under an id no comment of `document` has, its text one
+/// paragraph per line.
+#[must_use]
+pub fn new_comment(
+    document: &Document,
+    author: &str,
+    initials: &str,
+    date: &str,
+    text: &str,
+) -> strict_ooxml_wml::model::Comment {
+    let used: Vec<u64> = document
+        .comments
+        .iter()
+        .filter_map(|c| c.id.as_str().parse().ok())
+        .collect();
+    let id = used.iter().max().map_or(0, |top| top + 1);
+    strict_ooxml_wml::model::Comment {
+        id: strict_ooxml_wml::model::CommentId::new(id.to_string()),
+        author: (!author.is_empty()).then(|| std::sync::Arc::from(author)),
+        initials: (!initials.is_empty()).then(|| std::sync::Arc::from(initials)),
+        date: (!date.is_empty()).then(|| std::sync::Arc::from(date)),
+        blocks: comment_blocks(text),
+        location: strict_ooxml_core::error::SourceLocation::unknown(),
+    }
+}
+
+/// A comment's text as paragraphs, one per line.
+#[must_use]
+pub fn comment_blocks(text: &str) -> Vec<strict_ooxml_wml::model::Block> {
+    use strict_ooxml_wml::model::{Block, Inline, Run, RunContent, Space, TextNode};
+    text.split('\n')
+        .map(|line| {
+            let mut paragraph = crate::structured::empty_paragraph();
+            if !line.is_empty() {
+                paragraph.inlines.push(Inline::Run(Run {
+                    props: strict_ooxml_wml::model::props::RunProperties::default(),
+                    content: vec![RunContent::Text(TextNode {
+                        text: line.to_owned(),
+                        space: Space::Preserve,
+                    })],
+                    revision: None,
+                    location: strict_ooxml_core::error::SourceLocation::unknown(),
+                }));
+            }
+            Block::Paragraph(paragraph)
+        })
+        .collect()
 }
 
 /// A section's reference to a header or footer part, of `kind` (default,
@@ -190,6 +248,27 @@ pub(crate) fn apply(document: &mut Document, definition: &Definition) -> Result<
                 return Err(exists());
             }
             document.headers_footers.push((**part).clone());
+        }
+        Definition::AddComment(comment) => {
+            if document.comments.iter().any(|c| c.id == comment.id) {
+                return Err(exists());
+            }
+            document.comments.push((**comment).clone());
+        }
+        Definition::ReplaceComment(comment) => {
+            let slot = document
+                .comments
+                .iter_mut()
+                .find(|c| c.id == comment.id)
+                .ok_or_else(missing)?;
+            *slot = (**comment).clone();
+        }
+        Definition::DeleteComment(id) => {
+            let before = document.comments.len();
+            document.comments.retain(|c| &c.id != id);
+            if document.comments.len() == before {
+                return Err(missing());
+            }
         }
         Definition::EvenAndOddHeaders(on) => {
             document.settings.even_and_odd_headers = *on;

@@ -1548,6 +1548,33 @@ pub fn notes_part(
     ctx.finish_xml(xml)
 }
 
+/// Serializes `comments.xml`: each comment's author, initials, date and text.
+pub fn comments_part(
+    ctx: &mut Ctx<'_>,
+    comments: &[strict_ooxml_wml::model::Comment],
+) -> std::result::Result<String, WriteError> {
+    let mut xml = XmlWriter::new();
+    xml.start_root("w:comments", &content_and_vendor_namespaces());
+    let ctx = &mut *ctx;
+    for comment in comments {
+        xml.start("w:comment");
+        xml.attr_w("id", comment.id.as_str());
+        xml.attr_w_opt("author", comment.author.as_deref());
+        xml.attr_w_opt("date", comment.date.as_deref());
+        xml.attr_w_opt("initials", comment.initials.as_deref());
+        if comment.blocks.is_empty() {
+            // A comment holds at least one paragraph.
+            xml.start("w:p");
+            xml.end();
+        } else {
+            crate::body::blocks(ctx, &mut xml, &comment.blocks);
+        }
+        xml.end();
+    }
+    xml.end();
+    ctx.finish_xml(xml)
+}
+
 /// Whether a note's leading paragraph already carries the reference marker.
 ///
 /// Word's separator notes put a run holding `w:footnoteRef`/`w:endnoteRef` at

@@ -94,6 +94,51 @@ impl PartParser<'_> {
         }))
     }
 
+    /// Parses a `comments.xml` part.
+    pub(crate) fn parse_comments_root(&mut self) -> Result<Vec<crate::model::Comment>> {
+        self.nested(|parser| {
+            parser.expect_root("comments")?;
+            let location = parser.location();
+            parser.record("w:comments", SupportStatus::Supported, None, Some(location));
+            let mut comments = Vec::new();
+            loop {
+                match parser.next_event()? {
+                    XmlEvent::StartElement { name, attrs } => {
+                        if is_wml(&name) && name.local() == "comment" {
+                            let location = parser.location();
+                            let attr =
+                                |key: &str| wml_attr(&attrs, key).map(std::sync::Arc::<str>::from);
+                            let Some(id) = wml_attr(&attrs, "id") else {
+                                parser.skip_element()?;
+                                continue;
+                            };
+                            let id = crate::model::CommentId::new(id);
+                            let (author, initials, date) =
+                                (attr("author"), attr("initials"), attr("date"));
+                            let blocks = parser.nested_block(PartParser::parse_block_children)?;
+                            comments.push(crate::model::Comment {
+                                id,
+                                author,
+                                initials,
+                                date,
+                                blocks,
+                                location,
+                            });
+                        } else {
+                            parser.record_foreign(&name);
+                            parser.skip_element()?;
+                        }
+                    }
+                    XmlEvent::EndElement { .. } => break,
+                    XmlEvent::Text(_) | XmlEvent::CData(_) => {}
+                    XmlEvent::Eof => return Err(parser.invalid("unexpected end of comments part")),
+                }
+            }
+            parser.expect_end_of_part()?;
+            Ok(comments)
+        })
+    }
+
     /// Parses a `w:footnotePr`/`w:endnotePr` element (start consumed).
     pub(crate) fn parse_note_properties(&mut self) -> Result<NoteProperties> {
         self.nested(|parser| {

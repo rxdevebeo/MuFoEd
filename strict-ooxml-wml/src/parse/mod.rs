@@ -99,6 +99,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
     let font_table_part = find_related_part(package, &main, &RelType::FontTable);
     let footnotes_part = find_related_part(package, &main, &RelType::Footnotes);
     let endnotes_part = find_related_part(package, &main, &RelType::Endnotes);
+    let comments_part = find_related_part(package, &main, &RelType::Comments);
     let theme_part = find_related_part(package, &main, &RelType::Theme);
 
     // Progress (`strict_ooxml_core::control`) measures the main part: its
@@ -156,6 +157,19 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
     support.merge(note_support);
     // AUD-48: footnotes/endnotes discover media the same way headers do.
     merge_media(&mut media, &note_media);
+    let comments = match &comments_part {
+        Some(part) => {
+            let mut comment_media = MediaIndex::new();
+            let (comments, comment_support) =
+                parse_note_part(package, part, options, &mut comment_media, |parser| {
+                    parser.parse_comments_root()
+                })?;
+            support.merge(comment_support);
+            merge_media(&mut media, &comment_media);
+            comments
+        }
+        None => Vec::new(),
+    };
 
     let theme = parse_theme_part(package, theme_part.as_ref(), options, &mut support)?;
 
@@ -165,6 +179,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
         numbering: numbering.unwrap_or_default(),
         footnotes,
         endnotes,
+        comments,
         settings,
         font_table,
         theme,
@@ -180,6 +195,7 @@ pub fn parse_document(package: &Package, options: &ParseOptions) -> Result<Docum
             font_table: font_table_part,
             footnotes: footnotes_part,
             endnotes: endnotes_part,
+            comments: comments_part,
             theme: theme_part,
         },
     };

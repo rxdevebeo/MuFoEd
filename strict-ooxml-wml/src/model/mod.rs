@@ -48,7 +48,7 @@ pub use math::{
     MathRunProperties, MathScript, MathStyle, MathVerticalJc, Matrix, MatrixColumn, NaryOperator,
     Phantom, PreScript, Radical, SubSuperscript, Subscript, Superscript, UnknownMathNode,
 };
-pub use notes::{Note, NoteKind, NoteProperties, NoteTable};
+pub use notes::{Comment, Note, NoteKind, NoteProperties, NoteTable};
 pub use numbering::{AbstractNum, Level, LevelOverride, Num, NumberingTable, PictureBullet};
 pub use props::{
     BorderOffsetFrom, BorderZOrder, CellProperties, ColumnSpec, Columns, DocGrid, FrameProperties,
