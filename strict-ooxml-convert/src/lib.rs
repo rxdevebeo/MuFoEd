@@ -70,6 +70,7 @@ mod djvu;
 pub use djvu::{convert_djvu, DjvuOptions};
 
 mod columns;
+mod designed;
 mod geometry;
 mod lists;
 mod media;

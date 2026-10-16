@@ -138,6 +138,9 @@ pub(crate) fn build(
 
     let scan_frame =
         scan_margins(pages, recovered).map(|margins| (scan_size(pages, recovered), margins));
+    // The page before was set as a design, in anchored boxes that take no room
+    // in the flow: this page starts a page of its own.
+    let mut break_next = false;
     for (index, page) in pages.iter().enumerate() {
         // A size or margin change closes the previous page before these blocks
         // are appended. Identical neighbours stay in the open section.
@@ -158,15 +161,6 @@ pub(crate) fn build(
         );
         let body = body_size(&lines);
         let pitch = body_pitch(&lines);
-        let plan = tables::plan(
-            page,
-            index + 1,
-            &lines,
-            &options.tables,
-            options.max_table_lines,
-            options.max_table_cells,
-            report,
-        );
 
         // A rebuilt scan's pictures, each with the top of its box (points
         // from the page's top). On a single-column page they join the flow
@@ -199,6 +193,51 @@ pub(crate) fn build(
                 _ => Vec::new(),
             });
         anchored.splice(0..0, shapes);
+
+        // A page laid out as a design (side-by-side blocks, boxes, grids)
+        // keeps its text where it stood, in text boxes; as one flow its
+        // blocks stacked onto page after page.
+        if !rebuilt
+            && matches!(column_plan, crate::columns::ColumnPlan::Single)
+            && crate::designed::is_designed(&lines, page.geometry.height)
+        {
+            let frames = crate::designed::text_frames(&lines, pitch / body, push_runs);
+            report.record(
+                "layout.designed",
+                Severity::Inferred,
+                format!(
+                    "page {}: its text stands in blocks side by side rather than in one \
+                     column, and is set as {} text box(es) at their places on the page",
+                    index + 1,
+                    frames.len()
+                ),
+            );
+            anchored.extend(frames);
+            // Anchors take no room in the flow, so the page is a page of its
+            // own: it starts one, and the page after it starts another.
+            let mut host = empty_paragraph();
+            if page_start > 0 {
+                host.props.page_break_before = strict_ooxml_wml::model::values::TriState::On;
+            }
+            blocks.push(Block::Paragraph(host));
+            hold_anchors(&mut blocks, page_start, anchored);
+            break_next = true;
+            for block in recovered.page(index) {
+                blocks.extend(recovered_blocks(
+                    block, index, &mut media, report, text_area,
+                ));
+            }
+            continue;
+        }
+        let plan = tables::plan(
+            page,
+            index + 1,
+            &lines,
+            &options.tables,
+            options.max_table_lines,
+            options.max_table_cells,
+            report,
+        );
         let interleave = matches!(column_plan, crate::columns::ColumnPlan::Single);
         if interleave {
             figures.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -260,9 +299,12 @@ pub(crate) fn build(
         );
         blocks.extend(figures.map(|(_, figure)| figure));
         hold_anchors(&mut blocks, page_start, anchored);
-        if index > 0 {
+        if break_next {
+            break_page(&mut blocks, page_start);
+        } else if index > 0 {
             mark_page_start(&mut blocks, page_start);
         }
+        break_next = false;
         // Text a model read off a picture-only region comes after the page's
         // own content, indented to the region's left edge.
         for block in recovered.page(index) {
@@ -1069,15 +1111,36 @@ fn hold_anchors(blocks: &mut Vec<Block>, page_start: usize, mut anchors: Vec<Inl
         paragraph.inlines.splice(0..0, anchors);
         return;
     }
-    blocks.push(Block::Paragraph(Paragraph {
+    let mut paragraph = empty_paragraph();
+    paragraph.inlines = anchors;
+    blocks.push(Block::Paragraph(paragraph));
+}
+
+/// An empty paragraph.
+fn empty_paragraph() -> Paragraph {
+    Paragraph {
         props: ParagraphProperties::default(),
-        inlines: anchors,
+        inlines: Vec::new(),
         rsids: Rsids::default(),
         para_id: None,
         text_id: None,
         revision: None,
         location: strict_ooxml_core::error::SourceLocation::unknown(),
-    }));
+    }
+}
+
+/// Starts the page's first paragraph on a new page.
+fn break_page(blocks: &mut [Block], page_start: usize) {
+    if let Some(paragraph) = blocks
+        .iter_mut()
+        .skip(page_start)
+        .find_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        })
+    {
+        paragraph.props.page_break_before = strict_ooxml_wml::model::values::TriState::On;
+    }
 }
 
 /// Marks where a PDF page begins in the flow with `w:lastRenderedPageBreak`,
