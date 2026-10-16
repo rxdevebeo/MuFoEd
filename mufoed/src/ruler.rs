@@ -68,7 +68,7 @@ pub(crate) fn desk(
 ) {
     let info = tab.cursor.as_ref().and_then(|cursor| cursor.ruler.clone());
     let Some(info) = info.filter(|_| show) else {
-        canvas::show(ui, tab, palette, keyboard);
+        canvas::show(ui, tab, palette, keyboard, i18n);
         return;
     };
     let full = ui.available_rect_before_wrap();
@@ -79,7 +79,7 @@ pub(crate) fn desk(
     );
     let rest = Rect::from_min_max(pos2(left.right(), top.bottom()), full.max);
     ui.scope_builder(egui::UiBuilder::new().max_rect(rest), |ui| {
-        canvas::show(ui, tab, palette, keyboard);
+        canvas::show(ui, tab, palette, keyboard, i18n);
     });
     ui.allocate_rect(full, Sense::hover());
     let page = tab.view.page_screens.get(info.page).copied().flatten();

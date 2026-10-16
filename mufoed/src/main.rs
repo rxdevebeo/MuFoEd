@@ -41,6 +41,7 @@ mod ribbon;
 mod ruler;
 mod settings;
 mod shot;
+mod spell;
 mod stack;
 mod tab;
 mod theme;

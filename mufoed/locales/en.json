@@ -140,7 +140,9 @@
       "next_comment": "Next",
       "show_comments": "Show comments",
       "columns": "Columns",
-      "column_break": "Column break"
+      "column_break": "Column break",
+      "spelling": "Spelling",
+      "dictionaries": "Dictionaries"
     },
     "tip": {
       "start_page": "Start page",
@@ -247,7 +249,9 @@
       "next_comment": "Go to the next comment",
       "show_comments": "The comments pane",
       "columns": "Split the section's text into columns",
-      "column_break": "Continue the text at the top of the next column"
+      "column_break": "Continue the text at the top of the next column",
+      "spelling": "Underline misspelt words",
+      "dictionaries": "Dictionaries to check spelling with"
     },
     "font": {
       "default": "(from style)",
@@ -437,7 +441,8 @@
       "save": "Save",
       "dont_save": "Don't Save",
       "exit_anyway": "Exit Without Saving",
-      "reset": "Reset"
+      "reset": "Reset",
+      "not_now": "Not now"
     },
     "confirm": {
       "title": "Unsaved changes",
@@ -584,6 +589,25 @@
       "count": "Number of columns",
       "space": "Spacing",
       "separator": "Line between"
+    },
+    "spell": {
+      "lang_ru": "Russian",
+      "lang_en": "English (US)",
+      "lang_en_gb": "English (UK)",
+      "lang_uk": "Ukrainian",
+      "lang_de": "German",
+      "lang_fr": "French",
+      "lang_es": "Spanish",
+      "download": "Download",
+      "offer_title": "A dictionary is needed",
+      "offer_text": "The document has words nothing can check. Download the {language} dictionary (about {size} MB)?",
+      "offer_source": "LibreOffice's dictionaries in UTF-8 from github.com/wooorm/dictionaries, kept in the settings folder.",
+      "downloading": "Downloading the {language} dictionary…",
+      "installed": "The {language} dictionary is installed",
+      "download_failed": "Could not download the dictionary: {error}",
+      "no_suggestions": "(no suggestions)",
+      "ignore": "Ignore all",
+      "add": "Add to dictionary"
     }
   }
 }

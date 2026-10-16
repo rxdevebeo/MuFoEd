@@ -221,7 +221,13 @@ fn resized(resize: &Resize) -> Rect {
 
 /// Draws the desk for `tab`; requests go to its worker.
 #[allow(clippy::too_many_lines)]
-pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboard: bool) {
+pub(crate) fn show(
+    ui: &mut egui::Ui,
+    tab: &mut DocTab,
+    palette: Palette,
+    keyboard: bool,
+    i18n: &crate::i18n::I18n,
+) {
     let ctx = ui.ctx().clone();
     receive_bitmaps(&ctx, tab);
     let now = ui.input(|input| input.time);
@@ -344,6 +350,35 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                         {
                             painter.rect_filled(screen, 0.0, fill);
                         }
+                    }
+                }
+                // Misspelt words: a wavy red line under them.
+                let clip = ui.clip_rect();
+                for error in &tab.spelling {
+                    for rect in &error.rects {
+                        let Some(screen) =
+                            to_screen(rect.page, rect.x, rect.y, rect.width, rect.height)
+                        else {
+                            continue;
+                        };
+                        if !clip.intersects(screen) {
+                            continue;
+                        }
+                        let y = screen.bottom() - 1.0;
+                        let step = 2.0;
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        let count = (screen.width() / step).ceil().max(1.0) as usize;
+                        #[allow(clippy::cast_precision_loss)]
+                        let points: Vec<egui::Pos2> = (0..=count)
+                            .map(|i| {
+                                let x = (screen.left() + i as f32 * step).min(screen.right());
+                                pos2(x, y + if i % 2 == 0 { -1.0 } else { 1.0 })
+                            })
+                            .collect();
+                        painter.add(egui::Shape::line(
+                            points,
+                            Stroke::new(1.0, Color32::from_rgb(220, 40, 40)),
+                        ));
                     }
                 }
                 if let Some(cursor) = &tab.cursor {
@@ -660,6 +695,31 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
                 if response.drag_stopped() {
                     tab.view.last_drag = None;
                 }
+                // The context menu: suggestions for a misspelt word.
+                if response.secondary_clicked() {
+                    let at = response.interact_pointer_pos().and_then(hit);
+                    tab.view.spell_menu = at
+                        .and_then(|(page, x, y)| {
+                            tab.spelling.iter().find(|error| {
+                                error.rects.iter().any(|r| {
+                                    r.page == page
+                                        && x >= r.x
+                                        && x <= r.x + r.width
+                                        && y >= r.y
+                                        && y <= r.y + r.height
+                                })
+                            })
+                        })
+                        .map(|error| crate::tab::SpellMenu {
+                            suggestions: tab
+                                .speller
+                                .as_ref()
+                                .map(|speller| speller.suggest(&error.word))
+                                .unwrap_or_default(),
+                            error: error.clone(),
+                        });
+                }
+                response.context_menu(|ui| context_menu(ui, tab, i18n));
                 if response.hovered() && tab.view.resize.is_none() {
                     let pointer = ui.input(|input| input.pointer.hover_pos());
                     let over_handle = pointer.and_then(on_handle).map(|(handle, _, _)| handle);
@@ -682,5 +742,53 @@ pub(crate) fn show(ui: &mut egui::Ui, tab: &mut DocTab, palette: Palette, keyboa
     });
     if !settled {
         ctx.request_repaint_after(std::time::Duration::from_millis(60));
+    }
+}
+
+/// The page's context menu: what can replace a misspelt word under the
+/// pointer, then cut and copy.
+fn context_menu(ui: &mut egui::Ui, tab: &mut DocTab, i18n: &crate::i18n::I18n) {
+    if let Some(menu) = tab.view.spell_menu.clone() {
+        if menu.suggestions.is_empty() {
+            ui.label(egui::RichText::new(i18n.t("spell.no_suggestions")).weak());
+        }
+        for suggestion in &menu.suggestions {
+            if ui
+                .button(egui::RichText::new(suggestion).strong())
+                .clicked()
+            {
+                tab.send(Request::ReplaceWord {
+                    start: menu.error.start.clone(),
+                    end: menu.error.end.clone(),
+                    word: menu.error.word.clone(),
+                    with: suggestion.clone(),
+                });
+                ui.close();
+            }
+        }
+        ui.separator();
+        if ui.button(i18n.t("spell.ignore")).clicked() {
+            if let Some(speller) = &tab.speller {
+                speller.ignore(&menu.error.word);
+            }
+            tab.send(Request::Respell);
+            ui.close();
+        }
+        if ui.button(i18n.t("spell.add")).clicked() {
+            if let Some(speller) = &tab.speller {
+                speller.add_own(&menu.error.word);
+            }
+            tab.send(Request::Respell);
+            ui.close();
+        }
+        ui.separator();
+    }
+    if ui.button(i18n.t("cmd.cut")).clicked() {
+        tab.send(Request::Copy { cut: true });
+        ui.close();
+    }
+    if ui.button(i18n.t("cmd.copy")).clicked() {
+        tab.send(Request::Copy { cut: false });
+        ui.close();
     }
 }

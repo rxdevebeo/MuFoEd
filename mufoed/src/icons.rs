@@ -30,6 +30,7 @@ pub(crate) enum Icon {
     Print,
     Toc,
     Columns,
+    Spelling,
     Comment,
     Footnote,
     Bookmark,
@@ -409,6 +410,28 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                 ],
                 color,
                 Stroke::NONE,
+            ));
+        }
+        Icon::Spelling => {
+            // Letters with a wavy red line under them.
+            painter.text(
+                pos2(r.center().x, r.top() + r.height() * 0.38),
+                egui::Align2::CENTER_CENTER,
+                "abc",
+                egui::FontId::proportional(r.height() * 0.5),
+                color,
+            );
+            let y = r.top() + r.height() * 0.78;
+            let steps = 8u8;
+            let points: Vec<egui::Pos2> = (0..=steps)
+                .map(|i| {
+                    let x = r.left() + r.width() * f32::from(i) / f32::from(steps);
+                    pos2(x, y + if i % 2 == 0 { -1.5 } else { 1.5 })
+                })
+                .collect();
+            painter.add(egui::Shape::line(
+                points,
+                stroke(Color32::from_rgb(220, 40, 40), thin * 1.3),
             ));
         }
         Icon::Columns => {

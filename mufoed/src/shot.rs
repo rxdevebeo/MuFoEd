@@ -12,6 +12,8 @@ const SETTLE_FRAMES: u32 = 30;
 pub(crate) struct Shot {
     path: PathBuf,
     frames: u32,
+    /// `MUFOED_SHOT_FRAMES`, else [`SETTLE_FRAMES`].
+    settle: u32,
 }
 
 impl Shot {
@@ -20,6 +22,10 @@ impl Shot {
         Some(Self {
             path: PathBuf::from(path),
             frames: 0,
+            settle: std::env::var("MUFOED_SHOT_FRAMES")
+                .ok()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(SETTLE_FRAMES),
         })
     }
 
@@ -27,7 +33,7 @@ impl Shot {
     /// comes and closes the window.
     pub(crate) fn frame(&mut self, ctx: &egui::Context) {
         self.frames += 1;
-        if self.frames == SETTLE_FRAMES {
+        if self.frames == self.settle {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
         }
         let image = ctx.input(|input| {

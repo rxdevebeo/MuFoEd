@@ -2,6 +2,7 @@
 //! desk, the side panes and the status bar.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use eframe::egui::{self, vec2, Color32, FontFamily, FontId, Key, RichText, Sense, Stroke};
 use strict_ooxml::Mode;
@@ -22,6 +23,8 @@ use crate::worker::{CommentCommand, PageChange, ReferenceCommand};
 
 /// Everything a click can ask for.
 pub(crate) enum Action {
+    ToggleSpelling,
+    DownloadDictionary(&'static str),
     New,
     OpenDialog,
     OpenPath(PathBuf),
@@ -162,6 +165,10 @@ pub(crate) enum Dialog {
         space_cm: f32,
         separator: bool,
     },
+    /// A dictionary to fetch, for words no dictionary checks.
+    Dictionary {
+        code: &'static str,
+    },
     /// The bookmarks: a name to add, the one chosen in the list.
     Bookmarks {
         name: String,
@@ -257,6 +264,13 @@ pub(crate) struct App {
     report_open: bool,
     /// The comments pane is shown.
     comments_open: bool,
+    /// The dictionaries, once loaded.
+    speller: Option<Arc<crate::spell::Speller>>,
+    speller_loading: Option<std::sync::mpsc::Receiver<crate::spell::Speller>>,
+    /// A dictionary being fetched, and how it went.
+    dictionary_download: Option<(&'static str, std::sync::mpsc::Receiver<Result<(), String>>)>,
+    /// Languages offered this session, not offered again.
+    dictionaries_offered: Vec<&'static str>,
     font_color: [u8; 3],
     status: Option<StatusLine>,
     next_id: u64,
@@ -327,6 +341,10 @@ impl App {
             find_replace: false,
             report_open: false,
             comments_open: false,
+            speller: None,
+            speller_loading: Some(load_speller(&cc.egui_ctx)),
+            dictionary_download: None,
+            dictionaries_offered: Vec::new(),
             font_color: [192, 0, 0],
             status: None,
             next_id: 1,
@@ -396,6 +414,8 @@ impl App {
             self.settings.system_fonts,
             ctx,
         );
+        let mut tab = tab;
+        tab.set_speller(self.speller_for_tabs());
         self.tabs.push(tab);
         self.active = Some(self.tabs.len() - 1);
         self.backstage = false;
@@ -750,6 +770,15 @@ impl App {
                 }
             }
             Action::ToggleComments => self.comments_open = !self.comments_open,
+            Action::ToggleSpelling => {
+                self.settings.spelling = !self.settings.spelling;
+                self.settings.save();
+                let speller = self.speller_for_tabs();
+                for tab in &mut self.tabs {
+                    tab.set_speller(speller.clone());
+                }
+            }
+            Action::DownloadDictionary(code) => self.download_dictionary(ctx, code, now),
             Action::NewComment => {
                 let author = self.settings.author.clone();
                 let initials: String = author
@@ -825,6 +854,7 @@ impl App {
         let mut close = Vec::new();
         let mut messages = Vec::new();
         let mut pictures = Vec::new();
+        let mut missing_scripts = Vec::new();
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             for event in tab.poll() {
                 match event {
@@ -886,6 +916,7 @@ impl App {
                         }
                     }
                     TabEvent::CommentAdded => self.comments_open = true,
+                    TabEvent::SpellingMissing(scripts) => missing_scripts.extend(scripts),
                     TabEvent::Loaded => {
                         messages.push((
                             self.i18n.tf("status.opened", &[("file", &tab.title)]),
@@ -904,6 +935,7 @@ impl App {
         for (text, error) in messages {
             self.say(text, error, now);
         }
+        self.offer_dictionaries(&missing_scripts);
         for (tab, id, bytes, extension, purpose) in pictures {
             match purpose {
                 ExportPurpose::External => self.edit_externally(tab, id, &bytes, extension, now),
@@ -1285,7 +1317,98 @@ impl App {
     }
 }
 
+/// Loads the installed dictionaries off the interface thread.
+fn load_speller(ctx: &egui::Context) -> std::sync::mpsc::Receiver<crate::spell::Speller> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let ctx = ctx.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(crate::spell::Speller::load());
+        ctx.request_repaint();
+    });
+    rx
+}
+
 impl App {
+    /// The speller the tabs mark words with: none while checking is off.
+    fn speller_for_tabs(&self) -> Option<Arc<crate::spell::Speller>> {
+        if self.settings.spelling {
+            self.speller.clone()
+        } else {
+            None
+        }
+    }
+
+    /// Dictionaries loaded or fetched since the last frame.
+    fn poll_spelling(&mut self, ctx: &egui::Context, now: f64) {
+        if let Some(speller) = self
+            .speller_loading
+            .as_ref()
+            .and_then(|rx| rx.try_recv().ok())
+        {
+            self.speller_loading = None;
+            self.speller = Some(Arc::new(speller));
+            let speller = self.speller_for_tabs();
+            for tab in &mut self.tabs {
+                tab.set_speller(speller.clone());
+            }
+        }
+        if let Some((code, result)) = self
+            .dictionary_download
+            .as_ref()
+            .and_then(|(code, rx)| rx.try_recv().ok().map(|result| (*code, result)))
+        {
+            self.dictionary_download = None;
+            match result {
+                Ok(()) => {
+                    let name = crate::spell::language(code).map_or("", |l| l.name_key);
+                    let text = self
+                        .i18n
+                        .tf("spell.installed", &[("language", &self.t(name))]);
+                    self.say(text, false, now);
+                    self.speller_loading = Some(load_speller(ctx));
+                }
+                Err(error) => {
+                    let text = self.i18n.tf("spell.download_failed", &[("error", &error)]);
+                    self.say(text, true, now);
+                }
+            }
+        }
+    }
+
+    fn download_dictionary(&mut self, ctx: &egui::Context, code: &'static str, now: f64) {
+        if self.dictionary_download.is_some() {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::spell::download(code));
+            ctx.request_repaint();
+        });
+        self.dictionary_download = Some((code, rx));
+        let name = crate::spell::language(code).map_or("", |l| l.name_key);
+        let text = self
+            .i18n
+            .tf("spell.downloading", &[("language", &self.t(name))]);
+        self.say(text, false, now);
+    }
+
+    /// Offers a dictionary for a script the document has words in.
+    fn offer_dictionaries(&mut self, scripts: &[crate::spell::Script]) {
+        if !self.settings.spelling || self.dialog.is_some() || self.dictionary_download.is_some() {
+            return;
+        }
+        for script in scripts {
+            let code = crate::spell::language_for(*script);
+            if self.dictionaries_offered.contains(&code) || crate::spell::installed(code) {
+                continue;
+            }
+            self.dictionaries_offered.push(code);
+            self.dialog = Some(Dialog::Dictionary { code });
+            return;
+        }
+    }
+
     /// A dialog by the name `MUFOED_DIALOG` gives, to look at.
     fn open_named_dialog(&mut self, name: &str, actions: &mut Vec<Action>) {
         self.dialog = match name {
@@ -1311,6 +1434,7 @@ impl App {
             "settings" => Some(Dialog::Settings),
             "about" => Some(Dialog::About),
             "exit" => Some(Dialog::ConfirmExit),
+            "dictionary" => Some(Dialog::Dictionary { code: "ru" }),
             "print" => {
                 actions.push(Action::PrintDialog);
                 None
@@ -1341,6 +1465,7 @@ impl eframe::App for App {
         }
         let startup_dialog = self.startup_dialog.take();
         self.poll_tabs(&ctx, now);
+        self.poll_spelling(&ctx, now);
         self.handle_drops(&ctx, now);
         self.handle_close_request(&ctx);
         let mut actions = Vec::new();
@@ -1769,6 +1894,7 @@ impl App {
                 .and_then(|cursor| cursor.object.as_ref()),
             crop: tab.is_some_and(|tab| tab.view.crop),
             comments_open: self.comments_open,
+            spelling: self.settings.spelling,
             header_footer: tab
                 .and_then(|tab| tab.cursor.as_ref())
                 .and_then(|cursor| cursor.header_footer.as_ref()),
@@ -2674,6 +2800,38 @@ impl App {
                         space_cm,
                         separator,
                     });
+                }
+            }
+            Dialog::Dictionary { code } => {
+                let mut fetch = false;
+                let name = crate::spell::language(code).map_or_else(String::new, |l| t(l.name_key));
+                let size = crate::spell::language(code).map_or(0.0, |l| l.size_mb);
+                let text = self.i18n.tf(
+                    "spell.offer_text",
+                    &[("language", &name), ("size", &format!("{size:.1}"))],
+                );
+                let response = modal("dictionary").show(ctx, |ui| {
+                    crate::dialog::title(ui, &t("spell.offer_title"));
+                    ui.set_max_width(420.0);
+                    ui.label(text);
+                    ui.label(RichText::new(t("spell.offer_source")).weak().size(12.0));
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary(ui, &t("spell.download")).clicked() {
+                            fetch = true;
+                            ui.close();
+                        }
+                        if crate::dialog::button(ui, &t("button.not_now")).clicked() {
+                            ui.close();
+                        }
+                    });
+                });
+                if fetch {
+                    actions.push(Action::DownloadDictionary(code));
+                }
+                if response.should_close() || fetch {
+                    keep = false;
+                } else {
+                    next = Some(Dialog::Dictionary { code });
                 }
             }
             Dialog::Bookmarks {

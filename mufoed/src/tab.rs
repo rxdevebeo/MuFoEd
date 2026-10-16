@@ -42,6 +42,8 @@ pub(crate) enum TabEvent {
     Failed(String),
     /// A comment was added: show the pane.
     CommentAdded,
+    /// The document has words in scripts no dictionary checks.
+    SpellingMissing(Vec<crate::spell::Script>),
 }
 
 /// What happens once a pending save finishes.
@@ -72,6 +74,8 @@ pub(crate) struct Rastered {
 
 /// The canvas's own state.
 pub(crate) struct ViewState {
+    /// The context menu's misspelt word, when it was opened on one.
+    pub(crate) spell_menu: Option<SpellMenu>,
     pub(crate) textures: HashMap<usize, PageTexture>,
     pub(crate) pending: HashSet<(usize, u64, u32)>,
     pub(crate) raster_tx: Sender<Rastered>,
@@ -148,8 +152,16 @@ impl ViewState {
             moving: None,
             page_screens: Vec::new(),
             ruler_drag: None,
+            spell_menu: None,
         }
     }
+}
+
+/// The misspelt word a context menu is open on, and what could replace it.
+#[derive(Clone, Debug)]
+pub(crate) struct SpellMenu {
+    pub(crate) error: crate::worker::SpellError,
+    pub(crate) suggestions: Vec<String>,
 }
 
 pub(crate) struct DocTab {
@@ -177,6 +189,10 @@ pub(crate) struct DocTab {
     pub(crate) editing_comment: Option<(String, String)>,
     /// Comments were there once, so the pane was shown.
     comments_seen: bool,
+    /// The misspelt words.
+    pub(crate) spelling: Vec<crate::worker::SpellError>,
+    /// The speller the worker marks with, for suggestions.
+    pub(crate) speller: Option<std::sync::Arc<crate::spell::Speller>>,
     pub(crate) zoom: f32,
     pub(crate) view: ViewState,
     pub(crate) after_save: Option<AfterSave>,
@@ -185,6 +201,15 @@ pub(crate) struct DocTab {
 }
 
 impl DocTab {
+    /// Hands the worker a speller (or none, to stop marking words).
+    pub(crate) fn set_speller(&mut self, speller: Option<std::sync::Arc<crate::spell::Speller>>) {
+        self.speller.clone_from(&speller);
+        if speller.is_none() {
+            self.spelling.clear();
+        }
+        self.send(Request::Speller(speller));
+    }
+
     pub(crate) fn open(
         id: u64,
         source: Source,
@@ -218,6 +243,8 @@ impl DocTab {
             comments: Vec::new(),
             editing_comment: None,
             comments_seen: false,
+            spelling: Vec::new(),
+            speller: None,
             zoom,
             view: ViewState::new(),
             after_save: None,
@@ -292,6 +319,12 @@ impl DocTab {
                     events.push(TabEvent::CommentAdded);
                 }
                 self.comments = comments;
+            }
+            Reply::Spelling { errors, missing } => {
+                self.spelling = errors;
+                if !missing.is_empty() {
+                    events.push(TabEvent::SpellingMissing(missing));
+                }
             }
             Reply::CommentAdded(id) => {
                 self.editing_comment = Some((id, String::new()));

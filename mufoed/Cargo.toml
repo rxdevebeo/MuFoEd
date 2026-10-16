@@ -33,6 +33,7 @@ serde.workspace = true
 serde_json.workspace = true
 sys-locale = "0.3"
 unicode-segmentation = "1.12"
+ureq = "3"
 
 [dev-dependencies]
 png.workspace = true

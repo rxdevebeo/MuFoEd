@@ -13,6 +13,7 @@
 //! offset stays where the user put it.
 
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
@@ -122,6 +123,17 @@ pub(crate) enum Request {
     },
     GoTo(Address),
     SystemFonts(bool),
+    /// The speller to mark words with; `None` turns checking off.
+    Speller(Option<Arc<crate::spell::Speller>>),
+    /// The words again, after the user's dictionary changed.
+    Respell,
+    /// A misspelt word replaced, if it is still there.
+    ReplaceWord {
+        start: Logical,
+        end: Logical,
+        word: String,
+        with: String,
+    },
     Save {
         path: PathBuf,
         format: SaveFormat,
@@ -629,6 +641,18 @@ pub(crate) enum CommentCommand {
     },
 }
 
+/// A word the speller does not know, and where it is drawn.
+#[derive(Clone, Debug)]
+pub(crate) struct SpellError {
+    pub(crate) word: String,
+    pub(crate) start: Logical,
+    pub(crate) end: Logical,
+    pub(crate) rects: Vec<VisualRect>,
+}
+
+/// A paragraph's text checked: its wrong words and the scripts unchecked.
+type Checked = Arc<(Vec<crate::spell::Word>, Vec<crate::spell::Script>)>;
+
 /// A comment as the pane shows it.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CommentView {
@@ -808,6 +832,11 @@ pub(crate) enum Reply {
     ClipboardObjects(Box<ClipObjects>),
     /// The comments, in the order of the text.
     Comments(Vec<CommentView>),
+    /// The misspelt words, and the scripts with words no dictionary checks.
+    Spelling {
+        errors: Vec<SpellError>,
+        missing: Vec<crate::spell::Script>,
+    },
     /// A comment was added: the pane edits its text.
     CommentAdded(String),
     /// A picture's bytes, asked for by `ObjectCommand::Export`.
@@ -1040,7 +1069,7 @@ impl Session<'_> {
 
 /// A caret: a paragraph and a scalar offset into its text.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Logical {
+pub(crate) struct Logical {
     paragraph: Address,
     offset: usize,
 }
@@ -1089,6 +1118,9 @@ struct Worker<'a, 's> {
     path: Option<PathBuf>,
     outline: Vec<OutlineEntry>,
     read_only: Option<String>,
+    speller: Option<Arc<crate::spell::Speller>>,
+    /// Paragraph texts already checked.
+    spelling: HashMap<String, Checked>,
 }
 
 impl<'a, 's> Worker<'a, 's> {
@@ -1115,6 +1147,8 @@ impl<'a, 's> Worker<'a, 's> {
             goal_x: None,
             object: None,
             pending_script: None,
+            speller: None,
+            spelling: HashMap::new(),
             story: Story::Body,
             body_caret: None,
             undo_depth: 0,
@@ -1265,6 +1299,17 @@ impl<'a, 's> Worker<'a, 's> {
                 self.stale = true;
                 Outcome::Moved
             }
+            Request::Speller(speller) => {
+                self.speller = speller;
+                self.spelling.clear();
+                self.send_spelling();
+                Outcome::Quiet
+            }
+            Request::Respell => {
+                self.spelling.clear();
+                self.send_spelling();
+                Outcome::Quiet
+            }
             Request::Find { query, backwards } => self.find(&query, backwards),
             request => {
                 if let Some(reason) = &self.read_only {
@@ -1279,6 +1324,27 @@ impl<'a, 's> Worker<'a, 's> {
     fn edit_request(&mut self, request: Request) -> Outcome {
         match request {
             Request::Type(text) => self.type_text(&text),
+            Request::ReplaceWord {
+                start,
+                end,
+                word,
+                with,
+            } => {
+                let text = self.text_of(&start.paragraph);
+                let there: String = text
+                    .chars()
+                    .skip(start.offset)
+                    .take(end.offset.saturating_sub(start.offset))
+                    .collect();
+                if start.paragraph != end.paragraph || there.replace('\u{2019}', "'") != word {
+                    return Outcome::Quiet;
+                }
+                self.story = Story::Body;
+                self.cells = None;
+                self.anchor = Some(start);
+                self.caret = Some(end);
+                self.type_text(&with)
+            }
             Request::Backspace => self.backspace(),
             Request::Delete => self.delete_forward(),
             Request::Enter => self.enter(),
@@ -1409,6 +1475,7 @@ impl<'a, 's> Worker<'a, 's> {
         self.send(Reply::Busy(None));
         let comments = self.comment_views();
         self.send(Reply::Comments(comments));
+        self.send_spelling();
         let outline = self.build_outline();
         if outline != self.outline {
             self.outline.clone_from(&outline);
@@ -2614,6 +2681,90 @@ impl<'a, 's> Worker<'a, 's> {
             picture: matches!(graphic, Some(Graphic::Picture(_))),
             wrap: wrap_style(&drawing),
         })
+    }
+
+    // ----- spelling -----------------------------------------------------
+
+    /// Marks the body's misspelt words, from the texts checked before when
+    /// they have not changed.
+    fn send_spelling(&mut self) {
+        let Some(speller) = self.speller.clone() else {
+            self.send(Reply::Spelling {
+                errors: Vec::new(),
+                missing: Vec::new(),
+            });
+            return;
+        };
+        let revision = self.session.revision();
+        let mut errors = Vec::new();
+        let mut missing: Vec<crate::spell::Script> = Vec::new();
+        let mut seen: HashMap<String, Checked> = HashMap::new();
+        for address in self.paragraphs(&Story::Body) {
+            let text = self.text_of(&address);
+            let cached = self
+                .spelling
+                .get(&text)
+                .or_else(|| seen.get(&text))
+                .cloned();
+            let checked = if let Some(checked) = cached {
+                checked
+            } else {
+                {
+                    let mut wrong = Vec::new();
+                    let mut unknown = Vec::new();
+                    for word in crate::spell::words(&text) {
+                        match speller.verdict(&word.text) {
+                            crate::spell::Verdict::Right => {}
+                            crate::spell::Verdict::Wrong => wrong.push(word),
+                            crate::spell::Verdict::Unknown(script) => {
+                                if !unknown.contains(&script) {
+                                    unknown.push(script);
+                                }
+                            }
+                        }
+                    }
+                    let checked: Checked = Arc::new((wrong, unknown));
+                    checked
+                }
+            };
+            seen.insert(text.clone(), Arc::clone(&checked));
+            for script in &checked.1 {
+                if !missing.contains(script) {
+                    missing.push(*script);
+                }
+            }
+            for word in &checked.0 {
+                let start = Logical {
+                    paragraph: address.clone(),
+                    offset: word.start,
+                };
+                let end = Logical {
+                    paragraph: address.clone(),
+                    offset: word.end,
+                };
+                let rects = self
+                    .map
+                    .as_ref()
+                    .and_then(|map| {
+                        map.selection_between(
+                            revision,
+                            &self.position(&start),
+                            &self.position(&end),
+                        )
+                        .ok()
+                    })
+                    .unwrap_or_default();
+                errors.push(SpellError {
+                    word: word.text.clone(),
+                    start,
+                    end,
+                    rects,
+                });
+            }
+        }
+        // What is no longer in the document leaves the cache.
+        self.spelling = seen;
+        self.send(Reply::Spelling { errors, missing });
     }
 
     // ----- comments -----------------------------------------------------
@@ -8039,6 +8190,50 @@ mod tests {
             text.starts_with("abc") && text.ends_with('d') && text.len() > 4,
             "{text:?}"
         );
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    /// Misspelt words come back marked, and one is replaced from the menu.
+    #[test]
+    fn misspelt_words_are_marked_and_replaced() {
+        let (requests, replies) = new_document();
+        send_all(&requests, typed("кот котт"));
+        let speller = crate::spell::Speller::new(
+            vec![(
+                crate::spell::Script::Cyrillic,
+                crate::spell::Dictionary::parse(
+                    "SET UTF-8
+",
+                    "1
+кот
+",
+                ),
+            )],
+            std::collections::HashSet::new(),
+            None,
+        );
+        requests
+            .send(Request::Speller(Some(Arc::new(speller))))
+            .unwrap();
+        let (errors, missing) = wait(&replies, |reply| match reply {
+            Reply::Spelling { errors, missing } if !errors.is_empty() => Some((errors, missing)),
+            _ => None,
+        });
+        assert!(missing.is_empty());
+        let [error] = &errors[..] else {
+            panic!("{errors:?}");
+        };
+        assert_eq!(error.word, "котт");
+        assert!(!error.rects.is_empty());
+        requests
+            .send(Request::ReplaceWord {
+                start: error.start.clone(),
+                end: error.end.clone(),
+                word: error.word.clone(),
+                with: "кот".to_owned(),
+            })
+            .unwrap();
+        assert_eq!(settle(&requests, &replies), "кот кот");
         requests.send(Request::Shutdown).unwrap();
     }
 

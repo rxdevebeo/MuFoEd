@@ -85,6 +85,8 @@ pub(crate) struct RibbonState<'a> {
     pub(crate) crop: bool,
     /// The comments pane is shown.
     pub(crate) comments_open: bool,
+    /// Misspelt words are marked.
+    pub(crate) spelling: bool,
     /// The header or footer being edited.
     pub(crate) header_footer: Option<&'a crate::worker::HeaderFooterView>,
     /// Faces to draw font names in.
@@ -2470,6 +2472,44 @@ fn review(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
     let editable = s.editable();
     let p = s.palette;
     group(ui, s.t("group.proofing"), p, |ui| {
+        column(ui, |ui| {
+            let check = Small::new(
+                Icon::Spelling,
+                s.t("cmd.spelling"),
+                s.t("tip.spelling"),
+                true,
+            )
+            .with_on(s.spelling);
+            let languages = Small::new(
+                Icon::Words,
+                s.t("cmd.dictionaries"),
+                s.t("tip.dictionaries"),
+                true,
+            )
+            .menu();
+            let width = small_width(ui, &[check.clone(), languages.clone()]);
+            if small_one(ui, &check, width, p).clicked() {
+                actions.push(Action::ToggleSpelling);
+            }
+            small_menu(ui, &languages, width, p, |ui| {
+                for language in crate::spell::LANGUAGES {
+                    let name = s.t(language.name_key);
+                    if crate::spell::installed(language.code) {
+                        ui.add_enabled(false, egui::Button::new(format!("✓ {name}")));
+                    } else if ui
+                        .button(format!(
+                            "{name} — {} ({:.1} MB)",
+                            s.t("spell.download"),
+                            language.size_mb
+                        ))
+                        .clicked()
+                    {
+                        actions.push(Action::DownloadDictionary(language.code));
+                        ui.close();
+                    }
+                }
+            });
+        });
         if big_clicked(
             ui,
             Icon::Words,
