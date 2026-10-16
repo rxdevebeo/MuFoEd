@@ -1,0 +1,249 @@
+//! A document tab: the worker's channels and what it last said.
+
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::mpsc::{Receiver, Sender, TryRecvError};
+use std::sync::Arc;
+use std::time::Instant;
+
+use eframe::egui;
+use strict_ooxml::OpenControl;
+
+use crate::formats::{Kind, Source};
+use crate::raster::Bitmap;
+use crate::worker::{
+    self, Cursor, DocInfo, EditState, Note, OutlineEntry, PageData, Reply, Request, SaveFormat,
+};
+
+/// Where a tab is in its life.
+pub(crate) enum Status {
+    Loading,
+    Ready,
+    Failed(String),
+}
+
+/// What a tab has to tell the application after a poll.
+pub(crate) enum TabEvent {
+    Note(Note),
+    Clipboard(String),
+    Saved { path: PathBuf, format: SaveFormat },
+    Loaded,
+    Failed(String),
+}
+
+/// What happens once a pending save finishes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AfterSave {
+    Close,
+}
+
+/// A bitmap of a page at one scale.
+pub(crate) struct PageTexture {
+    pub(crate) hash: u64,
+    pub(crate) scale: u32,
+    pub(crate) texture: egui::TextureHandle,
+}
+
+/// One finished rasterization.
+pub(crate) struct Rastered {
+    pub(crate) index: usize,
+    pub(crate) hash: u64,
+    pub(crate) scale: u32,
+    pub(crate) bitmap: Result<Bitmap, String>,
+}
+
+/// The canvas's own state.
+pub(crate) struct ViewState {
+    pub(crate) textures: HashMap<usize, PageTexture>,
+    pub(crate) pending: HashSet<(usize, u64, u32)>,
+    pub(crate) raster_tx: Sender<Rastered>,
+    pub(crate) raster_rx: Receiver<Rastered>,
+    /// When the zoom last changed; rasterizing waits until it settles.
+    pub(crate) zoom_changed: f64,
+    pub(crate) scroll_to_page: Option<usize>,
+    pub(crate) scroll_to_caret: bool,
+    pub(crate) last_drag: Option<egui::Pos2>,
+    /// Visible size of the canvas, for fit-to-width and one-page zoom.
+    pub(crate) viewport: egui::Vec2,
+    pub(crate) current_page: usize,
+    /// When the caret last moved, for the blink phase.
+    pub(crate) caret_moved: f64,
+}
+
+impl ViewState {
+    fn new() -> Self {
+        let (raster_tx, raster_rx) = std::sync::mpsc::channel();
+        Self {
+            textures: HashMap::new(),
+            pending: HashSet::new(),
+            raster_tx,
+            raster_rx,
+            zoom_changed: -1.0,
+            scroll_to_page: None,
+            scroll_to_caret: false,
+            last_drag: None,
+            viewport: egui::vec2(800.0, 600.0),
+            current_page: 0,
+            caret_moved: 0.0,
+        }
+    }
+}
+
+pub(crate) struct DocTab {
+    pub(crate) id: u64,
+    pub(crate) title: String,
+    /// Where Save writes, once there is a Strict DOCX to write to.
+    pub(crate) path: Option<PathBuf>,
+    /// The file the tab was opened from.
+    pub(crate) source: Option<PathBuf>,
+    pub(crate) kind: Option<Kind>,
+    pub(crate) status: Status,
+    pub(crate) control: OpenControl,
+    pub(crate) started: Instant,
+    pub(crate) info: Option<DocInfo>,
+    pub(crate) pages: Vec<Arc<PageData>>,
+    pub(crate) warnings: Vec<String>,
+    pub(crate) cursor: Option<Box<Cursor>>,
+    pub(crate) state: EditState,
+    pub(crate) outline: Vec<OutlineEntry>,
+    pub(crate) zoom: f32,
+    pub(crate) view: ViewState,
+    pub(crate) after_save: Option<AfterSave>,
+    requests: Sender<Request>,
+    replies: Receiver<Reply>,
+}
+
+impl DocTab {
+    pub(crate) fn open(
+        id: u64,
+        source: Source,
+        title: String,
+        zoom: f32,
+        system_fonts: bool,
+        ctx: &egui::Context,
+    ) -> Self {
+        let control = OpenControl::new();
+        let path = match &source {
+            Source::File { path, .. } => Some(path.clone()),
+            Source::New => None,
+        };
+        let (requests, replies) = worker::spawn(source, system_fonts, control.clone(), ctx.clone());
+        Self {
+            id,
+            title,
+            path: None,
+            source: path,
+            kind: None,
+            status: Status::Loading,
+            control,
+            started: Instant::now(),
+            info: None,
+            pages: Vec::new(),
+            warnings: Vec::new(),
+            cursor: None,
+            state: EditState::default(),
+            outline: Vec::new(),
+            zoom,
+            view: ViewState::new(),
+            after_save: None,
+            requests,
+            replies,
+        }
+    }
+
+    pub(crate) fn send(&self, request: Request) {
+        let _ = self.requests.send(request);
+    }
+
+    pub(crate) fn ready(&self) -> bool {
+        matches!(self.status, Status::Ready)
+    }
+
+    /// Takes everything the worker said since the last frame.
+    pub(crate) fn poll(&mut self) -> Vec<TabEvent> {
+        let mut events = Vec::new();
+        loop {
+            match self.replies.try_recv() {
+                Ok(reply) => self.apply(reply, &mut events),
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    if matches!(self.status, Status::Loading) {
+                        let message = "the document thread stopped".to_owned();
+                        self.status = Status::Failed(message.clone());
+                        events.push(TabEvent::Failed(message));
+                    }
+                    break;
+                }
+            }
+        }
+        events
+    }
+
+    fn apply(&mut self, reply: Reply, events: &mut Vec<TabEvent>) {
+        match reply {
+            Reply::Loaded(info) => {
+                self.kind = Some(info.kind);
+                if matches!(info.kind, Kind::Docx) {
+                    self.path.clone_from(&self.source);
+                }
+                self.info = Some(*info);
+                self.status = Status::Ready;
+                events.push(TabEvent::Loaded);
+            }
+            Reply::Failed(error) => {
+                self.status = Status::Failed(error.clone());
+                events.push(TabEvent::Failed(error));
+            }
+            Reply::Pages { pages, warnings } => {
+                // Bitmaps of pages whose SVG changed are dropped below, when
+                // their hash no longer matches; pages past the end go now.
+                self.view.textures.retain(|index, _| *index < pages.len());
+                self.pages = pages;
+                self.warnings = warnings;
+            }
+            Reply::Cursor(cursor) => {
+                if cursor.scroll {
+                    self.view.scroll_to_caret = true;
+                }
+                self.cursor = Some(cursor);
+            }
+            Reply::State(state) => self.state = state,
+            Reply::Outline(outline) => self.outline = outline,
+            Reply::Note(note) => events.push(TabEvent::Note(note)),
+            Reply::Clipboard(text) => events.push(TabEvent::Clipboard(text)),
+            Reply::Saved { path, format } => {
+                if format == SaveFormat::Docx {
+                    self.path = Some(path.clone());
+                    self.kind = Some(Kind::Docx);
+                    if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
+                        name.clone_into(&mut self.title);
+                    }
+                }
+                events.push(TabEvent::Saved { path, format });
+            }
+        }
+    }
+
+    /// The name a Save As dialog proposes.
+    pub(crate) fn suggested_name(&self, extension: &str) -> String {
+        let stem = self
+            .source
+            .as_ref()
+            .or(self.path.as_ref())
+            .and_then(|path| path.file_stem())
+            .and_then(|stem| stem.to_str())
+            .map_or_else(|| self.title.clone(), str::to_owned);
+        format!("{stem}.{extension}")
+    }
+
+    pub(crate) fn modified(&self) -> bool {
+        self.state.modified || (self.ready() && self.path.is_none() && self.kind != Some(Kind::New))
+    }
+}
+
+impl Drop for DocTab {
+    fn drop(&mut self) {
+        self.control.cancel();
+        let _ = self.requests.send(Request::Shutdown);
+    }
+}

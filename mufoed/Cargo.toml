@@ -1,0 +1,38 @@
+[package]
+name = "mufoed"
+description = "MultiFormatEditor (MuFoEd): a desktop demonstrator of the strict-ooxml toolkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["ooxml", "docx", "editor", "gui"]
+categories = ["gui", "text-editors"]
+
+[[bin]]
+name = "mufoed"
+path = "src/main.rs"
+doc = false
+
+[features]
+# Recognition of scanned PDF/DjVu pages through a local Ollama vision model.
+default = ["ocr"]
+ocr = ["strict-ooxml/ocr-ollama", "strict-ooxml/pdf-raster"]
+
+[dependencies]
+strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write", "pdf", "convert", "rtf", "djvu-image", "edit", "system-fonts"] }
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-svg" }
+eframe = "0.35"
+rfd = "0.17"
+resvg.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sys-locale = "0.3"
+unicode-segmentation = "1.12"
+
+[lints]
+workspace = true
