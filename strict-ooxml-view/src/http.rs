@@ -214,7 +214,24 @@ where
         }
         ReadOutcome::Ok(request) => handler(&request.path, &request.query),
     };
-    write_response(&mut writer, &response)
+    write_response(&mut writer, &response)?;
+    close_gracefully(&writer, reader.into_inner());
+    Ok(())
+}
+
+/// Ends the connection with a FIN, not a reset. Windows resets a socket that
+/// is closed while the peer's data is still unread, and the peer then loses
+/// the response it has not read yet ("connection reset" in the client). So
+/// the write side is shut first, and what the peer still sends is read away
+/// until it closes - briefly.
+fn close_gracefully(writer: &TcpStream, mut stream: TcpStream) {
+    let _ = writer.shutdown(std::net::Shutdown::Write);
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
+    let mut sink = [0u8; 512];
+    let mut budget = 64usize;
+    while budget > 0 && matches!(stream.read(&mut sink), Ok(read) if read > 0) {
+        budget -= 1;
+    }
 }
 
 /// A parsed request line.
