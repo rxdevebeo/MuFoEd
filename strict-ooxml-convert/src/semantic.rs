@@ -304,6 +304,14 @@ fn paragraphs_of(
     let mut paragraph: Option<Paragraph> = None;
     let mut previous: Option<&GlyphLine> = None;
     for (at, line) in lines.iter().enumerate() {
+        // Spaces on the baseline of the line before show nothing, and as a
+        // paragraph of their own each took a line's height: a letter's row of
+        // signature gaps pushed its names three lines down.
+        if line.text().trim().is_empty()
+            && previous.is_some_and(|previous| (previous.baseline - line.baseline).abs() < 0.5)
+        {
+            continue;
+        }
         // Is this line nothing but the marker of an item whose text is the next
         // line? And is this line the text of the marker above it? The two
         // questions have different keys, and the difference is the whole feature:
