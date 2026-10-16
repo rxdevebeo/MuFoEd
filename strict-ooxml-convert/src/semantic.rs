@@ -1038,12 +1038,25 @@ enum PictureWrap {
     Square,
 }
 
-/// Puts a page's anchored drawings into its first paragraph, which is on the
+/// Puts a page's anchored drawings, in paint order, into its first paragraph, which is on the
 /// page they belong to whatever the text before it does; a page without one
 /// gets a paragraph of their own.
-fn hold_anchors(blocks: &mut Vec<Block>, page_start: usize, anchors: Vec<Inline>) {
+fn hold_anchors(blocks: &mut Vec<Block>, page_start: usize, mut anchors: Vec<Inline>) {
     if anchors.is_empty() {
         return;
+    }
+    // Stacked in the order the page painted them: with one height for all, a
+    // page's background box could be drawn over the picture set on it.
+    let mut height = 0u32;
+    for inline in &mut anchors {
+        if let Inline::Drawing(Drawing {
+            kind: DrawingKind::Anchor(anchor),
+            ..
+        }) = inline
+        {
+            height = height.saturating_add(1);
+            anchor.relative_height = Some(height);
+        }
     }
     let first = blocks
         .iter_mut()
