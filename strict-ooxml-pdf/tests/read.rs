@@ -285,6 +285,36 @@ fn a_glyph_scaled_by_the_text_matrix_is_as_wide_as_it_is_drawn() {
 }
 
 #[test]
+fn td_moves_from_the_start_of_the_line_not_from_the_pen() {
+    // ISO 32000-1 9.4.2: `Td` offsets the *line* matrix. After `(A) Tj` the
+    // pen is 6 pt on; the next line still starts at x = 10.
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\nBT /F1 10 Tf 12 TL 1 0 0 1 10 50 Tm (A) Tj 0 -12 Td (B) Tj T* (A) Tj ET\nendstream",
+        FONT,
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    let glyphs: Vec<&strict_ooxml_pdf::Glyph> = page
+        .items()
+        .iter()
+        .filter_map(|item| match item {
+            Item::Glyph(glyph) => Some(glyph),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(glyphs.len(), 3);
+    for glyph in &glyphs {
+        assert!((glyph.x - 10.0).abs() < 0.01, "{}", glyph.x);
+    }
+    // y is from the page's top: 100 - 50, then 12 and 24 lower.
+    assert!((glyphs[1].y - glyphs[0].y - 12.0).abs() < 0.01);
+    assert!((glyphs[2].y - glyphs[1].y - 12.0).abs() < 0.01);
+}
+
+#[test]
 fn invisible_text_is_measured_but_not_drawn() {
     let objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",

@@ -564,13 +564,21 @@ impl Default for State {
 /// The text state, which `q`/`Q` does *not* save.
 #[derive(Clone, Debug)]
 struct TextState {
+    /// The text matrix: where the next glyph goes.
     matrix: Matrix,
+    /// The text line matrix: where the current line began (ISO 32000-1
+    /// 9.4.2). `Td`, `TD`, `T*`, `'` and `"` move from it, not from the pen;
+    /// moving from the pen put a line that followed shown text that text's
+    /// width to the right, and a table of contents climbed off the page as a
+    /// staircase.
+    line: Matrix,
 }
 
 impl Default for TextState {
     fn default() -> Self {
         Self {
             matrix: Matrix::IDENTITY,
+            line: Matrix::IDENTITY,
         }
     }
 }
@@ -578,6 +586,13 @@ impl Default for TextState {
 impl TextState {
     fn reset(&mut self) {
         self.matrix = Matrix::IDENTITY;
+        self.line = Matrix::IDENTITY;
+    }
+
+    /// Starts a new line `(x, y)` from the start of the current one.
+    fn next_line(&mut self, x: f64, y: f64) {
+        self.line = Matrix::chain(Matrix::translate(x, y), self.line);
+        self.matrix = self.line;
     }
 }
 
@@ -1048,13 +1063,13 @@ fn interpret_from(
             }
             "Td" => {
                 if let (Some(x), Some(y)) = (number_at(args, 0), number_at(args, 1)) {
-                    text.matrix = Matrix::chain(Matrix::translate(x, y), text.matrix);
+                    text.next_line(x, y);
                 }
             }
             "TD" => {
                 if let (Some(x), Some(y)) = (number_at(args, 0), number_at(args, 1)) {
                     current.leading = -y;
-                    text.matrix = Matrix::chain(Matrix::translate(x, y), text.matrix);
+                    text.next_line(x, y);
                 }
             }
             "Tm" => {
@@ -1067,16 +1082,14 @@ fn interpret_from(
                     number_at(args, 5),
                 ) {
                     text.matrix = Matrix { a, b, c, d, e, f };
+                    text.line = text.matrix;
                 }
             }
-            "T*" => {
-                text.matrix = Matrix::chain(Matrix::translate(0.0, -current.leading), text.matrix);
-            }
+            "T*" => text.next_line(0.0, -current.leading),
             "Tj" | "'" | "\"" => {
                 if operator != "Tj" {
                     // `'` and `"` both move to the next line first.
-                    text.matrix =
-                        Matrix::chain(Matrix::translate(0.0, -current.leading), text.matrix);
+                    text.next_line(0.0, -current.leading);
                 }
                 if operator == "\"" {
                     if let (Some(aw), Some(ac)) = (number_at(args, 0), number_at(args, 1)) {
