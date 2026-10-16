@@ -406,6 +406,7 @@ $script:AllowedFields = @{
     'wps'         = @('id', 'kind', 'sha')
     'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts', 'font_pack', 'font_packs')
     'rtf'         = @('id', 'kind', 'sha')
+    'pdf-dump'    = @('id', 'kind', 'sha', 'input', 'page', 'glyphs')
     'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes', 'lang', 'lexicon', 'ocr_layout')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
@@ -472,6 +473,7 @@ function Test-JobRecord {
         'wps-qa' { $required = @('sha') }
         'rtf' { $required = @('sha') }
         'ocr-probe' { $required = @('sha', 'input', 'pages') }
+        'pdf-dump' { $required = @('sha', 'input') }
         'commit' { $required = @('branch', 'paths', 'message') }
         'push' { $required = @('branch') }
     }
@@ -523,6 +525,20 @@ function Test-JobRecord {
                     }
                     $seen += $text
                 }
+            }
+        }
+        'pdf-dump' {
+            if ($Job.input -isnot [string] -or [string]$Job.input -notmatch '^testdata/[^\\:*?"<>|]+\.pdf$' -or [string]$Job.input -match '(^|/)\.\.(/|$)') {
+                return (& $reject 'input must be testdata/<path>.pdf without ..')
+            }
+            if (-not (Test-Path -LiteralPath (Join-RepoPath -Root $Repo -Relative ([string]$Job.input)) -PathType Leaf)) {
+                return (& $reject ("input '{0}' does not exist" -f $Job.input))
+            }
+            if ($fields -contains 'page' -and (-not ($Job.page -is [int] -or $Job.page -is [long]) -or [long]$Job.page -lt 1 -or [long]$Job.page -gt 100000)) {
+                return (& $reject 'page must be an integer 1..100000')
+            }
+            if ($fields -contains 'glyphs' -and $Job.glyphs -isnot [bool]) {
+                return (& $reject 'glyphs must be true or false')
             }
         }
         'ocr-probe' {
@@ -1292,6 +1308,39 @@ function Invoke-WpsQa {
     return (New-Result $status $reason $steps $artifacts)
 }
 
+# What the PDF reader makes of one page (strict-ooxml-pdf example dump_lines):
+# its text lines and, with `glyphs`, every glyph. The first thing to look at
+# when a PDF converts wrong.
+function Invoke-PdfDump {
+    param([string]$Repo, [string]$QueueDir, [string]$Sha, $Job, [string]$OutDir)
+    $deadline = (Get-Date).AddMinutes(30)
+    $wt = Join-Path $QueueDir 'wt'
+    $target = Join-Path $QueueDir 'target'
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Ensure-Worktree -Repo $Repo -Wt $wt -Sha $Sha
+    $inputPdf = Join-RepoPath -Root $Repo -Relative ([string]$Job.input)
+    $page = '1'
+    if ($null -ne $Job.PSObject.Properties['page']) { $page = [string]([long]$Job.page) }
+    $steps = @()
+    $build = Invoke-Logged -Name 'build-dump' -Exe 'cargo' -Arguments @($script:Toolchain, 'build', '--release', '-p', 'strict-ooxml-pdf', '--example', 'dump_lines') -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env (Get-CargoEnv -Target $target) -OutDir $OutDir
+    $steps += $build
+    $artifacts = @()
+    if (-not $build.timedout -and $build.exit -eq 0) {
+        $exe = Join-Path $target 'release\examples\dump_lines.exe'
+        $dumpArgs = @($inputPdf, $page)
+        if ($null -ne $Job.PSObject.Properties['glyphs'] -and [bool]$Job.glyphs) { $dumpArgs += @('--glyphs') }
+        $run = Invoke-Logged -Name 'dump-lines' -Exe $exe -Arguments $dumpArgs -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
+        $steps += $run
+        $p = Join-Path $OutDir 'dump.txt'
+        Write-Utf8NoBom -Path $p -Text ([string]$run.stdout + "`n" + [string]$run.stderr)
+        $artifacts += New-Artifact -QueueDir $QueueDir -Path $p
+    }
+    $status = Get-StepsStatus $steps
+    $reason = ''
+    if ($status -ne 'ok') { $reason = ('pdf-dump: {0} step(s) non-zero' -f @($steps | Where-Object { $_.exit -ne 0 }).Count) }
+    return (New-Result $status $reason $steps $artifacts)
+}
+
 # Recognition of a scanned PDF by the owner's local Ollama, for debugging:
 # `convert` (default on) runs `from-pdf --ocr --no-images` on the page span and
 # `to-pdf` on the result; `layout` (default on) runs the `layout_probe`
@@ -1648,6 +1697,7 @@ function Invoke-JobFile {
                 'bench' { $r = Invoke-Bench -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
                 'wps' { $r = Invoke-Wps -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'wps-qa' { $r = Invoke-WpsQa -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
+                'pdf-dump' { $r = Invoke-PdfDump -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
                 'ocr-probe' { $r = Invoke-OcrProbe -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
                 'rtf' { $r = Invoke-Rtf -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'commit' { $r = Invoke-Commit -Repo $Repo -Job $job -OutDir $outDir }
