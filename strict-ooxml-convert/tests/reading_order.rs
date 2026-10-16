@@ -107,3 +107,39 @@ fn a_figure_in_the_middle_of_a_page_stands_where_the_page_put_it() {
     assert_eq!(top.0, 292 * 12_700);
     assert!(anchor.behind_doc);
 }
+
+#[test]
+fn a_pdf_page_that_flows_on_is_marked_where_it_starts() {
+    // `w:lastRenderedPageBreak`: Word's note that a page broke here, and how
+    // the source's pages are found again in a flow without hard breaks.
+    let mut pdf = PdfBuilder::new();
+    let font = pdf.object(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    );
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+    pdf.page_with(b"BT /F1 12 Tf 72 700 Td (One) Tj ET", &resources);
+    pdf.page_with(b"BT /F1 12 Tf 72 700 Td (Two) Tj ET", &resources);
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let marked: Vec<String> = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        })
+        .filter(|paragraph| {
+            paragraph.inlines.iter().any(|inline| {
+                matches!(inline, Inline::Run(run)
+                    if run.content.iter().any(|content| matches!(content, RunContent::LastRenderedPageBreak)))
+            })
+        })
+        .map(|paragraph| outline(&[Block::Paragraph(paragraph.clone())]).concat())
+        .collect();
+    assert_eq!(marked, ["Two"]);
+}

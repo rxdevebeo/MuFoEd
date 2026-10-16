@@ -260,6 +260,9 @@ pub(crate) fn build(
         );
         blocks.extend(figures.map(|(_, figure)| figure));
         hold_anchors(&mut blocks, page_start, anchored);
+        if index > 0 {
+            mark_page_start(&mut blocks, page_start);
+        }
         // Text a model read off a picture-only region comes after the page's
         // own content, indented to the region's left edge.
         for block in recovered.page(index) {
@@ -1062,6 +1065,36 @@ fn hold_anchors(blocks: &mut Vec<Block>, page_start: usize, anchors: Vec<Inline>
         revision: None,
         location: strict_ooxml_core::error::SourceLocation::unknown(),
     }));
+}
+
+/// Marks where a PDF page begins in the flow with `w:lastRenderedPageBreak`,
+/// Word's own note that a page broke there when the document was last laid
+/// out - which for a PDF it did. The flow runs on without a hard break, and
+/// the note is how a reader (and the scan-beside-result comparison) finds the
+/// source's pages again.
+fn mark_page_start(blocks: &mut [Block], page_start: usize) {
+    let Some(paragraph) = blocks
+        .iter_mut()
+        .skip(page_start)
+        .find_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        })
+    else {
+        return;
+    };
+    if paragraph.props.page_break_before == strict_ooxml_wml::model::values::TriState::On {
+        return;
+    }
+    paragraph.inlines.insert(
+        0,
+        Inline::Run(Run {
+            props: RunProperties::default(),
+            content: vec![RunContent::LastRenderedPageBreak],
+            revision: None,
+            location: strict_ooxml_core::error::SourceLocation::unknown(),
+        }),
+    );
 }
 
 /// The page's pictures stored as media parts, each with what a model said of
