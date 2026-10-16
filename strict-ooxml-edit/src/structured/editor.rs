@@ -843,6 +843,8 @@ fn same_content(a: &Document, b: &Document) -> bool {
         && a.sections == b.sections
         && a.footnotes.iter().eq(b.footnotes.iter())
         && a.endnotes.iter().eq(b.endnotes.iter())
+        && a.comments == b.comments
+        && a.settings.even_and_odd_headers == b.settings.even_and_odd_headers
 }
 
 #[cfg(test)]
