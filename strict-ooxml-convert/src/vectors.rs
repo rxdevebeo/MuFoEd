@@ -232,7 +232,8 @@ fn shape_paragraph(index: usize, rect: &Rect) -> Block {
             polygon: Vec::new(),
             polygon_edited: None,
         }),
-        behind_doc: false,
+        // A filled box is painted before the text over it.
+        behind_doc: true,
         relative_height: Some(1),
         dist_top: None,
         dist_bottom: None,

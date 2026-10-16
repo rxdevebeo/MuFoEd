@@ -168,11 +168,11 @@ pub(crate) fn build(
             report,
         );
 
-        // Drawn shapes (and a rebuilt scan's pictures), each with the top of
-        // its box (points from the page's top). On a single-column page they
-        // join the flow where they stand: before the first line below their
-        // top. A two-column page keeps them after its text, because "below"
-        // means nothing across a gutter.
+        // A rebuilt scan's pictures, each with the top of its box (points
+        // from the page's top). On a single-column page they join the flow
+        // where they stand: before the first line below their top. A
+        // two-column page keeps them after its text, because "below" means
+        // nothing across a gutter.
         let mut figures: Vec<(f64, Block)> = Vec::new();
         // A page's own pictures stand where the page put them, anchored to it:
         // a logo above the letterhead, two signatures and a stamp in one row
@@ -187,10 +187,20 @@ pub(crate) fn build(
             anchored = anchored_images_of(page, &lines, &mut media, report, options);
         }
         let page_start = blocks.len();
-        figures.extend(crate::vectors::placed_blocks_for(page, report));
+        // Drawn shapes are anchored to the page as well, behind its text, and
+        // before its pictures (a PDF paints its backgrounds first): placed in
+        // the flow, a multi-column page's shapes went after all of its text,
+        // onto whatever page that text reached, and a dark box no longer lay
+        // under its white words.
+        let shapes = crate::vectors::placed_blocks_for(page, report)
+            .into_iter()
+            .flat_map(|(_, block)| match block {
+                Block::Paragraph(paragraph) => paragraph.inlines,
+                _ => Vec::new(),
+            });
+        anchored.splice(0..0, shapes);
         let interleave = matches!(column_plan, crate::columns::ColumnPlan::Single);
         if interleave {
-            // Stable: equal tops keep pictures before shapes.
             figures.sort_by(|a, b| a.0.total_cmp(&b.0));
         }
         let mut figures = figures.into_iter().peekable();
@@ -303,6 +313,12 @@ fn paragraphs_of(
     let mut out: Vec<Paragraph> = Vec::new();
     let mut paragraph: Option<Paragraph> = None;
     let mut previous: Option<&GlyphLine> = None;
+    // The lowest baseline the flow has reached. A paragraph's room above is
+    // measured from it, not from the line before: a page read column by
+    // column climbs back to the top at each column, and gaps measured from
+    // the line before added each column's height again - a two-page brochure
+    // took eleven.
+    let mut furthest: Option<f64> = None;
     for (at, line) in lines.iter().enumerate() {
         // Spaces on the baseline of the line before show nothing, and as a
         // paragraph of their own each took a line's height: a letter's row of
@@ -357,13 +373,8 @@ fn paragraphs_of(
                 );
             }
             let mut fresh = new_paragraph(line, heading, origin);
-            if let Some(previous) = previous {
-                set_paragraph_gap(
-                    &mut fresh,
-                    line,
-                    line.baseline - previous.baseline,
-                    pitch / body,
-                );
+            if let Some(furthest) = furthest {
+                set_paragraph_gap(&mut fresh, line, line.baseline - furthest, pitch / body);
             }
             if let Some(item) = marker_item.filter(|item| item.numbered) {
                 crate::lists::mark(&mut fresh, item);
@@ -388,6 +399,8 @@ fn paragraphs_of(
             push_runs_from(paragraph, line, skip);
         }
         previous = Some(line);
+        furthest =
+            Some(furthest.map_or(line.baseline, |furthest: f64| furthest.max(line.baseline)));
     }
     if let Some(finished) = paragraph {
         out.push(finished);
