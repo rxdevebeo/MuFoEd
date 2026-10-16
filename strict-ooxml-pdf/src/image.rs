@@ -119,6 +119,14 @@ impl Encoded {
             return Ok(self.jpeg_bytes().unwrap_or_default().to_vec());
         };
         let (width, height) = self.pixel_size();
+        // A PNG has no CMYK: four components were written as RGBA, cyan read
+        // as red and black as opacity, and a CMYK photograph came out a pale
+        // wash. They are converted to RGB first.
+        let converted = (components == 4).then(|| cmyk_to_rgb(samples));
+        let (samples, components) = match converted.as_deref() {
+            Some(rgb) => (rgb, 3),
+            None => (samples, components),
+        };
         // The soft mask goes into the PNG as its alpha channel: a picture whose
         // colour is all black and whose shape is all mask (how Word writes a
         // signature) is otherwise a black box.
@@ -146,6 +154,25 @@ impl Encoded {
         }
         Ok(out)
     }
+}
+
+/// CMYK samples as RGB, the device conversion (ISO 32000-1 10.3.5).
+fn cmyk_to_rgb(samples: &[u8]) -> Vec<u8> {
+    let pixels = samples.len().checked_div(4).unwrap_or(0);
+    let mut out = Vec::with_capacity(pixels.saturating_mul(3));
+    for pixel in samples.chunks_exact(4) {
+        if let [c, m, y, k] = *pixel {
+            let white = u16::from(u8::MAX.saturating_sub(k));
+            for value in [c, m, y] {
+                let ink = u16::from(u8::MAX.saturating_sub(value))
+                    .saturating_mul(white)
+                    .checked_div(255)
+                    .unwrap_or(0);
+                out.push(u8::try_from(ink).unwrap_or(u8::MAX));
+            }
+        }
+    }
+    out
 }
 
 /// `components` channels per pixel and one alpha byte per pixel, as one
@@ -1224,6 +1251,24 @@ mod tests {
             alpha: Some(std::sync::Arc::new(vec![255, 0])),
         };
         assert_eq!(image.alpha_channel(), Some(vec![255, 0]));
+    }
+
+    #[test]
+    fn cmyk_samples_become_rgb() {
+        // Pure cyan, and 50% black.
+        assert_eq!(
+            super::cmyk_to_rgb(&[255, 0, 0, 0, 0, 0, 0, 128]),
+            [0, 255, 255, 127, 127, 127]
+        );
+        let image = Encoded::Raw {
+            width: 1,
+            height: 1,
+            samples: std::sync::Arc::new(vec![255, 0, 0, 0]),
+            components: 4,
+            alpha: None,
+        };
+        // IHDR's colour type: 2 is RGB.
+        assert_eq!(image.to_png().expect("png")[25], 2);
     }
 
     #[test]
