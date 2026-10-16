@@ -352,6 +352,9 @@ pub(crate) struct DocInfo {
     pub(crate) report: String,
     pub(crate) log: String,
     pub(crate) styles: Vec<StyleEntry>,
+    /// What the document breaks of the editing model's invariants; edits
+    /// keep these but may not add to them.
+    pub(crate) defects: Vec<String>,
 }
 
 /// A note for the status bar: a localization key and a detail.
@@ -441,19 +444,29 @@ fn run(
         }
         _ => None,
     };
-    send(Reply::Loaded(Box::new(DocInfo {
+    let info = DocInfo {
         kind: loaded.kind,
         report: document.report_text(),
         log: loaded.log,
         styles: styles_of(document.document()),
-    })));
+        defects: Vec::new(),
+    };
     let read_only = match document.edit(EditLimits::default()) {
         Ok(editor) => {
+            let defects = editor
+                .source_defects()
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+            send(Reply::Loaded(Box::new(DocInfo { defects, ..info })));
             let mut worker = Worker::new(Session::Edit(editor), options, replies, ctx, path);
             worker.serve(requests);
             return;
         }
-        Err(error) => format!("{error:?}"),
+        Err(error) => {
+            send(Reply::Loaded(Box::new(info)));
+            format!("{error:?}")
+        }
     };
     let mut worker = Worker::new(Session::View(&document), options, replies, ctx, path);
     worker.read_only = Some(read_only);
@@ -947,14 +960,12 @@ impl<'a, 's> Worker<'a, 's> {
             }
             before = end;
         }
-        // Beside a tab or a break with no text there, the map knows the
-        // position by the tab itself: offset 0 before it, 1 after it.
+        // Beside a tab with no text there, the map knows the position by the
+        // tab itself: offset 0 before it, 1 after it.
         let mut before = 0;
         for piece in &pieces {
             let end = before + piece.len();
-            if piece.kind != nav::PieceKind::Text
-                && (end == logical.offset || before == logical.offset)
-            {
+            if piece.text == "\t" && (end == logical.offset || before == logical.offset) {
                 return TextPosition {
                     paragraph: logical.paragraph.clone(),
                     inline: piece.inline.clone(),

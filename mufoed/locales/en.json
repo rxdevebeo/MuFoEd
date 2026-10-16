@@ -240,7 +240,8 @@
       "title": "Document report",
       "import_log": "Import and normalization log",
       "render_warnings": "Rendering warnings",
-      "read_only": "Why the document is read-only"
+      "read_only": "Why the document is read-only",
+      "source_defects": "Model defects in the source file (edits keep them but add none)"
     },
     "start": {
       "subtitle": "A demonstrator of the strict-ooxml library: opening, converting, recognizing, editing and saving documents",

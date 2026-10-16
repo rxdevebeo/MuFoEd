@@ -1065,9 +1065,29 @@ impl App {
                     (Icon::Save, "tip.save", ready, Action::Save),
                 ] {
                     let (rect, response) = ui.allocate_exact_size(vec2(26.0, 24.0), Sense::click());
-                    if enabled && response.hovered() {
-                        ui.painter().rect_filled(rect, 3.0, palette.hover);
-                    }
+                    let hovered = enabled && response.hovered();
+                    ui.painter().rect_filled(
+                        rect,
+                        3.0,
+                        if hovered {
+                            palette.hover
+                        } else {
+                            palette.button
+                        },
+                    );
+                    ui.painter().rect_stroke(
+                        rect,
+                        3.0,
+                        Stroke::new(
+                            1.0,
+                            if hovered {
+                                theme::ACCENT.gamma_multiply(0.55)
+                            } else {
+                                palette.button_border
+                            },
+                        ),
+                        egui::StrokeKind::Inside,
+                    );
                     let color = if enabled {
                         ui.visuals().text_color()
                     } else {
@@ -1342,6 +1362,16 @@ impl App {
             text.push_str(":\n");
             for warning in &tab.warnings {
                 text.push_str(warning);
+                text.push('\n');
+            }
+        }
+        if let Some(info) = tab.info.as_ref().filter(|info| !info.defects.is_empty()) {
+            text.push_str("\n\n");
+            text.push_str(self.t("report.source_defects"));
+            text.push_str(":\n");
+            for defect in &info.defects {
+                text.push_str("  ");
+                text.push_str(defect);
                 text.push('\n');
             }
         }

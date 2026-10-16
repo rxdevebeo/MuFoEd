@@ -262,22 +262,28 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
             );
         }
         Icon::Undo | Icon::Redo => {
+            // A hook: a line back across the top, curling down, the arrow
+            // head at the free end pointing the way it goes.
             let flip = if icon == Icon::Undo { 1.0 } else { -1.0 };
-            let c = r.center() + vec2(0.0, r.height() * 0.1);
-            let radius = r.width() * 0.32;
+            let c = r.center() + vec2(flip * r.width() * 0.08, r.height() * 0.05);
+            let radius = r.height() * 0.3;
             let mut points = Vec::new();
-            for step in 0..=16 {
+            // From the bottom of the curl, round the right side, to the top.
+            for step in 0..=12 {
                 #[allow(clippy::cast_precision_loss)]
-                let t = std::f32::consts::PI * (1.1 - step as f32 / 16.0 * 1.25);
-                points.push(c + vec2(flip * -t.cos() * radius, -t.sin() * radius));
+                let t = -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * step as f32 / 12.0;
+                points.push(c + vec2(flip * t.cos() * radius, -t.sin() * radius));
             }
-            let tip = points.first().copied().unwrap_or(c);
-            painter.add(Shape::line(points, stroke(accent, thin * 2.0)));
+            let top = c + vec2(0.0, -radius);
+            let tip = top + vec2(-flip * r.width() * 0.34, 0.0);
+            points.reverse();
+            points.insert(0, tip);
+            painter.add(Shape::line(points, stroke(accent, thin * 2.2)));
             arrow_head(
                 painter,
-                tip + vec2(flip * -r.width() * 0.04, r.height() * 0.12),
-                vec2(0.0, 1.0),
-                r.width() * 0.22,
+                tip - vec2(flip * r.width() * 0.08, 0.0),
+                vec2(-flip, 0.0),
+                r.width() * 0.24,
                 accent,
             );
         }
@@ -608,7 +614,7 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                 );
             }
         }
-        Icon::Report | Icon::Words => {
+        Icon::Report => {
             page(painter, page_rect, color, paper);
             lines(
                 painter,
@@ -617,15 +623,18 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                 accent,
                 thin,
             );
-            if icon == Icon::Words {
-                painter.text(
-                    page_rect.right_bottom(),
-                    egui::Align2::CENTER_CENTER,
-                    "123",
-                    egui::FontId::proportional(r.height() * 0.32),
-                    color,
-                );
-            }
+        }
+        Icon::Words => {
+            page(painter, page_rect, color, paper);
+            let upper = Rect::from_min_max(
+                page_rect.left_top() + vec2(page_rect.width() * 0.2, page_rect.height() * 0.18),
+                pos2(
+                    page_rect.right() - page_rect.width() * 0.2,
+                    page_rect.center().y,
+                ),
+            );
+            lines(painter, upper, &[(0.0, 1.0), (0.0, 0.7)], color, thin);
+            badge(painter, page_rect, "123", accent);
         }
         Icon::Navigation => {
             let body = r.shrink(r.width() * 0.04);

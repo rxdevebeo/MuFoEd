@@ -25,6 +25,10 @@ pub(crate) struct Palette {
     pub(crate) pressed: Color32,
     pub(crate) selection: Color32,
     pub(crate) caret: Color32,
+    /// Face and outline of ribbon buttons and tab headers.
+    pub(crate) button: Color32,
+    pub(crate) button_border: Color32,
+    pub(crate) tab_border: Color32,
 }
 
 pub(crate) fn palette(dark: bool) -> Palette {
@@ -43,6 +47,9 @@ pub(crate) fn palette(dark: bool) -> Palette {
             pressed: Color32::from_rgb(60, 88, 130),
             selection: Color32::from_rgba_unmultiplied(80, 140, 230, 90),
             caret: Color32::BLACK,
+            button: Color32::from_rgb(58, 58, 63),
+            button_border: Color32::from_gray(84),
+            tab_border: Color32::from_gray(78),
         }
     } else {
         Palette {
@@ -59,6 +66,9 @@ pub(crate) fn palette(dark: bool) -> Palette {
             pressed: ACCENT_LIGHT,
             selection: Color32::from_rgba_unmultiplied(60, 120, 220, 80),
             caret: Color32::BLACK,
+            button: Color32::WHITE,
+            button_border: Color32::from_gray(208),
+            tab_border: Color32::from_gray(200),
         }
     }
 }
