@@ -229,16 +229,20 @@ fn bare_marker(line: &GlyphLine) -> Option<BareMarker> {
     if !BULLETS.contains(&character) {
         return None;
     }
-    if line
+    // The space a producer sets right after the marker is no part of it: with
+    // true glyph widths it touches the marker and arrives in its run (Word's
+    // `• ` in Symbol and Arial).
+    let inked: Vec<_> = line
         .glyphs
         .iter()
-        .any(|glyph| !glyph.text.starts_with(character))
-    {
+        .filter(|glyph| !glyph.text.trim().is_empty())
+        .collect();
+    if inked.iter().any(|glyph| !glyph.text.starts_with(character)) {
         // `**bold**` at the start of a line is emphasis, and a line of five
         // asterisks is a rule.
         return None;
     }
-    let last = line.glyphs.last()?;
+    let last = inked.last()?;
     Some(BareMarker {
         text: character.to_string(),
         x: line.x,
