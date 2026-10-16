@@ -513,6 +513,23 @@ fn read_cid_widths(
         let Some(first) = items.get(index).and_then(|item| number_of(item, resolve)) else {
             break;
         };
+        // `c [w1 w2 ...]`: widths of consecutive codes from `c`. The array
+        // follows the first number directly (ISO 32000-1 9.7.4.3); reading a
+        // second number first lost every width of a Word PDF's Type0 fonts,
+        // whose `/W` opens `[0 [597] 3 [239 597] ...]`, and every glyph took
+        // `/DW`, a full em.
+        if let Some(array @ Object::Array(_)) = items.get(index.saturating_add(1)) {
+            for (offset, width) in array_items(array, resolve).into_iter().enumerate() {
+                if let Some(width) = number_of(&width, resolve) {
+                    out.insert(
+                        to_code(first).saturating_add(u32::try_from(offset).unwrap_or(0)),
+                        width,
+                    );
+                }
+            }
+            index = index.saturating_add(2);
+            continue;
+        }
         let Some(second) = items
             .get(index.saturating_add(1))
             .and_then(|item| number_of(item, resolve))

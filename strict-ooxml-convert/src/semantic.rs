@@ -580,7 +580,7 @@ fn is_marker(line: &GlyphLine) -> bool {
         return false;
     };
     let digits = !stem.is_empty() && stem.len() <= 3 && stem.chars().all(|ch| ch.is_ascii_digit());
-    let letter = stem.chars().count() == 1 && stem.chars().all(|ch| ch.is_alphabetic());
+    let letter = stem.chars().count() == 1 && stem.chars().all(char::is_alphabetic);
     let roman = !stem.is_empty()
         && stem.len() <= 5
         && stem
