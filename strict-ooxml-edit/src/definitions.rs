@@ -42,6 +42,10 @@ pub enum Definition {
         /// The definition to delete.
         id: AbstractNumId,
     },
+    /// Adds a header or footer part; its part id must be new. Point a
+    /// section at it with `Edit::SectionProperties` in the same transaction
+    /// ([`crate::Editor::define_and_transact`]).
+    AddHeaderFooter(Box<strict_ooxml_wml::model::HeaderFooter>),
     /// Indexes a media part, so a picture inserted in the same transaction
     /// can name it ([`crate::AddedMedia::add`] keeps its bytes). A part
     /// already indexed is left as it is.
@@ -76,6 +80,48 @@ pub fn restarted(num: &Num, id: NumId, ilvl: Ilvl, start: u32) -> Num {
             level: None,
         }],
         location: num.location.clone(),
+    }
+}
+
+/// An empty header (or footer) under a part name the document does not use:
+/// one empty paragraph to type in. Add it with
+/// [`Definition::AddHeaderFooter`] and refer to it with
+/// [`header_footer_reference`].
+#[must_use]
+pub fn new_header_footer(
+    document: &Document,
+    header: bool,
+) -> strict_ooxml_wml::model::HeaderFooter {
+    let role = if header { "header" } else { "footer" };
+    let mut number = 1;
+    let part = loop {
+        let candidate = strict_ooxml_core::part::PartId::new(format!("/word/{role}{number}.xml"));
+        if document.header_footer(&candidate).is_none() {
+            break candidate;
+        }
+        number += 1;
+    };
+    strict_ooxml_wml::model::HeaderFooter {
+        part,
+        is_header: header,
+        blocks: vec![strict_ooxml_wml::model::Block::Paragraph(
+            crate::structured::empty_paragraph(),
+        )],
+        location: strict_ooxml_core::error::SourceLocation::unknown(),
+    }
+}
+
+/// A section's reference to a header or footer part, of `kind` (default,
+/// first page, even pages). The writer gives it its relationship id.
+#[must_use]
+pub fn header_footer_reference(
+    part: &strict_ooxml_core::part::PartId,
+    kind: strict_ooxml_wml::model::props::HeaderFooterKind,
+) -> strict_ooxml_wml::model::props::HeaderFooterRef {
+    strict_ooxml_wml::model::props::HeaderFooterRef {
+        kind,
+        rel_id: strict_ooxml_core::opc::rels::RelId::new("rIdNew"),
+        part: Some(part.clone()),
     }
 }
 
@@ -136,6 +182,12 @@ pub(crate) fn apply(document: &mut Document, definition: &Definition) -> Result<
             delete_style(document, id, replace_with.as_ref())?;
         }
         Definition::SetDocDefaults(defaults) => document.styles.set_defaults((**defaults).clone()),
+        Definition::AddHeaderFooter(part) => {
+            if document.header_footer(&part.part).is_some() {
+                return Err(exists());
+            }
+            document.headers_footers.push((**part).clone());
+        }
         Definition::AddMedia(item) => {
             document.media.insert((**item).clone());
         }

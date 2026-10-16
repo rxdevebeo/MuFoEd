@@ -361,3 +361,93 @@ fn an_added_picture_is_drawn_saved_and_undone_in_one_step() {
         .iter()
         .any(|i| matches!(i, Inline::Drawing(_))));
 }
+
+/// A new header: its part and the section's reference to it in one
+/// transaction; it takes text and a page number field, is written as a
+/// header part, and one undo takes it back.
+#[test]
+fn a_new_header_is_one_transaction_written_and_undone() {
+    use strict_ooxml_edit::{header_footer_reference, new_header_footer, Definition, Story};
+    use strict_ooxml_wml::model::props::HeaderFooterKind;
+    use strict_ooxml_wml::model::*;
+    let bytes = DocxBuilder::strict()
+        .body("<w:p><w:r><w:t>abc</w:t></w:r></w:p><w:sectPr/>")
+        .build();
+    let source = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let mut d = parse_document(&source, &ParseOptions::default()).unwrap();
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let header = new_header_footer(e.document(), true);
+    let part = header.part.clone();
+    let mut section = e
+        .document()
+        .sections
+        .last()
+        .map(|s| s.properties.clone())
+        .unwrap_or_default();
+    section
+        .headers
+        .push(header_footer_reference(&part, HeaderFooterKind::Default));
+    e.define_and_transact(
+        0,
+        &[Definition::AddHeaderFooter(Box::new(header))],
+        &[Edit::SectionProperties {
+            at: Address::body(0),
+            properties: Box::new(section),
+        }],
+    )
+    .unwrap();
+    let at = Address {
+        story: Story::HeaderFooter(part.clone()),
+        containers: vec![],
+        block: 0,
+    };
+    let field = Inline::Field(Field {
+        instruction: Some(" PAGE ".into()),
+        inlines: vec![],
+        location: strict_ooxml_core::error::SourceLocation::unknown(),
+    });
+    e.transact(
+        1,
+        &[
+            Edit::Text {
+                at: at.clone(),
+                range: 0..0,
+                text: "Page ".into(),
+            },
+            Edit::InsertInline {
+                at: at.clone(),
+                index: 1,
+                inline: Box::new(field),
+            },
+        ],
+    )
+    .unwrap();
+    let saved = e
+        .save(
+            2,
+            Some(&source),
+            &WriteOptions::default(),
+            SavePolicy::AllowDegraded,
+        )
+        .unwrap();
+    let out = Package::open_reader(saved.bytes.as_slice(), &OpenOptions::default()).unwrap();
+    let reopened = parse_document(&out, &ParseOptions::default()).unwrap();
+    let written = reopened
+        .headers_footers
+        .iter()
+        .find(|h| h.is_header)
+        .expect("a header part");
+    let paragraph = written.blocks[0].as_paragraph().unwrap();
+    assert!(paragraph
+        .inlines
+        .iter()
+        .any(|i| matches!(i, Inline::Field(f) if f.instruction.as_deref().is_some_and(|x| x.contains("PAGE")))));
+    e.undo(e.revision()).unwrap();
+    e.undo(e.revision()).unwrap();
+    assert!(e.document().header_footer(&part).is_none());
+    assert!(e
+        .document()
+        .sections
+        .iter()
+        .all(|s| s.properties.headers.is_empty()));
+}

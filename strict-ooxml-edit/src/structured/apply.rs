@@ -14,7 +14,7 @@ use super::ids::{assign_id, fresh_ids, IdIndex};
 use super::revisions::resolve;
 use super::validate::contains_boundary;
 
-pub(super) fn empty_paragraph() -> Paragraph {
+pub(crate) fn empty_paragraph() -> Paragraph {
     Paragraph {
         props: ParagraphProperties::default(),
         inlines: vec![],
