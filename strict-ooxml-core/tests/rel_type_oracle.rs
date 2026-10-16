@@ -112,14 +112,17 @@ fn every_corpus_relationship_type_is_in_the_table_or_vendor_opc() {
             let mut entry = archive
                 .by_index(index)
                 .unwrap_or_else(|e| panic!("{name}: zip entry: {e}"));
+            let entry_name = entry
+                .name()
+                .unwrap_or_else(|e| panic!("{name}: entry {index} name: {e}"))
+                .into_owned();
             if entry.is_dir()
-                || !Path::new(entry.name())
+                || !Path::new(&entry_name)
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("rels"))
             {
                 continue;
             }
-            let entry_name = entry.name().to_owned();
             let mut bytes = Vec::new();
             entry
                 .read_to_end(&mut bytes)

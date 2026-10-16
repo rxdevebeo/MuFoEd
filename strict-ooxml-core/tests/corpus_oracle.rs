@@ -58,7 +58,7 @@ fn reference_parts(path: &Path) -> BTreeMap<String, Vec<u8>> {
         }
         let mut bytes = Vec::new();
         entry.read_to_end(&mut bytes).expect("read entry");
-        parts.insert(format!("/{}", entry.name()), bytes);
+        parts.insert(format!("/{}", entry.name().expect("entry name")), bytes);
     }
     parts
 }
