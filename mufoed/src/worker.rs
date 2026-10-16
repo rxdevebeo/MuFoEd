@@ -81,6 +81,8 @@ pub(crate) enum Request {
     Object(ObjectCommand),
     /// Headers, footers and page numbers.
     HeaderFooter(HeaderFooterCommand),
+    /// Footnotes, bookmarks, the table of contents.
+    References(ReferenceCommand),
     /// Indent the selected paragraphs one step more (or, `false`, less): a
     /// list item a level deeper or shallower.
     IndentStep(bool),
@@ -592,6 +594,33 @@ pub(crate) struct ClipObject {
     pub(crate) bytes: Option<Vec<u8>>,
 }
 
+/// Footnotes, bookmarks and the table of contents.
+#[derive(Clone, Debug)]
+pub(crate) enum ReferenceCommand {
+    /// A footnote (or endnote) at the caret, the caret into its text.
+    InsertNote {
+        endnote: bool,
+    },
+    /// The caret to the next (or previous) note reference.
+    NextNote {
+        back: bool,
+    },
+    /// A bookmark around the selection (or at the caret).
+    AddBookmark(String),
+    GoToBookmark(String),
+    DeleteBookmark(String),
+    /// A table of contents of the headings, before the caret's paragraph,
+    /// titled `title`; or, when there is one, made again.
+    TableOfContents {
+        title: String,
+    },
+    RemoveTableOfContents,
+}
+
+/// A bookmark's name, the paragraph and inline index of its start, and of
+/// its end when it has one.
+type BookmarkMarks = (String, Address, usize, Option<(Address, usize)>);
+
 /// What can be done with headers and footers.
 #[derive(Clone, Debug)]
 pub(crate) enum HeaderFooterCommand {
@@ -669,6 +698,10 @@ pub(crate) struct EditState {
     pub(crate) characters: usize,
     /// Why the document is read-only, when it is.
     pub(crate) read_only: Option<String>,
+    /// The document's bookmarks, by name (hidden ones left out).
+    pub(crate) bookmarks: Vec<String>,
+    /// It has a table of contents.
+    pub(crate) table_of_contents: bool,
 }
 
 /// A paragraph style the gallery offers.
@@ -1192,6 +1225,7 @@ impl<'a, 's> Worker<'a, 's> {
             Request::Align(align) => self.align(align),
             Request::List(preset) => self.list(preset),
             Request::HeaderFooter(command) => self.header_footer(command),
+            Request::References(command) => self.references(command),
             Request::IndentStep(more) => self.indent_step(more),
             Request::Indent([left, right, first]) => {
                 use strict_ooxml::model::values::Indentation;
@@ -1648,7 +1682,10 @@ impl<'a, 's> Worker<'a, 's> {
             characters += text.chars().filter(|c| !c.is_whitespace()).count();
         }
         let revision = self.session.revision();
+        let (bookmarks, table_of_contents) = self.bookmarks_and_toc();
         self.send(Reply::State(EditState {
+            bookmarks,
+            table_of_contents,
             can_undo: self.undo_depth > 0,
             can_redo: self.redo_depth > 0,
             modified: revision != self.saved_revision,
@@ -1688,16 +1725,15 @@ impl<'a, 's> Worker<'a, 's> {
         // The body and the headers are edited one at a time: a click in the
         // header while the body is edited does nothing (a double click
         // enters it), and a click in the body leaves a header.
+        let header = |story: &Story| matches!(story, Story::HeaderFooter(_));
         if position.paragraph.story != self.story {
-            if self.story == Story::Body {
+            if header(&position.paragraph.story) && !header(&self.story) {
                 return Outcome::Quiet;
             }
-            if position.paragraph.story == Story::Body {
-                self.story = Story::Body;
+            if header(&self.story) && !header(&position.paragraph.story) {
                 self.body_caret = None;
-            } else {
-                self.story = position.paragraph.story.clone();
             }
+            self.story = position.paragraph.story.clone();
         }
         let line_start = map
             .caret(revision, &position)
@@ -1722,6 +1758,28 @@ impl<'a, 's> Worker<'a, 's> {
             }
         }
         let logical = logical;
+        // Ctrl+click on a table of contents entry goes to its heading.
+        if column {
+            if let Some(heading) = self.toc_target(&logical.paragraph) {
+                self.story = Story::Body;
+                self.anchor = None;
+                self.cells = None;
+                self.caret = Some(Logical {
+                    paragraph: heading,
+                    offset: 0,
+                });
+                self.send(Reply::Cursor(Box::new(Cursor {
+                    object: None,
+                    ruler: None,
+                    header_footer: None,
+                    carets: Vec::new(),
+                    selection: Vec::new(),
+                    scroll: true,
+                    format: CaretFormat::default(),
+                })));
+                return Outcome::Moved;
+            }
+        }
         self.goal_x = None;
         let cell = cell_of(&logical.paragraph);
         // Ctrl+click: the column under the pointer.
@@ -1777,7 +1835,7 @@ impl<'a, 's> Worker<'a, 's> {
     fn select_word(&mut self, page: usize, x: f64, y: f64) -> Outcome {
         // A double click in a header or footer, or in the margin where one
         // goes, edits it.
-        if self.story == Story::Body {
+        if !matches!(self.story, Story::HeaderFooter(_)) {
             if let Some(header) = self.margin_band(page, y) {
                 return self.enter_header_footer(page, header, Some((x, y)));
             }
@@ -2076,15 +2134,33 @@ impl<'a, 's> Worker<'a, 's> {
     ) -> Result<Vec<Edit>, &'static str> {
         let pieces = self.pieces(at);
         if pieces.is_empty() {
-            return Ok(if text.is_empty() {
-                Vec::new()
-            } else {
-                vec![Edit::Text {
+            if text.is_empty() {
+                return Ok(Vec::new());
+            }
+            // A paragraph with no text but other inlines (a note's number
+            // mark, a bookmark): the text is a run of its own after them.
+            let inlines = self.paragraph(at).map_or(0, |p| p.inlines.len());
+            if inlines > 0 {
+                use strict_ooxml::model::{Inline, Run, RunContent, Space, TextNode};
+                return Ok(vec![Edit::InsertInline {
                     at: at.clone(),
-                    range: 0..0,
-                    text: text.to_owned(),
-                }]
-            });
+                    index: inlines,
+                    inline: Box::new(Inline::Run(Run {
+                        props: strict_ooxml::model::props::RunProperties::default(),
+                        content: vec![RunContent::Text(TextNode {
+                            text: text.to_owned(),
+                            space: Space::Preserve,
+                        })],
+                        revision: None,
+                        location: SourceLocation::unknown(),
+                    })),
+                }]);
+            }
+            return Ok(vec![Edit::Text {
+                at: at.clone(),
+                range: 0..0,
+                text: text.to_owned(),
+            }]);
         }
         if let (Some(from), Some(to)) = (nav::point_at(&pieces, start), nav::point_at(&pieces, end))
         {
@@ -2357,6 +2433,15 @@ impl<'a, 's> Worker<'a, 's> {
 
     /// Commands that put `inline` at the caret, between runs.
     fn inline_at_caret(&self, caret: &Logical, inline: strict_ooxml::model::Inline) -> Vec<Edit> {
+        self.inlines_at_caret(caret, vec![inline])
+    }
+
+    /// Commands that put `inlines`, in order, at the caret, between runs.
+    fn inlines_at_caret(
+        &self,
+        caret: &Logical,
+        inlines: Vec<strict_ooxml::model::Inline>,
+    ) -> Vec<Edit> {
         let at = caret.paragraph.clone();
         // Split there, put the inline first in the right half, join again:
         // the kernel inserts inlines between runs, and this makes the caret's
@@ -2364,18 +2449,19 @@ impl<'a, 's> Worker<'a, 's> {
         if let Some(point) = self.point(caret) {
             let mut right = at.clone();
             right.block += 1;
-            return vec![
-                Edit::SplitAt {
-                    at: at.clone(),
-                    point,
-                },
-                Edit::InsertInline {
-                    at: right,
-                    index: 0,
+            let mut commands = vec![Edit::SplitAt {
+                at: at.clone(),
+                point,
+            }];
+            for (index, inline) in inlines.into_iter().enumerate() {
+                commands.push(Edit::InsertInline {
+                    at: right.clone(),
+                    index,
                     inline: Box::new(inline),
-                },
-                Edit::Join { at },
-            ];
+                });
+            }
+            commands.push(Edit::Join { at });
+            return commands;
         }
         // An empty paragraph, or the caret beside atoms between runs.
         let pieces = self.pieces(&at);
@@ -2387,11 +2473,15 @@ impl<'a, 's> Worker<'a, 's> {
                 index = piece.inline.first().copied().unwrap_or(0) + 1;
             }
         }
-        vec![Edit::InsertInline {
-            at,
-            index,
-            inline: Box::new(inline),
-        }]
+        inlines
+            .into_iter()
+            .enumerate()
+            .map(|(offset, inline)| Edit::InsertInline {
+                at: at.clone(),
+                index: index + offset,
+                inline: Box::new(inline),
+            })
+            .collect()
     }
 
     // ----- drawings -----------------------------------------------------
@@ -2458,6 +2548,568 @@ impl<'a, 's> Worker<'a, 's> {
             picture: matches!(graphic, Some(Graphic::Picture(_))),
             wrap: wrap_style(&drawing),
         })
+    }
+
+    // ----- references ---------------------------------------------------
+
+    fn references(&mut self, command: ReferenceCommand) -> Outcome {
+        match command {
+            ReferenceCommand::InsertNote { endnote } => self.insert_note(endnote),
+            ReferenceCommand::NextNote { back } => self.next_note(back),
+            ReferenceCommand::AddBookmark(name) => self.add_bookmark(&name),
+            ReferenceCommand::GoToBookmark(name) => self.go_to_bookmark(&name),
+            ReferenceCommand::DeleteBookmark(name) => self.delete_bookmark(&name),
+            ReferenceCommand::TableOfContents { title } => self.table_of_contents(&title),
+            ReferenceCommand::RemoveTableOfContents => match self.toc_block() {
+                Some(block) => {
+                    if self.transact(&[Edit::Delete {
+                        at: Address::body(block),
+                    }]) {
+                        Outcome::Edited
+                    } else {
+                        Outcome::Quiet
+                    }
+                }
+                None => Outcome::Quiet,
+            },
+        }
+    }
+
+    /// A footnote or endnote at the caret: the reference goes in between
+    /// runs (split, insert, join), the caret into the note's text.
+    fn insert_note(&mut self, endnote: bool) -> Outcome {
+        if self.selection().is_some() {
+            self.anchor = None;
+        }
+        let Some(caret) = self.caret.clone() else {
+            return Outcome::Quiet;
+        };
+        if caret.paragraph.story != Story::Body {
+            self.note("note.notes_in_body", String::new(), false);
+            return Outcome::Quiet;
+        }
+        let at = caret.paragraph.clone();
+        let before: std::collections::BTreeSet<i32> = self.note_ids(endnote);
+        let blocks = Vec::new();
+        let commands = if let Some(point) = self.point(&caret) {
+            {
+                let mut right = at.clone();
+                right.block += 1;
+                vec![
+                    Edit::SplitAt {
+                        at: at.clone(),
+                        point,
+                    },
+                    Edit::InsertNote {
+                        at: right,
+                        index: 0,
+                        endnote,
+                        blocks,
+                    },
+                    Edit::Join { at: at.clone() },
+                ]
+            }
+        } else {
+            {
+                let pieces = self.pieces(&at);
+                let mut offset = 0;
+                let mut index = 0;
+                for piece in &pieces {
+                    offset += piece.len();
+                    if offset == caret.offset {
+                        index = piece.inline.first().copied().unwrap_or(0) + 1;
+                    }
+                }
+                vec![Edit::InsertNote {
+                    at: at.clone(),
+                    index,
+                    endnote,
+                    blocks,
+                }]
+            }
+        };
+        if !self.transact(&commands) {
+            return Outcome::Quiet;
+        }
+        // The new note is the id that was not there before.
+        let id = self.note_ids(endnote).difference(&before).next().copied();
+        if let Some(id) = id {
+            let story = if endnote {
+                Story::Endnote(id)
+            } else {
+                Story::Footnote(id)
+            };
+            self.story = story.clone();
+            self.caret = self.paragraphs(&story).last().cloned().map(|paragraph| {
+                let offset = self.text_of(&paragraph).chars().count();
+                Logical { paragraph, offset }
+            });
+        }
+        Outcome::Edited
+    }
+
+    fn note_ids(&self, endnote: bool) -> std::collections::BTreeSet<i32> {
+        let document = self.session.document();
+        let table = if endnote {
+            &document.endnotes
+        } else {
+            &document.footnotes
+        };
+        table
+            .iter()
+            .map(|note| note.id)
+            .filter(|id| *id > 0)
+            .collect()
+    }
+
+    /// The body paragraphs with a note reference, and each reference's
+    /// caret offset.
+    fn note_references(&self) -> Vec<(Address, usize, Story)> {
+        use strict_ooxml::model::{Inline, RunContent};
+        let mut out = Vec::new();
+        for address in self.paragraphs(&Story::Body) {
+            let Some(paragraph) = self.paragraph(&address) else {
+                continue;
+            };
+            let mut offset = 0;
+            let pieces = self.pieces(&address);
+            for (index, inline) in paragraph.inlines.iter().enumerate() {
+                let note = match inline {
+                    Inline::Run(run) => run.content.iter().find_map(|c| match c {
+                        RunContent::FootnoteRef(id) => {
+                            Some(Story::Footnote(i32::try_from(*id).unwrap_or(0)))
+                        }
+                        RunContent::EndnoteRef(id) => {
+                            Some(Story::Endnote(i32::try_from(*id).unwrap_or(0)))
+                        }
+                        _ => None,
+                    }),
+                    Inline::FootnoteRef(id) => {
+                        Some(Story::Footnote(i32::try_from(*id).unwrap_or(0)))
+                    }
+                    Inline::EndnoteRef(id) => Some(Story::Endnote(i32::try_from(*id).unwrap_or(0))),
+                    _ => None,
+                };
+                if let Some(note) = note {
+                    offset = pieces
+                        .iter()
+                        .filter(|piece| piece.inline.first().is_some_and(|i| *i < index))
+                        .map(nav::Piece::len)
+                        .sum();
+                    out.push((address.clone(), offset, note));
+                }
+            }
+            let _ = offset;
+        }
+        out
+    }
+
+    fn next_note(&mut self, back: bool) -> Outcome {
+        let Some(caret) = self.caret.clone() else {
+            return Outcome::Quiet;
+        };
+        let paragraphs = self.paragraphs(&Story::Body);
+        let order = |at: &Address| paragraphs.iter().position(|a| a == at).unwrap_or(0);
+        let references = self.note_references();
+        // In a note, its reference is where the caret counts from; going back
+        // from a note lands on its own reference.
+        let own = references.iter().find(|(_, _, note)| *note == self.story);
+        let here = own.map_or(
+            (order(&caret.paragraph), caret.offset),
+            |(at, offset, _)| (order(at), *offset + usize::from(back)),
+        );
+        let target = if back {
+            references
+                .iter()
+                .rev()
+                .find(|(at, offset, _)| (order(at), *offset) < here)
+        } else {
+            references
+                .iter()
+                .find(|(at, offset, _)| (order(at), *offset) > here)
+        };
+        let Some((paragraph, offset, _)) = target.cloned() else {
+            return Outcome::Quiet;
+        };
+        self.story = Story::Body;
+        self.anchor = None;
+        self.caret = Some(Logical { paragraph, offset });
+        Outcome::Moved
+    }
+
+    /// Every bookmark of the body: name, paragraph, top-level inline index
+    /// of its start, and the same of its end.
+    fn bookmark_marks(&self) -> Vec<BookmarkMarks> {
+        use strict_ooxml::model::Inline;
+        let mut starts = Vec::new();
+        let mut ends: Vec<(strict_ooxml::model::BookmarkId, Address, usize)> = Vec::new();
+        for address in self.paragraphs(&Story::Body) {
+            let Some(paragraph) = self.paragraph(&address) else {
+                continue;
+            };
+            for (index, inline) in paragraph.inlines.iter().enumerate() {
+                match inline {
+                    Inline::BookmarkStart(mark) => {
+                        starts.push((
+                            mark.id.clone(),
+                            mark.name.to_string(),
+                            address.clone(),
+                            index,
+                        ));
+                    }
+                    Inline::BookmarkEnd(id) => ends.push((id.clone(), address.clone(), index)),
+                    _ => {}
+                }
+            }
+        }
+        starts
+            .into_iter()
+            .map(|(id, name, at, index)| {
+                let end = ends
+                    .iter()
+                    .find(|(end, _, _)| *end == id)
+                    .map(|(_, at, index)| (at.clone(), *index));
+                (name, at, index, end)
+            })
+            .collect()
+    }
+
+    fn bookmarks_and_toc(&self) -> (Vec<String>, bool) {
+        let mut names: Vec<String> = self
+            .bookmark_marks()
+            .into_iter()
+            .map(|(name, ..)| name)
+            .filter(|name| !name.starts_with('_'))
+            .collect();
+        names.sort_by_key(|name| name.to_lowercase());
+        (names, self.toc_block().is_some())
+    }
+
+    /// The caret offset just before a top-level inline.
+    fn offset_of_inline(&self, at: &Address, index: usize) -> usize {
+        self.pieces(at)
+            .iter()
+            .filter(|piece| piece.inline.first().is_some_and(|i| *i < index))
+            .map(nav::Piece::len)
+            .sum()
+    }
+
+    /// A bookmark around the selection, or at the caret: its end first, so
+    /// the start's place does not move.
+    fn add_bookmark(&mut self, name: &str) -> Outcome {
+        use strict_ooxml::model::{Bookmark, BookmarkId, Inline};
+        let name = name.trim();
+        let valid = !name.is_empty()
+            && name.chars().next().is_some_and(char::is_alphabetic)
+            && name.chars().all(|c| c.is_alphanumeric() || c == '_')
+            && name.chars().count() <= 40;
+        if !valid {
+            self.note("note.bookmark_name", name.to_owned(), true);
+            return Outcome::Quiet;
+        }
+        if self
+            .bookmark_marks()
+            .iter()
+            .any(|(existing, ..)| existing.eq_ignore_ascii_case(name))
+        {
+            self.delete_bookmark(name);
+        }
+        let Some(caret) = self.caret.clone() else {
+            return Outcome::Quiet;
+        };
+        let (start, end) = self.selection().unwrap_or_else(|| (caret.clone(), caret));
+        let id = self
+            .bookmark_ids()
+            .into_iter()
+            .max()
+            .map_or(0, |top| top + 1);
+        let start_mark = Inline::BookmarkStart(Bookmark {
+            id: BookmarkId::new(id.to_string()),
+            name: std::sync::Arc::from(name),
+            col_first: None,
+            col_last: None,
+        });
+        let end_mark = Inline::BookmarkEnd(BookmarkId::new(id.to_string()));
+        // At one point both go in together; else the end first, so the
+        // start's place does not move.
+        let commands = if start == end {
+            self.inlines_at_caret(&start, vec![start_mark, end_mark])
+        } else {
+            let mut commands = self.inline_at_caret(&end, end_mark);
+            commands.extend(self.inline_at_caret(&start, start_mark));
+            commands
+        };
+        if self.transact(&commands) {
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    fn bookmark_ids(&self) -> Vec<u32> {
+        use strict_ooxml::model::Inline;
+        let mut ids = Vec::new();
+        for address in self.paragraphs(&Story::Body) {
+            if let Some(paragraph) = self.paragraph(&address) {
+                for inline in &paragraph.inlines {
+                    if let Inline::BookmarkStart(mark) = inline {
+                        if let Ok(id) = mark.id.as_str().parse::<u32>() {
+                            ids.push(id);
+                        }
+                    }
+                }
+            }
+        }
+        ids
+    }
+
+    fn go_to_bookmark(&mut self, name: &str) -> Outcome {
+        let Some((_, at, index, end)) = self
+            .bookmark_marks()
+            .into_iter()
+            .find(|(existing, ..)| existing.eq_ignore_ascii_case(name))
+        else {
+            return Outcome::Quiet;
+        };
+        let start = Logical {
+            offset: self.offset_of_inline(&at, index),
+            paragraph: at,
+        };
+        self.story = Story::Body;
+        self.anchor = None;
+        if let Some((end_at, end_index)) = end {
+            let end = Logical {
+                offset: self.offset_of_inline(&end_at, end_index),
+                paragraph: end_at,
+            };
+            if end != start {
+                self.anchor = Some(start);
+                self.caret = Some(end);
+                return Outcome::Moved;
+            }
+        }
+        self.caret = Some(start);
+        Outcome::Moved
+    }
+
+    fn delete_bookmark(&mut self, name: &str) -> Outcome {
+        let Some((_, at, index, end)) = self
+            .bookmark_marks()
+            .into_iter()
+            .find(|(existing, ..)| existing.eq_ignore_ascii_case(name))
+        else {
+            return Outcome::Quiet;
+        };
+        // The later mark first, so the earlier one's index holds.
+        let mut marks = vec![(at, index)];
+        marks.extend(end);
+        let paragraphs = self.paragraphs(&Story::Body);
+        let order = |a: &Address| paragraphs.iter().position(|p| p == a).unwrap_or(0);
+        marks.sort_by_key(|(a, i)| std::cmp::Reverse((order(a), *i)));
+        let commands: Vec<Edit> = marks
+            .into_iter()
+            .map(|(at, index)| Edit::DeleteInline { at, index })
+            .collect();
+        if self.transact(&commands) {
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    /// The body block of the table of contents, when there is one: a
+    /// content control of the "Table of Contents" gallery, as Word makes it.
+    fn toc_block(&self) -> Option<usize> {
+        self.session
+            .document()
+            .body
+            .blocks
+            .iter()
+            .position(|block| matches!(block, Block::SdtBlock(sdt) if sdt.doc_part_gallery.as_deref() == Some("Table of Contents")))
+    }
+
+    /// A table of contents of the headings: one paragraph per heading,
+    /// indented by its level, its page after a dotted tab. An existing one
+    /// is made again in its place; else it goes before the caret's
+    /// paragraph.
+    #[allow(clippy::too_many_lines)]
+    fn table_of_contents(&mut self, title: &str) -> Outcome {
+        use strict_ooxml::model::values::{Indentation, TabAlignment, TabLeader, TabStop};
+        use strict_ooxml::model::{Inline, Run, RunContent, Space, TextNode};
+        self.ensure_layout();
+        let existing = self.toc_block();
+        let at_block = existing.or_else(|| {
+            self.caret
+                .as_ref()
+                .filter(|c| c.paragraph.story == Story::Body)
+                .map(|c| {
+                    c.paragraph
+                        .containers
+                        .first()
+                        .map_or(c.paragraph.block, |container| match container {
+                            strict_ooxml::edit::Container::Cell { table, .. } => *table,
+                            strict_ooxml::edit::Container::Sdt(index) => *index,
+                            strict_ooxml::edit::Container::TextBox { paragraph, .. } => *paragraph,
+                        })
+                })
+        });
+        let Some(at_block) = at_block else {
+            return Outcome::Quiet;
+        };
+        let revision = self.session.revision();
+        let headings: Vec<(u8, String, usize)> = self
+            .build_outline()
+            .into_iter()
+            .filter(|entry| entry.level < 3)
+            .map(|entry| {
+                let position = self.position(&Logical {
+                    paragraph: entry.paragraph.clone(),
+                    offset: 0,
+                });
+                let page = self
+                    .map
+                    .as_ref()
+                    .and_then(|map| map.caret(revision, &position).ok())
+                    .and_then(|rects| rects.first().map(|r| r.page + 1))
+                    .unwrap_or(1);
+                (entry.level, entry.text, page)
+            })
+            .collect();
+        let text_width = self.text_width();
+        let style_of = |level: u8| {
+            let id = strict_ooxml::model::StyleId::new(format!("TOC{}", level + 1));
+            self.session.document().styles.contains(&id).then_some(id)
+        };
+        let paragraph = |inlines: Vec<Inline>, properties: ParagraphProperties| {
+            strict_ooxml::model::Paragraph {
+                props: properties,
+                inlines,
+                rsids: strict_ooxml::model::Rsids::default(),
+                revision: None,
+                para_id: None,
+                text_id: None,
+                location: SourceLocation::unknown(),
+            }
+        };
+        let run = |text: &str, bold: bool| {
+            let mut props = strict_ooxml::model::props::RunProperties::default();
+            if bold {
+                props.bold = TriState::On;
+                props.size = Some(HalfPoints(32));
+            }
+            Inline::Run(Run {
+                props,
+                content: vec![RunContent::Text(TextNode {
+                    text: text.to_owned(),
+                    space: Space::Preserve,
+                })],
+                revision: None,
+                location: SourceLocation::unknown(),
+            })
+        };
+        let mut blocks = Vec::new();
+        let mut heading_props = ParagraphProperties::default();
+        let toc_heading = strict_ooxml::model::StyleId::new("TOCHeading");
+        if self.session.document().styles.contains(&toc_heading) {
+            heading_props.style = Some(toc_heading);
+            blocks.push(Block::Paragraph(paragraph(
+                vec![run(title, false)],
+                heading_props,
+            )));
+        } else {
+            blocks.push(Block::Paragraph(paragraph(
+                vec![run(title, true)],
+                heading_props,
+            )));
+        }
+        for (level, text, page) in &headings {
+            let mut properties = ParagraphProperties::default();
+            match style_of(*level) {
+                Some(style) => properties.style = Some(style),
+                None => {
+                    properties.indentation = Some(Indentation {
+                        start: Some(Twips(220 * i32::from(*level))),
+                        ..Indentation::default()
+                    });
+                }
+            }
+            properties.tabs = vec![TabStop {
+                position: Twips(text_width.max(1440)),
+                alignment: TabAlignment::End,
+                leader: Some(TabLeader::Dot),
+            }];
+            let entry = vec![
+                run(text, false),
+                Inline::Run(Run {
+                    props: strict_ooxml::model::props::RunProperties::default(),
+                    content: vec![RunContent::Tab],
+                    revision: None,
+                    location: SourceLocation::unknown(),
+                }),
+                run(&page.to_string(), false),
+            ];
+            blocks.push(Block::Paragraph(paragraph(entry, properties)));
+        }
+        if headings.is_empty() {
+            blocks.push(Block::Paragraph(paragraph(
+                Vec::new(),
+                ParagraphProperties::default(),
+            )));
+        }
+        let sdt = strict_ooxml::model::SdtContainer {
+            tag: None,
+            alias: None,
+            id: None,
+            placeholder: None,
+            showing_placeholder: false,
+            run_props: None,
+            end_run_props: None,
+            has_end_pr: false,
+            doc_part_gallery: Some(std::sync::Arc::from("Table of Contents")),
+            doc_part_unique: true,
+            doc_part_category: None,
+            lock: None,
+            temporary: false,
+            data_binding: None,
+            label: None,
+            tab_index: None,
+            control: None,
+            unmodelled: Vec::new(),
+            blocks,
+            inlines: Vec::new(),
+            location: SourceLocation::unknown(),
+        };
+        let mut commands = Vec::new();
+        if existing.is_some() {
+            commands.push(Edit::Delete {
+                at: Address::body(at_block),
+            });
+        }
+        commands.push(Edit::Insert {
+            at: Address::body(at_block),
+            block: Box::new(Block::SdtBlock(sdt)),
+        });
+        if self.transact(&commands) {
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    /// The heading a table of contents entry names, for a Ctrl+click on it.
+    fn toc_target(&self, at: &Address) -> Option<Address> {
+        let block = self.toc_block()?;
+        let inside = at.story == Story::Body
+            && matches!(at.containers.first(), Some(strict_ooxml::edit::Container::Sdt(index)) if *index == block);
+        if !inside {
+            return None;
+        }
+        let text = self.text_of(at);
+        let entry = text.split('\t').next()?.trim().to_owned();
+        self.build_outline()
+            .into_iter()
+            .find(|heading| heading.text.trim() == entry)
+            .map(|heading| heading.paragraph)
     }
 
     // ----- headers and footers -------------------------------------------
@@ -2606,7 +3258,7 @@ impl<'a, 's> Worker<'a, 's> {
         };
         self.ensure_layout();
         let story = Story::HeaderFooter(part);
-        if self.story == Story::Body {
+        if !matches!(self.story, Story::HeaderFooter(_)) {
             self.body_caret.clone_from(&self.caret);
         }
         self.story = story.clone();
@@ -2632,7 +3284,7 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn exit_header_footer(&mut self) -> Outcome {
-        if self.story == Story::Body {
+        if !matches!(self.story, Story::HeaderFooter(_)) {
             return Outcome::Quiet;
         }
         self.story = Story::Body;
@@ -6522,6 +7174,96 @@ mod tests {
         );
         loop {
             if cursor(&replies).format.underline_style == Some(Underline::Wave) {
+                break;
+            }
+        }
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    /// A footnote takes the caret into its text; bookmarks are added, found
+    /// and deleted; a table of contents lists the headings and a Ctrl+click
+    /// on an entry goes to its heading.
+    #[test]
+    fn notes_bookmarks_and_contents() {
+        let ctx = eframe::egui::Context::default();
+        let (requests, replies) = spawn(Source::New, false, OpenControl::new(), ctx);
+        let info = wait(&replies, |reply| match reply {
+            Reply::Loaded(info) => Some(info),
+            _ => None,
+        });
+        let heading = info
+            .styles
+            .iter()
+            .find(|style| style.name.eq_ignore_ascii_case("heading 1"))
+            .expect("a heading style")
+            .id
+            .clone();
+        let _ = state(&replies);
+        send_all(
+            &requests,
+            vec![
+                Request::Type("Chapter".to_owned()),
+                Request::Style(heading),
+                Request::Enter,
+                Request::Type("Text".to_owned()),
+                Request::References(ReferenceCommand::InsertNote { endnote: false }),
+                Request::Type("Note".to_owned()),
+            ],
+        );
+        loop {
+            let texts = page_texts(&replies);
+            if texts.iter().any(|(_, t)| t.contains("Note")) {
+                break;
+            }
+        }
+        // Back to the body: a bookmark on the heading.
+        send_all(
+            &requests,
+            vec![
+                Request::References(ReferenceCommand::NextNote { back: true }),
+                Request::Move {
+                    motion: Motion::DocStart,
+                    extend: false,
+                },
+                Request::References(ReferenceCommand::AddBookmark("Start".to_owned())),
+            ],
+        );
+        loop {
+            if state(&replies).bookmarks == ["Start".to_owned()] {
+                break;
+            }
+        }
+        // The table of contents, before the first paragraph.
+        requests
+            .send(Request::References(ReferenceCommand::TableOfContents {
+                title: "Contents".to_owned(),
+            }))
+            .unwrap();
+        let texts = loop {
+            let texts = page_texts(&replies);
+            if texts.iter().any(|(_, t)| t.contains("Contents")) {
+                break texts;
+            }
+        };
+        assert!(state(&replies).table_of_contents);
+        let entry = texts
+            .iter()
+            .filter(|(_, t)| t.contains("Chapter"))
+            .map(|(y, _)| *y)
+            .fold(f64::INFINITY, f64::min);
+        let chapter = texts
+            .iter()
+            .filter(|(_, t)| t.contains("Chapter"))
+            .map(|(y, _)| *y)
+            .fold(0.0, f64::max);
+        assert!(entry < chapter, "{texts:?}");
+        requests
+            .send(Request::References(ReferenceCommand::DeleteBookmark(
+                "Start".to_owned(),
+            )))
+            .unwrap();
+        loop {
+            if state(&replies).bookmarks.is_empty() {
                 break;
             }
         }

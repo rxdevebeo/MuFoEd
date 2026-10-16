@@ -28,6 +28,9 @@ pub(crate) enum Icon {
     IndentMore,
     Picture,
     Print,
+    Toc,
+    Footnote,
+    Bookmark,
     Header,
     Footer,
     PageNumber,
@@ -403,6 +406,61 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                     frame.right_bottom() + vec2(-thin * 1.5, -thin * 1.5),
                 ],
                 color,
+                Stroke::NONE,
+            ));
+        }
+        Icon::Toc => {
+            page(painter, page_rect, color, paper);
+            let inner = page_rect.shrink(page_rect.width() * 0.18);
+            for (i, indent) in [(0.1, 0.0), (0.35, 0.2), (0.6, 0.2), (0.85, 0.0)] {
+                let y = inner.top() + inner.height() * i;
+                let x0 = inner.left() + inner.width() * indent;
+                painter.line_segment(
+                    [pos2(x0, y), pos2(inner.right() - inner.width() * 0.25, y)],
+                    stroke(color, thin),
+                );
+                painter.circle_filled(pos2(inner.right(), y), thin * 0.9, accent);
+            }
+        }
+        Icon::Footnote => {
+            page(painter, page_rect, color, paper);
+            let inner = page_rect.shrink(page_rect.width() * 0.18);
+            painter.line_segment(
+                [inner.left_top(), pos2(inner.right(), inner.top())],
+                stroke(color, thin),
+            );
+            painter.text(
+                pos2(inner.right(), inner.top() + inner.height() * 0.1),
+                egui::Align2::RIGHT_TOP,
+                "1",
+                egui::FontId::proportional(inner.height() * 0.35),
+                accent,
+            );
+            let y = inner.bottom() - inner.height() * 0.25;
+            painter.line_segment(
+                [pos2(inner.left(), y), pos2(inner.center().x, y)],
+                stroke(color, thin),
+            );
+            painter.line_segment(
+                [
+                    pos2(inner.left(), inner.bottom()),
+                    pos2(inner.right(), inner.bottom()),
+                ],
+                stroke(color, thin),
+            );
+        }
+        Icon::Bookmark => {
+            let w = r.width() * 0.5;
+            let left = r.center().x - w / 2.0;
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    pos2(left, r.top()),
+                    pos2(left + w, r.top()),
+                    pos2(left + w, r.bottom()),
+                    pos2(left + w / 2.0, r.bottom() - w * 0.45),
+                    pos2(left, r.bottom()),
+                ],
+                accent,
                 Stroke::NONE,
             ));
         }

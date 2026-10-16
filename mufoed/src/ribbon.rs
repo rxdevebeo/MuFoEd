@@ -15,8 +15,8 @@ use crate::icons::{self, Icon};
 use crate::theme::{self, Palette};
 use crate::worker::{
     Align, CaretFormat, EditState, ExportPurpose, FormatChange, HeaderFooterCommand, Insert,
-    ObjectCommand, ObjectView, PageChange, PictureEdit, Request, StyleEntry, TableCommand,
-    WrapStyle, FONT_SIZES,
+    ObjectCommand, ObjectView, PageChange, PictureEdit, ReferenceCommand, Request, StyleEntry,
+    TableCommand, WrapStyle, FONT_SIZES,
 };
 
 /// Ribbon tabs.
@@ -25,6 +25,7 @@ pub(crate) enum RibbonTab {
     Home,
     Insert,
     Layout,
+    References,
     Review,
     View,
     Recognition,
@@ -35,10 +36,11 @@ pub(crate) enum RibbonTab {
 }
 
 impl RibbonTab {
-    pub(crate) const ALL: [Self; 6] = [
+    pub(crate) const ALL: [Self; 7] = [
         Self::Home,
         Self::Insert,
         Self::Layout,
+        Self::References,
         Self::Review,
         Self::View,
         Self::Recognition,
@@ -49,6 +51,7 @@ impl RibbonTab {
             Self::Home => "ribbon.home",
             Self::Insert => "ribbon.insert",
             Self::Layout => "ribbon.layout",
+            Self::References => "ribbon.references",
             Self::Review => "ribbon.review",
             Self::View => "ribbon.view",
             Self::Recognition => "ribbon.recognition",
@@ -398,6 +401,7 @@ pub(crate) fn body(
                         RibbonTab::Home => home(ui, state, actions),
                         RibbonTab::Insert => insert(ui, state, actions),
                         RibbonTab::Layout => layout(ui, state, actions),
+                        RibbonTab::References => references(ui, state, actions),
                         RibbonTab::Review => review(ui, state, actions),
                         RibbonTab::View => view(ui, state, actions),
                         RibbonTab::Recognition => recognition(ui, state, actions),
@@ -1728,6 +1732,114 @@ fn insert(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
             p,
         ) {
             actions.push(Action::Open(Dialog::Symbols));
+        }
+    });
+}
+
+// ----- References ------------------------------------------------------------
+
+fn references(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
+    let editable = s.editable();
+    let p = s.palette;
+    group(ui, s.t("group.toc"), p, |ui| {
+        big_menu(
+            ui,
+            Icon::Toc,
+            s.t("cmd.toc"),
+            s.t("tip.toc"),
+            editable,
+            p,
+            |ui| {
+                let label = if s.state.table_of_contents {
+                    s.t("toc.update")
+                } else {
+                    s.t("toc.insert")
+                };
+                if ui.button(label).clicked() {
+                    actions.push(Action::TableOfContents);
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
+                        s.state.table_of_contents,
+                        egui::Button::new(s.t("toc.remove")),
+                    )
+                    .clicked()
+                {
+                    doc(
+                        actions,
+                        Request::References(ReferenceCommand::RemoveTableOfContents),
+                    );
+                    ui.close();
+                }
+            },
+        );
+    });
+    group(ui, s.t("group.notes"), p, |ui| {
+        if big_clicked(
+            ui,
+            Icon::Footnote,
+            s.t("cmd.footnote"),
+            s.t("tip.footnote"),
+            editable,
+            p,
+        ) {
+            doc(
+                actions,
+                Request::References(ReferenceCommand::InsertNote { endnote: false }),
+            );
+        }
+        column(ui, |ui| {
+            let items = [
+                Small::new(
+                    Icon::Footnote,
+                    s.t("cmd.endnote"),
+                    s.t("tip.endnote"),
+                    editable,
+                ),
+                Small::new(
+                    Icon::Redo,
+                    s.t("cmd.next_note"),
+                    s.t("tip.next_note"),
+                    s.document,
+                ),
+                Small::new(
+                    Icon::Undo,
+                    s.t("cmd.previous_note"),
+                    s.t("tip.previous_note"),
+                    s.document,
+                ),
+            ];
+            match small_column(ui, &items, p) {
+                Some(0) => doc(
+                    actions,
+                    Request::References(ReferenceCommand::InsertNote { endnote: true }),
+                ),
+                Some(1) => doc(
+                    actions,
+                    Request::References(ReferenceCommand::NextNote { back: false }),
+                ),
+                Some(_) => doc(
+                    actions,
+                    Request::References(ReferenceCommand::NextNote { back: true }),
+                ),
+                None => {}
+            }
+        });
+    });
+    group(ui, s.t("group.links"), p, |ui| {
+        if big_clicked(
+            ui,
+            Icon::Bookmark,
+            s.t("cmd.bookmark"),
+            s.t("tip.bookmark"),
+            s.document,
+            p,
+        ) {
+            actions.push(Action::Open(Dialog::Bookmarks {
+                name: String::new(),
+                selected: None,
+            }));
         }
     });
 }

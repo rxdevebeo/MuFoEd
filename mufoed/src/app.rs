@@ -14,6 +14,7 @@ use crate::ribbon::{self, RibbonState, RibbonTab};
 use crate::settings::{self, Settings};
 use crate::tab::{AfterSave, DocTab, Status, TabEvent};
 use crate::theme::{self, Palette};
+use crate::worker::ReferenceCommand;
 use crate::worker::{
     Align, Busy, CaretFormat, EditState, ExportPurpose, FindQuery, FormatChange,
     HeaderFooterCommand, Insert, Motion, ObjectCommand, PictureEdit, Request, SaveFormat,
@@ -50,6 +51,8 @@ pub(crate) enum Action {
     ToggleNavigation,
     ToggleRuler,
     PrintDialog,
+    /// Insert or update the table of contents.
+    TableOfContents,
     /// Edit the header (or footer) of the page in view.
     EnterHeaderFooter {
         header: bool,
@@ -150,6 +153,11 @@ pub(crate) enum Dialog {
         restart: bool,
     },
     Print(Box<PrintDialog>),
+    /// The bookmarks: a name to add, the one chosen in the list.
+    Bookmarks {
+        name: String,
+        selected: Option<usize>,
+    },
 }
 
 /// The print dialog's fields.
@@ -695,6 +703,14 @@ impl App {
                         top,
                         align,
                         of_total: words,
+                    }));
+                }
+            }
+            Action::TableOfContents => {
+                let title = self.t("toc.title").to_owned();
+                if let Some(tab) = self.active_tab() {
+                    tab.send(Request::References(ReferenceCommand::TableOfContents {
+                        title,
                     }));
                 }
             }
@@ -2390,6 +2406,104 @@ impl App {
                     keep = false;
                 } else {
                     next = Some(Dialog::Table { rows, columns });
+                }
+            }
+            Dialog::Bookmarks {
+                mut name,
+                mut selected,
+            } => {
+                let names = self
+                    .active_tab()
+                    .map(|tab| tab.state.bookmarks.clone())
+                    .unwrap_or_default();
+                let mut request = None;
+                let response = modal("bookmarks").show(ctx, |ui| {
+                    ui.set_min_width(340.0);
+                    ui.heading(t("bookmark.title"));
+                    ui.add_space(8.0);
+                    ui.label(t("bookmark.name"));
+                    let field = ui.add(
+                        egui::TextEdit::singleline(&mut name)
+                            .desired_width(f32::INFINITY)
+                            .hint_text(t("bookmark.hint")),
+                    );
+                    if field.changed() {
+                        selected = None;
+                    }
+                    ui.add_space(6.0);
+                    egui::Frame::new()
+                        .stroke(Stroke::new(
+                            1.0,
+                            ui.visuals().widgets.noninteractive.bg_stroke.color,
+                        ))
+                        .corner_radius(4)
+                        .inner_margin(4)
+                        .show(ui, |ui| {
+                            egui::ScrollArea::vertical()
+                                .max_height(180.0)
+                                .show(ui, |ui| {
+                                    ui.set_min_width(ui.available_width());
+                                    if names.is_empty() {
+                                        ui.label(RichText::new(t("bookmark.none")).weak());
+                                    }
+                                    for (index, existing) in names.iter().enumerate() {
+                                        let chosen =
+                                            ui.selectable_label(selected == Some(index), existing);
+                                        if chosen.clicked() {
+                                            selected = Some(index);
+                                            name.clone_from(existing);
+                                        }
+                                        if chosen.double_clicked() {
+                                            request = Some(ReferenceCommand::GoToBookmark(
+                                                existing.clone(),
+                                            ));
+                                        }
+                                    }
+                                });
+                        });
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        let known = names.iter().any(|n| n.eq_ignore_ascii_case(name.trim()));
+                        if ui
+                            .add_enabled(
+                                !name.trim().is_empty(),
+                                egui::Button::new(t("bookmark.add")),
+                            )
+                            .clicked()
+                        {
+                            request = Some(ReferenceCommand::AddBookmark(name.trim().to_owned()));
+                        }
+                        if ui
+                            .add_enabled(known, egui::Button::new(t("bookmark.go")))
+                            .clicked()
+                        {
+                            request = Some(ReferenceCommand::GoToBookmark(name.trim().to_owned()));
+                        }
+                        if ui
+                            .add_enabled(known, egui::Button::new(t("bookmark.delete")))
+                            .clicked()
+                        {
+                            request =
+                                Some(ReferenceCommand::DeleteBookmark(name.trim().to_owned()));
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button(t("button.close")).clicked() {
+                                ui.close();
+                            }
+                        });
+                    });
+                });
+                let close = matches!(
+                    request,
+                    Some(ReferenceCommand::GoToBookmark(_) | ReferenceCommand::AddBookmark(_))
+                );
+                if let Some(request) = request {
+                    actions.push(Action::Doc(Request::References(request)));
+                }
+                if response.should_close() || close {
+                    keep = false;
+                } else {
+                    next = Some(Dialog::Bookmarks { name, selected });
                 }
             }
             Dialog::Print(mut dialog) => {

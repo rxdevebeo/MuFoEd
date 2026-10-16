@@ -15,7 +15,8 @@
       "view": "View",
       "recognition": "Recognition",
       "picture": "Picture",
-      "header_footer": "Header & Footer"
+      "header_footer": "Header & Footer",
+      "references": "References"
     },
     "group": {
       "clipboard": "Clipboard",
@@ -47,7 +48,10 @@
       "arrange": "Arrange",
       "header_footer": "Header & Footer",
       "close": "Close",
-      "options": "Options"
+      "options": "Options",
+      "toc": "Table of Contents",
+      "notes": "Footnotes",
+      "links": "Links"
     },
     "cmd": {
       "new": "New",
@@ -122,7 +126,13 @@
       "footer": "Footer",
       "page_number": "Page number",
       "close_header_footer": "Close header and footer",
-      "print": "Print"
+      "print": "Print",
+      "toc": "Table of Contents",
+      "footnote": "Insert footnote",
+      "endnote": "Endnote",
+      "next_note": "Next footnote",
+      "previous_note": "Previous footnote",
+      "bookmark": "Bookmark"
     },
     "tip": {
       "start_page": "Start page",
@@ -217,7 +227,13 @@
       "underline_style": "Underline style",
       "strike_style": "Strikethrough style",
       "indent_less": "Decrease indent (a list level up)",
-      "indent_more": "Increase indent (a list level down)"
+      "indent_more": "Increase indent (a list level down)",
+      "toc": "A table of contents of the headings; Ctrl+click an entry to go to its heading",
+      "footnote": "A note at the bottom of the page",
+      "endnote": "A note at the end of the document",
+      "next_note": "Go to the next footnote",
+      "previous_note": "Go to the previous footnote",
+      "bookmark": "Add a bookmark, go to one or delete it"
     },
     "font": {
       "default": "(from style)",
@@ -299,7 +315,9 @@
       "cannot_edit_here": "This edit cannot be made here",
       "picture_refused": "The picture was not inserted",
       "recognize_failed": "The picture was not recognised",
-      "recognized_nothing": "Nothing was recognised in the picture"
+      "recognized_nothing": "Nothing was recognised in the picture",
+      "bookmark_name": "A bookmark name: letters, digits and \"_\", starting with a letter",
+      "notes_in_body": "Notes go into the body text only"
     },
     "nav": {
       "title": "Navigation",
@@ -514,6 +532,21 @@
       "single": "Single",
       "double": "Double",
       "none": "No strikethrough"
+    },
+    "toc": {
+      "insert": "Insert table of contents",
+      "update": "Update table of contents",
+      "remove": "Remove table of contents",
+      "title": "Contents"
+    },
+    "bookmark": {
+      "title": "Bookmarks",
+      "name": "Bookmark name",
+      "hint": "For example: Chapter_1",
+      "none": "The document has no bookmarks",
+      "add": "Add",
+      "go": "Go to",
+      "delete": "Delete"
     }
   }
 }
