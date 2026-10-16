@@ -71,6 +71,20 @@ impl FontAsset {
         self
     }
 
+    /// Which of `chars` the program has a glyph for.
+    #[must_use]
+    pub fn draws(&self, chars: &[char]) -> Vec<char> {
+        let Ok(font) = skrifa::FontRef::from_index(&self.bytes, self.face_index) else {
+            return Vec::new();
+        };
+        let charmap = skrifa::MetadataProvider::charmap(&font);
+        chars
+            .iter()
+            .copied()
+            .filter(|ch| charmap.map(*ch).is_some())
+            .collect()
+    }
+
     /// The family name this program answers to.
     #[must_use]
     pub fn family(&self) -> &str {

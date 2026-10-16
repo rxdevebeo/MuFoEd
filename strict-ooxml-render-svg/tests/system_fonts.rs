@@ -53,3 +53,23 @@ fn installed_faces_are_found_by_the_family_a_document_names() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Text no bundled face draws is reported until a font that has it is
+/// supplied; text the bundle draws never is.
+#[test]
+fn undrawn_text_is_what_no_face_draws() {
+    use strict_ooxml_render_svg::font::system::undrawn;
+    use strict_ooxml_render_svg::font::FontAsset;
+    let body = "<w:p><w:r><w:t>Latin кириллица \u{0928}\u{092e}</w:t></w:r></w:p>";
+    let (_, document) = open_body(body);
+    let missing = undrawn(&document, &[]);
+    assert_eq!(missing, ['\u{0928}', '\u{092e}']);
+    // A face without those glyphs changes nothing.
+    let arimo = face_source("Arial", false, false)
+        .expect("Arimo")
+        .data
+        .to_vec();
+    let asset = FontAsset::new("Arimo", false, false, arimo);
+    assert_eq!(asset.draws(&['A', '\u{0928}']), ['A']);
+    assert_eq!(undrawn(&document, &[asset]), ['\u{0928}', '\u{092e}']);
+}

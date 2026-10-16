@@ -262,6 +262,31 @@ pub fn script_fallbacks(
     assets
 }
 
+/// The characters of `document`'s body text that no bundled face and none
+/// of `assets` draws: text that shows as missing-glyph boxes until a font
+/// for its script is installed.
+#[must_use]
+pub fn undrawn(document: &Document, assets: &[FontAsset]) -> Vec<char> {
+    let bundled = super::builtin::bundled_families();
+    let mut missing: Vec<char> = document_chars(document)
+        .into_iter()
+        .filter(|ch| !ch.is_whitespace() && !ch.is_control())
+        .filter(|ch| {
+            !bundled
+                .iter()
+                .any(|family| super::builtin::bundled_has_glyph(family, *ch))
+        })
+        .collect();
+    for asset in assets {
+        if missing.is_empty() {
+            break;
+        }
+        let drawn = asset.draws(&missing);
+        missing.retain(|ch| !drawn.contains(ch));
+    }
+    missing
+}
+
 /// The characters of the document's body text.
 fn document_chars(document: &Document) -> std::collections::BTreeSet<char> {
     use strict_ooxml_wml::model::{Block, Inline, RunContent};
