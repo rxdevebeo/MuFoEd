@@ -109,6 +109,9 @@ pub(crate) enum DownloadEvent {
     Done(Result<Option<std::path::PathBuf>, String>),
 }
 
+/// A translated picture as PNG, or why there is none.
+type PictureResult = Result<Vec<u8>, String>;
+
 /// Everything the AI side keeps.
 #[derive(Default)]
 pub(crate) struct AiState {
@@ -126,6 +129,10 @@ pub(crate) struct AiState {
     pull_choice: usize,
     /// An action to run once Ollama and a model are there.
     waiting: Option<AiAction>,
+    /// The vision model the picture translation needs is missing.
+    need_vision: bool,
+    /// A picture being translated: its tab and drawing, and the result.
+    picture: Option<(u64, u32, Receiver<PictureResult>)>,
 }
 
 impl App {
@@ -271,8 +278,99 @@ impl App {
         });
     }
 
+    /// Whether Ollama has a text model and the vision model; if not, the
+    /// setup dialog says what is missing.
+    pub(crate) fn ai_ready_for_pictures(&mut self, ctx: &egui::Context) -> bool {
+        let vision = self.settings.ocr_model.clone();
+        let has_vision = matches!(&self.ai.probe, Probe::Ready(models) if models.contains(&vision));
+        if self.ai_config().is_some() && has_vision {
+            self.ai.need_vision = false;
+            return true;
+        }
+        self.ai.need_vision = !has_vision;
+        if !matches!(self.ai.probe, Probe::Ready(_)) {
+            self.ai_probe(ctx);
+        }
+        self.dialog = Some(Dialog::AiSetup);
+        false
+    }
+
+    /// Reads the picture's lines, translates them and draws them back in,
+    /// on a thread; the picture is replaced when it is done.
+    pub(crate) fn translate_picture(
+        &mut self,
+        ctx: &egui::Context,
+        tab: u64,
+        id: u32,
+        bytes: Vec<u8>,
+    ) {
+        let Some(text) = self.ai_config() else {
+            return;
+        };
+        let vision = ai::Config {
+            endpoint: text.endpoint.clone(),
+            model: self.settings.ocr_model.clone(),
+        };
+        let language = self.settings.ai_language.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx2 = ctx.clone();
+        std::thread::spawn(move || {
+            let result = (|| {
+                let pixmap = crate::raster::picture_pixmap(&bytes).ok_or("not a picture")?;
+                let png = pixmap.encode_png().map_err(|error| error.to_string())?;
+                let boxes = ai::find_text(&vision, &png, pixmap.width(), pixmap.height())?;
+                if boxes.is_empty() {
+                    return Err("no text".to_owned());
+                }
+                let lines: Vec<String> = boxes.iter().map(|b| b.text.clone()).collect();
+                let translated = ai::translate_lines(&text, &lines, &language)?;
+                let labels: Vec<crate::raster::Relabel> = boxes
+                    .iter()
+                    .zip(translated)
+                    .map(|(found, text)| crate::raster::Relabel {
+                        rect: found.rect,
+                        text,
+                    })
+                    .collect();
+                crate::raster::picture_relabelled(&bytes, &labels)
+                    .ok_or_else(|| "render".to_owned())
+            })();
+            let _ = tx.send(result);
+            ctx2.request_repaint();
+        });
+        self.ai.picture = Some((tab, id, rx));
+        let now = ctx.input(|input| input.time);
+        let note = self.t("ai.picture_working").to_owned();
+        self.say(note, false, now);
+    }
+
     /// Takes what the job, the probe and a download report.
     pub(crate) fn ai_poll(&mut self, ctx: &egui::Context) {
+        if let Some((tab, id, result)) = self
+            .ai
+            .picture
+            .as_ref()
+            .and_then(|(tab, id, rx)| rx.try_recv().ok().map(|result| (*tab, *id, result)))
+        {
+            self.ai.picture = None;
+            let now = ctx.input(|input| input.time);
+            match result {
+                Ok(bytes) => {
+                    if let Some(tab) = self.tabs.iter().find(|t| t.id == tab) {
+                        tab.send(Request::Object(crate::worker::ObjectCommand::Replace {
+                            id,
+                            bytes,
+                        }));
+                    }
+                    let note = self.t("ai.picture_done").to_owned();
+                    self.say(note, false, now);
+                }
+                Err(error) => {
+                    let note = self.i18n.tf("ai.picture_failed", &[("error", &error)]);
+                    self.say(note, true, now);
+                }
+            }
+        }
         if let Some(result) = self.ai.probe_rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
             self.ai.probe_rx = None;
             self.ai.probe = match result {
@@ -496,6 +594,19 @@ impl App {
                         .iter()
                         .filter(|name| ai::choose(name, &[(*name).clone()]).is_some())
                         .collect();
+                    if state.need_vision {
+                        ui.label(
+                            self.i18n
+                                .tf("ai.need_vision", &[("model", &self.settings.ocr_model)]),
+                        );
+                        if ui
+                            .add_enabled(state.download.is_none(), egui::Button::new(t("ai.pull")))
+                            .clicked()
+                        {
+                            pull = Some(self.settings.ocr_model.clone());
+                        }
+                        ui.add_space(4.0);
+                    }
                     match ai::choose(&configured, models) {
                         Some(model) => {
                             ui.label(self.i18n.tf("ai.ready", &[("model", &model)]));

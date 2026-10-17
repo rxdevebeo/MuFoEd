@@ -99,14 +99,32 @@ pub(crate) fn choose(configured: &str, installed: &[String]) -> Option<String> {
 
 /// One answer from the model, its reasoning (if it shows any) left out.
 pub(crate) fn chat(config: &Config, system: &str, prompt: &str) -> Result<String, String> {
+    chat_with(config, system, prompt, &[])
+}
+
+/// One answer about the user's text and pictures (base64).
+fn chat_with(
+    config: &Config,
+    system: &str,
+    prompt: &str,
+    images: &[String],
+) -> Result<String, String> {
     let body = |think: bool| {
+        let mut user = json!({"role": "user", "content": prompt});
+        if !images.is_empty() {
+            if let Some(map) = user.as_object_mut() {
+                map.insert("images".to_owned(), json!(images));
+            }
+        }
+        let mut messages = Vec::new();
+        if !system.is_empty() {
+            messages.push(json!({"role": "system", "content": system}));
+        }
+        messages.push(user);
         let mut body = json!({
             "model": config.model,
             "stream": false,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
+            "messages": messages,
             "options": {"temperature": 0.2, "num_ctx": 16384},
         });
         if !think {
@@ -160,6 +178,112 @@ fn without_thinking(text: &str) -> &str {
         Some(end) => text.get(end + "</think>".len()..).unwrap_or_default(),
         None => text,
     }
+}
+
+/// A line of text a vision model found on a picture: what it says and its
+/// box in pixels (left, top, right, bottom).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TextBox {
+    pub(crate) text: String,
+    pub(crate) rect: [f32; 4],
+}
+
+/// The lines of text on a picture (PNG, `width` × `height` pixels), as a
+/// vision model reads them.
+pub(crate) fn find_text(
+    config: &Config,
+    png: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<Vec<TextBox>, String> {
+    let answer = chat_with(
+        config,
+        "",
+        "Find every line of text in the image. Answer with JSON only: a list of objects \
+         {\"text\": the text as written, \"bbox_2d\": [x1, y1, x2, y2]}.",
+        &[crate::raster::base64(png)],
+    )?;
+    Ok(parse_boxes(&answer, width, height))
+}
+
+/// Reads the model's list; its boxes are in thousandths of the picture.
+fn parse_boxes(answer: &str, width: u32, height: u32) -> Vec<TextBox> {
+    let start = answer.find('[').unwrap_or(0);
+    let end = answer.rfind(']').map_or(answer.len(), |at| at + 1);
+    let Ok(Value::Array(items)) =
+        serde_json::from_str::<Value>(answer.get(start..end).unwrap_or_default())
+    else {
+        return Vec::new();
+    };
+    #[allow(clippy::cast_precision_loss)]
+    let (w, h) = (width as f32, height as f32);
+    items
+        .iter()
+        .filter_map(|item| {
+            let text = item.get("text")?.as_str()?.trim().to_owned();
+            let corners: Vec<f32> = item
+                .get("bbox_2d")?
+                .as_array()?
+                .iter()
+                .filter_map(Value::as_f64)
+                .map(|v| {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let v = v as f32;
+                    v
+                })
+                .collect();
+            let [x0, y0, x1, y1] = corners[..] else {
+                return None;
+            };
+            (!text.is_empty() && x1 > x0 && y1 > y0).then(|| TextBox {
+                text,
+                rect: [
+                    x0 / 1000.0 * w,
+                    y0 / 1000.0 * h,
+                    x1 / 1000.0 * w,
+                    y1 / 1000.0 * h,
+                ],
+            })
+        })
+        .collect()
+}
+
+/// Lines translated together, in order; a line the answer lacks keeps its
+/// text.
+pub(crate) fn translate_lines(
+    config: &Config,
+    lines: &[String],
+    language: &str,
+) -> Result<Vec<String>, String> {
+    use std::fmt::Write as _;
+    let mut listing = String::new();
+    for (index, line) in lines.iter().enumerate() {
+        let _ = writeln!(listing, "{}: {line}", index + 1);
+    }
+    let answer = chat(
+        config,
+        &format!(
+            "Translate each numbered line into {language}. They are labels on one picture, so \
+             keep them short. Answer with the same numbers, one line each: \"<number>: <translation>\"."
+        ),
+        &listing,
+    )?;
+    let mut out: Vec<String> = lines.to_vec();
+    for line in answer.lines() {
+        let Some((number, text)) = line.split_once(':') else {
+            continue;
+        };
+        if let Some(slot) = number
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .and_then(|n| n.checked_sub(1))
+            .and_then(|i| out.get_mut(i))
+        {
+            text.trim().clone_into(slot);
+        }
+    }
+    Ok(out)
 }
 
 /// Fetches a model into Ollama, reporting (status, done bytes, total bytes).
@@ -524,12 +648,62 @@ mod tests {
     }
 
     #[test]
+    fn boxes_are_read_in_thousandths() {
+        let answer = "```json\n[{\"text\": \"Выход\", \"bbox_2d\": [500, 100, 750, 300]},\n\
+            {\"text\": \"\", \"bbox_2d\": [1, 2, 3, 4]}, {\"text\": \"x\"}]\n```";
+        assert_eq!(
+            parse_boxes(answer, 800, 500),
+            [TextBox {
+                text: "Выход".to_owned(),
+                rect: [400.0, 50.0, 600.0, 150.0],
+            }]
+        );
+        assert!(parse_boxes("no list", 10, 10).is_empty());
+    }
+
+    #[test]
     fn thinking_is_left_out_and_kinds_are_read() {
         assert_eq!(without_thinking("<think>hmm</think>\nДа").trim(), "Да");
         assert_eq!(Kind::parse(" H2 "), Some(Kind::Heading(2)));
         assert_eq!(Kind::parse("list"), Some(Kind::Body));
         assert_eq!(Kind::parse("table"), None);
         assert_eq!(clip("абвгд", 3), "абв…");
+    }
+
+    /// The whole picture translation on `MUFOED_LIVE_PICTURE` (a PNG), with
+    /// Ollama running: the result goes beside it as `*.translated.png`.
+    #[test]
+    #[ignore = "needs Ollama and a picture"]
+    fn a_live_picture_translation() {
+        let Ok(path) = std::env::var("MUFOED_LIVE_PICTURE") else {
+            return;
+        };
+        let bytes = std::fs::read(&path).unwrap();
+        let endpoint = "http://127.0.0.1:11434".to_owned();
+        let text = Config {
+            model: choose("", &models(&endpoint).unwrap()).unwrap(),
+            endpoint: endpoint.clone(),
+        };
+        let vision = Config {
+            endpoint,
+            model: "qwen3-vl:8b-instruct".to_owned(),
+        };
+        let pixmap = crate::raster::picture_pixmap(&bytes).unwrap();
+        let boxes = find_text(&vision, &bytes, pixmap.width(), pixmap.height()).unwrap();
+        eprintln!("{boxes:?}");
+        let lines: Vec<String> = boxes.iter().map(|b| b.text.clone()).collect();
+        let translated = translate_lines(&text, &lines, "English").unwrap();
+        eprintln!("{translated:?}");
+        let labels: Vec<crate::raster::Relabel> = boxes
+            .iter()
+            .zip(translated)
+            .map(|(found, text)| crate::raster::Relabel {
+                rect: found.rect,
+                text,
+            })
+            .collect();
+        let out = crate::raster::picture_relabelled(&bytes, &labels).unwrap();
+        std::fs::write(format!("{path}.translated.png"), out).unwrap();
     }
 
     /// A live call: `MUFOED_LIVE_AI=1` with Ollama running.

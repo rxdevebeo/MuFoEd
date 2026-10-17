@@ -206,6 +206,8 @@ pub(crate) enum ExportPurpose {
     Save,
     External,
     Preview,
+    /// Its text translated and written back in.
+    Translate,
 }
 
 /// How text flows around a drawing, as Word's Wrap Text menu offers it.
@@ -1380,7 +1382,7 @@ impl<'a, 's> Worker<'a, 's> {
             Request::Speller(speller) => {
                 self.speller = speller;
                 self.spelling.clear();
-                self.send_spelling();
+                self.respell();
                 Outcome::Quiet
             }
             Request::AiSource { whole, job } => {
@@ -1393,7 +1395,7 @@ impl<'a, 's> Worker<'a, 's> {
             }
             Request::Respell => {
                 self.spelling.clear();
-                self.send_spelling();
+                self.respell();
                 Outcome::Quiet
             }
             Request::Find { query, backwards } => self.find(&query, backwards),
@@ -2957,6 +2959,16 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     // ----- spelling -----------------------------------------------------
+
+    /// The words marked again: after the layout catches up (which marks
+    /// them), or at once when it is current.
+    fn respell(&mut self) {
+        if self.stale {
+            self.ensure_layout();
+        } else {
+            self.send_spelling();
+        }
+    }
 
     /// Marks the body's misspelt words, from the texts checked before when
     /// they have not changed.

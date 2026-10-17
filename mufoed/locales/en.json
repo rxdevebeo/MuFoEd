@@ -58,7 +58,8 @@
       "ai_text": "Text",
       "ai_translate": "Translation",
       "ai_style": "Style",
-      "ai_assistant": "Assistant"
+      "ai_assistant": "Assistant",
+      "picture_text": "Text"
     },
     "cmd": {
       "new": "New",
@@ -147,7 +148,8 @@
       "columns": "Columns",
       "column_break": "Column break",
       "spelling": "Spelling",
-      "dictionaries": "Dictionaries"
+      "dictionaries": "Dictionaries",
+      "translate_picture": "Translate text"
     },
     "tip": {
       "start_page": "Start page",
@@ -265,7 +267,8 @@
       "ai_assess": "A judgement of the writing style, with advice",
       "ai_unify": "Bring every paragraph to one style (previewed first)",
       "ai_pane": "Show the AI results",
-      "ai_settings": "Ollama and the model"
+      "ai_settings": "Ollama and the model",
+      "translate_picture": "Read the picture's labels, translate them into the AI tab's language and write them in instead"
     },
     "font": {
       "default": "(from style)",
@@ -696,7 +699,11 @@
       "styles_done": "Styles set. Ctrl+Z undoes it.",
       "own_title": "Rewrite the selection",
       "own_hint": "What should be done with the selected text?",
-      "own_example": "For example: make it politer and add a conclusion"
+      "own_example": "For example: make it politer and add a conclusion",
+      "picture_working": "Translating the picture's text…",
+      "picture_done": "The picture's text is translated (Ctrl+Z undoes it)",
+      "picture_failed": "Could not translate the text: {error}",
+      "need_vision": "Pictures need the recognition model {model}."
     }
   }
 }

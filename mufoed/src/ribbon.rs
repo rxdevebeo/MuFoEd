@@ -2210,6 +2210,18 @@ fn picture(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
                 None => {}
             }
         });
+        group(ui, s.t("group.picture_text"), p, |ui| {
+            if big_clicked(
+                ui,
+                Icon::Translate,
+                s.t("cmd.translate_picture"),
+                s.t("tip.translate_picture"),
+                s.editable() && s.object.is_some_and(|object| object.picture),
+                p,
+            ) {
+                actions.push(Action::TranslatePicture);
+            }
+        });
     });
     group(ui, s.t("group.recognize_picture"), p, |ui| {
         let can = editable && object.picture && cfg!(feature = "ocr");

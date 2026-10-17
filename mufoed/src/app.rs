@@ -32,6 +32,8 @@ pub(crate) enum Action {
     Ai(AiAction),
     AiSetup,
     ToggleAiPane,
+    /// The selected picture's text translated in place.
+    TranslatePicture,
     AiLanguage(String),
     New,
     OpenDialog,
@@ -813,6 +815,15 @@ impl App {
                 self.dialog = Some(Dialog::AiSetup);
             }
             Action::ToggleAiPane => self.ai.open = !self.ai.open,
+            Action::TranslatePicture => {
+                if self.ai_ready_for_pictures(ctx) {
+                    if let Some(tab) = self.active_tab() {
+                        tab.send(Request::Object(ObjectCommand::Export {
+                            purpose: ExportPurpose::Translate,
+                        }));
+                    }
+                }
+            }
             Action::AiLanguage(language) => {
                 self.settings.ai_language = language;
                 self.settings.save();
@@ -986,6 +997,7 @@ impl App {
             match purpose {
                 ExportPurpose::External => self.edit_externally(tab, id, &bytes, extension, now),
                 ExportPurpose::Save => self.save_picture(&bytes, extension, now),
+                ExportPurpose::Translate => self.translate_picture(ctx, tab, id, bytes),
                 ExportPurpose::Preview => {
                     if let Some(Dialog::Adjust(dialog)) = self.dialog.as_mut() {
                         dialog.base = crate::raster::picture_preview(&bytes, 320);

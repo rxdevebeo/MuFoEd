@@ -96,7 +96,7 @@ pub(crate) fn rasterize(svg: &str, scale: f32) -> Result<Bitmap, String> {
 // on the pixels and hands back PNG. The document only ever gets new bytes.
 
 /// Base64 for a `data:` URI.
-fn base64(bytes: &[u8]) -> String {
+pub(crate) fn base64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
@@ -374,4 +374,156 @@ mod live {
         eprintln!("{kinds:?}");
         assert!(kinds.contains(&"m:f"), "{kinds:?}");
     }
+}
+
+/// A line of text on a picture to cover and write anew: its box in pixels
+/// (left, top, right, bottom) and the new text.
+#[derive(Clone, Debug)]
+pub(crate) struct Relabel {
+    pub(crate) rect: [f32; 4],
+    pub(crate) text: String,
+}
+
+/// The picture with each box painted over in the colour around it and its
+/// new text written in, in the colour the old text had, squeezed to the
+/// box when it is longer; as PNG.
+pub(crate) fn picture_relabelled(bytes: &[u8], labels: &[Relabel]) -> Option<Vec<u8>> {
+    use std::fmt::Write as _;
+    let base = picture_pixmap(bytes)?;
+    let (width, height) = (base.width(), base.height());
+    let png = base.encode_png().ok()?;
+    let mut svg = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" \
+         width=\"{width}\" height=\"{height}\"><image width=\"{width}\" height=\"{height}\" \
+         xlink:href=\"data:image/png;base64,{}\"/>",
+        base64(&png)
+    );
+    #[allow(clippy::cast_precision_loss)]
+    let (w, h) = (width as f32, height as f32);
+    for label in labels {
+        let [x0, y0, x1, y1] = label.rect;
+        let (x0, y0) = ((x0 - 2.0).clamp(0.0, w), (y0 - 2.0).clamp(0.0, h));
+        let (x1, y1) = ((x1 + 2.0).clamp(0.0, w), (y1 + 2.0).clamp(0.0, h));
+        if x1 - x0 < 2.0 || y1 - y0 < 2.0 {
+            continue;
+        }
+        let background = surrounding_colour(&base, [x0, y0, x1, y1]);
+        let ink = ink_colour(&base, [x0, y0, x1, y1], background);
+        let size = (y1 - y0) * 0.72;
+        let _ = write!(
+            svg,
+            "<rect x=\"{x0}\" y=\"{y0}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
+            x1 - x0,
+            y1 - y0,
+            hex(background)
+        );
+        // Wider than the box (by a rough measure): squeezed into it.
+        #[allow(clippy::cast_precision_loss)]
+        let estimate = label.text.chars().count() as f32 * size * 0.52;
+        let fit = if estimate > x1 - x0 {
+            format!(
+                " textLength=\"{}\" lengthAdjust=\"spacingAndGlyphs\"",
+                x1 - x0 - 2.0
+            )
+        } else {
+            String::new()
+        };
+        let _ = write!(
+            svg,
+            "<text x=\"{}\" y=\"{}\" font-family=\"Arial, Arimo, sans-serif\" font-size=\"{size}\" \
+             fill=\"{}\"{fit}>{}</text>",
+            x0 + 1.0,
+            y0 + f32::midpoint(y1 - y0, size * 0.7),
+            hex(ink),
+            escape(&label.text)
+        );
+    }
+    svg.push_str("</svg>");
+    let tree = usvg::Tree::from_str(&svg, options()).ok()?;
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)?;
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::identity(),
+        &mut pixmap.as_mut(),
+    );
+    pixmap.encode_png().ok()
+}
+
+fn pixel(pixmap: &resvg::tiny_skia::Pixmap, x: f32, y: f32) -> Option<[u8; 3]> {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let color = pixmap
+        .pixel(x.max(0.0) as u32, y.max(0.0) as u32)?
+        .demultiply();
+    Some([color.red(), color.green(), color.blue()])
+}
+
+/// The colour around a box: the median of the pixels on its edge.
+fn surrounding_colour(pixmap: &resvg::tiny_skia::Pixmap, [x0, y0, x1, y1]: [f32; 4]) -> [u8; 3] {
+    let mut samples = Vec::new();
+    let steps = 24u8;
+    for i in 0..=steps {
+        let t = f32::from(i) / f32::from(steps);
+        let x = x0 + (x1 - x0) * t;
+        let y = y0 + (y1 - y0) * t;
+        samples.extend(
+            [(x, y0), (x, y1 - 1.0), (x0, y), (x1 - 1.0, y)]
+                .into_iter()
+                .filter_map(|(x, y)| pixel(pixmap, x, y)),
+        );
+    }
+    let channel = |index: usize| {
+        let mut values: Vec<u8> = samples
+            .iter()
+            .filter_map(|s| s.get(index).copied())
+            .collect();
+        values.sort_unstable();
+        values.get(values.len() / 2).copied().unwrap_or(255)
+    };
+    [channel(0), channel(1), channel(2)]
+}
+
+/// The colour of the text in a box: of the pixels inside, the one furthest
+/// from the background.
+fn ink_colour(
+    pixmap: &resvg::tiny_skia::Pixmap,
+    [x0, y0, x1, y1]: [f32; 4],
+    background: [u8; 3],
+) -> [u8; 3] {
+    let distance = |c: [u8; 3]| {
+        c.iter()
+            .zip(background)
+            .map(|(a, b)| (i32::from(*a) - i32::from(b)).abs())
+            .sum::<i32>()
+    };
+    let mut best = if distance([0, 0, 0]) > distance([255, 255, 255]) {
+        [0, 0, 0]
+    } else {
+        [255, 255, 255]
+    };
+    let mut best_distance = 0;
+    let steps = 40u8;
+    for i in 0..steps {
+        for j in 0..steps / 4 {
+            let x = x0 + (x1 - x0) * f32::from(i) / f32::from(steps);
+            let y = y0 + (y1 - y0) * f32::from(j) / f32::from(steps / 4);
+            if let Some(c) = pixel(pixmap, x, y) {
+                let d = distance(c);
+                if d > best_distance {
+                    best_distance = d;
+                    best = c;
+                }
+            }
+        }
+    }
+    best
+}
+
+fn hex([r, g, b]: [u8; 3]) -> String {
+    format!("#{r:02x}{g:02x}{b:02x}")
+}
+
+fn escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
