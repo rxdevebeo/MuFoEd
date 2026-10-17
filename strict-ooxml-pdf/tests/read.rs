@@ -344,6 +344,40 @@ fn text_a_shading_is_painted_through_is_text_in_its_colour() {
 }
 
 #[test]
+fn a_shading_moved_by_cm_after_its_clip_fills_the_clip() {
+    // Illustrator's gradient: the shape as a clip, then a unit axis scaled onto
+    // it by `cm`, then `sh`.
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Shading << /Sh0 5 0 R >> >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\nq 10 10 100 50 re W n q 100 0 0 50 10 10 cm /Sh0 sh Q Q\nendstream",
+        "<< /ShadingType 2 /ColorSpace /DeviceRGB /Coords [0 0 1 0] /Extend [true true] /Function << /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [0 0 1] /N 1 >> >>",
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    let vector = page
+        .items()
+        .iter()
+        .find_map(|item| match item {
+            Item::Vector(vector) => Some(vector),
+            _ => None,
+        })
+        .expect("the clip is filled");
+    let gradient = vector.gradient.as_ref().expect("with the shading");
+    let (sx, sy) = vector.ctm.apply(gradient.start.0, gradient.start.1);
+    let (ex, ey) = vector.ctm.apply(gradient.end.0, gradient.end.1);
+    assert!(
+        (sx - 10.0).abs() < 1e-6 && (sy - 10.0).abs() < 1e-6,
+        "{sx} {sy}"
+    );
+    assert!(
+        (ex - 110.0).abs() < 1e-6 && (ey - 10.0).abs() < 1e-6,
+        "{ex} {ey}"
+    );
+}
+
+#[test]
 fn clipping_text_without_a_shading_is_not_on_the_page() {
     let objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",
