@@ -443,6 +443,16 @@ fn paragraphs_of(
             }
             if let Some(item) = marker_item.filter(|item| item.numbered) {
                 crate::lists::mark(&mut fresh, item);
+                // The number is drawn with the paragraph mark's properties;
+                // without them it was the default black, invisible on a dark
+                // slide. The marker's own glyph says how it looked.
+                if let Some(glyph) = line
+                    .glyphs
+                    .iter()
+                    .find(|glyph| !glyph.text.trim().is_empty())
+                {
+                    fresh.props.run_props = Some(run_properties(glyph));
+                }
             }
             paragraph = Some(fresh);
         } else if let Some(paragraph) = paragraph.as_mut() {
