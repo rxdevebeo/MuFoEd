@@ -209,3 +209,35 @@ fn consecutive_page_breaks_keep_empty_pages() {
     );
     assert!(pages[2].svg.contains("SECONDMARK"));
 }
+
+#[test]
+fn a_break_alone_in_its_paragraph_on_a_full_page_breaks_once() {
+    // 27 lines of exactly 24 pt fill a Letter page with inch margins (648 pt)
+    // to its foot. A paragraph that holds only a page break lays out as an
+    // empty line, the break and an empty line: the first has no room left,
+    // and placed it took a page of its own before the break took another -
+    // a blank page (CC0_DOCX_MATH 027).
+    let line = |text: &str| {
+        format!(
+            "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"480\" w:lineRule=\"exact\"/></w:pPr>\
+             <w:r><w:t>{text}</w:t></w:r></w:p>"
+        )
+    };
+    let mut body: String = (0..27).map(|row| line(&format!("Row{row}"))).collect();
+    body.push_str(
+        "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"480\" w:lineRule=\"exact\"/></w:pPr>\
+         <w:r><w:br w:type=\"page\"/></w:r></w:p>",
+    );
+    body.push_str(&line("Next"));
+    body.push_str(
+        "<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+         <w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+    );
+    let pages = render_body(&body);
+    assert_eq!(pages.len(), 2, "one break, two pages");
+    assert!(pages[0].svg.contains("Row26"), "the page is full");
+    assert!(
+        pages[1].svg.contains("Next"),
+        "the text after the break opens page 2"
+    );
+}
