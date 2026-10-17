@@ -4403,6 +4403,7 @@ dependencies = [
  "strict-ooxml-core",
  "strict-ooxml-djvu",
  "strict-ooxml-edit",
+ "strict-ooxml-html",
  "strict-ooxml-ocr",
  "strict-ooxml-pdf",
  "strict-ooxml-render-pdf",
