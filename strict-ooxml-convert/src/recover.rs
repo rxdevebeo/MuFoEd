@@ -146,6 +146,8 @@ pub(crate) enum RecoveredItem {
         area: [f64; 4],
         /// The block's items, top to bottom.
         items: Vec<RecoveredItem>,
+        /// A vertical label: its text set turned, reading upward.
+        turned: bool,
     },
 }
 

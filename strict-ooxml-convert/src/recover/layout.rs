@@ -1165,6 +1165,8 @@ fn build_items(
     };
     // Where each block's items start in `items`.
     let mut starts: Vec<usize> = Vec::with_capacity(placed.len());
+    // Per block, whether it is a vertical label, set turned in its box.
+    let mut turned = vec![false; placed.len()];
     for (position, (block, measured)) in placed.iter().enumerate() {
         starts.push(items.len());
         let column = arrangement
@@ -1255,6 +1257,34 @@ fn build_items(
             first_line: measured.first_line_indent() as f64 / frame.scale,
             language: options.recovery_language.clone(),
         };
+        // In its own box, a block's type is no larger than its text fits:
+        // the size measured off the scan's lines took a drop capital's height
+        // for the paragraph's and a vertical label's for its letters, and the
+        // text ran out of its box over its neighbours. A tall narrow box of a
+        // few words is a vertical label, set turned.
+        let style = if placing {
+            let width = measured.area.width() as f64 / frame.scale;
+            let height = measured.area.height() as f64 / frame.scale;
+            let texts: Vec<String> = paragraph_texts(block.kind, &text)
+                .iter()
+                .map(|text| plain(text))
+                .collect();
+            let vertical = is_vertical(width, height, &texts);
+            if let Some(flag) = turned.get_mut(position) {
+                *flag = vertical;
+            }
+            let (along, across) = if vertical {
+                (height, width)
+            } else {
+                (width, height)
+            };
+            Style {
+                size: fit_size(&texts, along, across, style.size),
+                ..style
+            }
+        } else {
+            style
+        };
         let rows = markdown_table(&text).or_else(|| {
             (block.kind == BlockKind::Table)
                 .then(|| table_from_crop(page, measured.area, frame.page, report))
@@ -1313,7 +1343,7 @@ fn build_items(
     boxes.resize(items.len(), None);
     let items = if placing {
         let areas: Vec<PixelBox> = placed.iter().map(|(_, measured)| measured.area).collect();
-        place_items(items, &boxes, &starts, &areas, frame)
+        place_items(items, &boxes, &starts, &areas, &turned, frame)
     } else {
         arrangement.apply(items, &starts, placed_end, frame.scale)
     };
@@ -1353,6 +1383,7 @@ fn place_items(
     boxes: &[Option<PixelBox>],
     starts: &[usize],
     areas: &[PixelBox],
+    turned: &[bool],
     frame: &Frame,
 ) -> Vec<RecoveredItem> {
     let to_points = |area: PixelBox| {
@@ -1371,6 +1402,7 @@ fn place_items(
                 out.push(RecoveredItem::Placed {
                     area: to_points(*area),
                     items,
+                    turned: turned.get(block).copied().unwrap_or(false),
                 });
             }
         }
@@ -1381,6 +1413,7 @@ fn place_items(
             out.push(RecoveredItem::Placed {
                 area: to_points(*area),
                 items: vec![item],
+                turned: false,
             });
             continue;
         }
@@ -1399,6 +1432,53 @@ fn place_items(
     }
     close(&mut open, &mut out);
     out
+}
+
+/// The width of a character of a substitute sans, as a share of its size:
+/// an average with room to spare.
+const CHAR_WIDTH: f64 = 0.52;
+/// Line height as a share of the type size.
+const LINE_HEIGHT: f64 = 1.2;
+
+/// The largest type size, no larger than `measured`, at which `texts` (one
+/// paragraph each), wrapped to `along` points, take no more than `across`
+/// points of lines (with a tenth to spare).
+fn fit_size(texts: &[String], along: f64, across: f64, measured: Option<f64>) -> Option<f64> {
+    let measured = measured?;
+    if texts.is_empty() || !(along > 0.0 && across > 0.0) {
+        return Some(measured);
+    }
+    let fits = |size: f64| {
+        let per_line = (along / (CHAR_WIDTH * size)).floor().max(1.0);
+        let lines: f64 = texts
+            .iter()
+            .map(|text| (text.chars().count() as f64 / per_line).ceil().max(1.0))
+            .sum();
+        lines * LINE_HEIGHT * size <= across * 1.1
+    };
+    if fits(measured) {
+        return Some(measured);
+    }
+    let (mut low, mut high) = (4.0_f64, measured);
+    if !fits(low) {
+        return Some(low);
+    }
+    for _ in 0..24 {
+        let middle = f64::midpoint(low, high);
+        if fits(middle) {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    Some((low * 2.0).floor() / 2.0)
+}
+
+/// Whether a box holds a vertical label: much taller than wide, narrow, and
+/// a few words.
+fn is_vertical(width: f64, height: f64, texts: &[String]) -> bool {
+    let chars: usize = texts.iter().map(|text| text.chars().count()).sum();
+    height > width * 2.5 && width < 48.0 && (1..=40).contains(&chars)
 }
 
 /// Whether a text is set in capitals: two letters or more, none lower case.
@@ -1859,6 +1939,31 @@ mod tests {
     }
 
     #[test]
+    fn the_type_is_no_larger_than_its_box_holds() {
+        let texts = |text: &str| vec![text.to_owned()];
+        // Ten letters fit a 100 pt line at 12 pt: the measure stands.
+        assert_eq!(
+            super::fit_size(&texts("abcdefghij"), 100.0, 20.0, Some(12.0)),
+            Some(12.0)
+        );
+        // A paragraph measured at 36 pt (its drop capital's height) in a box
+        // of 200 by 100 pt: 300 characters fit only far smaller.
+        let long = "x".repeat(300);
+        let size = super::fit_size(&texts(&long), 200.0, 100.0, Some(36.0)).expect("a size");
+        assert!(size < 12.0 && size > 6.0, "{size}");
+        // No measure, no size.
+        assert_eq!(super::fit_size(&texts("a"), 10.0, 10.0, None), None);
+        // A label 20 pt wide and 120 pt tall is vertical; a column is not.
+        assert!(super::is_vertical(20.0, 120.0, &texts("Lekcija 4")));
+        assert!(!super::is_vertical(200.0, 120.0, &texts("Lekcija 4")));
+        assert!(!super::is_vertical(
+            20.0,
+            120.0,
+            &texts(&"word ".repeat(20))
+        ));
+    }
+
+    #[test]
     fn each_block_is_placed_in_its_own_box() {
         use super::super::RecoveredItem;
         let area = |left, top, right, bottom| PixelBox {
@@ -1883,11 +1988,11 @@ mod tests {
             detail: None,
             origin: (10.0, 20.0),
         };
-        let placed = super::place_items(items, &boxes, &starts, &areas, &frame);
+        let placed = super::place_items(items, &boxes, &starts, &areas, &[false, false], &frame);
         let shapes: Vec<([f64; 4], usize)> = placed
             .iter()
             .map(|item| match item {
-                RecoveredItem::Placed { area, items } => (*area, items.len()),
+                RecoveredItem::Placed { area, items, .. } => (*area, items.len()),
                 _ => panic!("every item is placed"),
             })
             .collect();

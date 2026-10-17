@@ -179,18 +179,21 @@ fn frame_anchor(
         ],
         blocks,
         "none",
+        false,
     ))
 }
 
 /// A text box anchored to the page: `area` is its left, top, width and
 /// height in points from the page's corner, `blocks` its content, `wrap` the
 /// box's own wrapping of its text (`none` keeps a source line one line,
-/// `square` wraps a paragraph in the box's width).
+/// `square` wraps a paragraph in the box's width); `turned` sets the text
+/// reading upward (`vert270`), a vertical label's.
 pub(crate) fn text_box_at(
     name: Arc<str>,
     area: [f64; 4],
     blocks: Vec<Block>,
     wrap: &str,
+    turned: bool,
 ) -> Inline {
     let emu = |points: f64| Emu((points * EMU_PER_POINT).round() as i64);
     let [left, top, width, height] = area;
@@ -224,6 +227,7 @@ pub(crate) fn text_box_at(
                 right_inset: zero,
                 bottom_inset: zero,
                 wrap: Some(Arc::from(wrap)),
+                vert: turned.then(|| Arc::from("vert270")),
                 ..TextBoxBody::default()
             }),
             blocks,

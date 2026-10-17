@@ -1790,7 +1790,11 @@ pub(crate) fn recovered_blocks(
     let (mut pictures, mut boxes) = (Vec::new(), Vec::new());
     for item in &block.items {
         match item {
-            RecoveredItem::Placed { area, items } => {
+            RecoveredItem::Placed {
+                area,
+                items,
+                turned,
+            } => {
                 if let [RecoveredItem::Picture(picture)] = items.as_slice() {
                     pictures.extend(picture_at(picture, *area, index, media, report));
                 } else {
@@ -1802,7 +1806,9 @@ pub(crate) fn recovered_blocks(
                         .collect();
                     if !content.is_empty() {
                         let name = Arc::from(format!("ocr-block-{}", boxes.len()));
-                        boxes.push(crate::designed::text_box_at(name, *area, content, "square"));
+                        boxes.push(crate::designed::text_box_at(
+                            name, *area, content, "square", *turned,
+                        ));
                     }
                 }
             }
