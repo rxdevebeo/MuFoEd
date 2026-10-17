@@ -1,0 +1,23 @@
+[package]
+name = "strict-ooxml-latex"
+description = "Bounded LaTeX import into the Strict WordprocessingML model"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
+strict-ooxml-wml = { version = "0.1.0", path = "../strict-ooxml-wml" }
+thiserror.workspace = true
+# Composes a LaTeX accent (base + combining mark) into its precomposed form.
+unicode-normalization.workspace = true
+
+[dev-dependencies]
+strict-ooxml-write = { version = "0.1.0", path = "../strict-ooxml-write" }
+serde_json.workspace = true
+
+[lints]
+workspace = true

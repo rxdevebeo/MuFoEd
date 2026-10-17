@@ -125,6 +125,17 @@ pub use strict_ooxml_rtf::{
     RtfReport, RtfSpan, UnicodeParameterPolicy, UnsupportedPolicy,
 };
 
+#[cfg(feature = "latex")]
+mod latex;
+#[cfg(feature = "latex")]
+pub use latex::{LatexOpenError, LatexOpened, LatexStatus};
+#[cfg(feature = "latex")]
+pub use strict_ooxml_latex::{
+    FsSource, LatexError, LatexFeatureCount, LatexIssue, LatexLimits, LatexOptions, LatexReport,
+    LatexSpan, MemorySource, Severity as LatexSeverity, SourceProvider,
+    UnsupportedPolicy as LatexUnsupportedPolicy,
+};
+
 #[cfg(feature = "convert")]
 pub use strict_ooxml_convert::{
     convert as convert_pdf, ConversionReport, ConvertError, Converted, Lexicon, LexiconError, Mode,

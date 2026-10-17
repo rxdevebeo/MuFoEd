@@ -68,6 +68,7 @@ macro_rules! eprintln {
 mod djvu;
 mod font_packs;
 mod fonts;
+mod latex;
 mod lexicon_packs;
 mod rtf;
 
@@ -136,6 +137,7 @@ fn run_command() -> ExitCode {
         Some("djvu-dump") => djvu::run(&args.collect::<Vec<_>>(), true),
         Some("from-pdf") => run_from_pdf(&args.collect::<Vec<_>>()),
         Some("import-rtf") => rtf::run(&args.collect::<Vec<_>>()),
+        Some("import-latex") => latex::run(&args.collect::<Vec<_>>()),
         Some("write") => run_write(&args.collect::<Vec<_>>()),
         Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
         Some("lexicons") => match lexicon_packs::run(&args.collect::<Vec<_>>()) {
@@ -170,7 +172,7 @@ fn run_command() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|import-rtf|write|normalize|fonts|lexicons> <file> \
+        "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|import-rtf|import-latex|write|normalize|fonts|lexicons> <file> \
          [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
          [--no-floating] [--no-math] [--wps-times] [--cell-nowrap=spec|always] [--transitional] \
          [--fonts <manifest.json>] [--system-fonts] [--strict-fonts] [--fetch-fonts] [--no-font-packs]"
@@ -190,6 +192,7 @@ fn print_usage() {
     eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr [--ocr-model <name>] [--ocr-endpoint <url>] [--ocr-lang <tag>] [--fetch-lexicon] [--no-lexicon] [--ocr-layout [--ocr-flow]]] [--report-out <json>] (--out is required)");
     eprintln!("  lexicons        word lists that restore diacritics in recognised text: list | install <id...|all> | remove <id...|all> | path");
     eprintln!("  import-rtf      import .rtf to Strict .docx (--out required); writes .rtf-report.json beside output; --wps-text --allow-unsigned-unicode --drop-nul --reject-unsupported are explicit opt-ins");
+    eprintln!("  import-latex    import .tex to Strict .docx (--out required); writes .latex-report.json beside output; resolves \\input/\\include relative to the input; --reject-unsupported is an explicit opt-in");
     eprintln!("  write           serialize the model back to a Strict .docx [--report-out <json>] (--out is required)");
 }
 

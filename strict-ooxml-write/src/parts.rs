@@ -65,12 +65,19 @@ const WML_NAMESPACES: [(&str, &str); 3] = [("w", NS_W), ("r", NS_R), ("m", NS_M)
 /// `XS-18`/`XS-19` debt, kept on purpose), and a **shape in a header** needs its
 /// prefix declared on the header's root. It was not, and the part did not parse —
 /// which is how this list learned that a header can hold more than a picture.
-const CONTENT_NAMESPACES: [(&str, &str); 5] = [
+///
+/// `m` is here for its sibling reason: `EG_BlockLevelElts` reaches `m:oMathPara`
+/// and `m:oMath` in a footnote, an endnote, a header and a footer, so a note that
+/// holds `$...$` writes `m:` elements. Without the entry the note part used a
+/// prefix it did not declare and did not parse (a LaTeX `\footnote` with inline
+/// math was how this was found).
+const CONTENT_NAMESPACES: [(&str, &str); 6] = [
     ("w", NS_W),
     ("r", NS_R),
     ("wp", NS_WP),
     ("a", NS_A),
     ("pic", NS_PIC),
+    ("m", NS_M),
 ];
 
 /// [`CONTENT_NAMESPACES`] plus the vendor vocabularies a shape or a group can be
@@ -236,9 +243,7 @@ pub fn numbering_part(
     let mut xml = XmlWriter::new();
     // A picture bullet is a `w:drawing`, so the part may need `wp`/`a`/`pic`;
     // `start_root` declares only the prefixes the part actually used.
-    let mut namespaces = content_and_vendor_namespaces();
-    namespaces.push(("m", NS_M));
-    xml.start_root("w:numbering", &namespaces);
+    xml.start_root("w:numbering", &content_and_vendor_namespaces());
     // `CT_Numbering`: `numPicBullet*`, `abstractNum*`, `num*`.
     let bullets = pic_bullets(ctx, &mut xml, table);
     for abstract_num in table.abstracts() {

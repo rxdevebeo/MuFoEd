@@ -2294,6 +2294,7 @@ dependencies = [
  "strict-ooxml-core",
  "strict-ooxml-djvu",
  "strict-ooxml-edit",
+ "strict-ooxml-latex",
  "strict-ooxml-ocr",
  "strict-ooxml-pdf",
  "strict-ooxml-render-pdf",
@@ -2400,6 +2401,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "strict-ooxml-latex"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "strict-ooxml-core",
+ "strict-ooxml-wml",
+ "strict-ooxml-write",
+ "thiserror",
+ "unicode-normalization",
+]
+
+[[package]]
 name = "strict-ooxml-ocr"
 version = "0.1.0"
 dependencies = [
@@ -2426,6 +2439,8 @@ dependencies = [
  "strict-ooxml-render-svg",
  "strict-ooxml-testkit",
  "strict-ooxml-wml",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
