@@ -238,6 +238,31 @@ pub(crate) fn build(
             }
             continue;
         }
+        // A running head, a footer, a page number: set where they stand, in
+        // text boxes, out of the flow. In the flow the footer came last with
+        // the page's whole foot above it, and the least excess of the text
+        // over the source's carried it, and the page, onto the next page.
+        let lines = {
+            let height = page.geometry.height;
+            let in_margin =
+                |line: &GlyphLine| line.baseline < height * 0.1 || line.baseline > height * 0.9;
+            let inked_margin = lines
+                .iter()
+                .filter(|line| in_margin(line) && !line.text().trim().is_empty())
+                .count();
+            if inked_margin == 0 || inked_margin > MAX_MARGIN_LINES {
+                lines
+            } else {
+                let (margin, flow): (Vec<GlyphLine>, Vec<GlyphLine>) =
+                    lines.into_iter().partition(|line| in_margin(line));
+                anchored.extend(crate::designed::text_frames(
+                    &margin,
+                    pitch / body,
+                    push_runs,
+                ));
+                flow
+            }
+        };
         let plan = tables::plan(
             page,
             index + 1,
@@ -1416,6 +1441,10 @@ fn place_first_line(
         spacing.before = Some(Twips(to_twips(before)));
     }
 }
+
+/// The most lines a page's top and bottom tenths may hold and still be its
+/// running head and footer; more is body text set to the paper's edge.
+const MAX_MARGIN_LINES: usize = 8;
 
 /// The share of a page below its last line of body text from which the page
 /// ended short.

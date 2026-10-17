@@ -218,3 +218,60 @@ fn a_blank_page_is_a_page() {
         .collect();
     assert_eq!(breaks, ["", "Three"]);
 }
+
+#[test]
+fn a_page_number_stands_where_it_was_out_of_the_flow() {
+    // A footer in the flow came last with the page's foot above it, and any
+    // excess of the text carried it onto the next page.
+    let mut pdf = PdfBuilder::new();
+    let font = pdf.object(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    );
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+    pdf.page_with(
+        b"BT /F1 12 Tf 72 700 Td (Body) Tj ET\nBT /F1 10 Tf 300 40 Td (17) Tj ET",
+        &resources,
+    );
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let flow: Vec<String> = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .flat_map(|block| match block {
+            Block::Paragraph(paragraph) => paragraph.inlines.iter().collect::<Vec<_>>(),
+            _ => Vec::new(),
+        })
+        .filter_map(|inline| match inline {
+            Inline::Run(run) => Some(run),
+            _ => None,
+        })
+        .flat_map(|run| run.content.iter())
+        .filter_map(|content| match content {
+            RunContent::Text(node) => Some(node.text.trim().to_owned()),
+            _ => None,
+        })
+        .filter(|text| !text.is_empty())
+        .collect();
+    assert_eq!(flow, ["Body"], "the page number is not in the flow");
+    let boxed = converted.document.body.blocks.iter().any(|block| {
+        let Block::Paragraph(paragraph) = block else {
+            return false;
+        };
+        paragraph.inlines.iter().any(|inline| match inline {
+            Inline::Drawing(strict_ooxml_wml::model::drawing::Drawing {
+                kind: strict_ooxml_wml::model::drawing::DrawingKind::Anchor(anchor),
+                ..
+            }) => matches!(
+                anchor.graphic.as_ref(),
+                strict_ooxml_wml::model::drawing::Graphic::Shape(shape) if shape.text.is_some()
+            ),
+            _ => false,
+        })
+    });
+    assert!(boxed, "it stands in a text box");
+}

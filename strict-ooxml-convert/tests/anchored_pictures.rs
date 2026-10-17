@@ -54,7 +54,13 @@ fn anchors(blocks: &[Block]) -> Vec<(usize, &AnchorDrawing)> {
                 ..
             }) = inline
             {
-                out.push((index, anchor));
+                // Pictures only: the page's head and foot are text boxes.
+                if matches!(
+                    anchor.graphic.as_ref(),
+                    strict_ooxml_wml::model::drawing::Graphic::Picture(_)
+                ) {
+                    out.push((index, anchor));
+                }
             }
         }
     }
