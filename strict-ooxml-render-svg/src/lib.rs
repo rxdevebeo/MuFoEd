@@ -244,7 +244,8 @@ pub struct RenderOptions {
     pub cell_no_wrap: CellNoWrap,
     /// Place caret anchors (default `false`): an empty text item of zero
     /// width where an empty paragraph's line starts, and one spanning each
-    /// tab, in the run's own style. They change no other placement and are
+    /// tab, in the run's own style, plus a full-extent chart interaction box.
+    /// They change no other placement and are
     /// meant for interaction maps, not for painting: the SVG and PDF
     /// backends skip them ([`TextItem::is_caret_anchor`]).
     pub caret_anchors: bool,

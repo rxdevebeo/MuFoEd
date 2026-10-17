@@ -10,8 +10,10 @@ use strict_ooxml_wml::model::drawing::{
 use strict_ooxml_wml::model::Drawing;
 
 use crate::layout::table::{layout_blocks_inline, offset_item};
-use crate::layout::{ImageItem, Item, LayoutContext, PathItem, RectItem};
-use crate::style::resolve_shape_color;
+use crate::layout::{
+    ImageItem, Item, LayoutContext, PathItem, RectItem, TextAdvanceKind, TextItem,
+};
+use crate::style::{resolve_shape_color, ComputedRun};
 use crate::units::emu_to_px;
 
 /// Default text-box inset in EMU (`w:bodyPr` defaults, 0.1").
@@ -49,7 +51,11 @@ pub(crate) fn anchor_items(
     {
         return Vec::new();
     }
-    graphic_items(ctx, anchor.graphic.as_ref(), x, y, w, h)
+    let mut items = graphic_items(ctx, anchor.graphic.as_ref(), x, y, w, h);
+    if matches!(anchor.graphic.as_ref(), Graphic::Chart(_)) && ctx.options.caret_anchors {
+        items.push(chart_anchor(anchor.doc_pr.as_ref(), x, y, w, h));
+    }
+    items
 }
 
 /// Builds items for an inline (in-flow) graphic that is not a plain picture.
@@ -72,8 +78,42 @@ pub(crate) fn inline_items(
     let extent = inline.extent?;
     let w = emu_to_px(extent.cx.value(), ctx.options.scale).max(1.0);
     let h = emu_to_px(extent.cy.value(), ctx.options.scale).max(1.0);
-    let items = graphic_items(ctx, inline.graphic.as_ref(), 0.0, 0.0, w, h);
+    let mut items = graphic_items(ctx, inline.graphic.as_ref(), 0.0, 0.0, w, h);
+    if matches!(inline.graphic.as_ref(), Graphic::Chart(_)) && ctx.options.caret_anchors {
+        items.push(chart_anchor(inline.doc_pr.as_ref(), 0.0, 0.0, w, h));
+    }
     Some((items, w, h))
+}
+
+/// Interaction geometry for the complete drawing extent, independent of chart
+/// marks, labels or cached data. Like paragraph/tab anchors, this empty text
+/// item is never painted or serialized into OOXML. The visual mapper tags
+/// docPr.descr on a disposable model copy to identify its drawing.
+fn chart_anchor(
+    properties: Option<&strict_ooxml_wml::model::DocPr>,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) -> Item {
+    Item::Text(TextItem {
+        x,
+        baseline: y + h,
+        width: w,
+        text: String::new(),
+        run: ComputedRun {
+            color: properties
+                .and_then(|p| p.descr.as_ref())
+                .map(ToString::to_string),
+            ..ComputedRun::default()
+        },
+        size_px: h,
+        advance: TextAdvanceKind::Metric,
+        field: None,
+        compress_punctuation: false,
+        following_non_space: None,
+        plain_space_factor: 1.0,
+    })
 }
 
 /// Builds the paint items for one graphic at the given box.

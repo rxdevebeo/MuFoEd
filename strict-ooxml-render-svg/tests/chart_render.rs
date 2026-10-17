@@ -68,6 +68,47 @@ fn render_chart(chart: &str) -> Vec<Page> {
     render_with_media(&document, &RenderOptions::default(), Some(&package)).expect("render")
 }
 
+#[test]
+fn chart_interaction_anchors_preserve_the_painted_svg_and_model() {
+    let bytes = DocxBuilder::strict()
+        .body(&chart_paragraph("rIdChart"))
+        .rel("rIdChart", "chart", "charts/chart1.xml")
+        .content_type("/word/charts/chart1.xml", CHART_CONTENT_TYPE)
+        .part(
+            "word/charts/chart1.xml",
+            chart_space(&column_chart()).into_bytes(),
+        )
+        .build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let document = parse_document(&package, &ParseOptions::default()).unwrap();
+    let before = document.body.clone();
+    let options = RenderOptions::default();
+    let plain = render_with_media(&document, &options, Some(&package)).unwrap();
+    let anchored_options = options.caret_anchors(true);
+    let anchored = render_with_media(&document, &anchored_options, Some(&package)).unwrap();
+    assert_eq!(plain.len(), anchored.len());
+    for (a, b) in plain.iter().zip(&anchored) {
+        assert_eq!(
+            a.svg, b.svg,
+            "interaction geometry must not change painting"
+        );
+    }
+    let placed =
+        strict_ooxml_render_svg::place_pages(&document, &anchored_options, Some(&package)).unwrap();
+    let anchors: Vec<_> = placed[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            strict_ooxml_render_svg::Item::Text(text) if text.is_caret_anchor() => Some(text),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(anchors.len(), 1);
+    assert_eq!(anchors[0].width, 480.0);
+    assert_eq!(anchors[0].size_px, 288.0);
+    assert_eq!(document.body, before);
+}
+
 /// The renderer's placeholders: a graphic's grey outline (WQ-023) or a
 /// picture's grey box.
 fn placeholders(svg: &str) -> Vec<()> {
