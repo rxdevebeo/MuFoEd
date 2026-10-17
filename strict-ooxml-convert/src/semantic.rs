@@ -314,7 +314,10 @@ pub(crate) fn build(
         } else if index > 0 {
             mark_page_start(&mut blocks, page_start);
         }
-        break_next = false;
+        // A page whose text stops well above its foot ended where its author
+        // broke the page (a slide, a chapter's last page): the next page
+        // starts a page of its own rather than running on under it.
+        break_next = ends_short(&lines, page.geometry.height);
         // Text a model read off a picture-only region comes after the page's
         // own content, indented to the region's left edge.
         for block in recovered.page(index) {
@@ -1237,6 +1240,25 @@ fn place_first_line(
     if before > 0.5 {
         spacing.before = Some(Twips(to_twips(before)));
     }
+}
+
+/// The share of a page below its last line of body text from which the page
+/// ended short.
+const SHORT_PAGE_SHARE: f64 = 0.3;
+
+/// Whether the page's body text (its foot's margin lines aside) stops more
+/// than [`SHORT_PAGE_SHARE`] of the page above its bottom.
+fn ends_short(lines: &[GlyphLine], page_height: f64) -> bool {
+    if !(page_height.is_finite() && page_height > 0.0) {
+        return false;
+    }
+    let foot = page_height * 0.9;
+    let last = lines
+        .iter()
+        .filter(|line| !line.text().trim().is_empty() && line.baseline < foot)
+        .map(|line| line.baseline)
+        .reduce(f64::max);
+    last.is_some_and(|last| last < page_height * (1.0 - SHORT_PAGE_SHARE))
 }
 
 /// An empty paragraph.

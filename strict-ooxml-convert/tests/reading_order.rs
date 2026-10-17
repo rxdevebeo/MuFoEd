@@ -118,7 +118,12 @@ fn a_pdf_page_that_flows_on_is_marked_where_it_starts() {
     );
     pdf.set_media_box([0, 0, 612, 792]);
     let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
-    pdf.page_with(b"BT /F1 12 Tf 72 700 Td (One) Tj ET", &resources);
+    // A full first page: its text runs to the foot, so the second page
+    // flows on from it.
+    let full: String = (0..44)
+        .map(|row| format!("BT /F1 12 Tf 72 {} Td (One) Tj ET\n", 720 - row * 14))
+        .collect();
+    pdf.page_with(full.as_bytes(), &resources);
     pdf.page_with(b"BT /F1 12 Tf 72 700 Td (Two) Tj ET", &resources);
     let bytes = pdf.build();
     let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
@@ -142,4 +147,37 @@ fn a_pdf_page_that_flows_on_is_marked_where_it_starts() {
         .map(|paragraph| outline(&[Block::Paragraph(paragraph.clone())]).concat())
         .collect();
     assert_eq!(marked, ["Two"]);
+}
+
+#[test]
+fn a_page_that_ends_short_breaks_before_the_next() {
+    // A slide's text stops near its top: the next slide is a page of its own.
+    let mut pdf = PdfBuilder::new();
+    let font = pdf.object(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    );
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+    pdf.page_with(b"BT /F1 12 Tf 72 700 Td (One) Tj ET", &resources);
+    pdf.page_with(b"BT /F1 12 Tf 72 700 Td (Two) Tj ET", &resources);
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let broken: Vec<String> = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Paragraph(paragraph)
+                if paragraph.props.page_break_before
+                    == strict_ooxml_wml::model::values::TriState::On =>
+            {
+                Some(outline(&[block.clone()]).concat())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(broken, ["Two"]);
 }

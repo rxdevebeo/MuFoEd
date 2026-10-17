@@ -51,13 +51,6 @@ pub(crate) fn placed_blocks_for(
         let Item::Vector(vector) = item else {
             continue;
         };
-        if vector.gradient.is_some() {
-            report.record(
-                "vector.gradient", Severity::Unsupported,
-                format!("page {} vector {index}: axial shading is retained by the reader but not converted to DrawingML", page.number),
-            );
-            continue;
-        }
         match rectangle(vector, page.geometry.height) {
             // The PDF renderer paints the page itself as a white rectangle.
             // That canvas is the page, not a drawing, so it is not a second
@@ -85,6 +78,8 @@ pub(crate) fn placed_blocks_for(
 }
 
 struct Rect {
+    /// An axial shading's linear gradient, in place of the solid fill.
+    gradient: Option<ShapeFill>,
     x: f64,
     y: f64,
     width: f64,
@@ -135,6 +130,7 @@ fn rectangle(vector: &Vector, page_height: f64) -> Option<Rect> {
         y: page_height - max_y,
         width,
         height,
+        gradient: gradient_fill(vector),
         fill: vector.fill,
         stroke: vector.stroke,
         line_width: vector.line_width,
@@ -199,7 +195,7 @@ fn outline(vector: &Vector, page_height: f64) -> Option<(Rect, CustomGeometry)> 
         paths: vec![GeometryPath {
             width: emu(width).max(1),
             height: emu(height).max(1),
-            fill: vector.fill.is_none().then(|| Arc::from("none")),
+            fill: (vector.fill.is_none() && vector.gradient.is_none()).then(|| Arc::from("none")),
             stroke: Some(vector.stroke.is_some()),
             commands,
         }],
@@ -211,12 +207,50 @@ fn outline(vector: &Vector, page_height: f64) -> Option<(Rect, CustomGeometry)> 
             y: page_height - max_y,
             width,
             height,
+            gradient: gradient_fill(vector),
             fill: vector.fill,
             stroke: vector.stroke,
             line_width: vector.line_width,
         },
         geometry,
     ))
+}
+
+/// An axial shading as a DrawingML linear gradient: the same stops, along
+/// the axis's direction on the page (DrawingML measures the angle clockwise
+/// from the x axis, y down, in 60 000ths of a degree).
+fn gradient_fill(vector: &Vector) -> Option<ShapeFill> {
+    let gradient = vector.gradient.as_ref()?;
+    let (sx, sy) = vector.ctm.apply(gradient.start.0, gradient.start.1);
+    let (ex, ey) = vector.ctm.apply(gradient.end.0, gradient.end.1);
+    let degrees = (sy - ey).atan2(ex - sx).to_degrees();
+    let degrees = if degrees.is_finite() {
+        degrees.rem_euclid(360.0)
+    } else {
+        0.0
+    };
+    let stops = gradient
+        .stops
+        .iter()
+        .map(|(offset, rgb)| {
+            let [r, g, b] = rgb.to_rgb8();
+            strict_ooxml_wml::model::drawing::GradientStop {
+                position: (offset.clamp(0.0, 1.0) * 100_000.0).round() as i32,
+                color: ShapeColor {
+                    value: Some(Color::new(format!("{r:02X}{g:02X}{b:02X}"))),
+                    theme: None,
+                    markup: None,
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+    (stops.len() >= 2).then(|| ShapeFill::Gradient {
+        stops,
+        angle: Some((degrees * 60_000.0).round() as i32),
+        scaled: Some(false),
+        rotate_with_shape: Some(true),
+        path_shading: None,
+    })
 }
 
 fn is_page_canvas(rect: &Rect, page_width: f64, page_height: f64) -> bool {
@@ -228,7 +262,7 @@ fn is_page_canvas(rect: &Rect, page_width: f64, page_height: f64) -> bool {
         let [red, green, blue] = rgb.to_rgb8();
         red >= 250 && green >= 250 && blue >= 250
     });
-    covers && white && rect.stroke.is_none()
+    covers && white && rect.stroke.is_none() && rect.gradient.is_none()
 }
 
 fn is_rule(vector: &Vector) -> bool {
@@ -267,7 +301,10 @@ fn shape_paragraph(index: usize, rect: &Rect, geometry: ShapeGeometry) -> Block 
             markup: None,
         }
     };
-    let fill = rect.fill.map(|rgb| ShapeFill::Solid { color: color(rgb) });
+    let fill = rect
+        .gradient
+        .clone()
+        .or_else(|| rect.fill.map(|rgb| ShapeFill::Solid { color: color(rgb) }));
     let stroke = rect.stroke.map(|rgb| ShapeStroke {
         color: Some(color(rgb)),
         width: Some(emu(rect.line_width.max(0.25))),
