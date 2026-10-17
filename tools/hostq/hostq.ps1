@@ -407,7 +407,7 @@ $script:AllowedFields = @{
     'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts', 'font_pack', 'font_packs')
     'rtf'         = @('id', 'kind', 'sha')
     'pdf-dump'    = @('id', 'kind', 'sha', 'input', 'page', 'glyphs')
-    'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes', 'lang', 'lexicon', 'ocr_layout', 'images')
+    'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes', 'lang', 'lexicon', 'ocr_layout', 'images', 'ocr')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
 }
@@ -572,7 +572,7 @@ function Test-JobRecord {
             if ($fields -contains 'lang' -and ($Job.lang -isnot [string] -or [string]$Job.lang -notmatch '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$')) {
                 return (& $reject 'lang is not a BCP 47 tag')
             }
-            foreach ($flag in @('convert', 'layout', 'lexicon', 'ocr_layout', 'images')) {
+            foreach ($flag in @('convert', 'layout', 'lexicon', 'ocr_layout', 'images', 'ocr')) {
                 if ($fields -contains $flag -and $Job.$flag -isnot [bool]) {
                     return (& $reject ("{0} must be true or false" -f $flag))
                 }
@@ -1361,7 +1361,13 @@ function Invoke-OcrProbe {
     $pages = [string]$Job.pages
     $convert = $true
     if ($null -ne $Job.PSObject.Properties['convert']) { $convert = [bool]$Job.convert }
-    $layout = $true
+    # `ocr: false` converts the PDF as it is, without a model: a text PDF's
+    # result is then the converter's own, not mixed with what a model read
+    # from its pictures. The layout probe needs the model, so it is off then
+    # unless asked for.
+    $ocr = $true
+    if ($null -ne $Job.PSObject.Properties['ocr']) { $ocr = [bool]$Job.ocr }
+    $layout = $ocr
     if ($null -ne $Job.PSObject.Properties['layout']) { $layout = [bool]$Job.layout }
     $ocrEnv = @{ STRICTLIB_LEXICON_DIR = (Join-Path $QueueDir 'lexicons') }
     if ($null -ne $Job.PSObject.Properties['model']) { $ocrEnv['OLLAMA_MODEL'] = [string]$Job.model }
@@ -1375,20 +1381,21 @@ function Invoke-OcrProbe {
             $cli = Join-Path $target 'release\strict-ooxml.exe'
             $docx = Join-Path $OutDir 'ocr.docx'
             $report = Join-Path $OutDir 'ocr-report.json'
-            $convertArgs = @('from-pdf', $inputPdf, '--ocr', '--pages', $pages, '--out', $docx, '--report-out', $report)
+            $convertArgs = @('from-pdf', $inputPdf, '--pages', $pages, '--out', $docx, '--report-out', $report)
+            if ($ocr) { $convertArgs += @('--ocr') }
             # Pictures stay out unless `images` asks for them: they cost
             # size and time, and recognition does not need them.
             if (-not ($null -ne $Job.PSObject.Properties['images'] -and [bool]$Job.images)) { $convertArgs += @('--no-images') }
             # `lang` names the text's language; its word list (the executor's
             # own cache, fetched on first use) restores dropped diacritics
             # unless `lexicon` is false.
-            if ($null -ne $Job.PSObject.Properties['lang']) {
+            if ($ocr -and $null -ne $Job.PSObject.Properties['lang']) {
                 $convertArgs += @('--ocr-lang', [string]$Job.lang)
                 $useLexicon = $true
                 if ($null -ne $Job.PSObject.Properties['lexicon']) { $useLexicon = [bool]$Job.lexicon }
                 if ($useLexicon) { $convertArgs += @('--fetch-lexicon') } else { $convertArgs += @('--no-lexicon') }
             }
-            if ($null -ne $Job.PSObject.Properties['ocr_layout'] -and [bool]$Job.ocr_layout) { $convertArgs += @('--ocr-layout') }
+            if ($ocr -and $null -ne $Job.PSObject.Properties['ocr_layout'] -and [bool]$Job.ocr_layout) { $convertArgs += @('--ocr-layout') }
             $fromPdf = Invoke-Logged -Name 'from-pdf' -Exe $cli -Arguments $convertArgs -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $ocrEnv -OutDir $OutDir
             # Exit 1 is a written document whose report has losses.
             if ($fromPdf.exit -eq 1 -and (Test-Path -LiteralPath $docx)) { $fromPdf.exit = 0 }
@@ -1406,7 +1413,8 @@ function Invoke-OcrProbe {
                 # Scan beside result, page by page (xtool/ocr-qa/compare.py):
                 # a page rebuilt from its layout starts a page of its own, so the
                 # DOCX is cut there and each part rendered next to its scan.
-                if ($null -ne $Job.PSObject.Properties['ocr_layout'] -and [bool]$Job.ocr_layout) {
+                # Without a model the comparison is the probe's point.
+                if ((-not $ocr) -or ($null -ne $Job.PSObject.Properties['ocr_layout'] -and [bool]$Job.ocr_layout)) {
                     $first = [string]([int](([string]$Job.pages) -split '-')[0])
                     $compareDir = Join-Path $OutDir 'compare'
                     $compare = Invoke-Logged -Name 'compare' -Exe $script:Python -Arguments @('-X', 'utf8', 'xtool/ocr-qa/compare.py', '--source', $inputPdf, '--first', $first, '--docx', $docx, '--cli', $cli, '--out', $compareDir) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
