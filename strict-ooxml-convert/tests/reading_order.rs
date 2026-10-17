@@ -120,9 +120,11 @@ fn a_pdf_page_that_flows_on_is_marked_where_it_starts() {
     let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
     // A full first page: its text runs to the foot, so the second page
     // flows on from it.
-    let full: String = (0..44)
-        .map(|row| format!("BT /F1 12 Tf 72 {} Td (One) Tj ET\n", 720 - row * 14))
-        .collect();
+    let full = (0..44).fold(String::new(), |mut out, row| {
+        use std::fmt::Write as _;
+        let _ = writeln!(out, "BT /F1 12 Tf 72 {} Td (One) Tj ET", 720 - row * 14);
+        out
+    });
     pdf.page_with(full.as_bytes(), &resources);
     pdf.page_with(b"BT /F1 12 Tf 72 700 Td (Two) Tj ET", &resources);
     let bytes = pdf.build();
@@ -174,7 +176,7 @@ fn a_page_that_ends_short_breaks_before_the_next() {
                 if paragraph.props.page_break_before
                     == strict_ooxml_wml::model::values::TriState::On =>
             {
-                Some(outline(&[block.clone()]).concat())
+                Some(outline(std::slice::from_ref(block)).concat())
             }
             _ => None,
         })
