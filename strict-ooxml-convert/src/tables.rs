@@ -1236,6 +1236,7 @@ mod tests {
     fn rule(x0: f64, y0: f64, x1: f64, y1: f64) -> Item {
         Item::Vector(Vector {
             gradient: None,
+            fill_alpha: 1.0,
             subpaths: vec![SubPath {
                 points: vec![(x0, HEIGHT - y0), (x1, HEIGHT - y1)],
                 closed: false,
@@ -1256,6 +1257,7 @@ mod tests {
     fn box_at(left: f64, top: f64, right: f64, bottom: f64) -> Item {
         Item::Vector(Vector {
             gradient: None,
+            fill_alpha: 1.0,
             subpaths: vec![SubPath {
                 points: vec![
                     (left, HEIGHT - top),

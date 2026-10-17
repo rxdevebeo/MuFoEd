@@ -59,3 +59,44 @@ fn an_axial_shading_is_a_linear_gradient() {
     // Left to right is 0 degrees.
     assert_eq!(*angle, Some(0));
 }
+
+#[test]
+fn a_translucent_fill_keeps_its_opacity() {
+    // A light box over a photograph (`ca` 0.5): drawn opaque it hid the
+    // photograph and the title set on it.
+    let mut pdf = PdfBuilder::new();
+    pdf.set_media_box([0, 0, 612, 792]);
+    pdf.page_with(
+        b"/GS0 gs 1 0 0 rg 100 100 100 50 re f",
+        "<< /ExtGState << /GS0 << /ca 0.5 >> >> >>",
+    );
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let markup = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        })
+        .flat_map(|paragraph| paragraph.inlines.iter())
+        .find_map(|inline| match inline {
+            Inline::Drawing(Drawing {
+                kind: DrawingKind::Anchor(anchor),
+                ..
+            }) => match anchor.graphic.as_ref() {
+                Graphic::Shape(shape) => match &shape.fill {
+                    Some(ShapeFill::Solid { color }) => color.markup.clone(),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("a translucent fill");
+    assert!(markup.contains("<a:alpha val=\"50%\"/>"), "{markup}");
+}
