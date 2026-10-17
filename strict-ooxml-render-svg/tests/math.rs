@@ -7,6 +7,29 @@ mod common;
 use strict_ooxml_render_svg::font::{BuiltinFontProvider, FontProvider};
 
 #[test]
+fn uniform_equation_font_size_scales_inline_and_display_constructions() {
+    for display in [false, true] {
+        let render = |size| {
+            let formula = format!("<m:oMath><m:f><m:num><m:r><w:rPr><w:sz w:val=\"{size}\"/></w:rPr><m:t>a</m:t></m:r></m:num><m:den><m:r><w:rPr><w:sz w:val=\"{size}\"/></w:rPr><m:t>b</m:t></m:r></m:den></m:f></m:oMath>");
+            render_body(&if display {
+                format!("<w:p><m:oMathPara>{formula}</m:oMathPara></w:p>")
+            } else {
+                format!("<w:p>{formula}</w:p>")
+            })
+        };
+        let small = render(22);
+        let large = render(44);
+        let small_size = font_size_near(&small, ">a</text>").unwrap();
+        let large_size = font_size_near(&large, ">a</text>").unwrap();
+        assert!((large_size / small_size - 2.0).abs() < 0.01);
+        let span = |svg: &str| {
+            (position(svg, ">b</text>").unwrap().1 - position(svg, ">a</text>").unwrap().1).abs()
+        };
+        assert!((span(&large) / span(&small) - 2.0).abs() < 0.03);
+    }
+}
+
+#[test]
 fn left_and_right_script_pairs_leave_a_visible_gap() {
     let font = BuiltinFontProvider::new();
     for tag in ["sPre", "sSubSup"] {
@@ -471,6 +494,108 @@ fn an_nary_operator_places_its_limits_over_and_under() {
         (lower_x - upper_x).abs() < 6.0,
         "undOvr centres both limits: {lower_x} vs {upper_x}"
     );
+}
+
+fn check_display_operator_limits(
+    assets: Option<&std::sync::Arc<strict_ooxml_render_svg::font::FontAssets>>,
+) {
+    use strict_ooxml_render_svg::{Item, RenderOptions};
+    for operator in ['∑', '∏', '∫'] {
+        for grow in [false, true] {
+            let body = format!("<w:p><m:oMathPara><m:oMath><m:nary><m:naryPr><m:chr m:val=\"{operator}\"/><m:limLoc m:val=\"undOvr\"/><m:grow m:val=\"{}\"/></m:naryPr><m:sub><m:r><m:t>i</m:t></m:r></m:sub><m:sup><m:r><m:t>n</m:t></m:r></m:sup><m:e><m:r><m:t>x</m:t></m:r></m:e></m:nary></m:oMath></m:oMathPara></w:p>", u8::from(grow));
+            let xml = common::document(&body);
+            let bytes = strict_ooxml_testkit::DocxBuilder::strict()
+                .part("word/document.xml", xml.as_bytes())
+                .build();
+            let package = strict_ooxml_core::opc::Package::open_reader(
+                &bytes[..],
+                &strict_ooxml_core::opc::OpenOptions::default(),
+            )
+            .unwrap();
+            let document = strict_ooxml_wml::parse_document(
+                &package,
+                &strict_ooxml_wml::ParseOptions::default(),
+            )
+            .unwrap();
+            let options = RenderOptions {
+                font_assets: assets.cloned(),
+                ..RenderOptions::default()
+            };
+            let pages =
+                strict_ooxml_render_svg::place_pages(&document, &options, Some(&package)).unwrap();
+            let leaves: Vec<_> = pages[0].items.iter().flat_map(Item::leaves).collect();
+            let text = |value: &str| {
+                leaves
+                    .iter()
+                    .find_map(|i| match i {
+                        Item::Text(t) if t.text == value => Some(t),
+                        _ => None,
+                    })
+                    .unwrap()
+            };
+            let operand = text("x");
+            let em = operand.size_px;
+            let glyph = leaves
+                .iter()
+                .find_map(|i| match i {
+                    Item::Path(p) if p.h > em => Some(p),
+                    _ => None,
+                })
+                .expect("display operator must use its large form even with a tall font line box");
+            assert!(
+                glyph.h >= 1.8 * em && glyph.h <= 2.4 * em,
+                "{operator}: {} / {em}",
+                glyph.h
+            );
+            let lower = text("i");
+            let upper = text("n");
+            let bottom = glyph.y + glyph.h;
+            assert!(
+                lower.baseline > bottom && lower.baseline - bottom < em,
+                "{operator} lower limit is detached: {} vs {bottom}",
+                lower.baseline
+            );
+            assert!(
+                upper.baseline < glyph.y && glyph.y - upper.baseline < em,
+                "upper limit detached"
+            );
+            let center = glyph.x + glyph.w / 2.0;
+            assert!((lower.x + lower.width / 2.0 - center).abs() < 1.0);
+            assert!((upper.x + upper.width / 2.0 - center).abs() < 1.0);
+        }
+    }
+}
+
+#[test]
+fn nary_limits_use_ink_with_bundled_and_supplied_math_fonts() {
+    use strict_ooxml_render_svg::font::{FontAsset, FontAssetLimits, FontAssets};
+    check_display_operator_limits(None);
+    // A caller-supplied font follows the same program path as system and
+    // embedded faces, including OS/2 Windows line metrics. Keep this portable.
+    let source =
+        strict_ooxml_render_svg::font::builtin::face_source("Cambria Math", false, false).unwrap();
+    let asset = FontAsset::new("Cambria Math", false, false, source.data.to_vec());
+    check_display_operator_limits(Some(&std::sync::Arc::new(
+        FontAssets::new(vec![asset], FontAssetLimits::default()).unwrap(),
+    )));
+}
+
+#[test]
+#[cfg(feature = "system-fonts")]
+fn nary_limits_stay_attached_with_installed_cambria_math() {
+    use strict_ooxml_render_svg::font::{system, FontAssetLimits, FontAssets};
+    let assets = system::assets_for(
+        &["Cambria Math".to_owned()],
+        system::index(),
+        FontAssetLimits::default(),
+    )
+    .unwrap();
+    if assets.is_empty() {
+        return;
+    }
+    check_display_operator_limits(Some(&std::sync::Arc::new(
+        FontAssets::new(assets, FontAssetLimits::default()).unwrap(),
+    )));
 }
 
 #[test]

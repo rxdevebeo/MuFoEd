@@ -610,9 +610,38 @@ impl Frame<'_, '_> {
             .sum();
         let metrics = crate::font::embedded::run_metrics(run, &family, self.ctx.font);
         if !self.nominal_text {
+            // Measure the actual program used for this run. A math font's
+            // Windows line box can include very tall constructions and is
+            // not the ink extent of an individual glyph (notably Cambria Math).
+            use skrifa::{
+                instance::{LocationRef, Size as FontSize},
+                FontRef, MetadataProvider,
+            };
+            let program = run.font_programs.for_resource(&family);
+            let font = program.and_then(|p| FontRef::new(&p.bytes).ok());
+            let glyphs = font
+                .as_ref()
+                .map(|f| f.glyph_metrics(FontSize::unscaled(), LocationRef::default()));
+            let units = font.as_ref().map(|f| {
+                f64::from(
+                    f.metrics(FontSize::unscaled(), LocationRef::default())
+                        .units_per_em,
+                )
+            });
             if let Some((above, below)) = text
                 .chars()
                 .filter_map(|ch| {
+                    if let (Some(font), Some(glyphs), Some(units)) = (&font, &glyphs, units) {
+                        if let Some(bounds) = font.charmap().map(ch).and_then(|g| glyphs.bounds(g))
+                        {
+                            if units > 0.0 {
+                                return Some((
+                                    f64::from(bounds.y_max).max(0.0) / units,
+                                    (-f64::from(bounds.y_min)).max(0.0) / units,
+                                ));
+                            }
+                        }
+                    }
                     self.ctx
                         .font
                         .glyph_vertical_em(&family, ch, run.bold, run.italic)
@@ -742,12 +771,41 @@ pub(crate) fn layout_inline_wrapped(
     run: &ComputedRun,
     width: f64,
 ) -> Vec<MathBox> {
+    // A uniformly formatted equation carries its own w:sz on m:r/w:rPr.
+    // Use that size for the whole construction, including rules and scripts.
+    let mut run = run.clone();
+    if let Some(size) = expression_size(expression) {
+        run.size_pt = f64::from(size) / 2.0;
+    }
     let budget = Cell::new(MAX_ITEMS);
     layout_wrapped_nodes(
-        &base_frame(ctx, run, &budget, false),
+        &base_frame(ctx, &run, &budget, false),
         &expression.nodes,
         width,
     )
+}
+
+fn expression_size(expression: &MathExpression) -> Option<i32> {
+    let mut size = None;
+    let mut uniform = true;
+    expression.walk(&mut |node| {
+        if let MathNode::Run(run) = node {
+            if run.text.is_empty() {
+                return;
+            }
+            if let Some(value) = run.run_properties.as_ref().and_then(|p| p.size) {
+                if value.0 <= 0 {
+                    return;
+                }
+                let value = value.0;
+                if size.is_some_and(|known| known != value) {
+                    uniform = false;
+                }
+                size = Some(value);
+            }
+        }
+    });
+    uniform.then_some(size).flatten()
 }
 
 fn split_explicit_math_lines(nodes: &[MathNode]) -> Option<Vec<Vec<MathNode>>> {
@@ -1031,6 +1089,18 @@ pub(crate) fn layout_display(
     content_width: f64,
     paragraph_style: &ComputedParagraph,
 ) -> MathBox {
+    let mut run = run.clone();
+    let sizes: Vec<_> = paragraph
+        .equations
+        .iter()
+        .filter_map(expression_size)
+        .collect();
+    if let Some(size) = sizes
+        .first()
+        .filter(|size| sizes.iter().all(|other| other == *size))
+    {
+        run.size_pt = f64::from(*size) / 2.0;
+    }
     let budget = Cell::new(MAX_ITEMS);
     let settings = ctx.document.settings.math_properties.as_ref();
     let display_defaults = use_display_defaults(ctx);
@@ -1058,7 +1128,7 @@ pub(crate) fn layout_display(
         .map_or(2.0, |value| spacing(Some(value)));
     // Equation boundaries preserve separate OMML objects, not implicit breaks.
     // WPS puts adjacent equations on a common baseline unless w:br intervenes.
-    let frame = base_frame(ctx, run, &budget, true);
+    let frame = base_frame(ctx, &run, &budget, true);
     let mut boxed = MathBox::empty();
     let mut line = MathBox::empty();
     let mut trailing_break = false;
@@ -1703,7 +1773,12 @@ fn layout_nary(frame: &Frame<'_, '_>, nary: &NaryOperator) -> MathBox {
     if let Some(control) = nary.control.as_deref() {
         apply_control(frame, &mut operand, control);
     }
-    let script_frame = frame.script();
+    // Limits clear the operator's ink. Full font line metrics include room
+    // for unrelated tall glyphs and can push a one-letter limit far away.
+    let script_frame = Frame {
+        nominal_text: false,
+        ..frame.script()
+    };
     let lower = if nary.hide_sub {
         MathBox::empty()
     } else {
@@ -1823,10 +1898,14 @@ fn nary_operator(
 ) -> MathBox {
     let run = frame.math_run(MathStyle::Plain);
     let text = character.to_string();
-    let plain = frame.text_size(&text, &run);
+    let ink_frame = Frame {
+        nominal_text: false,
+        ..*frame
+    };
+    let plain = ink_frame.text_size(&text, &run);
     let em = frame.em();
     if !frame.display {
-        return frame.text(0.0, 0.0, &text, run);
+        return ink_frame.text(0.0, 0.0, &text, run);
     }
     // A display operator has the display cut's size; only `m:grow` stretches
     // it further over its operand and limits.
@@ -1840,11 +1919,11 @@ fn nary_operator(
         .max(stretch)
         .max(display_height * em);
     if height <= plain.height + plain.depth {
-        return frame.text(0.0, 0.0, &text, run);
+        return ink_frame.text(0.0, 0.0, &text, run);
     }
     let box_width = height * aspect;
     let Some(d) = shapes::nary_operator(character, box_width, height) else {
-        return frame.text(0.0, 0.0, &text, run);
+        return ink_frame.text(0.0, 0.0, &text, run);
     };
     let width = box_width.max(plain.width);
     // A large operator is centred on the math axis, as Word draws it.
