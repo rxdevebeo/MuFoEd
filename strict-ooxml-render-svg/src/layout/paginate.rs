@@ -787,7 +787,29 @@ fn place_body_paragraph(
     let expected = paginator.placement_here();
     paginator.last_placed = None;
     let mut host = None;
+    // A paragraph that holds only a page break lays out as an empty line,
+    // the break, and an empty line. The first is nothing on its page, and on
+    // a full page it overflowed onto the next one, where the break then
+    // opened a third: a blank page (027). It is not placed.
+    let blank_before_break: Vec<bool> = flow
+        .flows
+        .iter()
+        .zip(
+            flow.flows
+                .iter()
+                .skip(1)
+                .map(Some)
+                .chain(std::iter::once(None)),
+        )
+        .map(|(item, next)| {
+            matches!(item, Flow::Line(line) if is_blank_line(line))
+                && matches!(next, Some(Flow::PageBreak))
+        })
+        .collect();
     for (index, item) in flow.flows.into_iter().enumerate() {
+        if blank_before_break.get(index).copied().unwrap_or(false) && !boundary_marker {
+            continue;
+        }
         if index > 0 && widow_break == Some(index) {
             paginator.overflow_break()?;
         }
@@ -802,6 +824,14 @@ fn place_body_paragraph(
     }
     paginator.place_anchors(ctx, flow.anchors, host.unwrap_or(expected));
     Ok(flow.space_after + flow.border_after)
+}
+
+/// Whether a laid-out line shows nothing: no text but spaces, no graphics,
+/// no note reference.
+fn is_blank_line(line: &crate::layout::TextLine) -> bool {
+    line.graphics.is_empty()
+        && line.footnote_refs.is_empty()
+        && line.items.iter().all(|item| item.text.trim().is_empty())
 }
 
 /// Whether an anchor positioned from its paragraph (or line) by an offset would
