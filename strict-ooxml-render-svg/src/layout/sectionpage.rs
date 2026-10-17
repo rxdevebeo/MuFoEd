@@ -38,6 +38,7 @@ pub(crate) fn apply(
             scale,
             None,
             ctx.document.settings.gutter_at_top,
+            ctx.options.default_paper,
         );
         let body_top = geometry.top;
         let body_bottom = page.height_px - geometry.bottom;
@@ -83,6 +84,7 @@ pub(crate) fn orient_body(ctx: &LayoutContext<'_>, pages: &mut [PlacedPage], sec
             ctx.options.scale,
             None,
             ctx.document.settings.gutter_at_top,
+            ctx.options.default_paper,
         );
         let matrix = match direction {
             Some(TextDirection::TbRl | TextDirection::TbRlV) => {
@@ -272,7 +274,13 @@ pub(crate) fn mirror_margins(
             continue;
         }
         let section = sections.get(page.section_index).map(|s| &s.properties);
-        let geometry = geometry_for(section, scale, None, ctx.document.settings.gutter_at_top);
+        let geometry = geometry_for(
+            section,
+            scale,
+            None,
+            ctx.document.settings.gutter_at_top,
+            ctx.options.default_paper,
+        );
         let dx = geometry.right - geometry.left;
         if dx.abs() < 1e-9 {
             continue;

@@ -14,7 +14,9 @@ use common::{
     build_docx, content_types, document, open_body, open_bytes, render_body, root_rels,
     without_font_faces, W,
 };
-use strict_ooxml_render_svg::{place_pages, render, PageSelection, RenderOptions};
+use strict_ooxml_render_svg::{
+    place_pages, render, DefaultPaper, PageSelection, RenderOptions,
+};
 
 #[test]
 fn simple_paragraph_renders_text_and_formatting() {
@@ -71,6 +73,37 @@ fn zero_page_size_falls_back_to_letter() {
             .iter()
             .any(|warning| warning.contains("pgSz")),
         "expected pgSz warning: {:?}",
+        pages[0].warnings
+    );
+}
+
+#[test]
+fn default_paper_a4_replaces_a_missing_page_size() {
+    // Word/WPS on a metric machine use A4 where no w:pgSz says otherwise; the
+    // caller passes the locale's choice (the CLI's `--default-page-size auto`).
+    let (_package, document) = open_body("<w:p><w:r><w:t>x</w:t></w:r></w:p>");
+    let pages = render(
+        &document,
+        &RenderOptions::default().default_paper(DefaultPaper::A4),
+    )
+    .expect("render");
+    // 11906 x 16838 twips at 96 dpi.
+    assert!(
+        (pages[0].width_px - 793.733).abs() < 0.01,
+        "{}",
+        pages[0].width_px
+    );
+    assert!(
+        (pages[0].height_px - 1122.533).abs() < 0.01,
+        "{}",
+        pages[0].height_px
+    );
+    assert!(
+        pages[0]
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("A4")),
+        "expected A4 warning: {:?}",
         pages[0].warnings
     );
 }

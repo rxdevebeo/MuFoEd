@@ -1146,7 +1146,7 @@ impl PartParser<'_> {
                             "pgSz" => {
                                 // AUD-73: missing or non-positive dimensions are
                                 // kept as declared (or absent) but recorded as
-                                // Partial; layout substitutes US Letter.
+                                // Partial; layout substitutes a default paper.
                                 let width = parser.measure_twips(&attrs, "w", "w:pgSz");
                                 let height = parser.measure_twips(&attrs, "h", "w:pgSz");
                                 let width_bad = width.is_none_or(|twips| twips.value() <= 0);
@@ -1156,7 +1156,7 @@ impl PartParser<'_> {
                                         "w:pgSz",
                                         SupportStatus::Partial,
                                         Some(
-                                            "non-positive or missing page size; using Letter"
+                                            "non-positive or missing page size; the layout substitutes a default"
                                                 .to_owned(),
                                         ),
                                         Some(parser.location()),

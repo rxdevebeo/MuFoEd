@@ -392,6 +392,7 @@ fn layout_once(
         ctx.options.scale,
         Some(ctx),
         ctx.document.settings.gutter_at_top,
+        ctx.options.default_paper,
     );
     let page_start = first_props
         .and_then(|properties| properties.page_number.as_ref())
@@ -421,6 +422,7 @@ fn layout_once(
                 ctx.options.scale,
                 Some(ctx),
                 ctx.document.settings.gutter_at_top,
+                ctx.options.default_paper,
             );
             paginator.apply_section_break(break_type, geometry, index)?;
             if paginator.selection_exhausted() {
@@ -1605,6 +1607,7 @@ impl<'a> Paginator<'a> {
                 ctx.options.scale,
                 None,
                 ctx.document.settings.gutter_at_top,
+                ctx.options.default_paper,
             );
             widths.push(width_key(section.content_width()));
             widths.extend(
@@ -1774,6 +1777,7 @@ impl<'a> Paginator<'a> {
                     self.ctx.options.scale,
                     None,
                     self.ctx.document.settings.gutter_at_top,
+                    self.ctx.options.default_paper,
                 ),
             },
         );

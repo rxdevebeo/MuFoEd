@@ -53,6 +53,7 @@ pub(crate) fn resolve(
             scale,
             None,
             ctx.document.settings.gutter_at_top,
+            ctx.options.default_paper,
         );
         geometry.active_column = pending.column;
         let w = resolved_axis(
@@ -472,7 +473,7 @@ mod tests {
 
     #[test]
     fn percentage_offsets_use_the_reference_span_including_negative_offsets() {
-        let geometry = geometry_for(None, 1.0, None, false);
+        let geometry = geometry_for(None, 1.0, None, false, crate::DefaultPaper::Letter);
         let position = Position {
             relative_from: Some("margin".into()),
             percent_offset: Some(25_000),

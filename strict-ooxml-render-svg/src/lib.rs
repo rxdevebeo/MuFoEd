@@ -181,6 +181,43 @@ pub enum FontPolicy {
     Reject,
 }
 
+/// The page size substituted when a section declares no usable `w:pgSz`.
+///
+/// OOXML leaves the default page size to the application. Word and WPS follow
+/// the machine's locale (US Letter in the US, A4 on metric machines); the
+/// library default is [`DefaultPaper::Letter`] so that a rendering does not
+/// depend on the machine (ADR-0006). A caller that wants Word/WPS behaviour
+/// sets [`RenderOptions::default_paper`] from the locale (the CLI does so with
+/// `--default-page-size auto`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DefaultPaper {
+    /// US Letter, 12240 x 15840 twips (8.5 x 11 in).
+    #[default]
+    Letter,
+    /// ISO A4, 11906 x 16838 twips (210 x 297 mm).
+    A4,
+}
+
+impl DefaultPaper {
+    /// Width and height of the paper, in twips.
+    #[must_use]
+    pub const fn twips(self) -> (i32, i32) {
+        match self {
+            Self::Letter => (12_240, 15_840),
+            Self::A4 => (11_906, 16_838),
+        }
+    }
+
+    /// The name of the paper, for warnings.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Letter => "Letter",
+            Self::A4 => "A4",
+        }
+    }
+}
+
 /// Options controlling rendering.
 #[derive(Clone, Debug)]
 pub struct RenderOptions {
@@ -191,6 +228,10 @@ pub struct RenderOptions {
     pub wrap_coordinates: WrapCoordinates,
     /// Output scale: px per inch (default `96.0` = 96 DPI).
     pub scale: f64,
+    /// Page size substituted when a section declares no usable `w:pgSz`
+    /// (missing or non-positive). Default [`DefaultPaper::Letter`]; Word and
+    /// WPS instead follow the machine's locale.
+    pub default_paper: DefaultPaper,
     /// Media emission mode.
     pub media: MediaMode,
     /// Font provider kind.
@@ -249,6 +290,7 @@ impl Default for RenderOptions {
             max_svg_bytes: usize::MAX,
             wrap_coordinates: WrapCoordinates::Emu,
             scale: 96.0,
+            default_paper: DefaultPaper::default(),
             media: MediaMode::EmbedDataUri,
             font_provider: FontProviderKind::Builtin,
             font_assets: None,
@@ -280,6 +322,13 @@ impl RenderOptions {
         if scale.is_finite() && scale > 0.0 {
             self.scale = scale;
         }
+        self
+    }
+
+    /// Sets the substituted page size (see [`Self::default_paper`]).
+    #[must_use]
+    pub fn default_paper(mut self, paper: DefaultPaper) -> Self {
+        self.default_paper = paper;
         self
     }
 

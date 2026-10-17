@@ -632,10 +632,6 @@ impl ColumnLayout {
     }
 }
 
-/// Default page size (US Letter), in twips.
-const DEFAULT_PAGE_WIDTH: i32 = 12_240;
-/// Default page height (US Letter), in twips.
-const DEFAULT_PAGE_HEIGHT: i32 = 15_840;
 /// Default margin, in twips (1 inch).
 const DEFAULT_MARGIN: i32 = 1_440;
 /// Left and right margin of a section that is written without `w:pgMar`:
@@ -647,7 +643,7 @@ const DEFAULT_SIDE_MARGIN: i32 = 1_800;
 
 /// Builds [`Geometry`] from optional section properties.
 ///
-/// AUD-73: missing or non-positive `w:pgSz` dimensions become US Letter; when
+/// AUD-73: missing or non-positive `w:pgSz` dimensions become `paper`; when
 /// `ctx` is provided a page warning is recorded.
 #[must_use]
 pub(crate) fn geometry_for(
@@ -655,6 +651,7 @@ pub(crate) fn geometry_for(
     scale: f64,
     ctx: Option<&LayoutContext<'_>>,
     gutter_at_top: bool,
+    paper: crate::DefaultPaper,
 ) -> Geometry {
     let page = section.and_then(|section| section.page_size);
     let side_default = if section.is_some() {
@@ -665,17 +662,17 @@ pub(crate) fn geometry_for(
     let raw_w = page.and_then(|page| page.width).map(Twips::value);
     let raw_h = page.and_then(|page| page.height).map(Twips::value);
     let replaced = raw_w.is_none_or(|value| value <= 0) || raw_h.is_none_or(|value| value <= 0);
+    let (default_w, default_h) = paper.twips();
     if replaced {
         if let Some(ctx) = ctx {
-            ctx.warn("render.pgSz: non-positive or missing page size; using Letter".to_owned());
+            ctx.warn(format!(
+                "render.pgSz: non-positive or missing page size; using {}",
+                paper.name()
+            ));
         }
     }
-    let page_w = raw_w
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_PAGE_WIDTH);
-    let page_h = raw_h
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_PAGE_HEIGHT);
+    let page_w = raw_w.filter(|value| *value > 0).unwrap_or(default_w);
+    let page_h = raw_h.filter(|value| *value > 0).unwrap_or(default_h);
     // `w` and `h` are the page; `orient` only tells the printer which way to
     // feed the paper (ISO/IEC 29500-1 §17.6.13). A landscape section written
     // 11905 x 16838 is a portrait page in Word and WPS: swapping it turned
@@ -757,9 +754,10 @@ pub(crate) fn body_geometry_for(
     scale: f64,
     ctx: Option<&LayoutContext<'_>>,
     gutter_at_top: bool,
+    paper: crate::DefaultPaper,
 ) -> Geometry {
     use strict_ooxml_wml::model::values::TextDirection;
-    let mut geometry = geometry_for(section, scale, ctx, gutter_at_top);
+    let mut geometry = geometry_for(section, scale, ctx, gutter_at_top, paper);
     let direction = section.and_then(|s| s.text_direction);
     let old = geometry;
     match direction {

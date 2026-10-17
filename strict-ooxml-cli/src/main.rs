@@ -70,6 +70,7 @@ mod font_packs;
 mod fonts;
 mod latex;
 mod lexicon_packs;
+mod paper;
 mod rtf;
 
 use std::fmt::Write as _;
@@ -79,8 +80,8 @@ use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
 use strict_ooxml::{
-    CellNoWrap, ConformancePolicy, Feature, FeatureStatus, Location, PageSelection, RenderOptions,
-    StrictDocument, TransitionalNormalizer,
+    CellNoWrap, ConformancePolicy, DefaultPaper, Feature, FeatureStatus, Location, PageSelection,
+    RenderOptions, StrictDocument, TransitionalNormalizer,
 };
 use strict_ooxml_core::error::StrictError;
 use strict_ooxml_core::ns::Conformance;
@@ -184,6 +185,7 @@ fn print_usage() {
     eprintln!("  --strict-fonts  render/to-pdf: refuse to render when a font the document names is unavailable");
     eprintln!("  --fetch-fonts   render/to-pdf: download the font packs the document's scripts need before rendering");
     eprintln!("  --no-font-packs render/to-pdf: do not use installed font packs");
+    eprintln!("  --default-page-size <letter|a4|auto>  render/to-pdf: paper for a section without w:pgSz (default auto: the machine's locale, like Word/WPS)");
     eprintln!("  fonts           font packs for CJK, Indic and other scripts: list | install <pack...|all> | remove <pack...|all> | needed <file> | path");
     eprintln!("  normalize       open a Transitional package and print the Loss Report");
     eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
@@ -472,6 +474,7 @@ struct RenderArgs {
     math: bool,
     wps_times: bool,
     cell_no_wrap: CellNoWrap,
+    paper: DefaultPaper,
     fonts: fonts::FontArgs,
 }
 
@@ -485,6 +488,7 @@ impl RenderArgs {
         let mut math = true;
         let mut wps_times = false;
         let mut cell_no_wrap = CellNoWrap::default();
+        let mut paper = paper::detect();
         let mut fonts = fonts::FontArgs::default();
         let mut index = 0;
         while index < args.len() {
@@ -498,6 +502,19 @@ impl RenderArgs {
                 "--wps-times" => wps_times = true,
                 flag if flag.starts_with("--cell-nowrap=") => {
                     cell_no_wrap = parse_cell_no_wrap(flag)?;
+                }
+                flag if flag.starts_with("--default-page-size=") => {
+                    paper = paper::parse(
+                        flag.strip_prefix("--default-page-size=")
+                            .unwrap_or_default(),
+                    )?;
+                }
+                "--default-page-size" => {
+                    index += 1;
+                    paper = paper::parse(
+                        args.get(index)
+                            .ok_or("'--default-page-size' expects letter, a4 or auto")?,
+                    )?;
                 }
                 // Accepting the flag here rather than filtering it out of
                 // `args` keeps one source of truth for what the flag means.
@@ -544,6 +561,7 @@ impl RenderArgs {
             math,
             wps_times,
             cell_no_wrap,
+            paper,
             fonts,
         })
     }
@@ -597,7 +615,9 @@ fn run_to_pdf(args: &[String]) -> ExitCode {
         Ok(document) => match parsed
             .fonts
             .apply(
-                RenderOptions::default().cell_no_wrap(parsed.cell_no_wrap),
+                RenderOptions::default()
+                    .cell_no_wrap(parsed.cell_no_wrap)
+                    .default_paper(parsed.paper),
                 &document,
             )
             .map_err(StrictError::Unsupported)
@@ -671,6 +691,7 @@ struct WriteArgs {
     transitional: bool,
     report_out: Option<String>,
     cell_no_wrap: CellNoWrap,
+    paper: DefaultPaper,
     fonts: fonts::FontArgs,
 }
 
@@ -681,6 +702,7 @@ impl WriteArgs {
         let mut transitional = false;
         let mut report_out = None;
         let mut cell_no_wrap = CellNoWrap::default();
+        let mut paper = paper::detect();
         let mut fonts = fonts::FontArgs::default();
         let mut index = 0;
         while index < args.len() {
@@ -692,6 +714,19 @@ impl WriteArgs {
                 "--transitional" => transitional = true,
                 flag if flag.starts_with("--cell-nowrap=") => {
                     cell_no_wrap = parse_cell_no_wrap(flag)?;
+                }
+                flag if flag.starts_with("--default-page-size=") => {
+                    paper = paper::parse(
+                        flag.strip_prefix("--default-page-size=")
+                            .unwrap_or_default(),
+                    )?;
+                }
+                "--default-page-size" => {
+                    index += 1;
+                    paper = paper::parse(
+                        args.get(index)
+                            .ok_or("'--default-page-size' expects letter, a4 or auto")?,
+                    )?;
                 }
                 "--out" => {
                     index += 1;
@@ -723,6 +758,7 @@ impl WriteArgs {
             transitional,
             report_out,
             cell_no_wrap,
+            paper,
             fonts,
         })
     }
@@ -1010,6 +1046,7 @@ fn render_parsed(document: &StrictDocument, parsed: &RenderArgs) -> ExitCode {
     render_options = render_options.math(parsed.math);
     render_options = render_options.wps_times_calibration(parsed.wps_times);
     render_options = render_options.cell_no_wrap(parsed.cell_no_wrap);
+    render_options = render_options.default_paper(parsed.paper);
     render_options = match parsed.fonts.apply(render_options, document) {
         Ok(render_options) => render_options,
         Err(error) => {

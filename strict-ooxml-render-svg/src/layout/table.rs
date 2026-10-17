@@ -1743,6 +1743,7 @@ fn place_cell_paragraph(
             ctx.options.scale,
             None,
             ctx.document.settings.gutter_at_top,
+            ctx.options.default_paper,
         )
         .grid_line_pitch
     } else {
@@ -1793,6 +1794,7 @@ fn place_cell_paragraph(
                     ctx.options.scale,
                     None,
                     ctx.document.settings.gutter_at_top,
+                    ctx.options.default_paper,
                 )
             };
             let Some((w, h)) = crate::layout::floating::resolved_extent(ctx, anchor, &geometry)
@@ -2000,6 +2002,7 @@ fn append_row_anchors(
             ctx.options.scale,
             None,
             ctx.document.settings.gutter_at_top,
+            ctx.options.default_paper,
         );
         let Some((w, h)) = crate::layout::floating::resolved_extent(ctx, &anchor.anchor, &geometry)
         else {
