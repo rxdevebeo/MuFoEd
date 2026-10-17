@@ -9,6 +9,71 @@ use std::fmt::Write as _;
 
 use strict_ooxml::model::math::{MathArgument, MathExpression, MathNode, MathPosition};
 
+pub(crate) fn size(expression: &MathExpression) -> Option<strict_ooxml::model::values::HalfPoints> {
+    let mut size = None;
+    expression.walk(&mut |node| {
+        if let MathNode::Run(run) = node {
+            size = size.or_else(|| run.run_properties.as_ref().and_then(|p| p.size));
+        }
+    });
+    size
+}
+
+/// Set the equation's size without changing its mathematical structure.
+pub(crate) fn expression(inline: &strict_ooxml::model::Inline) -> Option<&MathExpression> {
+    match inline {
+        strict_ooxml::model::Inline::Math(expression) => Some(expression),
+        strict_ooxml::model::Inline::MathParagraph(paragraph) => paragraph.expression(),
+        _ => None,
+    }
+}
+
+/// Set the equation's size without changing its mathematical structure.
+pub(crate) fn set_size(
+    expression: &mut MathExpression,
+    size: strict_ooxml::model::values::HalfPoints,
+) {
+    fn nodes(list: &mut [MathNode], size: strict_ooxml::model::values::HalfPoints) {
+        for node in list {
+            let args: Vec<&mut MathArgument> = match node {
+                MathNode::Run(run) => {
+                    let props = run.run_properties.get_or_insert_with(Default::default);
+                    props.size = Some(size);
+                    props.size_cs = Some(size);
+                    continue;
+                }
+                MathNode::Fraction(n) => vec![&mut n.numerator, &mut n.denominator],
+                MathNode::Radical(n) => vec![&mut n.degree, &mut n.radicand],
+                MathNode::Superscript(n) => vec![&mut n.base, &mut n.superscript],
+                MathNode::Subscript(n) => vec![&mut n.base, &mut n.subscript],
+                MathNode::SubSuperscript(n) => {
+                    vec![&mut n.base, &mut n.subscript, &mut n.superscript]
+                }
+                MathNode::PreScript(n) => vec![&mut n.subscript, &mut n.superscript, &mut n.base],
+                MathNode::NaryOperator(n) => {
+                    vec![&mut n.subscript, &mut n.superscript, &mut n.operand]
+                }
+                MathNode::Delimiter(n) => n.arguments.iter_mut().collect(),
+                MathNode::Function(n) => vec![&mut n.name, &mut n.argument],
+                MathNode::Limit(n) => vec![&mut n.base, &mut n.limit],
+                MathNode::Matrix(n) => n.rows.iter_mut().flatten().collect(),
+                MathNode::EquationArray(n) => n.rows.iter_mut().collect(),
+                MathNode::Accent(n) => vec![&mut n.base],
+                MathNode::Bar(n) => vec![&mut n.base],
+                MathNode::GroupCharacter(n) => vec![&mut n.base],
+                MathNode::Boxed(n) => vec![&mut n.argument],
+                MathNode::BorderBox(n) => n.arguments.iter_mut().collect(),
+                MathNode::Phantom(n) => vec![&mut n.argument],
+                MathNode::Unknown(_) => vec![],
+            };
+            for arg in args {
+                nodes(&mut arg.nodes, size);
+            }
+        }
+    }
+    nodes(&mut expression.nodes, size);
+}
+
 /// The formula `source` describes, or what is wrong with it.
 pub(crate) fn from_latex(source: &str) -> Result<MathExpression, String> {
     let latex = expand_chemistry(source.trim());

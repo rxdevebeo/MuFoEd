@@ -137,6 +137,34 @@ pub(crate) fn picture_pixmap(bytes: &[u8]) -> Option<resvg::tiny_skia::Pixmap> {
     Some(pixmap)
 }
 
+/// Rasterizes only the selected preview frame at twice its page resolution.
+#[cfg(feature = "ocr")]
+pub(crate) fn region_png(svg: &str, x: f64, y: f64, width: f64, height: f64) -> Option<Vec<u8>> {
+    if ![x, y, width, height].iter().all(|v| v.is_finite()) || width <= 0.0 || height <= 0.0 {
+        return None;
+    }
+    let tree = usvg::Tree::from_str(svg, options()).ok()?;
+    let scale = 2.0_f64.min(f64::from(MAX_SIDE) / width.max(height));
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(
+        (width * scale).ceil().max(1.0) as u32,
+        (height * scale).ceil().max(1.0) as u32,
+    )?;
+    pixmap.fill(resvg::tiny_skia::Color::WHITE);
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_row(
+            scale as f32,
+            0.0,
+            0.0,
+            scale as f32,
+            (-x * scale) as f32,
+            (-y * scale) as f32,
+        ),
+        &mut pixmap.as_mut(),
+    );
+    pixmap.encode_png().ok()
+}
+
 /// A picture as PNG, at its own size: what a vision model takes.
 #[cfg(feature = "ocr")]
 pub(crate) fn picture_png(bytes: &[u8]) -> Option<Vec<u8>> {

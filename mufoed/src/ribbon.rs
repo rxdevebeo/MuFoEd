@@ -1103,6 +1103,15 @@ fn home(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
                         doc(actions, Request::IndentStep(more));
                     }
                 }
+                if square(
+                    ui,
+                    &Square::glyph("↘", s.t("paragraph.title"), editable),
+                    false,
+                    p,
+                    |_, _, _| {},
+                ) {
+                    actions.push(Action::ParagraphDialog);
+                }
             });
             ui.horizontal(|ui| {
                 for (icon, align, tip) in [
@@ -1890,7 +1899,45 @@ fn references(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>)
                 selected: None,
             }));
         }
+        column(ui, |ui| {
+            ui.set_width(200.0);
+            ui.label(s.t("bookmark.quick"));
+            if let Some(name) = bookmark_jump(ui, &s.state.bookmarks, s.document, s.i18n) {
+                doc(
+                    actions,
+                    Request::References(ReferenceCommand::GoToBookmark(name)),
+                );
+            }
+        });
     });
+}
+
+fn bookmark_jump(
+    ui: &mut egui::Ui,
+    names: &[String],
+    enabled: bool,
+    i18n: &I18n,
+) -> Option<String> {
+    let mut picked = None;
+    ui.add_enabled_ui(enabled && !names.is_empty(), |ui| {
+        egui::ComboBox::from_id_salt("bookmark-jump")
+            .width(200.0)
+            .height(260.0)
+            .selected_text(i18n.t(if names.is_empty() {
+                "bookmark.none"
+            } else {
+                "bookmark.choose"
+            }))
+            .show_ui(ui, |ui| {
+                ui.set_min_width(200.0);
+                for name in names {
+                    if ui.selectable_label(false, name).clicked() {
+                        picked = Some(name.clone());
+                    }
+                }
+            });
+    });
+    picked
 }
 
 // ----- Headers and footers -------------------------------------------------
@@ -2647,6 +2694,16 @@ fn ai_tab(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
         ) {
             actions.push(Action::Ai(AiAction::Unify));
         }
+        if big_clicked(
+            ui,
+            Icon::Sparkle,
+            s.t("cleanup.title"),
+            s.t("cleanup.tip"),
+            editable,
+            p,
+        ) {
+            actions.push(Action::CleanupDialog);
+        }
     });
     group(ui, s.t("group.ai_assistant"), p, |ui| {
         column(ui, |ui| {
@@ -3026,6 +3083,59 @@ fn recognition(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bookmark_dropdown_picks_the_clicked_name() {
+        let ctx = egui::Context::default();
+        let i18n = I18n::load(&[]);
+        let names = vec!["First".into(), "Second".into()];
+        let mut field = egui::Pos2::ZERO;
+        let mut target = None;
+        let mut picked = None;
+        for frame in 0..8 {
+            let pointer = if frame >= 5 {
+                target.expect("second bookmark visible")
+            } else {
+                field
+            };
+            let mut events = vec![egui::Event::PointerMoved(pointer)];
+            if matches!(frame, 2 | 3 | 5 | 6) {
+                events.push(egui::Event::PointerButton {
+                    pos: pointer,
+                    button: egui::PointerButton::Primary,
+                    pressed: matches!(frame, 2 | 5),
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+            let output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(900.0, 700.0))),
+                    events,
+                    time: Some(f64::from(frame) * 0.1),
+                    ..Default::default()
+                },
+                |ui| {
+                    field = ui
+                        .scope(|ui| {
+                            if let Some(name) = bookmark_jump(ui, &names, true, &i18n) {
+                                picked = Some(name);
+                            }
+                        })
+                        .response
+                        .rect
+                        .center();
+                },
+            );
+            for shape in output.shapes {
+                if let egui::epaint::Shape::Text(text) = shape.shape {
+                    if text.galley.text() == "Second" {
+                        target = Some(text.pos + text.galley.rect.center().to_vec2());
+                    }
+                }
+            }
+        }
+        assert_eq!(picked.as_deref(), Some("Second"));
+    }
 
     /// Labels break between words only, the longer line as short as it gets.
     #[test]

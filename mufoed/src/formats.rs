@@ -27,6 +27,8 @@ pub(crate) enum Kind {
     DocxTransitional,
     /// RTF, imported.
     Rtf,
+    /// HTML, imported.
+    Html,
     /// PDF, converted.
     Pdf,
     /// DjVu, converted.
@@ -39,6 +41,7 @@ impl Kind {
         match self {
             Self::New | Self::Docx | Self::DocxTransitional => "W",
             Self::Rtf => "R",
+            Self::Html => "H",
             Self::Pdf => "P",
             Self::Djvu => "D",
         }
@@ -51,6 +54,7 @@ impl Kind {
             Self::Docx => "format.docx",
             Self::DocxTransitional => "format.docx_transitional",
             Self::Rtf => "format.rtf",
+            Self::Html => "format.html",
             Self::Pdf => "format.pdf",
             Self::Djvu => "format.djvu",
         }
@@ -135,6 +139,7 @@ pub(crate) fn detect(path: &Path) -> Option<Kind> {
     match extension.as_str() {
         "docx" | "docm" | "dotx" => Some(Kind::Docx),
         "rtf" => Some(Kind::Rtf),
+        "html" | "htm" => Some(Kind::Html),
         "pdf" => Some(Kind::Pdf),
         "djvu" | "djv" => Some(Kind::Djvu),
         _ => None,
@@ -142,7 +147,9 @@ pub(crate) fn detect(path: &Path) -> Option<Kind> {
 }
 
 /// Extensions the open dialog offers.
-pub(crate) const OPEN_EXTENSIONS: &[&str] = &["docx", "docm", "dotx", "rtf", "pdf", "djvu", "djv"];
+pub(crate) const OPEN_EXTENSIONS: &[&str] = &[
+    "docx", "docm", "dotx", "rtf", "html", "htm", "pdf", "djvu", "djv",
+];
 
 /// An empty document with the styles a new document needs.
 ///
@@ -182,6 +189,7 @@ pub(crate) fn open(source: &Source, control: &OpenControl) -> Result<Loaded, Str
             match kind {
                 Kind::Docx | Kind::DocxTransitional | Kind::New => open_docx(path, control),
                 Kind::Rtf => open_rtf(path),
+                Kind::Html => open_html(path),
                 Kind::Pdf => open_pdf(path, import),
                 Kind::Djvu => open_djvu(path, import),
             }
@@ -225,6 +233,74 @@ fn open_rtf(path: &Path) -> Result<Loaded, String> {
         kind: Kind::Rtf,
         log,
     })
+}
+
+fn open_html(path: &Path) -> Result<Loaded, String> {
+    use std::io::Read as _;
+    let mut options = strict_ooxml::HtmlOptions::default();
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    file.take(options.max_input_bytes as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > options.max_input_bytes {
+        return Err("HTML input exceeds size limit".into());
+    }
+    let path = path.canonicalize().map_err(|e| e.to_string())?;
+    options.base_url = Some(
+        url::Url::from_file_path(&path)
+            .map_err(|()| "invalid HTML file path")?
+            .into(),
+    );
+    let html = html_text(&bytes)?;
+    let resources = crate::clipboard::Resources::new();
+    let opened = StrictDocument::import_html(html.as_bytes(), &options, Some(&resources))
+        .map_err(|e| e.to_string())?;
+    let mut log = format!(
+        "HTML import: {} named losses\n",
+        opened.import_report.loss_count
+    );
+    for issue in opened.import_report.issues {
+        let _ = writeln!(log, "{}: {}", issue.feature, issue.detail);
+    }
+    let _ = writeln!(log, "{:?}", opened.write_report);
+    Ok(Loaded {
+        document: opened.document.with_file_name(path.display().to_string()),
+        kind: Kind::Html,
+        log,
+    })
+}
+
+/// File encoding belongs to the application; the HTML crate accepts UTF-8.
+fn html_text(bytes: &[u8]) -> Result<String, String> {
+    let (encoding, skip) = encoding_rs::Encoding::for_bom(bytes).unwrap_or_else(|| {
+        let head: String = bytes
+            .iter()
+            .take(4096)
+            .map(|b| char::from(*b))
+            .collect::<String>()
+            .to_ascii_lowercase();
+        let declared = head.split("<meta").skip(1).find_map(|tag| {
+            let tag = tag.split('>').next()?;
+            let value = tag
+                .split_once("charset")?
+                .1
+                .trim_start()
+                .strip_prefix('=')?
+                .trim_start();
+            let label = value
+                .trim_start_matches(['\'', '"'])
+                .split(['\'', '"', ';', '/', ' ', '\t', '\r', '\n'])
+                .next()?;
+            encoding_rs::Encoding::for_label(label.as_bytes())
+        });
+        (declared.unwrap_or(encoding_rs::UTF_8), 0)
+    });
+    let (text, errors) = encoding.decode_without_bom_handling(&bytes[skip..]);
+    if errors {
+        return Err(format!("Invalid {} HTML text", encoding.name()));
+    }
+    Ok(text.into_owned())
 }
 
 /// Installs recognition on a converter's options.
@@ -385,6 +461,24 @@ mod tests {
             assert_eq!(detect(&path), Some(kind), "{name}");
         }
         assert_eq!(detect(&dir.join("missing.rtf")), Some(Kind::Rtf));
+        assert_eq!(detect(&dir.join("missing.HTML")), Some(Kind::Html));
+        assert_eq!(detect(&dir.join("missing.htm")), Some(Kind::Html));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn html_file_encodings_are_decoded_before_import() {
+        assert_eq!(html_text(b"\xef\xbb\xbf<p>ok</p>").unwrap(), "<p>ok</p>");
+        let text = "<p>Привет</p>";
+        let utf16: Vec<u8> = [0xff, 0xfe]
+            .into_iter()
+            .chain(text.encode_utf16().flat_map(u16::to_le_bytes))
+            .collect();
+        assert_eq!(html_text(&utf16).unwrap(), text);
+        let source = "<meta charset='windows-1251'><p>Привет</p>";
+        let (encoded, _, errors) = encoding_rs::WINDOWS_1251.encode(source);
+        assert!(!errors);
+        assert_eq!(html_text(&encoded).unwrap(), source);
+        assert!(html_text(&[0xff]).is_err());
     }
 }

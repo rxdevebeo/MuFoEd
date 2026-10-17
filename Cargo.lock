@@ -2697,6 +2697,7 @@ name = "mufoed"
 version = "0.1.0"
 dependencies = [
  "eframe",
+ "encoding_rs",
  "png",
  "pulldown-latex",
  "rayon",
@@ -2710,6 +2711,7 @@ dependencies = [
  "sys-locale",
  "unicode-segmentation",
  "ureq",
+ "url",
  "windows-sys 0.61.2",
 ]
 

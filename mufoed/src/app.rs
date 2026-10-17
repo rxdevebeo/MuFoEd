@@ -9,6 +9,7 @@ use strict_ooxml::Mode;
 
 mod ai_ui;
 mod chart_ui;
+pub(crate) mod recognition_ui;
 
 use crate::canvas;
 use crate::formats::{self, ImportOptions, Kind, OcrSettings, Source};
@@ -27,6 +28,9 @@ pub(crate) use ai_ui::AiAction;
 
 /// Everything a click can ask for.
 pub(crate) enum Action {
+    CleanupDialog,
+    ShowComment(String),
+    ParagraphDialog,
     ToggleSpelling,
     DownloadDictionary(&'static str),
     DownloadFontPack(&'static str),
@@ -151,6 +155,9 @@ pub(crate) enum Zoom {
 /// Modal and floating dialogs.
 #[derive(Clone, Debug)]
 pub(crate) enum Dialog {
+    FormulaRecognition(Box<recognition_ui::RecognitionDialog>),
+    Cleanup(crate::cleanup::Options),
+    Paragraph(Box<crate::paragraph::Dialog>),
     Find {
         replace: bool,
     },
@@ -565,6 +572,7 @@ impl App {
             .add_filter(self.t("filter.all_supported"), formats::OPEN_EXTENSIONS)
             .add_filter("Word (DOCX)", &["docx", "docm", "dotx"])
             .add_filter("RTF", &["rtf"])
+            .add_filter("HTML", &["html", "htm"])
             .add_filter("PDF", &["pdf"])
             .add_filter("DjVu", &["djvu", "djv"]);
         if let Some(files) = dialog.pick_files() {
@@ -574,18 +582,31 @@ impl App {
         }
     }
 
-    fn import_dialog(&mut self, ocr: bool) {
-        let picked = rfd::FileDialog::new()
-            .set_title(self.t(if ocr {
-                "dialog.recognize_title"
-            } else {
-                "dialog.import_title"
-            }))
-            .add_filter("PDF, DjVu", &["pdf", "djvu", "djv"])
-            .pick_file();
+    fn import_dialog(&mut self, ctx: &egui::Context, ocr: bool, now: f64) {
+        let dialog = rfd::FileDialog::new().set_title(self.t(if ocr {
+            "dialog.recognize_title"
+        } else {
+            "dialog.import_title"
+        }));
+        let dialog = if ocr {
+            dialog
+        } else {
+            dialog
+                .add_filter(
+                    "HTML, RTF, PDF, DjVu",
+                    &["html", "htm", "rtf", "pdf", "djvu", "djv"],
+                )
+                .add_filter("HTML, RTF", &["html", "htm", "rtf"])
+        }
+        .add_filter("PDF, DjVu", &["pdf", "djvu", "djv"]);
+        let picked = dialog.pick_file();
         if let Some(path) = picked {
             let kind = formats::detect(&path).unwrap_or(Kind::Pdf);
-            self.dialog = Some(Dialog::Import(Box::new(ImportDialog::new(path, kind, ocr))));
+            if kind.converted() {
+                self.dialog = Some(Dialog::Import(Box::new(ImportDialog::new(path, kind, ocr))));
+            } else {
+                self.open_path(ctx, path, now);
+            }
         }
     }
 
@@ -624,6 +645,9 @@ impl App {
     // ----- saving -------------------------------------------------------
 
     fn save(&mut self, save_as: bool, now: f64) {
+        if let Some(tab) = self.active_tab_mut() {
+            tab.finish_comment();
+        }
         let Some(tab) = self.active_tab() else {
             return;
         };
@@ -703,10 +727,25 @@ impl App {
     #[allow(clippy::too_many_lines)]
     fn run(&mut self, ctx: &egui::Context, action: Action, now: f64) {
         match action {
+            Action::CleanupDialog => {
+                self.dialog = Some(Dialog::Cleanup(crate::cleanup::Options::default()));
+            }
+            Action::ShowComment(id) => {
+                self.comments_open = true;
+                if let Some(tab) = self.active_tab_mut() {
+                    tab.finish_comment();
+                    tab.send(Request::Comments(CommentCommand::Select(id)));
+                }
+            }
+            Action::ParagraphDialog => {
+                if let Some(tab) = self.active_tab() {
+                    tab.send(Request::ParagraphFormat);
+                }
+            }
             Action::New => self.new_document(ctx),
             Action::OpenDialog => self.open_dialog(ctx, now),
             Action::OpenPath(path) => self.open_path(ctx, path, now),
-            Action::ImportDialog { ocr } => self.import_dialog(ocr),
+            Action::ImportDialog { ocr } => self.import_dialog(ctx, ocr, now),
             Action::Save => self.save(false, now),
             Action::SaveAs => self.save(true, now),
             Action::Export(format) => self.export(format, now),
@@ -720,7 +759,10 @@ impl App {
                     }
                 }
             }
-            Action::Paste => match self.drawings_paste() {
+            Action::Paste => match self
+                .rich_clipboard(String::new(), now)
+                .or_else(|| self.drawings_paste())
+            {
                 Some(request) => {
                     if let Some(tab) = self.active_tab() {
                         tab.send(request);
@@ -732,6 +774,8 @@ impl App {
                 let picked = rfd::FileDialog::new()
                     .set_title(self.t("dialog.insert_title"))
                     .add_filter(self.t("filter.all_supported"), formats::OPEN_EXTENSIONS)
+                    .add_filter("HTML, RTF", &["html", "htm", "rtf"])
+                    .add_filter(self.t("filter.text"), &["txt"])
                     .pick_file();
                 if let (Some(path), Some(tab)) = (picked, self.active_tab()) {
                     tab.send(Request::Insert(Insert::Document(path)));
@@ -977,11 +1021,18 @@ impl App {
         let mut missing_scripts = Vec::new();
         let mut missing_fonts = Vec::new();
         let mut ai_sources = Vec::new();
+        let mut cleanup_results = Vec::new();
         let mut formula_found = None;
         let mut chart_found = None;
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             for event in tab.poll() {
                 match event {
+                    TabEvent::FormulaRecognition(plan) => {
+                        self.dialog = Some(Dialog::FormulaRecognition(Box::new(
+                            recognition_ui::RecognitionDialog::new(ctx, tab.id, plan),
+                        )));
+                    }
+                    TabEvent::CleanupResult(applied) => cleanup_results.push((tab.id, applied)),
                     TabEvent::Note(note) => {
                         let mut text = self.i18n.t(note.key).to_owned();
                         if !note.detail.is_empty() {
@@ -1039,7 +1090,12 @@ impl App {
                             }
                         }
                     }
-                    TabEvent::CommentAdded => self.comments_open = true,
+                    TabEvent::CommentAdded | TabEvent::CommentSelected => self.comments_open = true,
+                    TabEvent::ParagraphFormat(format) => {
+                        self.dialog = Some(Dialog::Paragraph(Box::new(
+                            crate::paragraph::Dialog::new(*format),
+                        )));
+                    }
                     TabEvent::SpellingMissing(scripts) => missing_scripts.extend(scripts),
                     TabEvent::FontsMissing(packs) => missing_fonts.extend(packs),
                     TabEvent::AiSource { job, source } => ai_sources.push((tab.id, job, source)),
@@ -1093,6 +1149,9 @@ impl App {
         }
         for (tab, job, source) in ai_sources {
             self.ai_source(ctx, tab, job, *source);
+        }
+        for (tab, applied) in cleanup_results {
+            self.ai_cleanup_result(tab, applied);
         }
         self.offer_font_packs(&missing_fonts);
         self.offer_dictionaries(&missing_scripts);
@@ -1275,6 +1334,17 @@ impl App {
             .map(|clip| Request::PasteObjects(clip.clone()))
     }
 
+    fn rich_clipboard(&mut self, fallback: String, now: f64) -> Option<Request> {
+        match crate::clipboard::read() {
+            Ok(content) => content.map(|content| Request::PasteRich { content, fallback }),
+            Err(error) => {
+                let text = format!("{}: {error}", self.i18n.t("note.clipboard_failed"));
+                self.say(text, true, now);
+                None
+            }
+        }
+    }
+
     /// Keys for the open document and the window-wide shortcuts.
     #[allow(clippy::too_many_lines)]
     fn keyboard(&mut self, ctx: &egui::Context, actions: &mut Vec<Action>) {
@@ -1300,6 +1370,11 @@ impl App {
                 }
                 egui::Event::Paste(text) if document => {
                     pasted = true;
+                    if let Some(request) = self.rich_clipboard(text.clone(), ctx.input(|i| i.time))
+                    {
+                        actions.push(Action::Doc(request));
+                        continue;
+                    }
                     // Text this editor copied with drawings in it brings
                     // them back.
                     let same = |clip: &crate::worker::ClipObjects| {
@@ -1441,9 +1516,7 @@ impl App {
         }
         // Ctrl+V with no text to paste: a copied picture of ours.
         if paste_key && !pasted && document {
-            if let Some(request) = self.drawings_paste() {
-                actions.push(Action::Doc(request));
-            }
+            actions.push(Action::Paste);
         }
     }
 
@@ -1669,12 +1742,22 @@ impl App {
                 "styles" => AiAction::Styles,
                 "parallel" => AiAction::Parallel,
                 "unify" => AiAction::Unify,
+                "cleanup" => AiAction::Cleanup(crate::cleanup::Options::default()),
+                "cleanup-local" => AiAction::Cleanup(crate::cleanup::Options {
+                    joins: false,
+                    ..crate::cleanup::Options::default()
+                }),
                 _ => return,
             };
             actions.push(Action::Ai(action));
             return;
         }
         self.dialog = match name {
+            "cleanup" => Some(Dialog::Cleanup(crate::cleanup::Options::default())),
+            "paragraph" => {
+                actions.push(Action::ParagraphDialog);
+                None
+            }
             "table" => Some(Dialog::Table {
                 rows: 3,
                 columns: 4,
@@ -1867,6 +1950,9 @@ impl eframe::App for App {
                     self.find_bar(&ctx, ui.max_rect(), &mut actions);
                 }
             });
+        }
+        if let Some(tab) = self.active_tab_mut() {
+            actions.append(&mut tab.ui_actions);
         }
         self.dialogs(&ctx, &mut actions);
         let title = self.active_tab().map_or_else(
@@ -2071,7 +2157,9 @@ impl App {
             // header or footer being edited. They open when it starts and
             // give the tab that was open back when it ends.
             let cursor = self.active_tab().and_then(|tab| tab.cursor.as_ref());
-            let tool = if cursor.is_some_and(|cursor| cursor.object.is_some()) {
+            let tool = if cursor
+                .is_some_and(|cursor| cursor.object.as_ref().is_some_and(|object| !object.formula))
+            {
                 Some(RibbonTab::Picture)
             } else if cursor.is_some_and(|cursor| cursor.header_footer.is_some()) {
                 Some(RibbonTab::HeaderFooter)
@@ -2439,6 +2527,9 @@ impl App {
             });
         });
         if closing {
+            if let Some(tab) = self.active_tab_mut() {
+                tab.finish_comment();
+            }
             self.comments_open = false;
             return;
         }
@@ -2459,15 +2550,17 @@ impl App {
                     .editing_comment
                     .as_ref()
                     .is_some_and(|(id, _)| *id == comment.id);
+                let selected =
+                    editing || tab.selected_comment.as_deref() == Some(comment.id.as_str());
                 let frame = egui::Frame::new()
-                    .fill(if editing {
+                    .fill(if selected {
                         palette.pressed
                     } else {
                         ui.visuals().extreme_bg_color
                     })
                     .stroke(Stroke::new(
                         1.0,
-                        if editing {
+                        if selected {
                             theme::ACCENT
                         } else {
                             palette.button_border
@@ -2502,14 +2595,20 @@ impl App {
                                         .desired_width(f32::INFINITY)
                                         .hint_text(&hint),
                                 );
-                                field.request_focus();
+                                if std::mem::take(&mut tab.focus_comment) {
+                                    field.request_focus();
+                                }
                                 ui.add_space(4.0);
                                 ui.horizontal(|ui| {
-                                    if ui.button(&done_label).clicked() {
+                                    if ui.button(&done_label).clicked()
+                                        || (field.has_focus()
+                                            && ui.input(|input| input.key_pressed(Key::Escape)))
+                                    {
                                         requests.push(CommentCommand::Edit {
                                             id: comment.id.clone(),
                                             text: draft.clone(),
                                         });
+                                        field.surrender_focus();
                                     }
                                 });
                             }
@@ -2521,6 +2620,7 @@ impl App {
                                     requests.push(CommentCommand::Select(comment.id.clone()));
                                     tab.editing_comment =
                                         Some((comment.id.clone(), comment.text.clone()));
+                                    tab.focus_comment = true;
                                 }
                                 if ui.small_button(&delete_label).clicked() {
                                     requests.push(CommentCommand::Delete(comment.id.clone()));
@@ -2529,7 +2629,11 @@ impl App {
                         }
                     })
                     .response;
-                if response.interact(Sense::click()).clicked() && !editing {
+                if tab.scroll_comment.as_deref() == Some(comment.id.as_str()) {
+                    response.scroll_to_me(Some(egui::Align::Center));
+                    tab.scroll_comment = None;
+                }
+                if !editing && response.interact(Sense::click()).clicked() {
                     requests.push(CommentCommand::Select(comment.id.clone()));
                 }
                 ui.add_space(8.0);
@@ -2961,6 +3065,25 @@ impl App {
         let t = |key: &'static str| self.i18n.t(key).to_owned();
         let modal = |id: &str| crate::dialog::modal(ctx, id);
         match dialog {
+            Dialog::Cleanup(mut options) => {
+                let (start, close) = options.show(ctx, &self.i18n);
+                keep = !close;
+                if start {
+                    actions.push(Action::Ai(AiAction::Cleanup(options)));
+                } else if keep {
+                    next = Some(Dialog::Cleanup(options));
+                }
+            }
+            Dialog::Paragraph(mut dialog) => {
+                let (patch, close) = dialog.show(ctx, &self.i18n);
+                if let Some(patch) = patch {
+                    actions.push(Action::Doc(Request::SetParagraphFormat(Box::new(patch))));
+                }
+                keep = !close;
+                if keep {
+                    next = Some(Dialog::Paragraph(dialog));
+                }
+            }
             Dialog::Table {
                 mut rows,
                 mut columns,
@@ -3104,6 +3227,19 @@ impl App {
                     next = Some(Dialog::Chart(dialog));
                 } else {
                     keep = false;
+                }
+            }
+            Dialog::FormulaRecognition(dialog) => {
+                let (closed, confirmed) = dialog.show(ctx, &self.i18n);
+                if confirmed {
+                    if let Some(tab) = self.tabs.iter().find(|tab| tab.id == dialog.tab) {
+                        tab.send(Request::ConfirmFormulaRecognition(dialog.plan.clone()));
+                    }
+                }
+                if closed {
+                    keep = false;
+                } else {
+                    next = Some(Dialog::FormulaRecognition(dialog));
                 }
             }
             Dialog::Formula(mut dialog) => {
@@ -3332,7 +3468,9 @@ impl App {
                     .unwrap_or_default();
                 let mut request = None;
                 let response = modal("bookmarks").show(ctx, |ui| {
-                    ui.set_min_width(340.0);
+                    // A modal starts with an unbounded available width. The
+                    // text field/list must not feed that width back into it.
+                    ui.set_width(480.0);
                     crate::dialog::title(ui, &t("bookmark.title"));
                     ui.label(t("bookmark.name"));
                     let field = ui.add(
@@ -3342,6 +3480,9 @@ impl App {
                     );
                     if field.changed() {
                         selected = None;
+                    }
+                    if !name.trim().is_empty() && !crate::worker::valid_bookmark_name(name.trim()) {
+                        ui.label(RichText::new(t("note.bookmark_name")).weak());
                     }
                     ui.add_space(6.0);
                     egui::Frame::new()
@@ -3375,11 +3516,11 @@ impl App {
                                 });
                         });
                     ui.add_space(10.0);
-                    ui.horizontal(|ui| {
+                    crate::dialog::buttons(ui, |ui| {
                         let known = names.iter().any(|n| n.eq_ignore_ascii_case(name.trim()));
                         if ui
                             .add_enabled(
-                                !name.trim().is_empty(),
+                                crate::worker::valid_bookmark_name(name.trim()),
                                 egui::Button::new(t("bookmark.add")),
                             )
                             .clicked()
@@ -3399,13 +3540,9 @@ impl App {
                             request =
                                 Some(ReferenceCommand::DeleteBookmark(name.trim().to_owned()));
                         }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            crate::dialog::buttons(ui, |ui| {
-                                if crate::dialog::button(ui, &t("button.close")).clicked() {
-                                    ui.close();
-                                }
-                            });
-                        });
+                        if crate::dialog::button(ui, &t("button.close")).clicked() {
+                            ui.close();
+                        }
                     });
                 });
                 let close = matches!(

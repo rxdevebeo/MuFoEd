@@ -43,10 +43,25 @@ use strict_ooxml_core::error::SourceLocation;
 
 use crate::formats::{self, Kind, Source};
 use crate::nav;
+mod rich_paste;
+
+/// A recognition result tied to the original drawing and document revision.
+#[derive(Clone, Debug)]
+pub(crate) struct FormulaRecognition {
+    revision: u64,
+    object: DrawingPosition,
+    drawing: strict_ooxml::model::Drawing,
+    pub(crate) mathml: String,
+}
 
 /// What the interface asks of a document.
 #[derive(Debug)]
 pub(crate) enum Request {
+    PasteRich {
+        content: crate::clipboard::Rich,
+        fallback: String,
+    },
+    ConfirmFormulaRecognition(Box<FormulaRecognition>),
     /// Put the caret at a page point; `extend` keeps the selection anchor,
     /// `column` selects the table column under the point.
     Click {
@@ -67,6 +82,13 @@ pub(crate) enum Request {
         extend: bool,
     },
     SelectAll,
+    ParagraphFormat,
+    SetParagraphFormat(Box<crate::paragraph::Patch>),
+    ContextClick {
+        page: usize,
+        x: f64,
+        y: f64,
+    },
     Type(String),
     Backspace,
     Delete,
@@ -133,6 +155,10 @@ pub(crate) enum Request {
         whole: bool,
         job: u64,
     },
+    CleanupSource {
+        job: u64,
+    },
+    ApplyCleanup(Box<crate::cleanup::Plan>),
     /// A paragraph's text replaced, if it still reads `old`.
     SetParagraphText {
         at: Address,
@@ -261,13 +287,6 @@ impl WrapStyle {
             Self::Front => "wrap.front",
         }
     }
-}
-
-/// What a recognised picture is replaced by.
-#[cfg(feature = "ocr")]
-enum Replacement {
-    Text(String),
-    Formula(strict_ooxml::model::MathExpression),
 }
 
 /// What the editor does to a picture's pixels; the picture gets new bytes.
@@ -631,6 +650,7 @@ pub(crate) struct Cursor {
     pub(crate) selection: Vec<VisualRect>,
     /// Bring the caret into view.
     pub(crate) scroll: bool,
+    pub(crate) at_top: bool,
     pub(crate) format: CaretFormat,
 }
 
@@ -641,6 +661,7 @@ pub(crate) struct ClipObjects {
     /// The copied text, drawings left out.
     pub(crate) text: String,
     pub(crate) objects: Vec<ClipObject>,
+    pub(crate) formula: Option<strict_ooxml::model::Inline>,
     /// A lone picture's pixels: width, height, premultiplied RGBA.
     pub(crate) image: Option<(usize, usize, Vec<u8>)>,
 }
@@ -683,6 +704,7 @@ pub(crate) enum CommentCommand {
 /// The text an AI job works on.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct AiSource {
+    pub(crate) cleanup: Option<crate::cleanup::Snapshot>,
     /// The paragraphs, each with its text.
     pub(crate) paragraphs: Vec<(Address, String)>,
     /// The selection, when the job is about it: its ends and its text.
@@ -713,6 +735,23 @@ pub(crate) struct CommentView {
     pub(crate) y: f64,
     /// Where the text it is about is drawn.
     pub(crate) rects: Vec<VisualRect>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ContextObject {
+    Picture,
+    Chart,
+    Formula,
+    Shape,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ContextState {
+    pub editable: bool,
+    pub selection: bool,
+    pub table: bool,
+    pub object: Option<ContextObject>,
+    pub comment: Option<String>,
 }
 
 /// Footnotes, bookmarks and the table of contents.
@@ -817,6 +856,7 @@ pub(crate) struct ObjectView {
     pub(crate) picture: bool,
     /// A chart.
     pub(crate) chart: bool,
+    pub(crate) formula: bool,
     /// How text flows around it.
     pub(crate) wrap: WrapStyle,
 }
@@ -866,6 +906,11 @@ pub(crate) struct Note {
 
 /// What a document tells the interface.
 pub(crate) enum Reply {
+    FormulaRecognition(Box<FormulaRecognition>),
+    CleanupResult(bool),
+    Context(ContextState),
+    CommentFocused(String),
+    ParagraphFormat(Box<crate::paragraph::Format>),
     Loaded(Box<DocInfo>),
     Failed(String),
     Pages {
@@ -1007,6 +1052,7 @@ fn run(
                 .collect();
             send(Reply::Loaded(Box::new(DocInfo { defects, ..info })));
             let mut worker = Worker::new(Session::Edit(editor), options, replies, ctx, path);
+            worker.system_fonts = system_fonts;
             worker.serve(requests);
             return;
         }
@@ -1016,18 +1062,75 @@ fn run(
         }
     };
     let mut worker = Worker::new(Session::View(&document), options, replies, ctx, path);
+    worker.system_fonts = system_fonts;
     worker.read_only = Some(read_only);
     worker.serve(requests);
 }
 
-/// The installed fonts a document is laid out with: always those that draw
-/// the scripts no bundled face has (without them that text is measured with
-/// a face that lacks it, and the rasterizer searches every installed font
-/// for each glyph), and with `named` the families the document names.
-/// The fonts a document is drawn with beyond the bundled ones: the
-/// installed faces it names (`named`), the font packs fetched for its
-/// scripts and installed faces for scripts neither has; and the packs that
-/// would draw the text nothing draws now.
+/// Includes direct and style formatting added after the font table was read.
+fn used_font_families(document: &Document) -> Vec<String> {
+    fn blocks(list: &[Block], add: &mut impl FnMut(&strict_ooxml::model::props::RunProperties)) {
+        for block in list {
+            match block {
+                Block::Paragraph(p) => {
+                    if let Some(props) = &p.props.run_props {
+                        add(props);
+                    }
+                    for piece in nav::pieces(p) {
+                        if let Some(run) = nav::run_at(p, &piece.inline) {
+                            add(&run.props);
+                        }
+                    }
+                }
+                Block::Table(t) => {
+                    for c in t.rows.iter().flat_map(|r| &r.cells) {
+                        blocks(&c.blocks, add);
+                    }
+                }
+                Block::SdtBlock(s) => blocks(&s.blocks, add),
+                _ => {}
+            }
+        }
+    }
+    let mut families = strict_ooxml::system_fonts::document_families(document);
+    let mut add = |props: &strict_ooxml::model::props::RunProperties| {
+        if let Some(fonts) = &props.fonts {
+            for name in [
+                &fonts.ascii,
+                &fonts.h_ansi,
+                &fonts.east_asia,
+                &fonts.complex_script,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if !families
+                    .iter()
+                    .any(|known| known.eq_ignore_ascii_case(name))
+                {
+                    families.push(name.to_string());
+                }
+            }
+        }
+    };
+    if let Some(defaults) = document.styles.defaults() {
+        add(&defaults.run);
+    }
+    for style in document.styles.iter() {
+        add(&style.run);
+    }
+    blocks(&document.body.blocks, &mut add);
+    for h in &document.headers_footers {
+        blocks(&h.blocks, &mut add);
+    }
+    for n in document.footnotes.iter().chain(document.endnotes.iter()) {
+        blocks(&n.blocks, &mut add);
+    }
+    families.sort_unstable();
+    families
+}
+
+/// Named system faces when enabled, plus script fallbacks and downloaded packs.
 fn installed_fonts(
     document: &Document,
     named: bool,
@@ -1037,7 +1140,7 @@ fn installed_fonts(
     let limits = strict_ooxml::FontAssetLimits::default();
     let faces = system::index();
     let mut assets = if named {
-        system::assets_for(&system::document_families(document), faces, limits).unwrap_or_default()
+        system::assets_for(&used_font_families(document), faces, limits).unwrap_or_default()
     } else {
         Vec::new()
     };
@@ -1184,6 +1287,8 @@ enum Outcome {
 struct Worker<'a, 's> {
     session: Session<'a>,
     options: RenderOptions,
+    system_fonts: bool,
+    font_families: Vec<String>,
     replies: &'s Sender<Reply>,
     ctx: &'s eframe::egui::Context,
     map: Option<VisualMap>,
@@ -1196,8 +1301,10 @@ struct Worker<'a, 's> {
     /// The cell a click started in, for selecting cells by dragging.
     cell_origin: Option<CellRef>,
     goal_x: Option<f64>,
+    scroll_at_top: bool,
     /// The selected drawing.
     object: Option<DrawingPosition>,
+    formula: Option<TextPosition>,
     /// A superscript or subscript switched on (or off) with no selection:
     /// the next text typed takes it. `Some(None)`: back to the baseline.
     #[allow(clippy::option_option)]
@@ -1231,6 +1338,8 @@ impl<'a, 's> Worker<'a, 's> {
         Self {
             session,
             options,
+            system_fonts: false,
+            font_families: Vec::new(),
             replies,
             ctx,
             map: None,
@@ -1241,7 +1350,9 @@ impl<'a, 's> Worker<'a, 's> {
             cells: None,
             cell_origin: None,
             goal_x: None,
+            scroll_at_top: false,
             object: None,
+            formula: None,
             pending_script: None,
             speller: None,
             spelling: HashMap::new(),
@@ -1332,14 +1443,56 @@ impl<'a, 's> Worker<'a, 's> {
         let keeps_object = matches!(
             request,
             Request::Object(_)
+                | Request::PasteRich { .. }
                 | Request::Backspace
                 | Request::Delete
                 | Request::Type(_)
                 | Request::Copy { .. }
                 | Request::Click { .. }
+                | Request::ChartOfObject
+                | Request::PutChart(_)
+                | Request::Save { .. }
+                | Request::SystemFonts(_)
+                | Request::Speller(_)
+                | Request::Respell
+                | Request::ContextClick { .. }
         );
         if !keeps_object {
             self.object = None;
+        }
+        if !matches!(
+            request,
+            Request::Object(_)
+                | Request::PasteRich { .. }
+                | Request::Format(_)
+                | Request::FormulaAtCaret
+                | Request::PutFormula { .. }
+                | Request::Copy { .. }
+                | Request::Click { .. }
+                | Request::Delete
+                | Request::Backspace
+                | Request::Type(_)
+                | Request::Save { .. }
+                | Request::SystemFonts(_)
+                | Request::Speller(_)
+                | Request::Respell
+                | Request::ContextClick { .. }
+        ) {
+            self.formula = None;
+        }
+        if self.formula.is_some()
+            && matches!(
+                request,
+                Request::Delete | Request::Backspace | Request::Type(_)
+            )
+        {
+            let at = self.formula.take().unwrap();
+            let start = self.logical(&at);
+            self.anchor = Some(start.clone());
+            self.caret = Some(Logical {
+                offset: start.offset + 1,
+                ..start
+            });
         }
         // Moving the caret drops a script switched on for the next text.
         if matches!(
@@ -1364,7 +1517,27 @@ impl<'a, 's> Worker<'a, 's> {
             }
         }
         match request {
+            Request::PasteRich { content, fallback } => self.paste_rich(content, &fallback),
+            Request::ConfirmFormulaRecognition(plan) => self.confirm_formula_recognition(*plan),
             Request::Shutdown => Outcome::Quit,
+            Request::ParagraphFormat => {
+                if let Some(p) = self
+                    .caret
+                    .as_ref()
+                    .and_then(|c| self.paragraph(&c.paragraph))
+                {
+                    let computed = strict_ooxml_render_svg::style::compute_paragraph(
+                        self.session.document(),
+                        p,
+                    );
+                    self.send(Reply::ParagraphFormat(Box::new(
+                        crate::paragraph::Format::from_computed(&computed),
+                    )));
+                }
+                Outcome::Quiet
+            }
+            Request::SetParagraphFormat(patch) => self.paragraph_edit(|p| patch.apply(p)),
+            Request::ContextClick { page, x, y } => self.context_click(page, x, y),
             Request::Click {
                 page,
                 x,
@@ -1377,6 +1550,8 @@ impl<'a, 's> Worker<'a, 's> {
             Request::Move { motion, extend } => self.motion(motion, extend),
             Request::SelectAll => self.select_all(),
             Request::GoTo(paragraph) => {
+                self.scroll_at_top = true;
+                self.story = paragraph.story.clone();
                 self.anchor = None;
                 self.cells = None;
                 self.caret = Some(Logical {
@@ -1391,6 +1566,8 @@ impl<'a, 's> Worker<'a, 's> {
                 Outcome::Quiet
             }
             Request::SystemFonts(enabled) => {
+                self.system_fonts = enabled;
+                self.font_families = used_font_families(self.session.document());
                 let (assets, missing) = installed_fonts(self.session.document(), enabled);
                 self.options.font_assets = assets;
                 if !missing.is_empty() {
@@ -1423,6 +1600,29 @@ impl<'a, 's> Worker<'a, 's> {
                 });
                 Outcome::Quiet
             }
+            Request::CleanupSource { job } => {
+                let snapshot =
+                    crate::cleanup::snapshot(self.session.document(), self.session.revision());
+                let paragraphs = snapshot
+                    .entries
+                    .iter()
+                    .map(|entry| {
+                        (
+                            Address::body(entry.block),
+                            crate::cleanup::text(&entry.paragraph),
+                        )
+                    })
+                    .collect();
+                self.send(Reply::AiSource {
+                    job,
+                    source: Box::new(AiSource {
+                        paragraphs,
+                        selection: None,
+                        cleanup: Some(snapshot),
+                    }),
+                });
+                Outcome::Quiet
+            }
             Request::Respell => {
                 self.spelling.clear();
                 self.respell();
@@ -1432,6 +1632,9 @@ impl<'a, 's> Worker<'a, 's> {
             request => {
                 if let Some(reason) = &self.read_only {
                     self.note("note.read_only", reason.clone(), true);
+                    if matches!(request, Request::ApplyCleanup(_)) {
+                        self.send(Reply::CleanupResult(false));
+                    }
                     return Outcome::Quiet;
                 }
                 self.edit_request(request)
@@ -1441,6 +1644,34 @@ impl<'a, 's> Worker<'a, 's> {
 
     fn edit_request(&mut self, request: Request) -> Outcome {
         match request {
+            Request::ApplyCleanup(plan) => {
+                let outcome = match crate::cleanup::commands(
+                    self.session.document(),
+                    self.session.revision(),
+                    &plan,
+                ) {
+                    Ok(commands) if !commands.is_empty() && self.transact(&commands) => {
+                        self.object = None;
+                        self.formula = None;
+                        self.anchor = None;
+                        self.cells = None;
+                        self.story = Story::Body;
+                        self.caret = self.first_paragraph().map(|paragraph| Logical {
+                            paragraph,
+                            offset: 0,
+                        });
+                        self.note("cleanup.applied", String::new(), false);
+                        Outcome::Edited
+                    }
+                    Ok(_) => Outcome::Quiet,
+                    Err(key) => {
+                        self.note(key, String::new(), true);
+                        Outcome::Quiet
+                    }
+                };
+                self.send(Reply::CleanupResult(matches!(outcome, Outcome::Edited)));
+                outcome
+            }
             Request::Type(text) => self.type_text(&text),
             Request::SetParagraphText { at, old, new } => {
                 let text = self.text_of(&at);
@@ -1591,6 +1822,17 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn relayout_inner(&mut self) {
+        if self.system_fonts {
+            let families = used_font_families(self.session.document());
+            if families != self.font_families {
+                self.font_families = families;
+                let (assets, missing) = installed_fonts(self.session.document(), true);
+                self.options.font_assets = assets;
+                if !missing.is_empty() {
+                    self.send(Reply::FontsMissing(missing));
+                }
+            }
+        }
         self.stale = false;
         // One layout serves the pages and the caret map: it places caret
         // anchors, which painting leaves out.
@@ -1735,6 +1977,14 @@ impl<'a, 's> Worker<'a, 's> {
     /// paragraph there is no text to stand in).
     fn position(&self, logical: &Logical) -> TextPosition {
         let pieces = self.pieces(&logical.paragraph);
+        if pieces.iter().all(|piece| piece.text.is_empty()) {
+            return TextPosition {
+                paragraph: logical.paragraph.clone(),
+                inline: vec![],
+                content: 0,
+                offset: 0,
+            };
+        }
         let mut before = 0;
         let mut fallback = None;
         for piece in &pieces {
@@ -1769,7 +2019,9 @@ impl<'a, 's> Worker<'a, 's> {
         let mut before = 0;
         for piece in &pieces {
             let end = before + piece.len();
-            if piece.text == "\t" && (end == logical.offset || before == logical.offset) {
+            if (piece.text == "\t" || piece.text.starts_with(nav::OBJECT))
+                && (end == logical.offset || before == logical.offset)
+            {
                 return TextPosition {
                     paragraph: logical.paragraph.clone(),
                     inline: piece.inline.clone(),
@@ -1880,7 +2132,11 @@ impl<'a, 's> Worker<'a, 's> {
         };
         // Drawings inside the selection are selected too.
         let mut selection = selection;
-        selection.extend(self.selected_object_rects());
+        for rect in self.selected_object_rects() {
+            if !selection.contains(&rect) {
+                selection.push(rect);
+            }
+        }
         let object = self.object_view();
         let ruler = self.ruler_info(
             carets
@@ -1892,6 +2148,7 @@ impl<'a, 's> Worker<'a, 's> {
         let carets = if object.is_some() { Vec::new() } else { carets };
         let format = self.caret_format();
         let header_footer = self.header_footer_view();
+        let at_top = std::mem::take(&mut self.scroll_at_top);
         self.send(Reply::Cursor(Box::new(Cursor {
             object,
             ruler,
@@ -1899,6 +2156,7 @@ impl<'a, 's> Worker<'a, 's> {
             carets,
             selection,
             scroll,
+            at_top,
             format,
         })));
     }
@@ -1911,11 +2169,19 @@ impl<'a, 's> Worker<'a, 's> {
             return CaretFormat::default();
         };
         let position = self.position(caret);
+        let document = self.session.document();
+        let computed_paragraph =
+            strict_ooxml_render_svg::style::compute_paragraph(document, paragraph);
+        let computed_run = nav::run_at(paragraph, &position.inline).map_or_else(
+            || computed_paragraph.mark_run().clone(),
+            |run| strict_ooxml_render_svg::style::compute_run(document, &computed_paragraph, run),
+        );
         let props = nav::run_at(paragraph, &position.inline)
             .map(|run| &run.props)
             .or(paragraph.props.run_props.as_ref());
         let pending = self.pending_script;
         let mut format = CaretFormat {
+            size: Some(computed_run.size_pt as f32),
             align: paragraph
                 .props
                 .alignment
@@ -1942,10 +2208,6 @@ impl<'a, 's> Worker<'a, 's> {
             format.strike = props.strike == TriState::On;
             format.superscript = props.vert_align == Some(VertAlign::Superscript);
             format.subscript = props.vert_align == Some(VertAlign::Subscript);
-            #[allow(clippy::cast_precision_loss)]
-            {
-                format.size = props.size.map(|size| size.0 as f32 / 2.0);
-            }
             format.font = props
                 .fonts
                 .as_ref()
@@ -1957,6 +2219,20 @@ impl<'a, 's> Worker<'a, 's> {
         if let Some(script) = pending {
             format.superscript = script == Some(VertAlign::Superscript);
             format.subscript = script == Some(VertAlign::Subscript);
+        }
+        if self.formula.is_some() {
+            if let Some((_, _, expression)) = self.formula_at_caret() {
+                format.size = crate::formula::size(&expression)
+                    .map(|size| size.0 as f32 / 2.0)
+                    .or(Some(
+                        strict_ooxml_render_svg::style::compute_paragraph(
+                            self.session.document(),
+                            paragraph,
+                        )
+                        .default_run
+                        .size_pt as f32,
+                    ));
+            }
         }
         format
     }
@@ -1994,6 +2270,14 @@ impl<'a, 's> Worker<'a, 's> {
         };
         // A click on a drawing selects it, the caret before it.
         if !extend && !column {
+            if let Ok(Some(formula)) = map.hit_formula(revision, page, x, y) {
+                self.caret = Some(self.logical(&formula));
+                self.formula = Some(formula);
+                self.object = None;
+                self.anchor = None;
+                self.cells = None;
+                return Outcome::Moved;
+            }
             if let Ok(Some(object)) = map.hit_drawing(revision, page, x, y) {
                 if let Some(offset) = self.object_offset(&object) {
                     self.caret = Some(Logical {
@@ -2008,6 +2292,7 @@ impl<'a, 's> Worker<'a, 's> {
             }
         }
         self.object = None;
+        self.formula = None;
         let Ok(Some(position)) = map.hit_test(revision, page, x, y) else {
             return Outcome::Quiet;
         };
@@ -2050,6 +2335,7 @@ impl<'a, 's> Worker<'a, 's> {
         // Ctrl+click on a table of contents entry goes to its heading.
         if column {
             if let Some(heading) = self.toc_target(&logical.paragraph) {
+                self.scroll_at_top = true;
                 self.story = Story::Body;
                 self.anchor = None;
                 self.cells = None;
@@ -2064,6 +2350,7 @@ impl<'a, 's> Worker<'a, 's> {
                     carets: Vec::new(),
                     selection: Vec::new(),
                     scroll: true,
+                    at_top: true,
                     format: CaretFormat::default(),
                 })));
                 return Outcome::Moved;
@@ -2121,7 +2408,83 @@ impl<'a, 's> Worker<'a, 's> {
         Outcome::Moved
     }
 
+    fn context_click(&mut self, page: usize, x: f64, y: f64) -> Outcome {
+        self.ensure_layout();
+        let contains = |r: &VisualRect| {
+            r.page == page
+                && x >= r.x
+                && x <= r.x + r.width.max(3.0)
+                && y >= r.y
+                && y <= r.y + r.height
+        };
+        let comment = self
+            .comment_views()
+            .into_iter()
+            .find(|c| c.rects.iter().any(contains))
+            .map(|c| c.id);
+        let selected = self
+            .selection()
+            .zip(self.map.as_ref())
+            .is_some_and(|((a, b), map)| {
+                map.selection_between(
+                    self.session.revision(),
+                    &self.position(&a),
+                    &self.position(&b),
+                )
+                .unwrap_or_default()
+                .iter()
+                .any(contains)
+            })
+            || self.cell_rects().iter().any(contains);
+        let object_hit = self.map.as_ref().is_some_and(|map| {
+            map.hit_drawing(self.session.revision(), page, x, y)
+                .ok()
+                .flatten()
+                .is_some()
+                || map
+                    .hit_formula(self.session.revision(), page, x, y)
+                    .ok()
+                    .flatten()
+                    .is_some()
+        });
+        if object_hit || !selected {
+            self.click(page, x, y, false, false);
+        }
+        let object = self.object_view().map(|o| {
+            if o.formula {
+                ContextObject::Formula
+            } else if o.chart {
+                ContextObject::Chart
+            } else if o.picture {
+                ContextObject::Picture
+            } else {
+                ContextObject::Shape
+            }
+        });
+        self.send(Reply::Context(ContextState {
+            editable: self.read_only.is_none(),
+            selection: self.selection().is_some() || self.cells.is_some(),
+            table: self.in_cell().is_some(),
+            object,
+            comment,
+        }));
+        Outcome::Moved
+    }
+
     fn select_word(&mut self, page: usize, x: f64, y: f64) -> Outcome {
+        self.ensure_layout();
+        if let Some(at) = self.map.as_ref().and_then(|map| {
+            map.hit_formula(self.session.revision(), page, x, y)
+                .ok()
+                .flatten()
+        }) {
+            self.caret = Some(self.logical(&at));
+            self.formula = Some(at);
+            self.object = None;
+            self.anchor = None;
+            self.send(Reply::Formula(self.formula_at_caret().map(Box::new)));
+            return Outcome::Moved;
+        }
         // A double click in a header or footer, or in the margin where one
         // goes, edits it.
         if !matches!(self.story, Story::HeaderFooter(_)) {
@@ -2421,14 +2784,30 @@ impl<'a, 's> Worker<'a, 's> {
         end: usize,
         text: &str,
     ) -> Result<Vec<Edit>, &'static str> {
-        let pieces = self.pieces(at);
+        Self::paragraph_replace_in(
+            at,
+            self.paragraph(at).ok_or("note.no_paragraph")?,
+            start,
+            end,
+            text,
+        )
+    }
+
+    fn paragraph_replace_in(
+        at: &Address,
+        paragraph: &Paragraph,
+        start: usize,
+        end: usize,
+        text: &str,
+    ) -> Result<Vec<Edit>, &'static str> {
+        let pieces = nav::pieces(paragraph);
         if pieces.is_empty() {
             if text.is_empty() {
                 return Ok(Vec::new());
             }
             // A paragraph with no text but other inlines (a note's number
             // mark, a bookmark): the text is a run of its own after them.
-            let inlines = self.paragraph(at).map_or(0, |p| p.inlines.len());
+            let inlines = paragraph.inlines.len();
             if inlines > 0 {
                 use strict_ooxml::model::{Inline, Run, RunContent, Space, TextNode};
                 return Ok(vec![Edit::InsertInline {
@@ -2492,13 +2871,12 @@ impl<'a, 's> Worker<'a, 's> {
             .collect();
         if !text.is_empty() {
             let index = atoms.first().copied().or(insert_at).unwrap_or(0);
-            let props = self
-                .paragraph(at)
-                .and_then(|paragraph| {
-                    paragraph.inlines.iter().find_map(|inline| match inline {
-                        strict_ooxml::model::Inline::Run(run) => Some(run.props.clone()),
-                        _ => None,
-                    })
+            let props = paragraph
+                .inlines
+                .iter()
+                .find_map(|inline| match inline {
+                    strict_ooxml::model::Inline::Run(run) => Some(run.props.clone()),
+                    _ => None,
                 })
                 .unwrap_or_default();
             commands.push(Edit::InsertInline {
@@ -2731,11 +3109,23 @@ impl<'a, 's> Worker<'a, 's> {
         caret: &Logical,
         inlines: Vec<strict_ooxml::model::Inline>,
     ) -> Vec<Edit> {
+        let Some(paragraph) = self.paragraph(&caret.paragraph) else {
+            return vec![];
+        };
+        Self::inlines_in_paragraph(caret, paragraph, inlines)
+    }
+
+    fn inlines_in_paragraph(
+        caret: &Logical,
+        paragraph: &Paragraph,
+        inlines: Vec<strict_ooxml::model::Inline>,
+    ) -> Vec<Edit> {
         let at = caret.paragraph.clone();
+        let pieces = nav::pieces(paragraph);
         // Split there, put the inline first in the right half, join again:
         // the kernel inserts inlines between runs, and this makes the caret's
         // point a boundary between runs wherever it was.
-        if let Some(point) = self.point(caret) {
+        if let Some(point) = nav::point_at(&pieces, caret.offset) {
             let mut right = at.clone();
             right.block += 1;
             let mut commands = vec![Edit::SplitAt {
@@ -2753,7 +3143,6 @@ impl<'a, 's> Worker<'a, 's> {
             return commands;
         }
         // An empty paragraph, or the caret beside atoms between runs.
-        let pieces = self.pieces(&at);
         let mut before = 0;
         let mut index = 0;
         for piece in &pieces {
@@ -2818,6 +3207,23 @@ impl<'a, 's> Worker<'a, 's> {
 
     fn object_view(&self) -> Option<ObjectView> {
         use strict_ooxml::model::{DrawingKind, Graphic};
+        if let Some(formula) = &self.formula {
+            let rects = self
+                .map
+                .as_ref()?
+                .formula_rects(self.session.revision(), formula)
+                .ok()?;
+            let rect = rects.first()?;
+            return Some(ObjectView {
+                width: (rect.width * 9525.0).round() as i64,
+                height: (rect.height * 9525.0).round() as i64,
+                rects,
+                picture: false,
+                chart: false,
+                formula: true,
+                wrap: WrapStyle::Inline,
+            });
+        }
         let object = self.object.as_ref()?;
         let map = self.map.as_ref()?;
         let rects = map
@@ -2836,6 +3242,7 @@ impl<'a, 's> Worker<'a, 's> {
             height: extent.map_or(0, |e| e.cy.0),
             picture: matches!(graphic, Some(Graphic::Picture(_))),
             chart: matches!(graphic, Some(Graphic::Chart(_))),
+            formula: false,
             wrap: wrap_style(&drawing),
         })
     }
@@ -2918,6 +3325,12 @@ impl<'a, 's> Worker<'a, 's> {
         );
         let commands = self.inline_at_caret(&caret, Inline::Drawing(drawing));
         if self.transact(&commands) {
+            self.anchor = None;
+            self.object = self
+                .objects_of(&caret.paragraph)
+                .into_iter()
+                .find(|(offset, _)| *offset == caret.offset)
+                .map(|(_, at)| at);
             Outcome::Edited
         } else {
             Outcome::Quiet
@@ -2931,58 +3344,112 @@ impl<'a, 's> Worker<'a, 's> {
     fn formula_at_caret(
         &self,
     ) -> Option<(Address, usize, strict_ooxml::model::math::MathExpression)> {
+        if let Some(at) = &self.formula {
+            let index = *at.inline.first()?;
+            if let Some(expression) =
+                crate::formula::expression(self.paragraph(&at.paragraph)?.inlines.get(index)?)
+            {
+                return Some((at.paragraph.clone(), index, expression.clone()));
+            }
+        }
         let caret = self.caret.as_ref()?;
         let paragraph = self.paragraph(&caret.paragraph)?;
-        paragraph
-            .inlines
-            .iter()
-            .enumerate()
-            .find_map(|(index, inline)| match inline {
-                strict_ooxml::model::Inline::Math(expression)
-                    if self.offset_of_inline(&caret.paragraph, index) == caret.offset =>
-                {
-                    Some((caret.paragraph.clone(), index, expression.clone()))
-                }
-                _ => None,
-            })
+        let find = |after: usize| {
+            paragraph
+                .inlines
+                .iter()
+                .enumerate()
+                .find_map(|(index, inline)| match inline {
+                    inline
+                        if self.offset_of_inline(&caret.paragraph, index) + after
+                            == caret.offset =>
+                    {
+                        crate::formula::expression(inline)
+                            .map(|expression| (caret.paragraph.clone(), index, expression.clone()))
+                    }
+                    _ => None,
+                })
+        };
+        find(0).or_else(|| find(1))
     }
 
     fn put_formula(
         &mut self,
-        expression: strict_ooxml::model::math::MathExpression,
+        mut expression: strict_ooxml::model::math::MathExpression,
         replace: Option<(Address, usize)>,
     ) -> Outcome {
         if let Some((at, index)) = replace {
-            let still = self
+            if let Some(old) = self
                 .paragraph(&at)
-                .and_then(|paragraph| paragraph.inlines.get(index))
-                .is_some_and(|inline| matches!(inline, strict_ooxml::model::Inline::Math(_)));
-            if !still {
-                return Outcome::Quiet;
+                .and_then(|p| p.inlines.get(index))
+                .and_then(crate::formula::expression)
+            {
+                if let Some(size) = crate::formula::size(old) {
+                    crate::formula::set_size(&mut expression, size);
+                }
             }
-            let commands = [
-                Edit::DeleteInline {
-                    at: at.clone(),
-                    index,
-                },
-                Edit::InsertInline {
-                    at,
-                    index,
-                    inline: Box::new(strict_ooxml::model::Inline::Math(expression)),
-                },
-            ];
-            return if self.transact(&commands) {
-                Outcome::Edited
-            } else {
-                Outcome::Quiet
-            };
+            return self.replace_formula(at, index, expression);
         }
+        self.formula = None;
         self.delete_selection();
         let Some(caret) = self.caret.clone() else {
             return Outcome::Quiet;
         };
         let commands = self.inline_at_caret(&caret, strict_ooxml::model::Inline::Math(expression));
         if self.transact(&commands) {
+            if let Some((at, index, _)) = self.formula_at_caret() {
+                self.formula = Some(TextPosition {
+                    paragraph: at,
+                    inline: vec![index],
+                    content: 0,
+                    offset: 0,
+                });
+            }
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
+    fn replace_formula(
+        &mut self,
+        at: Address,
+        index: usize,
+        expression: strict_ooxml::model::math::MathExpression,
+    ) -> Outcome {
+        let Some(old) = self.paragraph(&at).and_then(|p| p.inlines.get(index)) else {
+            return Outcome::Quiet;
+        };
+        let replacement = match old {
+            strict_ooxml::model::Inline::Math(_) => strict_ooxml::model::Inline::Math(expression),
+            strict_ooxml::model::Inline::MathParagraph(paragraph) => {
+                let mut paragraph = paragraph.clone();
+                let Some(first) = paragraph.equations.first_mut() else {
+                    return Outcome::Quiet;
+                };
+                *first = expression;
+                strict_ooxml::model::Inline::MathParagraph(paragraph)
+            }
+            _ => return Outcome::Quiet,
+        };
+        let commands = [
+            Edit::DeleteInline {
+                at: at.clone(),
+                index,
+            },
+            Edit::InsertInline {
+                at: at.clone(),
+                index,
+                inline: Box::new(replacement),
+            },
+        ];
+        if self.transact(&commands) {
+            self.formula = Some(TextPosition {
+                paragraph: at,
+                inline: vec![index],
+                content: 0,
+                offset: 0,
+            });
             Outcome::Edited
         } else {
             Outcome::Quiet
@@ -3013,6 +3480,7 @@ impl<'a, 's> Worker<'a, 's> {
             })
             .collect();
         AiSource {
+            cleanup: None,
             paragraphs,
             selection,
         }
@@ -3455,6 +3923,7 @@ impl<'a, 's> Worker<'a, 's> {
         self.cells = None;
         self.anchor = (start != end).then_some(start);
         self.caret = Some(end);
+        self.send(Reply::CommentFocused(id.to_owned()));
         Outcome::Moved
     }
 
@@ -3707,11 +4176,7 @@ impl<'a, 's> Worker<'a, 's> {
     fn add_bookmark(&mut self, name: &str) -> Outcome {
         use strict_ooxml::model::{Bookmark, BookmarkId, Inline};
         let name = name.trim();
-        let valid = !name.is_empty()
-            && name.chars().next().is_some_and(char::is_alphabetic)
-            && name.chars().all(|c| c.is_alphanumeric() || c == '_')
-            && name.chars().count() <= 40;
-        if !valid {
+        if !valid_bookmark_name(name) {
             self.note("note.bookmark_name", name.to_owned(), true);
             return Outcome::Quiet;
         }
@@ -4707,6 +5172,52 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn object_command(&mut self, command: ObjectCommand) -> Outcome {
+        if self.formula.is_some() {
+            match command {
+                ObjectCommand::MoveTo { page, x, y } => return self.move_in_text(page, x, y),
+                ObjectCommand::Resize { width, height } => {
+                    let Some(view) = self.object_view() else {
+                        return Outcome::Quiet;
+                    };
+                    let sx = width as f64 / view.width.max(1) as f64;
+                    let sy = height as f64 / view.height.max(1) as f64;
+                    let factor = if (sx - 1.0).abs() >= (sy - 1.0).abs() {
+                        sx
+                    } else {
+                        sy
+                    };
+                    let Some((at, index, mut expression)) = self.formula_at_caret() else {
+                        return Outcome::Quiet;
+                    };
+                    let size = crate::formula::size(&expression).map_or_else(
+                        || {
+                            self.paragraph(&at).map_or(11.0, |p| {
+                                strict_ooxml_render_svg::style::compute_paragraph(
+                                    self.session.document(),
+                                    p,
+                                )
+                                .default_run
+                                .size_pt
+                            })
+                        },
+                        |size| f64::from(size.0) / 2.0,
+                    );
+                    crate::formula::set_size(&mut expression, half_points((size * factor) as f32));
+                    return self.replace_formula(at, index, expression);
+                }
+                ObjectCommand::Delete => {
+                    let at = self.formula.take().unwrap();
+                    let start = self.logical(&at);
+                    self.anchor = Some(start.clone());
+                    self.caret = Some(Logical {
+                        offset: start.offset + 1,
+                        ..start
+                    });
+                    return self.delete_selection();
+                }
+                _ => return Outcome::Quiet,
+            }
+        }
         match command {
             ObjectCommand::Delete => self.delete_object(),
             ObjectCommand::Edit(edit) => self.edit_picture(edit),
@@ -4777,11 +5288,116 @@ impl<'a, 's> Worker<'a, 's> {
         }
     }
 
+    /// Uses the rendered preview when the original media cannot be decoded
+    /// directly (for example a legacy metafile already rendered by the toolkit).
+    #[cfg(feature = "ocr")]
+    fn object_preview_png(&self) -> Option<Vec<u8>> {
+        let rect = *self.object_view()?.rects.first()?;
+        let page = self.pages.get(rect.page)?;
+        let svg = strict_ooxml::paint_page(&page.placed, &self.options);
+        crate::raster::region_png(&svg, rect.x, rect.y, rect.width, rect.height)
+    }
+
+    /// Keeps recognition separate from editing: the picture survives cancel.
+    #[cfg(feature = "ocr")]
+    fn review_formula_recognition(&self, mathml: String) -> Outcome {
+        if let Err(error) = strict_ooxml::math_from_mathml(&mathml) {
+            self.note("note.recognize_failed", error.to_string(), true);
+            return Outcome::Quiet;
+        }
+        if let Some((object, drawing)) = self.object.as_ref().and_then(|object| {
+            self.drawing_at(object)
+                .map(|drawing| (object.clone(), drawing))
+        }) {
+            self.send(Reply::FormulaRecognition(Box::new(FormulaRecognition {
+                revision: self.session.revision(),
+                object,
+                drawing,
+                mathml,
+            })));
+        }
+        Outcome::Quiet
+    }
+
+    /// Replaces even a preview inside a run in one undoable transaction.
+    fn confirm_formula_recognition(&mut self, plan: FormulaRecognition) -> Outcome {
+        if self.session.revision() != plan.revision
+            || self.drawing_at(&plan.object).as_ref() != Some(&plan.drawing)
+        {
+            self.note("note.recognition_stale", "", false);
+            return Outcome::Quiet;
+        }
+        let Some(offset) = self.object_offset(&plan.object) else {
+            return Outcome::Quiet;
+        };
+        let start = Logical {
+            paragraph: plan.object.paragraph,
+            offset,
+        };
+        let end = Logical {
+            offset: offset + 1,
+            ..start.clone()
+        };
+        let planned = (|| -> Result<Vec<Edit>, String> {
+            let expression =
+                strict_ooxml::math_from_mathml(&plan.mathml).map_err(|e| e.to_string())?;
+            let mut commands = self
+                .replace_commands(&start, &end, "")
+                .map_err(str::to_owned)?;
+            let mut document = self.session.document().clone();
+            let mut stage = strict_ooxml::edit::Editor::new(
+                &mut document,
+                EditLimits {
+                    history_transactions: 0,
+                    ..EditLimits::default()
+                },
+            )
+            .map_err(|e| e.to_string())?;
+            stage
+                .transact(stage.revision(), &commands)
+                .map_err(|e| e.to_string())?;
+            let paragraph = stage
+                .paragraph(&start.paragraph)
+                .map_err(|e| e.to_string())?;
+            commands.extend(Self::inlines_in_paragraph(
+                &start,
+                paragraph,
+                vec![strict_ooxml::model::Inline::Math(expression)],
+            ));
+            Ok(commands)
+        })();
+        let commands = match planned {
+            Ok(commands) => commands,
+            Err(error) => {
+                self.note("note.recognize_failed", error, true);
+                return Outcome::Quiet;
+            }
+        };
+        if !self.transact(&commands) {
+            return Outcome::Quiet;
+        }
+        self.object = None;
+        self.anchor = None;
+        self.cells = None;
+        self.story = start.paragraph.story.clone();
+        self.caret = Some(start);
+        self.formula = self
+            .formula_at_caret()
+            .map(|(paragraph, index, _)| TextPosition {
+                paragraph,
+                inline: vec![index],
+                content: 0,
+                offset: 0,
+            });
+        Outcome::Edited
+    }
+
     /// Recognises the selected picture with a vision model and puts what it
     /// reads in its place: text, or the formula as a Word equation.
     #[cfg(feature = "ocr")]
     fn recognize_object(&mut self, formula: bool, endpoint: &str, model: &str) -> Outcome {
         use strict_ooxml::{OcrImage, TextRecovery};
+        self.ensure_layout();
         let Some(bytes) = self.object_bytes() else {
             self.note("note.recognize_failed", "no picture bytes", true);
             return Outcome::Quiet;
@@ -4789,8 +5405,10 @@ impl<'a, 's> Worker<'a, 's> {
         let image = match strict_ooxml::edit::picture_format(&bytes) {
             Some((strict_ooxml::model::MediaKind::Png, ..)) => OcrImage::png(bytes),
             Some((strict_ooxml::model::MediaKind::Jpeg, ..)) => OcrImage::jpeg(bytes),
-            Some(_) => {
-                let Some(png) = crate::raster::picture_png(&bytes) else {
+            _ => {
+                let Some(png) =
+                    crate::raster::picture_png(&bytes).or_else(|| self.object_preview_png())
+                else {
                     self.note(
                         "note.recognize_failed",
                         "the picture could not be read",
@@ -4799,10 +5417,6 @@ impl<'a, 's> Worker<'a, 's> {
                     return Outcome::Quiet;
                 };
                 OcrImage::png(png)
-            }
-            None => {
-                self.note("note.recognize_failed", "not a picture format", true);
-                return Outcome::Quiet;
             }
         };
         let mut config = strict_ooxml::OllamaConfig::from_env();
@@ -4827,37 +5441,12 @@ impl<'a, 's> Worker<'a, 's> {
                 return Outcome::Quiet;
             }
         };
-        let replacement = if formula {
-            match strict_ooxml::math_from_mathml(&text) {
-                Ok(expression) => Replacement::Formula(expression),
-                Err(error) => {
-                    self.note("note.recognize_failed", error.to_string(), true);
-                    return Outcome::Quiet;
-                }
-            }
-        } else {
-            Replacement::Text(text.clone())
-        };
-        // A drawing between runs is replaced in one step, one undo.
-        if let Some(outcome) = self.replace_object_whole(&replacement) {
-            return outcome;
+        if formula {
+            return self.review_formula_recognition(text);
         }
-        if let Replacement::Formula(expression) = replacement {
-            if matches!(self.delete_object(), Outcome::Quiet) {
-                return Outcome::Quiet;
-            }
-            let Some(caret) = self.caret.clone() else {
-                return Outcome::Edited;
-            };
-            let commands =
-                self.inline_at_caret(&caret, strict_ooxml::model::Inline::Math(expression));
-            if self.transact(&commands) {
-                self.caret = Some(Logical {
-                    paragraph: caret.paragraph,
-                    offset: caret.offset,
-                });
-            }
-            return Outcome::Edited;
+        // A drawing between runs is replaced in one step, one undo.
+        if let Some(outcome) = self.replace_object_whole(&text) {
+            return outcome;
         }
         if matches!(self.delete_object(), Outcome::Quiet) {
             return Outcome::Quiet;
@@ -4867,10 +5456,10 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     /// Replaces the selected drawing, when it stands between runs, by text
-    /// (a paragraph split at each line break) or a formula, in one
+    /// (a paragraph split at each line break), in one
     /// transaction. `None` for a drawing inside a run.
     #[cfg(feature = "ocr")]
-    fn replace_object_whole(&mut self, replacement: &Replacement) -> Option<Outcome> {
+    fn replace_object_whole(&mut self, text: &str) -> Option<Outcome> {
         use strict_ooxml::edit::InlinePoint;
         use strict_ooxml::model::{Inline, Run, RunContent, Space, TextNode};
         let object = self.object.clone()?;
@@ -4917,59 +5506,44 @@ impl<'a, 's> Worker<'a, 's> {
             at: at.clone(),
             index,
         }];
-        let mut caret = Logical {
-            paragraph: at.clone(),
-            offset,
-        };
-        match replacement {
-            Replacement::Formula(expression) => {
-                commands.push(Edit::InsertInline {
-                    at: at.clone(),
-                    index,
-                    inline: Box::new(Inline::Math(expression.clone())),
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        let lines: Vec<String> = text
+            .split('\n')
+            .map(|line| {
+                line.chars()
+                    .map(|c| if c == '\t' { ' ' } else { c })
+                    .filter(|c| !c.is_control())
+                    .collect()
+            })
+            .collect();
+        let mut here = at.clone();
+        let mut slot = index;
+        for (number, line) in lines.iter().enumerate() {
+            if number > 0 {
+                // The rest of the paragraph goes on after this line.
+                let previous = lines.get(number - 1).map_or(0, |l| l.chars().count());
+                commands.push(Edit::SplitAt {
+                    at: here.clone(),
+                    point: InlinePoint {
+                        inline: vec![slot],
+                        content: 0,
+                        offset: previous,
+                    },
                 });
+                here.block += 1;
+                slot = 0;
             }
-            Replacement::Text(text) => {
-                let text = text.replace("\r\n", "\n").replace('\r', "\n");
-                let lines: Vec<String> = text
-                    .split('\n')
-                    .map(|line| {
-                        line.chars()
-                            .map(|c| if c == '\t' { ' ' } else { c })
-                            .filter(|c| !c.is_control())
-                            .collect()
-                    })
-                    .collect();
-                let mut here = at.clone();
-                let mut slot = index;
-                for (number, line) in lines.iter().enumerate() {
-                    if number > 0 {
-                        // The rest of the paragraph goes on after this line.
-                        let previous = lines.get(number - 1).map_or(0, |l| l.chars().count());
-                        commands.push(Edit::SplitAt {
-                            at: here.clone(),
-                            point: InlinePoint {
-                                inline: vec![slot],
-                                content: 0,
-                                offset: previous,
-                            },
-                        });
-                        here.block += 1;
-                        slot = 0;
-                    }
-                    commands.push(Edit::InsertInline {
-                        at: here.clone(),
-                        index: slot,
-                        inline: run(line),
-                    });
-                }
-                caret = Logical {
-                    paragraph: here,
-                    offset: if lines.len() > 1 { 0 } else { offset }
-                        + lines.last().map_or(0, |l| l.chars().count()),
-                };
-            }
+            commands.push(Edit::InsertInline {
+                at: here.clone(),
+                index: slot,
+                inline: run(line),
+            });
         }
+        let caret = Logical {
+            paragraph: here,
+            offset: if lines.len() > 1 { 0 } else { offset }
+                + lines.last().map_or(0, |l| l.chars().count()),
+        };
         if !self.transact(&commands) {
             return Some(Outcome::Quiet);
         }
@@ -5210,9 +5784,8 @@ impl<'a, 's> Worker<'a, 's> {
 
     /// Moves the selected drawing to another place in the text.
     fn move_in_text(&mut self, page: usize, x: f64, y: f64) -> Outcome {
-        let Some(object) = self.object.clone() else {
-            return Outcome::Quiet;
-        };
+        use strict_ooxml::model::Inline;
+        self.ensure_layout();
         let revision = self.session.revision();
         let Some(target) = self
             .map
@@ -5222,24 +5795,99 @@ impl<'a, 's> Worker<'a, 's> {
             return Outcome::Quiet;
         };
         let mut target = self.logical(&target);
-        let (Some(drawing), Some(offset)) = (self.drawing_at(&object), self.object_offset(&object))
-        else {
+        let (source, inline) = if let Some(at) = &self.formula {
+            let Some(index) = at.inline.first() else {
+                return Outcome::Quiet;
+            };
+            let Some(inline) = self
+                .paragraph(&at.paragraph)
+                .and_then(|p| p.inlines.get(*index))
+                .cloned()
+            else {
+                return Outcome::Quiet;
+            };
+            (self.logical(at), inline)
+        } else if let Some(object) = &self.object {
+            let (Some(drawing), Some(offset)) =
+                (self.drawing_at(object), self.object_offset(object))
+            else {
+                return Outcome::Quiet;
+            };
+            (
+                Logical {
+                    paragraph: object.paragraph.clone(),
+                    offset,
+                },
+                Inline::Drawing(drawing),
+            )
+        } else {
             return Outcome::Quiet;
         };
         // Dropped on itself: nothing moves.
-        if target.paragraph == object.paragraph && (offset..=offset + 1).contains(&target.offset) {
+        if target.paragraph == source.paragraph
+            && (source.offset..=source.offset + 1).contains(&target.offset)
+        {
             return Outcome::Quiet;
         }
-        if matches!(self.delete_object(), Outcome::Quiet) {
-            return Outcome::Quiet;
-        }
-        if target.paragraph == object.paragraph && target.offset > offset {
+        if target.paragraph == source.paragraph && target.offset > source.offset {
             target.offset -= 1;
         }
-        // The media part stays indexed after the delete, so the drawing
-        // goes back as it is.
-        if self.insert_drawing(&target, drawing, None) {
-            self.caret = Some(target.clone());
+        let end = Logical {
+            offset: source.offset + 1,
+            ..source.clone()
+        };
+        let planned = (|| -> Result<Vec<Edit>, String> {
+            let mut commands = self
+                .replace_commands(&source, &end, "")
+                .map_err(str::to_owned)?;
+            let mut document = self.session.document().clone();
+            let mut stage = strict_ooxml::edit::Editor::new(
+                &mut document,
+                EditLimits {
+                    history_transactions: 0,
+                    ..EditLimits::default()
+                },
+            )
+            .map_err(|e| e.to_string())?;
+            stage
+                .transact(stage.revision(), &commands)
+                .map_err(|e| e.to_string())?;
+            let paragraph = stage
+                .paragraph(&target.paragraph)
+                .map_err(|e| e.to_string())?;
+            commands.extend(Self::inlines_in_paragraph(
+                &target,
+                paragraph,
+                vec![inline.clone()],
+            ));
+            Ok(commands)
+        })();
+        let commands = match planned {
+            Ok(commands) => commands,
+            Err(error) => {
+                self.note("note.edit_refused", error, true);
+                return Outcome::Quiet;
+            }
+        };
+        if !self.transact(&commands) {
+            return Outcome::Quiet;
+        }
+        self.caret = Some(target.clone());
+        self.anchor = None;
+        self.cells = None;
+        self.story = target.paragraph.story.clone();
+        self.object = None;
+        self.formula = None;
+        if matches!(inline, Inline::Math(_) | Inline::MathParagraph(_)) {
+            if let Some((paragraph, index, _)) = self.formula_at_caret() {
+                self.formula = Some(TextPosition {
+                    paragraph,
+                    inline: vec![index],
+                    content: 0,
+                    offset: 0,
+                });
+            }
+        } else {
             self.object = self
                 .objects_of(&target.paragraph)
                 .into_iter()
@@ -5517,10 +6165,17 @@ impl<'a, 's> Worker<'a, 's> {
         &self,
         logical: &Logical,
     ) -> Option<(Vec<Edit>, strict_ooxml::edit::InlinePoint)> {
-        if let Some(point) = self.point(logical) {
+        Self::point_or_run_in(logical, self.paragraph(&logical.paragraph)?)
+    }
+
+    fn point_or_run_in(
+        logical: &Logical,
+        paragraph: &Paragraph,
+    ) -> Option<(Vec<Edit>, strict_ooxml::edit::InlinePoint)> {
+        let pieces = nav::pieces(paragraph);
+        if let Some(point) = nav::point_at(&pieces, logical.offset) {
             return Some((Vec::new(), point));
         }
-        let pieces = self.pieces(&logical.paragraph);
         let mut before = 0;
         let mut index = None;
         for piece in &pieces {
@@ -5534,8 +6189,7 @@ impl<'a, 's> Worker<'a, 's> {
             before = end;
         }
         let index = index?;
-        let props = self
-            .paragraph(&logical.paragraph)?
+        let props = paragraph
             .inlines
             .iter()
             .find_map(|inline| match inline {
@@ -5735,6 +6389,14 @@ impl<'a, 's> Worker<'a, 's> {
                     fonts: Some(None),
                     vert_align: Some(None),
                 };
+            }
+        }
+        if self.formula.is_some() {
+            if let (Some(Some(size)), Some((at, index, mut expression))) =
+                (patch.size, self.formula_at_caret())
+            {
+                crate::formula::set_size(&mut expression, size);
+                return self.replace_formula(at, index, expression);
             }
         }
         let ranges = self.format_ranges();
@@ -6192,6 +6854,18 @@ impl<'a, 's> Worker<'a, 's> {
         let Some(caret) = self.caret.clone() else {
             return Outcome::Quiet;
         };
+        if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("txt"))
+        {
+            return match read_text_file(&path) {
+                Ok(text) => self.paste(&text),
+                Err(error) => {
+                    self.note("note.import_failed", error, true);
+                    Outcome::Quiet
+                }
+            };
+        }
         let source = Source::File {
             path,
             import: formats::ImportOptions::default(),
@@ -6203,6 +6877,18 @@ impl<'a, 's> Worker<'a, 's> {
                 return Outcome::Quiet;
             }
         };
+        if matches!(loaded.kind, formats::Kind::Html | formats::Kind::Rtf) {
+            return match self.insert_rich_document(&loaded.document) {
+                Ok(outcome) => {
+                    self.note("note.imported", loaded.log, false);
+                    outcome
+                }
+                Err(error) => {
+                    self.note("note.import_failed", error, true);
+                    Outcome::Quiet
+                }
+            };
+        }
         let other = loaded.document;
         let mut at = caret.paragraph.clone();
         at.block += 1;
@@ -6220,10 +6906,26 @@ impl<'a, 's> Worker<'a, 's> {
                 self.undo_depth += 1;
                 self.redo_depth = 0;
                 self.stale = true;
+                self.anchor = None;
+                self.caret = Some(Logical {
+                    paragraph: at,
+                    offset: 0,
+                });
                 self.note("note.imported", String::new(), false);
                 Outcome::Edited
             }
             Err(error) => {
+                if matches!(
+                    error,
+                    strict_ooxml::edit::EditError::UnsupportedContent(
+                        strict_ooxml::edit::Unsupported::Import
+                    )
+                ) {
+                    let text = document_text(&other.document().body.blocks);
+                    let outcome = self.paste(&text);
+                    self.note("note.imported_text", String::new(), false);
+                    return outcome;
+                }
                 self.note("note.import_failed", format!("{error:?}"), true);
                 Outcome::Quiet
             }
@@ -6305,6 +7007,23 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn copy(&mut self, cut: bool) -> Outcome {
+        if self.formula.is_some() {
+            if let Some((at, index, expression)) = self.formula_at_caret() {
+                self.send(Reply::ClipboardObjects(Box::new(ClipObjects {
+                    text: crate::formula::to_latex(&expression),
+                    formula: self
+                        .paragraph(&at)
+                        .and_then(|p| p.inlines.get(index))
+                        .cloned(),
+                    objects: vec![],
+                    image: None,
+                })));
+                if cut && self.read_only.is_none() {
+                    return self.object_command(ObjectCommand::Delete);
+                }
+            }
+            return Outcome::Quiet;
+        }
         // A selected drawing alone.
         if let Some(object) = self.object.clone() {
             let objects: Vec<ClipObject> = self.clip_object(&object, 0, 0).into_iter().collect();
@@ -6315,6 +7034,7 @@ impl<'a, 's> Worker<'a, 's> {
             self.send(Reply::ClipboardObjects(Box::new(ClipObjects {
                 text: String::new(),
                 objects,
+                formula: None,
                 image,
             })));
             if cut && self.read_only.is_none() {
@@ -6337,6 +7057,7 @@ impl<'a, 's> Worker<'a, 's> {
             self.send(Reply::ClipboardObjects(Box::new(ClipObjects {
                 text,
                 objects,
+                formula: None,
                 image: None,
             })));
         }
@@ -6411,6 +7132,27 @@ impl<'a, 's> Worker<'a, 's> {
 
     /// Pastes the text, then puts each drawing back at its place in it.
     fn paste_objects(&mut self, clip: &ClipObjects) -> Outcome {
+        if let Some(inline) = &clip.formula {
+            self.formula = None;
+            self.delete_selection();
+            let Some(caret) = self.caret.clone() else {
+                return Outcome::Quiet;
+            };
+            let commands = self.inline_at_caret(&caret, inline.clone());
+            return if self.transact(&commands) {
+                if let Some((paragraph, index, _)) = self.formula_at_caret() {
+                    self.formula = Some(TextPosition {
+                        paragraph,
+                        inline: vec![index],
+                        content: 0,
+                        offset: 0,
+                    });
+                }
+                Outcome::Edited
+            } else {
+                Outcome::Quiet
+            };
+        }
         if self.selection().is_some() && matches!(self.delete_selection(), Outcome::Quiet) {
             return Outcome::Quiet;
         }
@@ -6485,6 +7227,20 @@ impl<'a, 's> Worker<'a, 's> {
             set_picture_part(&mut drawing, &item.part);
             definitions.push(Definition::AddMedia(Box::new(item)));
         }
+        let graphic = match &mut drawing.kind {
+            strict_ooxml::model::DrawingKind::Inline(v) => Some(v.graphic.as_mut()),
+            strict_ooxml::model::DrawingKind::Anchor(v) => Some(v.graphic.as_mut()),
+            strict_ooxml::model::DrawingKind::Opaque(_) => None,
+        };
+        if let Some(strict_ooxml::model::Graphic::Chart(refs)) = graphic {
+            if let Some(data) = &refs.chart {
+                let Some(editor) = self.editor() else {
+                    return false;
+                };
+                let id = editor.add_chart(data);
+                refs.rels = vec![Arc::from(id.as_str())];
+            }
+        }
         set_drawing_id(&mut drawing, id);
         let commands = self.inline_at_caret(at, strict_ooxml::model::Inline::Drawing(drawing));
         matches!(
@@ -6494,28 +7250,107 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     fn paste(&mut self, text: &str) -> Outcome {
+        if self.cells.is_some() {
+            self.collapse_cells();
+        }
         let text = text.replace("\r\n", "\n").replace('\r', "\n");
-        let mut edited = false;
-        for (index, line) in text.split('\n').enumerate() {
-            if index > 0 {
-                if !self.split() {
-                    break;
-                }
-                edited = true;
-            }
-            let clean: String = line
+        if !text.contains('\n') {
+            let clean: String = text
                 .chars()
                 .map(|c| if c == '\t' { ' ' } else { c })
                 .filter(|c| !c.is_control())
                 .collect();
-            if !clean.is_empty() || self.selection().is_some() {
-                edited |= self.put_text(&clean);
-            }
+            return if self.put_text(&clean) {
+                Outcome::Edited
+            } else {
+                Outcome::Quiet
+            };
         }
-        if edited {
-            Outcome::Edited
-        } else {
-            Outcome::Quiet
+        let Some(caret) = self.caret.clone() else {
+            return Outcome::Quiet;
+        };
+        let (start, end) = self.selection().unwrap_or_else(|| (caret.clone(), caret));
+        let planned = (|| -> Result<(Vec<Edit>, Logical), String> {
+            let mut document = self.session.document().clone();
+            let mut stage = strict_ooxml::edit::Editor::new(
+                &mut document,
+                EditLimits {
+                    history_transactions: 0,
+                    ..EditLimits::default()
+                },
+            )
+            .map_err(|e| e.to_string())?;
+            let mut commands = Vec::new();
+            let mut apply = |stage: &mut strict_ooxml::edit::Editor<'_>,
+                             next: Vec<Edit>|
+             -> Result<(), String> {
+                if !next.is_empty() {
+                    stage
+                        .transact(stage.revision(), &next)
+                        .map_err(|e| e.to_string())?;
+                    commands.extend(next);
+                }
+                Ok(())
+            };
+            let removal = self
+                .replace_commands(&start, &end, "")
+                .map_err(str::to_owned)?;
+            apply(&mut stage, removal)?;
+            let mut caret = start;
+            for (index, line) in text.split('\n').enumerate() {
+                if index > 0 {
+                    let paragraph = stage
+                        .paragraph(&caret.paragraph)
+                        .map_err(|e| e.to_string())?;
+                    let next = if nav::pieces(paragraph).is_empty() {
+                        vec![Edit::Split {
+                            at: caret.paragraph.clone(),
+                            offset: 0,
+                        }]
+                    } else {
+                        let (mut next, point) =
+                            Self::point_or_run_in(&caret, paragraph).ok_or("no split point")?;
+                        next.push(Edit::SplitAt {
+                            at: caret.paragraph.clone(),
+                            point,
+                        });
+                        next
+                    };
+                    apply(&mut stage, next)?;
+                    caret.paragraph.block += 1;
+                    caret.offset = 0;
+                }
+                let clean: String = line
+                    .chars()
+                    .map(|c| if c == '\t' { ' ' } else { c })
+                    .filter(|c| !c.is_control())
+                    .collect();
+                let next = Self::paragraph_replace_in(
+                    &caret.paragraph,
+                    stage
+                        .paragraph(&caret.paragraph)
+                        .map_err(|e| e.to_string())?,
+                    caret.offset,
+                    caret.offset,
+                    &clean,
+                )
+                .map_err(str::to_owned)?;
+                apply(&mut stage, next)?;
+                caret.offset += clean.chars().count();
+            }
+            Ok((commands, caret))
+        })();
+        match planned {
+            Ok((commands, caret)) if !commands.is_empty() && self.transact(&commands) => {
+                self.caret = Some(caret);
+                self.anchor = None;
+                Outcome::Edited
+            }
+            Ok(_) => Outcome::Quiet,
+            Err(error) => {
+                self.note("note.edit_refused", error, true);
+                Outcome::Quiet
+            }
         }
     }
 
@@ -7648,6 +8483,96 @@ fn new_table(rows: usize, columns: usize, width: i32) -> Table {
     }
 }
 
+pub(crate) fn valid_bookmark_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.chars().next().is_some_and(char::is_alphabetic)
+        && name.chars().all(|c| c.is_alphanumeric() || c == '_')
+        && name.chars().count() <= 40
+}
+
+fn read_text_file(path: &std::path::Path) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
+        let little = bytes[0] == 0xff;
+        let data = &bytes[2..];
+        if data.len() % 2 != 0 {
+            return Err("Incomplete UTF-16 text".to_owned());
+        }
+        let units: Vec<u16> = data
+            .chunks_exact(2)
+            .map(|b| {
+                if little {
+                    u16::from_le_bytes([b[0], b[1]])
+                } else {
+                    u16::from_be_bytes([b[0], b[1]])
+                }
+            })
+            .collect();
+        String::from_utf16(&units).map_err(|e| e.to_string())
+    } else {
+        String::from_utf8(
+            bytes
+                .strip_prefix(&[0xef, 0xbb, 0xbf])
+                .unwrap_or(&bytes)
+                .to_vec(),
+        )
+        .map_err(|e| e.to_string())
+    }
+}
+
+/// Text import fallback for package-bound content the structured importer cannot carry.
+fn document_text(blocks: &[Block]) -> String {
+    use strict_ooxml::model::{Inline, RunContent};
+    fn inlines(list: &[Inline]) -> String {
+        let mut text = String::new();
+        for inline in list {
+            match inline {
+                Inline::Run(run) => {
+                    for c in &run.content {
+                        match c {
+                            RunContent::Text(t) => text.push_str(&t.text),
+                            RunContent::Tab => text.push('\t'),
+                            RunContent::Break(_) | RunContent::CarriageReturn => text.push('\n'),
+                            _ => {}
+                        }
+                    }
+                }
+                Inline::Hyperlink(h) => text.push_str(&inlines(&h.inlines)),
+                Inline::SdtInline(s) => text.push_str(&inlines(&s.inlines)),
+                Inline::Directional(d) => text.push_str(&inlines(&d.inlines)),
+                Inline::Field(f) => text.push_str(&inlines(&f.inlines)),
+                Inline::Math(m) => text.push_str(&m.text()),
+                Inline::Tab => text.push('\t'),
+                Inline::Break(_) => text.push('\n'),
+                _ => {}
+            }
+        }
+        text
+    }
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Paragraph(p) => Some(inlines(&p.inlines)),
+            Block::Table(t) => Some(
+                t.rows
+                    .iter()
+                    .map(|r| {
+                        r.cells
+                            .iter()
+                            .map(|c| document_text(&c.blocks))
+                            .collect::<Vec<_>>()
+                            .join("\t")
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            Block::SdtBlock(s) => Some(document_text(&s.blocks)),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     let mut temporary = path.as_os_str().to_owned();
     temporary.push(".mufoed-tmp");
@@ -7662,6 +8587,1363 @@ fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn with_empty_worker(check: impl FnOnce(&mut Worker<'_, '_>)) {
+        with_worker_replies(|worker, _| check(worker));
+    }
+
+    #[test]
+    fn rich_clipboard_replaces_selection_with_images_and_one_undo() {
+        for html in [false, true] {
+            with_worker_replies(|worker, rx| {
+                worker.handle(Request::Type("ABCDE".into()));
+                worker.anchor = Some(Logical {
+                    paragraph: Address::body(0),
+                    offset: 1,
+                });
+                worker.caret = Some(Logical {
+                    paragraph: Address::body(0),
+                    offset: 4,
+                });
+                let before = worker.session.document().body.clone();
+                let depth = worker.undo_depth;
+                let image = png(30, 15);
+                let content = if html {
+                    crate::clipboard::Rich{html:Some(format!("<p><b>left</b><img src='data:image/png;base64,{}'>right</p><p>end</p>",crate::raster::base64(&image)).into_bytes()),rtf:None}
+                } else {
+                    use std::fmt::Write as _;
+                    let hex = image.iter().fold(String::new(), |mut hex, b| {
+                        write!(&mut hex, "{b:02x}").unwrap();
+                        hex
+                    });
+                    crate::clipboard::Rich{rtf:Some(format!("{{\\rtf1\\ansi {{\\b left}}{{\\pict\\pngblip\\picwgoal450\\pichgoal225 {hex}}}right\\par end}}").into_bytes()),html:None}
+                };
+                assert!(matches!(
+                    worker.handle(Request::PasteRich {
+                        content,
+                        fallback: "fallback".into()
+                    }),
+                    Outcome::Edited
+                ));
+                assert_eq!(worker.undo_depth, depth + 1);
+                assert_eq!(
+                    document_text(&worker.session.document().body.blocks),
+                    "Aleftright\nendE"
+                );
+                assert_eq!(worker.objects_of(&Address::body(0)).len(), 1);
+                worker.relayout();
+                let object = worker.objects_of(&Address::body(0))[0].1.clone();
+                worker.object = Some(object);
+                assert_eq!(worker.object_bytes().unwrap(), image);
+                assert!(worker.object_view().unwrap().picture);
+                let after = worker.session.document().body.clone();
+                let bytes = worker.session.package_bytes().unwrap();
+                let reopened =
+                    StrictDocument::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+                assert!(reopened.place(&RenderOptions::default()).is_ok());
+                worker.undo(true);
+                assert_eq!(worker.session.document().body, before);
+                worker.undo(false);
+                assert_eq!(worker.session.document().body, after);
+                for reply in rx.try_iter() {
+                    if let Reply::Note(n) = reply {
+                        assert!(!n.error, "{}: {}", n.key, n.detail);
+                    }
+                }
+            });
+        }
+    }
+
+    #[test]
+    fn html_clipboard_tables_and_lists_paste_in_a_cell() {
+        with_worker_replies(|worker, rx| {
+            worker.insert(Insert::Table {
+                rows: 1,
+                columns: 1,
+            });
+            let before = worker.session.document().body.clone();
+            let depth = worker.undo_depth;
+            let content=crate::clipboard::Rich{html:Some(b"<p style='text-align:center'>before</p><table><tr><td>A</td><td>B</td></tr></table><ol><li>one<li>two</ol>".to_vec()),rtf:None};
+            assert!(matches!(
+                worker.handle(Request::PasteRich {
+                    content,
+                    fallback: String::new()
+                }),
+                Outcome::Edited
+            ));
+            assert_eq!(worker.undo_depth, depth + 1);
+            assert_eq!(worker.session.document().numbering.nums().count(), 1);
+            let bytes = worker.session.package_bytes().unwrap();
+            assert!(StrictDocument::open_reader(&bytes[..], &OpenOptions::default()).is_ok());
+            worker.undo(true);
+            assert_eq!(worker.session.document().body, before);
+            assert_eq!(worker.session.document().numbering.nums().count(), 0);
+            for reply in rx.try_iter() {
+                if let Reply::Note(n) = reply {
+                    assert!(!n.error, "{}: {}", n.key, n.detail);
+                }
+            }
+        });
+    }
+
+    fn with_ole_worker(check: impl FnOnce(&mut Worker<'_, '_>, &Receiver<Reply>)) {
+        let source = Source::File {
+            path: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/ole-equation.docx"),
+            import: formats::ImportOptions::default(),
+        };
+        let mut loaded = formats::open(&source, &OpenControl::new()).unwrap();
+        assert!(loaded.log.contains("OLE"));
+        let editor = loaded.document.edit(EditLimits::default()).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = eframe::egui::Context::default();
+        let mut worker = Worker::new(
+            Session::Edit(editor),
+            RenderOptions::default(),
+            &tx,
+            &ctx,
+            None,
+        );
+        worker.relayout();
+        let object = worker.objects_of(&Address::body(0)).pop().unwrap().1;
+        // Transitional w:object previews are drawings inside a run.
+        assert!(object.content.is_some());
+        worker.object = Some(object);
+        check(&mut worker, &rx);
+    }
+
+    #[test]
+    fn display_formula_from_article_selects_edits_resizes_moves_and_undoes() {
+        let path = std::env::var_os("MUFOED_FORMULA_TEST_FILE").map_or_else(
+            || {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("tests/fixtures/display-formula.docx")
+            },
+            PathBuf::from,
+        );
+        let mut loaded = formats::open(
+            &Source::File {
+                path,
+                import: formats::ImportOptions::default(),
+            },
+            &OpenControl::new(),
+        )
+        .unwrap();
+        let editor = loaded.document.edit(EditLimits::default()).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = eframe::egui::Context::default();
+        let mut worker = Worker::new(
+            Session::Edit(editor),
+            RenderOptions::default(),
+            &tx,
+            &ctx,
+            None,
+        );
+        let (at, index) = worker
+            .paragraphs(&Story::Body)
+            .into_iter()
+            .find_map(|at| {
+                worker
+                    .paragraph(&at)?
+                    .inlines
+                    .iter()
+                    .position(|i| matches!(i, strict_ooxml::model::Inline::MathParagraph(_)))
+                    .map(|i| (at, i))
+            })
+            .unwrap();
+        worker.relayout();
+        let position = TextPosition {
+            paragraph: at.clone(),
+            inline: vec![index],
+            content: 0,
+            offset: 0,
+        };
+        let rect = worker
+            .map
+            .as_ref()
+            .unwrap()
+            .formula_rects(worker.session.revision(), &position)
+            .unwrap()[0];
+        worker.context_click(
+            rect.page,
+            rect.x + rect.width / 2.0,
+            rect.y + rect.height / 2.0,
+        );
+        assert!(
+            worker
+                .object_view()
+                .expect("display formula selects")
+                .formula
+        );
+        assert!(rx
+            .try_iter()
+            .any(|r| matches!(r, Reply::Context(c) if c.object == Some(ContextObject::Formula))));
+        let original = worker.paragraph(&at).unwrap().inlines[index].clone();
+        let depth = worker.undo_depth;
+        worker.object_command(ObjectCommand::Resize {
+            width: (rect.width * 9525.0 * 1.5) as i64,
+            height: (rect.height * 9525.0 * 1.5) as i64,
+        });
+        worker.relayout();
+        assert!(worker.object_view().unwrap().width as f64 > rect.width * 9525.0 * 1.2);
+        assert!(matches!(
+            &worker.paragraph(&at).unwrap().inlines[index],
+            strict_ooxml::model::Inline::MathParagraph(_)
+        ));
+        worker.undo(true);
+        assert_eq!(worker.paragraph(&at).unwrap().inlines[index], original);
+        worker.undo(false);
+        worker.relayout();
+        worker.click(
+            rect.page,
+            rect.x + rect.width / 2.0,
+            rect.y + rect.height / 2.0,
+            false,
+            false,
+        );
+        worker.put_formula(
+            crate::formula::from_latex("x^3").unwrap(),
+            Some((at.clone(), index)),
+        );
+        assert_eq!(worker.undo_depth, depth + 2);
+        let strict_ooxml::model::Inline::MathParagraph(updated) =
+            &worker.paragraph(&at).unwrap().inlines[index]
+        else {
+            panic!("display wrapper preserved");
+        };
+        assert!(updated.equations[0].text().contains('3'));
+        worker.relayout();
+        let edited = worker.session.document().body.clone();
+        let target_at = worker
+            .paragraphs(&Story::Body)
+            .into_iter()
+            .find(|a| a != &at)
+            .unwrap();
+        let target = Logical {
+            paragraph: target_at,
+            offset: 0,
+        };
+        let target_rect = worker
+            .map
+            .as_ref()
+            .unwrap()
+            .caret(worker.session.revision(), &worker.position(&target))
+            .unwrap()[0];
+        assert!(matches!(
+            worker.move_in_text(
+                target_rect.page,
+                target_rect.x,
+                target_rect.y + target_rect.height / 2.0
+            ),
+            Outcome::Edited
+        ));
+        worker.relayout();
+        assert!(worker.object_view().unwrap().formula);
+        let selected = worker.formula.as_ref().unwrap();
+        assert!(matches!(
+            &worker.paragraph(&selected.paragraph).unwrap().inlines[selected.inline[0]],
+            strict_ooxml::model::Inline::MathParagraph(_)
+        ));
+        let bytes = worker.session.package_bytes().unwrap();
+        let reopened = StrictDocument::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+        assert!(reopened.place(&RenderOptions::default()).is_ok());
+        worker.undo(true);
+        assert_eq!(worker.session.document().body, edited);
+        worker.relayout();
+        let rect = worker
+            .map
+            .as_ref()
+            .unwrap()
+            .formula_rects(worker.session.revision(), &position)
+            .unwrap()[0];
+        worker.click(
+            rect.page,
+            rect.x + rect.width / 2.0,
+            rect.y + rect.height / 2.0,
+            false,
+            false,
+        );
+        assert!(matches!(
+            worker.object_command(ObjectCommand::Delete),
+            Outcome::Edited
+        ));
+        worker.undo(true);
+        assert_eq!(worker.session.document().body, edited);
+        for reply in rx.try_iter() {
+            if let Reply::Note(n) = reply {
+                assert!(!n.error, "{}: {}", n.key, n.detail);
+            }
+        }
+    }
+
+    #[test]
+    fn ole_preview_selects_resizes_wraps_moves_and_roundtrips_as_a_picture() {
+        with_ole_worker(|worker, rx| {
+            let view = worker.object_view().expect("OLE preview frame");
+            assert!(view.picture);
+            let rect = view.rects[0];
+            worker.object = None;
+            worker.context_click(
+                rect.page,
+                rect.x + rect.width / 2.0,
+                rect.y + rect.height / 2.0,
+            );
+            assert!(rx.try_iter().any(
+                |r| matches!(r, Reply::Context(c) if c.object == Some(ContextObject::Picture))
+            ));
+            worker.object_command(ObjectCommand::Resize {
+                width: view.width * 2,
+                height: view.height * 2,
+            });
+            worker.relayout();
+            assert_eq!(worker.object_view().unwrap().width, view.width * 2);
+            worker.wrap_object(WrapStyle::Square);
+            worker.relayout();
+            assert_eq!(worker.object_view().unwrap().wrap, WrapStyle::Square);
+            worker.wrap_object(WrapStyle::Inline);
+            worker.relayout();
+            let target = Logical {
+                paragraph: Address::body(1),
+                offset: 3,
+            };
+            let rect = worker
+                .map
+                .as_ref()
+                .unwrap()
+                .caret(worker.session.revision(), &worker.position(&target))
+                .unwrap()[0];
+            assert!(matches!(
+                worker.move_in_text(rect.page, rect.x, rect.y + rect.height / 2.0),
+                Outcome::Edited
+            ));
+            worker.relayout();
+            assert_eq!(worker.text_of(&Address::body(0)), "leftright");
+            assert_eq!(
+                worker.text_of(&Address::body(1)),
+                format!("tar{}get", nav::OBJECT)
+            );
+            assert!(worker.object_view().unwrap().picture);
+            let bytes = worker.session.package_bytes().unwrap();
+            let reopened =
+                StrictDocument::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+            assert!(reopened.place(&RenderOptions::default()).is_ok());
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "ocr")]
+    fn ole_formula_recognition_waits_for_confirmation_and_replaces_with_one_undo() {
+        use std::io::{Read as _, Write as _};
+        with_ole_worker(|worker, rx| {
+            let before = worker.session.document().body.clone();
+            let depth = worker.undo_depth;
+            assert!(worker.object_preview_png().is_some());
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let endpoint = format!("http://{}", listener.local_addr().unwrap());
+            let expected_image = crate::raster::base64(&worker.object_bytes().unwrap());
+            let server = std::thread::spawn(move || {
+                for path in ["/api/show", "/api/chat"] {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    stream
+                        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                        .unwrap();
+                    let mut request = Vec::new();
+                    let body = loop {
+                        let mut buffer = [0; 4096];
+                        let read = stream.read(&mut buffer).unwrap();
+                        assert_ne!(read, 0);
+                        request.extend_from_slice(&buffer[..read]);
+                        if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                            let headers = String::from_utf8_lossy(&request[..end]).to_lowercase();
+                            assert!(headers.starts_with(&format!("post {path} ")));
+                            let length: usize = headers
+                                .lines()
+                                .find_map(|line| line.strip_prefix("content-length:"))
+                                .unwrap()
+                                .trim()
+                                .parse()
+                                .unwrap();
+                            if request.len() >= end + 4 + length {
+                                break request[end + 4..end + 4 + length].to_vec();
+                            }
+                        }
+                    };
+                    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    assert_eq!(json["model"], "test-vision");
+                    let response = if path == "/api/show" {
+                        serde_json::json!({"details": {"digest": "test"}})
+                    } else {
+                        assert_eq!(json["messages"][0]["images"][0], expected_image);
+                        serde_json::json!({"message": {"content": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><msup><mi>x</mi><mn>2</mn></msup></math>"}})
+                    }.to_string();
+                    write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.len(),response).unwrap();
+                }
+            });
+            worker.recognize_object(true, &endpoint, "test-vision");
+            server.join().unwrap();
+            let plan = rx
+                .try_iter()
+                .find_map(|r| {
+                    if let Reply::FormulaRecognition(p) = r {
+                        Some(p)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            assert_eq!(
+                worker.session.document().body,
+                before,
+                "review and cancellation leave the picture intact"
+            );
+            assert_eq!(worker.undo_depth, depth);
+            // Exercise the real modal: opening it never accepts; both buttons
+            // remain clickable at the normal application window size.
+            for accept in [false, true] {
+                use eframe::egui;
+                let ctx = egui::Context::default();
+                let i18n = crate::i18n::I18n::load(&[]);
+                let dialog =
+                    crate::app::recognition_ui::RecognitionDialog::new(&ctx, 1, plan.clone());
+                let mut state = (false, false);
+                let mut target = None;
+                let label = i18n.t(if accept {
+                    "recognition.convert"
+                } else {
+                    "button.cancel"
+                });
+                for frame in 0..3 {
+                    let output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(1280.0, 860.0),
+                            )),
+                            time: Some(f64::from(frame) * 0.1),
+                            ..Default::default()
+                        },
+                        |_| {
+                            state = dialog.show(&ctx, &i18n);
+                        },
+                    );
+                    assert_eq!(state, (false, false));
+                    for shape in output.shapes {
+                        if let egui::epaint::Shape::Text(text) = shape.shape {
+                            if text.galley.text() == label {
+                                let rect = text.galley.rect.translate(text.pos.to_vec2());
+                                assert!(
+                                    rect.width() > 30.0
+                                        && rect.right() < 1280.0
+                                        && rect.bottom() < 860.0
+                                );
+                                target = Some(rect.center());
+                            }
+                        }
+                    }
+                }
+                let pos = target.expect("review button is visible");
+                for (frame, pressed) in [true, false].into_iter().enumerate() {
+                    let _ = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(1280.0, 860.0),
+                            )),
+                            time: Some(0.4 + frame as f64 * 0.1),
+                            events: vec![
+                                egui::Event::PointerMoved(pos),
+                                egui::Event::PointerButton {
+                                    pos,
+                                    button: egui::PointerButton::Primary,
+                                    pressed,
+                                    modifiers: egui::Modifiers::NONE,
+                                },
+                            ],
+                            ..Default::default()
+                        },
+                        |_| {
+                            state = dialog.show(&ctx, &i18n);
+                        },
+                    );
+                }
+                assert_eq!(state, (true, accept));
+            }
+            assert!(matches!(
+                worker.handle(Request::ConfirmFormulaRecognition(plan)),
+                Outcome::Edited
+            ));
+            worker.relayout();
+            assert!(worker.object_view().unwrap().formula);
+            assert_eq!(
+                worker.text_of(&Address::body(0)),
+                format!("left{}right", nav::OBJECT)
+            );
+            assert_eq!(worker.undo_depth, depth + 1);
+            let after = worker.session.document().body.clone();
+            let bytes = worker.session.package_bytes().unwrap();
+            let reopened =
+                StrictDocument::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+            assert!(reopened.place(&RenderOptions::default()).is_ok());
+            worker.undo(true);
+            assert_eq!(worker.session.document().body, before);
+            worker.undo(false);
+            assert_eq!(worker.session.document().body, after);
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "ocr")]
+    fn formula_recognition_rejects_changed_documents() {
+        with_ole_worker(|worker, rx| {
+            worker.review_formula_recognition(
+                "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mi>x</mi></math>".into(),
+            );
+            let plan = rx
+                .try_iter()
+                .find_map(|r| {
+                    if let Reply::FormulaRecognition(p) = r {
+                        Some(p)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            worker.handle(Request::Type("changed".into()));
+            let before = worker.session.document().body.clone();
+            let depth = worker.undo_depth;
+            assert!(matches!(
+                worker.handle(Request::ConfirmFormulaRecognition(plan)),
+                Outcome::Quiet
+            ));
+            assert_eq!(worker.session.document().body, before);
+            assert_eq!(worker.undo_depth, depth);
+            assert!(rx
+                .try_iter()
+                .any(|r| matches!(r, Reply::Note(n) if n.key == "note.recognition_stale")));
+        });
+    }
+
+    fn with_worker_replies(check: impl FnOnce(&mut Worker<'_, '_>, &Receiver<Reply>)) {
+        let mut loaded = formats::open(&Source::New, &OpenControl::new()).unwrap();
+        let editor = loaded.document.edit(EditLimits::default()).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = eframe::egui::Context::default();
+        let mut worker = Worker::new(
+            Session::Edit(editor),
+            RenderOptions::default(),
+            &tx,
+            &ctx,
+            None,
+        );
+        worker.caret = Some(Logical {
+            paragraph: Address::body(0),
+            offset: 0,
+        });
+        worker.relayout();
+        check(&mut worker, &rx);
+        for reply in rx.try_iter() {
+            if let Reply::Note(note) = reply {
+                assert!(!note.error, "{}: {}", note.key, note.detail);
+            }
+        }
+    }
+
+    #[test]
+    fn regression_bookmark_on_empty_document() {
+        with_empty_worker(|worker| {
+            assert!(matches!(worker.add_bookmark("Start"), Outcome::Edited));
+            assert_eq!(worker.bookmarks_and_toc().0, ["Start"]);
+            worker.relayout();
+            assert!(worker.caret_rect().is_some());
+            let bytes = worker.session.package_bytes().unwrap();
+            let reopened =
+                StrictDocument::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+            assert!(
+                matches!(&reopened.document().body.blocks[0].as_paragraph().unwrap().inlines[0],
+                strict_ooxml::model::Inline::BookmarkStart(b) if b.name.as_ref() == "Start")
+            );
+        });
+    }
+
+    #[test]
+    fn regression_formula_on_empty_document() {
+        with_empty_worker(|worker| {
+            let expression = crate::formula::from_latex(r"\frac{x^{2}}{y}").unwrap();
+            assert!(matches!(
+                worker.put_formula(expression, None),
+                Outcome::Edited
+            ));
+            worker.relayout();
+            assert!(worker.caret_rect().is_some(), "caret after formula");
+            let view = worker.object_view().expect("formula selected");
+            assert!(view.formula);
+            let rect = view.rects[0];
+            worker.handle(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            });
+            worker.send_cursor(false);
+            assert!(worker.caret_rect().is_some());
+            worker.click(
+                rect.page,
+                rect.x + rect.width / 2.0,
+                rect.y + rect.height / 2.0,
+                false,
+                false,
+            );
+            assert!(worker.object_view().unwrap().formula);
+            assert!(matches!(
+                worker.handle(Request::Object(ObjectCommand::Resize {
+                    width: view.width * 2,
+                    height: view.height * 2
+                })),
+                Outcome::Edited
+            ));
+            worker.relayout();
+            let enlarged = worker.object_view().unwrap();
+            assert!(
+                (enlarged.rects[0].width / rect.width - 2.0).abs() < 0.05,
+                "{:?}",
+                enlarged.rects
+            );
+            assert!((enlarged.rects[0].height / rect.height - 2.0).abs() < 0.05);
+            let bytes = worker.session.package_bytes().unwrap();
+            let reopened =
+                StrictDocument::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+            let math = reopened.document().body.blocks[0]
+                .as_paragraph()
+                .unwrap()
+                .inlines
+                .iter()
+                .find_map(|i| {
+                    if let strict_ooxml::model::Inline::Math(m) = i {
+                        Some(m)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            assert_eq!(crate::formula::size(math), Some(HalfPoints(44)));
+            assert!(matches!(worker.handle(Request::Delete), Outcome::Edited));
+            assert!(worker.text_of(&Address::body(0)).is_empty());
+        });
+    }
+
+    #[test]
+    fn caret_size_follows_paragraph_and_character_styles_during_navigation() {
+        with_empty_worker(|worker| {
+            worker.handle(Request::Paste("normal\nheading".into()));
+            worker.handle(Request::Move {
+                motion: Motion::DocStart,
+                extend: false,
+            });
+            assert!(
+                worker.caret_format().size.is_some(),
+                "document default size is visible"
+            );
+            let mut paragraph_style = worker
+                .session
+                .document()
+                .styles
+                .iter()
+                .find(|s| s.is_default)
+                .unwrap()
+                .clone();
+            paragraph_style.id = StyleId::new("TestParagraphSize");
+            paragraph_style.is_default = false;
+            paragraph_style.run.size = Some(HalfPoints(38));
+            let mut character_style = paragraph_style.clone();
+            character_style.id = StyleId::new("TestCharacterSize");
+            character_style.style_type = strict_ooxml::model::values::StyleType::Character;
+            character_style.run.size = Some(HalfPoints(44));
+            let mut properties = worker.paragraph(&Address::body(1)).unwrap().props.clone();
+            properties.style = Some(paragraph_style.id.clone());
+            let mut run_props = nav::run_at(worker.paragraph(&Address::body(0)).unwrap(), &[0])
+                .unwrap()
+                .props
+                .clone();
+            run_props.style = Some(character_style.id.clone());
+            assert!(matches!(
+                worker.define_and_transact(
+                    &[
+                        strict_ooxml::edit::Definition::CreateStyle(Box::new(paragraph_style)),
+                        strict_ooxml::edit::Definition::CreateStyle(Box::new(character_style)),
+                    ],
+                    &[
+                        Edit::ParagraphProperties {
+                            at: Address::body(1),
+                            properties: Box::new(properties)
+                        },
+                        Edit::RunProperties {
+                            at: Address::body(0),
+                            inline: vec![0],
+                            properties: Box::new(run_props)
+                        },
+                    ]
+                ),
+                Outcome::Edited
+            ));
+            worker.handle(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            });
+            assert_eq!(worker.caret_format().size, Some(19.0));
+            worker.handle(Request::Move {
+                motion: Motion::DocStart,
+                extend: false,
+            });
+            assert_eq!(worker.caret_format().size, Some(22.0));
+        });
+    }
+
+    #[test]
+    fn cleanup_preserves_formatting_and_is_one_undo_with_stale_plan_rejection() {
+        with_worker_replies(|worker, replies| {
+            worker.handle(Request::Paste("  Alpha  , beta   \n\n\nnext  text".into()));
+            let original = worker.session.document().body.clone();
+            let revision = worker.session.revision();
+            let snapshot = crate::cleanup::snapshot(worker.session.document(), revision);
+            let plan = crate::cleanup::build(&snapshot, &crate::cleanup::Options::default(), &[]);
+            assert!(plan.changes.len() >= 3);
+            let depth = worker.undo_depth;
+            assert!(matches!(
+                worker.handle(Request::ApplyCleanup(Box::new(plan.clone()))),
+                Outcome::Edited
+            ));
+            assert_eq!(worker.undo_depth, depth + 1);
+            assert_eq!(
+                document_text(&worker.session.document().body.blocks),
+                "\tAlpha, beta\n\nnext text"
+            );
+            let cleaned = worker.session.document().body.clone();
+            worker.undo(true);
+            assert_eq!(worker.session.document().body, original);
+            worker.undo(false);
+            assert_eq!(worker.session.document().body, cleaned);
+            assert!(crate::cleanup::commands(
+                worker.session.document(),
+                worker.session.revision(),
+                &plan
+            )
+            .is_err());
+            for reply in replies.try_iter() {
+                if let Reply::Note(note) = reply {
+                    assert!(!note.error, "{}", note.detail);
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn cleanup_joins_keep_both_runs_and_save_as_standard_docx() {
+        with_empty_worker(|worker| {
+            worker.handle(Request::Paste("Part of a\nsentence continues.".into()));
+            let original = worker.session.document().body.clone();
+            let snapshot =
+                crate::cleanup::snapshot(worker.session.document(), worker.session.revision());
+            let mut plan =
+                crate::cleanup::build(&snapshot, &crate::cleanup::Options::default(), &[0]);
+            assert_eq!(plan.changes.len(), 1);
+            assert!(!plan.changes[0].selected);
+            plan.changes[0].selected = true;
+            assert!(matches!(
+                worker.handle(Request::ApplyCleanup(Box::new(plan))),
+                Outcome::Edited
+            ));
+            assert_eq!(
+                document_text(&worker.session.document().body.blocks),
+                "Part of a sentence continues."
+            );
+            let bytes = worker.session.package_bytes().unwrap();
+            let reopened =
+                StrictDocument::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+            assert_eq!(
+                document_text(&reopened.document().body.blocks),
+                "Part of a sentence continues."
+            );
+            worker.undo(true);
+            assert_eq!(worker.session.document().body, original);
+        });
+    }
+
+    #[test]
+    fn regression_chart_on_empty_document() {
+        use strict_ooxml::model::chart::*;
+        for kind in [
+            ChartKind::Bar {
+                horizontal: false,
+                grouping: BarGrouping::Clustered,
+            },
+            ChartKind::Bar {
+                horizontal: true,
+                grouping: BarGrouping::Clustered,
+            },
+            ChartKind::Line,
+            ChartKind::Area,
+            ChartKind::Pie { doughnut: false },
+            ChartKind::Pie { doughnut: true },
+        ] {
+            with_empty_worker(|worker| {
+                let data = ChartData {
+                    kind,
+                    title: None,
+                    categories: vec!["A".into(), "B".into()],
+                    series: vec![ChartSeries {
+                        values: vec![Some(1.0), Some(2.0)],
+                        ..Default::default()
+                    }],
+                    legend: true,
+                    legend_position: LegendPosition::Bottom,
+                    unsupported: vec![],
+                };
+                assert!(matches!(worker.put_chart(data), Outcome::Edited));
+                let saved_before_mapping = worker.session.package_bytes().unwrap();
+                let model_before_mapping = worker.session.document().body.clone();
+                worker.relayout();
+                assert_eq!(worker.session.document().body, model_before_mapping);
+                assert_eq!(
+                    worker.session.package_bytes().unwrap(),
+                    saved_before_mapping,
+                    "interaction mapping must not alter the saved DOCX"
+                );
+                assert!(
+                    worker.object_view().is_some(),
+                    "inserted chart selected; map present: {}",
+                    worker.map.is_some()
+                );
+                let view = worker.object_view().unwrap();
+                assert!(view.chart);
+                let data = worker.selected_chart().unwrap();
+                worker.handle(Request::ChartOfObject);
+                assert!(
+                    worker.selected_chart().is_some(),
+                    "opening dialog keeps selection"
+                );
+                assert!(matches!(
+                    worker.handle(Request::PutChart(Box::new((*data).clone()))),
+                    Outcome::Edited
+                ));
+                assert_eq!(
+                    worker.objects_of(&Address::body(0)).len(),
+                    1,
+                    "edit replaces chart"
+                );
+                worker.relayout();
+                let rect = view.rects[0];
+                worker.handle(Request::Move {
+                    motion: Motion::DocEnd,
+                    extend: false,
+                });
+                worker.click(
+                    rect.page,
+                    rect.x + rect.width / 2.0,
+                    rect.y + rect.height / 2.0,
+                    false,
+                    false,
+                );
+                assert!(worker.object_view().unwrap().chart);
+                assert!(matches!(
+                    worker.handle(Request::Object(ObjectCommand::Resize {
+                        width: view.width / 2,
+                        height: view.height / 2
+                    })),
+                    Outcome::Edited
+                ));
+                worker.relayout();
+                assert_eq!(worker.object_view().unwrap().width, view.width / 2);
+                worker.wrap_object(WrapStyle::Front);
+                worker.relayout();
+                let floating = worker.object_view().expect("floating chart frame");
+                let rect = floating.rects[0];
+                assert!((rect.width * 9525.0 - floating.width as f64).abs() < 0.01);
+                worker.click(rect.page, rect.x + 1.0, rect.y + 1.0, false, false);
+                assert!(worker.object_view().unwrap().chart);
+            });
+        }
+    }
+
+    #[test]
+    fn regression_insert_document() {
+        let dir = std::env::temp_dir().join(format!("mufoed-import-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("source.rtf");
+        std::fs::write(&path, br"{\rtf1\ansi Imported text\par}").unwrap();
+        with_empty_worker(|worker| {
+            assert!(matches!(worker.insert_document(path), Outcome::Edited));
+            worker.relayout();
+            assert!(worker
+                .session
+                .document()
+                .body
+                .blocks
+                .iter()
+                .filter_map(Block::as_paragraph)
+                .any(|p| nav::pieces(p)
+                    .iter()
+                    .any(|s| s.text.contains("Imported text"))));
+        });
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn html_and_rtf_files_keep_images_and_replace_selection_in_one_undo() {
+        use std::fmt::Write as _;
+        let dir = std::env::temp_dir().join(format!("mufoed-rich-files-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let image = png(30, 15);
+        std::fs::write(dir.join("image.png"), &image).unwrap();
+        let html_path = dir.join("source.html");
+        std::fs::write(
+            &html_path,
+            "<meta charset='utf-8'><p><b>До</b><img src='image.png'>После</p>",
+        )
+        .unwrap();
+        let rtf_path = dir.join("source.rtf");
+        let hex = image.iter().fold(String::new(), |mut hex, b| {
+            write!(&mut hex, "{b:02x}").unwrap();
+            hex
+        });
+        std::fs::write(&rtf_path, format!("{{\\rtf1\\ansi {{\\b Before}}{{\\pict\\pngblip\\picwgoal450\\pichgoal225 {hex}}}After\\par}}")).unwrap();
+        for path in [html_path, rtf_path] {
+            let loaded = formats::open(
+                &Source::File {
+                    path: path.clone(),
+                    import: formats::ImportOptions::default(),
+                },
+                &OpenControl::new(),
+            )
+            .unwrap();
+            assert_eq!(loaded.document.document().media.iter().count(), 1);
+            let part = &loaded.document.document().media.iter().next().unwrap().part;
+            assert_eq!(loaded.document.package().read_part(part).unwrap(), image);
+            with_empty_worker(|worker| {
+                worker.handle(Request::Type("replace me".into()));
+                worker.handle(Request::SelectAll);
+                let before = worker.session.document().body.clone();
+                let depth = worker.undo_depth;
+                assert!(matches!(
+                    worker.insert_document(path.clone()),
+                    Outcome::Edited
+                ));
+                worker.relayout();
+                assert_eq!(worker.undo_depth, depth + 1);
+                assert_eq!(worker.session.document().media.iter().count(), 1);
+                let text = document_text(&worker.session.document().body.blocks);
+                assert!(!text.contains("replace me"));
+                assert!(text.contains("После") || text.contains("After"));
+                let inserted = worker.session.document().body.clone();
+                worker.undo(true);
+                assert_eq!(worker.session.document().body, before);
+                worker.undo(false);
+                assert_eq!(worker.session.document().body, inserted);
+            });
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn file_import_over_the_history_limit_is_one_undo_and_redo() {
+        let dir = std::env::temp_dir().join(format!("mufoed-undo-import-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("many-lines.txt");
+        let text = (0..180)
+            .map(|n| format!("Line {n}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&path, &text).unwrap();
+        with_empty_worker(|worker| {
+            worker.handle(Request::Type("AB".into()));
+            worker.handle(Request::Move {
+                motion: Motion::Left,
+                extend: false,
+            });
+            let before = worker.session.document().body.clone();
+            let depth = worker.undo_depth;
+            assert!(matches!(
+                worker.handle(Request::Insert(Insert::Document(path))),
+                Outcome::Edited
+            ));
+            assert_eq!(worker.undo_depth, depth + 1);
+            assert_eq!(
+                document_text(&worker.session.document().body.blocks),
+                format!("A{text}B")
+            );
+            let inserted = worker.session.document().body.clone();
+            assert!(matches!(worker.undo(true), Outcome::Edited));
+            assert_eq!(worker.session.document().body, before);
+            worker.undo(false);
+            assert_eq!(worker.session.document().body, inserted);
+            worker.undo(true);
+            worker.undo(true);
+            assert_eq!(document_text(&worker.session.document().body.blocks), "");
+        });
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn multiline_paste_replaces_a_selection_with_one_undo() {
+        with_empty_worker(|worker| {
+            worker.handle(Request::Paste("Начало\nКонец".into()));
+            worker.handle(Request::SelectAll);
+            let before = worker.session.document().body.clone();
+            let depth = worker.undo_depth;
+            worker.handle(Request::Paste("α\r\nβ\tγ\rδ".into()));
+            assert_eq!(
+                document_text(&worker.session.document().body.blocks),
+                "α\nβ γ\nδ"
+            );
+            assert_eq!(worker.undo_depth, depth + 1);
+            let after = worker.session.document().body.clone();
+            worker.undo(true);
+            assert_eq!(worker.session.document().body, before);
+            worker.undo(false);
+            assert_eq!(worker.session.document().body, after);
+        });
+    }
+
+    #[test]
+    fn pictures_charts_and_formulas_move_in_one_transaction() {
+        for kind in 0..3 {
+            with_empty_worker(|worker| {
+                worker.handle(Request::Paste("left\nright".into()));
+                worker.caret = Some(Logical {
+                    paragraph: Address::body(0),
+                    offset: 2,
+                });
+                match kind {
+                    0 => {
+                        worker.insert_picture(png(30, 15), "dot");
+                    }
+                    1 => {
+                        use strict_ooxml::model::chart::*;
+                        worker.put_chart(ChartData {
+                            kind: ChartKind::Line,
+                            title: None,
+                            categories: vec!["A".into(), "B".into()],
+                            series: vec![ChartSeries {
+                                values: vec![Some(1.0), Some(2.0)],
+                                ..Default::default()
+                            }],
+                            legend: false,
+                            legend_position: LegendPosition::Bottom,
+                            unsupported: vec![],
+                        });
+                    }
+                    _ => {
+                        worker.put_formula(crate::formula::from_latex("x^2").unwrap(), None);
+                    }
+                }
+                worker.relayout();
+                let before = worker.session.document().body.clone();
+                let target = Logical {
+                    paragraph: Address::body(1),
+                    offset: 2,
+                };
+                let rect = worker
+                    .map
+                    .as_ref()
+                    .unwrap()
+                    .caret(worker.session.revision(), &worker.position(&target))
+                    .unwrap()[0];
+                let depth = worker.undo_depth;
+                assert!(matches!(
+                    worker.handle(Request::Object(ObjectCommand::MoveTo {
+                        page: rect.page,
+                        x: rect.x,
+                        y: rect.y + rect.height / 2.0
+                    })),
+                    Outcome::Edited
+                ));
+                assert_eq!(worker.undo_depth, depth + 1);
+                worker.relayout();
+                let view = worker
+                    .object_view()
+                    .expect("object stays selected after moving");
+                assert_eq!(
+                    (view.picture, view.chart, view.formula),
+                    (kind == 0, kind == 1, kind == 2)
+                );
+                assert_eq!(worker.text_of(&Address::body(0)), "left");
+                assert_eq!(
+                    worker.text_of(&Address::body(1)),
+                    format!("ri{}ght", nav::OBJECT)
+                );
+                let moved = worker.session.document().body.clone();
+                let bytes = worker.session.package_bytes().unwrap();
+                let reopened =
+                    StrictDocument::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+                assert!(reopened.place(&RenderOptions::default()).is_ok());
+                worker.undo(true);
+                assert_eq!(worker.session.document().body, before);
+                worker.undo(false);
+                assert_eq!(worker.session.document().body, moved);
+            });
+        }
+    }
+
+    #[test]
+    fn paragraph_dialog_patch_is_one_undo_and_preserves_untouched_fields() {
+        with_empty_worker(|worker| {
+            worker.handle(Request::Paste("first\nsecond".into()));
+            worker.caret = Some(Logical {
+                paragraph: Address::body(0),
+                offset: 0,
+            });
+            worker.paragraph_edit(|p| p.keep_next = TriState::On);
+            worker.handle(Request::SelectAll);
+            let before = worker.session.document().body.clone();
+            let computed = strict_ooxml_render_svg::style::compute_paragraph(
+                worker.session.document(),
+                worker.paragraph(&Address::body(0)).unwrap(),
+            );
+            let original = crate::paragraph::Format::from_computed(&computed);
+            let mut changed = original.clone();
+            changed.left = 720;
+            changed.line = 480;
+            changed.widow = false;
+            let depth = worker.undo_depth;
+            worker.handle(Request::SetParagraphFormat(Box::new(
+                crate::paragraph::Patch {
+                    before: original,
+                    after: changed,
+                },
+            )));
+            assert_eq!(worker.undo_depth, depth + 1);
+            for block in &worker.session.document().body.blocks {
+                let p = block.as_paragraph().unwrap();
+                assert_eq!(p.props.indentation.unwrap().start, Some(Twips(720)));
+                assert_eq!(p.props.spacing.unwrap().line, Some(Twips(480)));
+            }
+            assert_eq!(
+                worker.paragraph(&Address::body(0)).unwrap().props.keep_next,
+                TriState::On
+            );
+            assert_eq!(
+                worker.paragraph(&Address::body(1)).unwrap().props.keep_next,
+                TriState::Absent
+            );
+            worker.undo(true);
+            assert_eq!(worker.session.document().body, before);
+        });
+    }
+
+    #[test]
+    fn context_click_preserves_selection_and_classifies_the_clicked_object() {
+        with_worker_replies(|worker, replies| {
+            worker.handle(Request::Type("alpha beta".into()));
+            worker.anchor = Some(Logical {
+                paragraph: Address::body(0),
+                offset: 0,
+            });
+            worker.caret = Some(Logical {
+                paragraph: Address::body(0),
+                offset: 5,
+            });
+            worker.relayout();
+            let selection = worker.selection();
+            let rect = worker
+                .map
+                .as_ref()
+                .unwrap()
+                .caret(
+                    worker.session.revision(),
+                    &worker.position(&Logical {
+                        paragraph: Address::body(0),
+                        offset: 2,
+                    }),
+                )
+                .unwrap()[0];
+            worker.context_click(rect.page, rect.x, rect.y + rect.height / 2.0);
+            assert_eq!(worker.selection(), selection);
+            let state = replies
+                .try_iter()
+                .find_map(|r| {
+                    if let Reply::Context(state) = r {
+                        Some(state)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            assert!(state.selection);
+            assert!(state.object.is_none());
+            worker.anchor = None;
+            worker.put_formula(crate::formula::from_latex("x^2").unwrap(), None);
+            worker.relayout();
+            let rect = worker.object_view().unwrap().rects[0];
+            worker.context_click(
+                rect.page,
+                rect.x + rect.width / 2.0,
+                rect.y + rect.height / 2.0,
+            );
+            let state = replies
+                .try_iter()
+                .find_map(|r| {
+                    if let Reply::Context(state) = r {
+                        Some(state)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            assert_eq!(state.object, Some(ContextObject::Formula));
+            worker.copy(false);
+            let clip = replies
+                .try_iter()
+                .find_map(|r| {
+                    if let Reply::ClipboardObjects(clip) = r {
+                        Some(clip)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            assert!(clip.formula.is_some());
+            worker.handle(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            });
+            worker.paste_objects(&clip);
+            assert_eq!(
+                worker.session.document().body.blocks[0]
+                    .as_paragraph()
+                    .unwrap()
+                    .inlines
+                    .iter()
+                    .filter(|i| matches!(i, strict_ooxml::model::Inline::Math(_)))
+                    .count(),
+                2
+            );
+        });
+    }
+
+    #[test]
+    fn regression_insert_plain_text_and_document_with_picture() {
+        let dir = std::env::temp_dir().join(format!("mufoed-text-import-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, bytes) in [
+            (
+                "utf8.txt",
+                [vec![0xef, 0xbb, 0xbf], "Текст\r\nNext".as_bytes().to_vec()].concat(),
+            ),
+            (
+                "utf16.txt",
+                [
+                    vec![0xff, 0xfe],
+                    "Текст\r\nNext"
+                        .encode_utf16()
+                        .flat_map(u16::to_le_bytes)
+                        .collect(),
+                ]
+                .concat(),
+            ),
+        ] {
+            let path = dir.join(name);
+            std::fs::write(&path, bytes).unwrap();
+            with_empty_worker(|worker| {
+                worker.handle(Request::Type("AB".into()));
+                worker.handle(Request::Move {
+                    motion: Motion::Left,
+                    extend: false,
+                });
+                assert!(matches!(worker.insert_document(path), Outcome::Edited));
+                assert_eq!(
+                    document_text(&worker.session.document().body.blocks),
+                    "AТекст\nNextB"
+                );
+            });
+        }
+        let path = dir.join("with-picture.docx");
+        with_empty_worker(|source| {
+            source.handle(Request::Type("Visible text".into()));
+            source.handle(Request::Object(ObjectCommand::InsertPicture {
+                bytes: png(20, 10),
+                name: "picture".into(),
+            }));
+            std::fs::write(&path, source.session.package_bytes().unwrap()).unwrap();
+        });
+        with_empty_worker(|target| {
+            assert!(matches!(target.insert_document(path), Outcome::Edited));
+            assert_eq!(
+                document_text(&target.session.document().body.blocks),
+                "Visible text"
+            );
+        });
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn regression_system_fonts_follow_font_changes() {
+        with_empty_worker(|worker| {
+            worker.handle(Request::Type("Testing fonts".into()));
+            worker.handle(Request::Format(FormatChange::Font("Georgia".into())));
+            worker.relayout();
+            let bundled = strict_ooxml::paint_page(&worker.pages[0].placed, &worker.options);
+            worker.handle(Request::SystemFonts(true));
+            worker.relayout();
+            assert!(worker
+                .options
+                .font_assets
+                .as_ref()
+                .unwrap()
+                .families()
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case("Georgia")));
+            let installed = strict_ooxml::paint_page(&worker.pages[0].placed, &worker.options);
+            assert_ne!(bundled, installed, "toggle changes actual SVG");
+            worker.handle(Request::Format(FormatChange::Font("Verdana".into())));
+            worker.relayout();
+            assert!(worker
+                .options
+                .font_assets
+                .as_ref()
+                .unwrap()
+                .families()
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case("Verdana")));
+            worker.handle(Request::SystemFonts(false));
+            worker.relayout();
+            assert!(worker
+                .options
+                .font_assets
+                .as_ref()
+                .is_none_or(|assets| !assets
+                    .families()
+                    .iter()
+                    .any(|s| s.eq_ignore_ascii_case("Verdana"))));
+        });
+    }
+
+    #[test]
+    fn regression_comments_survive_save_and_navigation_goes_to_top() {
+        with_empty_worker(|worker| {
+            worker.handle(Request::Type("Chapter".into()));
+            assert!(matches!(
+                worker.comments(CommentCommand::Add {
+                    author: "Ann".into(),
+                    initials: "A".into()
+                }),
+                Outcome::Edited
+            ));
+            let id = worker.session.document().comments[0].id.as_str().to_owned();
+            worker.comments(CommentCommand::Edit {
+                id,
+                text: "Saved comment".into(),
+            });
+            let bytes = worker.session.package_bytes().unwrap();
+            let reopened =
+                StrictDocument::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+            assert_eq!(
+                comment_text(&reopened.document().comments[0].blocks),
+                "Saved comment"
+            );
+            worker.handle(Request::GoTo(Address::body(0)));
+            assert!(worker.scroll_at_top);
+            worker.send_cursor(true);
+            assert!(!worker.scroll_at_top, "top alignment is consumed once");
+        });
+    }
 
     /// Waits for the next reply the predicate accepts, skipping the others.
     fn wait<T>(replies: &Receiver<Reply>, mut pick: impl FnMut(Reply) -> Option<T>) -> T {

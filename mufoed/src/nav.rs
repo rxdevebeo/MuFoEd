@@ -86,14 +86,22 @@ fn walk_pieces(inlines: &[Inline], path: &mut Vec<usize>, out: &mut Vec<Piece>) 
                     }
                 }
             }
-            Inline::Tab | Inline::Break(_) | Inline::Drawing(_) if path.len() == 1 => {
+            Inline::Tab
+            | Inline::Break(_)
+            | Inline::Drawing(_)
+            | Inline::Math(_)
+            | Inline::MathParagraph(_)
+                if path.len() == 1 =>
+            {
                 out.push(Piece {
                     kind: PieceKind::InlineAtom,
                     inline: path.clone(),
                     content: 0,
                     text: match inline {
                         Inline::Tab => "\t".to_owned(),
-                        Inline::Drawing(_) => OBJECT.to_string(),
+                        Inline::Drawing(_) | Inline::Math(_) | Inline::MathParagraph(_) => {
+                            OBJECT.to_string()
+                        }
                         _ => "\n".to_owned(),
                     },
                 });

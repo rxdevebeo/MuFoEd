@@ -18,7 +18,9 @@ use crate::worker::{AiSource, Request};
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum AiAction {
     /// A summary of the selection (`false`) or the whole document.
-    Summary { whole: bool },
+    Summary {
+        whole: bool,
+    },
     /// The selection translated, shown to be put in.
     TranslateSelection,
     /// Every paragraph translated in place.
@@ -33,6 +35,7 @@ pub(crate) enum AiAction {
     Assess,
     /// Every paragraph brought to the prevailing style, offered to apply.
     Unify,
+    Cleanup(crate::cleanup::Options),
 }
 
 impl AiAction {
@@ -46,6 +49,7 @@ impl AiAction {
                 | Self::Styles
                 | Self::Assess
                 | Self::Unify
+                | Self::Cleanup(_)
         )
     }
 
@@ -58,6 +62,7 @@ impl AiAction {
             Self::Styles => "ai.styles",
             Self::Assess => "ai.assess",
             Self::Unify => "ai.unify",
+            Self::Cleanup(_) => "cleanup.title",
         }
     }
 }
@@ -76,6 +81,8 @@ pub(crate) enum Probe {
 
 /// A job running or finished.
 pub(crate) struct Job {
+    cleanup: Option<crate::cleanup::Plan>,
+    cleanup_pending: bool,
     action: AiAction,
     tab: u64,
     source: AiSource,
@@ -136,6 +143,17 @@ pub(crate) struct AiState {
 }
 
 impl App {
+    pub(crate) fn ai_cleanup_result(&mut self, tab: u64, applied: bool) {
+        if let Some(job) = self
+            .ai
+            .job
+            .as_mut()
+            .filter(|job| job.tab == tab && job.cleanup_pending)
+        {
+            job.cleanup_pending = false;
+            job.applied = applied;
+        }
+    }
     fn ai_config(&self) -> Option<ai::Config> {
         let AiState { probe, .. } = &self.ai;
         let Probe::Ready(models) = probe else {
@@ -167,7 +185,9 @@ impl App {
     /// Starts an action: the document's text is asked for, or Ollama set
     /// up first.
     pub(crate) fn ai_run(&mut self, ctx: &egui::Context, action: AiAction) {
-        if self.ai_config().is_none() {
+        if self.ai_config().is_none()
+            && !matches!(&action, AiAction::Cleanup(options) if !options.joins)
+        {
             self.ai.waiting = Some(action);
             if !matches!(self.ai.probe, Probe::Ready(_)) {
                 self.ai_probe(ctx);
@@ -175,7 +195,12 @@ impl App {
             self.dialog = Some(Dialog::AiSetup);
             return;
         }
-        if self.ai.job.as_ref().is_some_and(|job| job.running) {
+        if self
+            .ai
+            .job
+            .as_ref()
+            .is_some_and(|job| job.running || job.cleanup_pending)
+        {
             let text = self.t("ai.busy").to_owned();
             self.say(text, true, ctx.input(|input| input.time));
             return;
@@ -185,9 +210,13 @@ impl App {
         let Some(tab) = self.active_tab() else {
             return;
         };
-        tab.send(Request::AiSource {
-            whole: action.whole(),
-            job: id,
+        tab.send(if matches!(action, AiAction::Cleanup(_)) {
+            Request::CleanupSource { job: id }
+        } else {
+            Request::AiSource {
+                whole: action.whole(),
+                job: id,
+            }
         });
         self.ai.pending = Some((id, action));
         self.ai.open = true;
@@ -203,8 +232,13 @@ impl App {
             return;
         }
         let now = ctx.input(|input| input.time);
-        let Some(config) = self.ai_config() else {
-            return;
+        let config = match self.ai_config() {
+            Some(config) => config,
+            None if matches!(&action, AiAction::Cleanup(options) if !options.joins) => ai::Config {
+                endpoint: String::new(),
+                model: String::new(),
+            },
+            None => return,
         };
         let selected = source.selection.as_ref().map(|(_, _, text)| text.clone());
         let needs_selection = matches!(action, AiAction::TranslateSelection | AiAction::Rewrite(_));
@@ -215,6 +249,12 @@ impl App {
         }
         // The texts the model gets, and which paragraphs they are.
         let (texts, items): (Vec<String>, Vec<usize>) = match (&action, &selected) {
+            (AiAction::Cleanup(_), _) => source
+                .paragraphs
+                .iter()
+                .enumerate()
+                .map(|(i, (_, text))| (text.clone(), i))
+                .unzip(),
             (
                 AiAction::TranslateSelection
                 | AiAction::Rewrite(_)
@@ -231,7 +271,7 @@ impl App {
                 .map(|(index, (_, text))| (text.clone(), index))
                 .unzip(),
         };
-        if texts.is_empty() {
+        if texts.is_empty() && !matches!(action, AiAction::Cleanup(_)) {
             let text = self.t("ai.nothing").to_owned();
             self.say(text, true, now);
             return;
@@ -249,6 +289,9 @@ impl App {
             AiAction::Styles => ai::Task::Styles,
             AiAction::Assess => ai::Task::Assess,
             AiAction::Unify => ai::Task::Unify,
+            AiAction::Cleanup(options) => ai::Task::Cleanup {
+                joins: options.joins,
+            },
         };
         let (tx, rx) = std::sync::mpsc::channel();
         let cancel = Arc::new(AtomicBool::new(false));
@@ -263,6 +306,8 @@ impl App {
             ctx.clone(),
         );
         self.ai.job = Some(Job {
+            cleanup: None,
+            cleanup_pending: false,
             action,
             tab,
             source,
@@ -430,9 +475,21 @@ impl App {
                     sends.push(Request::ApplyKinds(kinds));
                     job.applied = true;
                 }
+                ai::Event::CleanupJoins(joins) => {
+                    if let (AiAction::Cleanup(options), Some(snapshot)) =
+                        (&job.action, &job.source.cleanup)
+                    {
+                        job.cleanup = Some(crate::cleanup::build(snapshot, options, &joins));
+                    }
+                }
                 ai::Event::Failed(error) => {
                     job.running = false;
                     job.error = Some(error);
+                    if let (AiAction::Cleanup(options), Some(snapshot)) =
+                        (&job.action, &job.source.cleanup)
+                    {
+                        job.cleanup = Some(crate::cleanup::build(snapshot, options, &[]));
+                    }
                 }
                 ai::Event::Finished => job.running = false,
             }
@@ -802,6 +859,21 @@ impl App {
                 ui.label(t("ai.preparing"));
             });
         }
+        if self
+            .ai
+            .job
+            .as_ref()
+            .is_some_and(|job| matches!(job.action, AiAction::Cleanup(_)))
+        {
+            let job = self.ai.job.as_mut().unwrap();
+            let tab_id = job.tab;
+            if let Some(plan) = cleanup_ui(ui, job, &self.i18n) {
+                if let Some(tab) = self.tabs.iter().find(|tab| tab.id == tab_id) {
+                    tab.send(Request::ApplyCleanup(Box::new(plan)));
+                }
+            }
+            return;
+        }
         let Some(job) = self.ai.job.as_ref() else {
             if self.ai.pending.is_none() {
                 ui.label(RichText::new(t("ai.empty")).weak());
@@ -980,4 +1052,99 @@ impl App {
             }
         }
     }
+}
+
+fn cleanup_ui(
+    ui: &mut egui::Ui,
+    job: &mut Job,
+    i18n: &crate::i18n::I18n,
+) -> Option<crate::cleanup::Plan> {
+    ui.strong(i18n.t("cleanup.title"));
+    if job.running {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(format!("{} / {}", job.progress.0, job.progress.1));
+            if ui.button(i18n.t("button.cancel")).clicked() {
+                job.cancel.store(true, Ordering::Relaxed);
+            }
+        });
+    }
+    if let Some(error) = &job.error {
+        ui.colored_label(Color32::from_rgb(180, 70, 30), i18n.t("cleanup.ai_failed"));
+        ui.collapsing(i18n.t("cleanup.details"), |ui| {
+            ui.label(error);
+        });
+    }
+    let plan = job.cleanup.as_mut()?;
+    ui.label(i18n.tf(
+        "cleanup.found",
+        &[("count", &plan.changes.len()), ("skipped", &plan.skipped)],
+    ));
+    ui.label(egui::RichText::new(i18n.t("cleanup.review_hint")).weak());
+    let mut apply = false;
+    if job.applied {
+        ui.label(i18n.t("cleanup.applied"));
+    }
+    if !job.applied {
+        let selected = plan.changes.iter().any(|c| c.selected);
+        apply = ui
+            .add_enabled(
+                selected && !job.running && !job.cleanup_pending,
+                egui::Button::new(i18n.t("cleanup.apply")),
+            )
+            .clicked();
+    }
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        for change in &mut plan.changes {
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.add_enabled_ui(!job.applied && !job.cleanup_pending, |ui| {
+                    ui.checkbox(&mut change.selected, i18n.t(change.key));
+                });
+                let before = change
+                    .before
+                    .iter()
+                    .map(crate::cleanup::text)
+                    .collect::<Vec<_>>()
+                    .join("\n¶\n");
+                let after = change
+                    .after
+                    .as_ref()
+                    .map_or_else(|| i18n.t("cleanup.deleted").into(), crate::cleanup::text);
+                ui.label(i18n.t("cleanup.before"));
+                ui.label(
+                    RichText::new(visible_spaces(&before, i18n.t("cleanup.tab_marker"))).weak(),
+                );
+                ui.label(i18n.t("cleanup.after"));
+                ui.label(visible_spaces(&after, i18n.t("cleanup.tab_marker")));
+                if change
+                    .after
+                    .as_ref()
+                    .is_some_and(|p| p.props.indentation != change.before[0].props.indentation)
+                {
+                    ui.label(i18n.t("cleanup.indent_changed"));
+                }
+            });
+        }
+    });
+    if apply {
+        job.cleanup_pending = true;
+        Some(plan.clone())
+    } else {
+        None
+    }
+}
+
+fn visible_spaces(text: &str, tab: &str) -> String {
+    let mut result = String::new();
+    for c in text.chars().take(600) {
+        match c {
+            ' ' => result.push('·'),
+            '\t' => result.push_str(tab),
+            other => result.push(other),
+        }
+    }
+    if text.chars().count() > 600 {
+        result.push('…');
+    }
+    result
 }

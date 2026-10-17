@@ -244,7 +244,8 @@ pub(crate) fn show(
                 tab.view.viewport = viewport.size();
                 let size = vec2(
                     content.x.max(viewport.width()),
-                    content.y.max(viewport.height()),
+                    // Let a heading near the end of the last page reach the top.
+                    (content.y + viewport.height() - GAP).max(viewport.height()),
                 );
                 let (area, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
                 // Centre the column when the window is wider than the pages.
@@ -326,9 +327,10 @@ pub(crate) fn show(
                         })
                         .unwrap_or(first);
                 }
+                let page_zoom = tab.zoom;
                 let to_screen = |page: usize, x: f64, y: f64, w: f64, h: f64| -> Option<Rect> {
                     let rect = rects.get(page)?;
-                    let z = tab.zoom;
+                    let z = page_zoom;
                     #[allow(clippy::cast_possible_truncation)]
                     let r = Rect::from_min_size(
                         pos2(rect.left() + x as f32 * z, rect.top() + y as f32 * z),
@@ -339,7 +341,9 @@ pub(crate) fn show(
                 // The text comments are about, lit; the one being edited more.
                 let editing = tab.editing_comment.as_ref().map(|(id, _)| id.clone());
                 for comment in &tab.comments {
-                    let fill = if editing.as_deref() == Some(comment.id.as_str()) {
+                    let fill = if editing.as_deref() == Some(comment.id.as_str())
+                        || tab.selected_comment.as_deref() == Some(comment.id.as_str())
+                    {
                         Color32::from_rgba_unmultiplied(255, 196, 0, 110)
                     } else {
                         Color32::from_rgba_unmultiplied(255, 214, 90, 70)
@@ -401,12 +405,17 @@ pub(crate) fn show(
                                 );
                             }
                             if tab.view.scroll_to_caret {
-                                ui.scroll_to_rect(screen.expand(40.0), None);
+                                if tab.view.caret_at_top {
+                                    ui.scroll_to_rect(screen, Some(egui::Align::TOP));
+                                } else {
+                                    ui.scroll_to_rect(screen.expand(40.0), None);
+                                }
                             }
                         }
                     }
                     if tab.view.scroll_to_caret {
                         tab.view.scroll_to_caret = false;
+                        tab.view.caret_at_top = false;
                         tab.view.caret_moved = now;
                     }
                     ctx.request_repaint_after(std::time::Duration::from_millis(400));
@@ -548,6 +557,7 @@ pub(crate) fn show(
                     }
                 }
                 // Mouse: click, shift-click and drag move the caret.
+                let zoom = f64::from(tab.zoom);
                 let hit = |pos: egui::Pos2| -> Option<(usize, f64, f64)> {
                     let local = pos - offset;
                     let local = pos2(local.x, local.y);
@@ -555,7 +565,7 @@ pub(crate) fn show(
                         a.distance_to_pos(local)
                             .total_cmp(&b.distance_to_pos(local))
                     })?;
-                    let z = f64::from(tab.zoom);
+                    let z = zoom;
                     Some((
                         index,
                         f64::from(local.x - rect.left()) / z,
@@ -563,6 +573,23 @@ pub(crate) fn show(
                     ))
                 };
                 let shift = ui.input(|input| input.modifiers.shift);
+                let comment_rects: Vec<_> = tab
+                    .comments
+                    .iter()
+                    .flat_map(|comment| {
+                        comment.rects.iter().filter_map(|r| {
+                            to_screen(r.page, r.x, r.y, r.width.max(4.0), r.height)
+                                .map(|rect| (comment.id.clone(), rect))
+                        })
+                    })
+                    .collect();
+                let comment_hit = |pos: egui::Pos2| {
+                    comment_rects
+                        .iter()
+                        .rev()
+                        .find(|(_, rect)| rect.contains(pos))
+                        .map(|(id, _)| id.clone())
+                };
                 let column = ui.input(|input| input.modifiers.command);
                 // A handle of the selected drawing resizes it. The drag is
                 // known only once the pointer has moved, so the handle is
@@ -655,11 +682,19 @@ pub(crate) fn show(
                         }
                     }
                 } else if response.double_clicked() {
+                    tab.finish_comment();
                     if let Some((page, x, y)) = response.interact_pointer_pos().and_then(hit) {
                         tab.send(Request::SelectWord { page, x, y });
                     }
                 } else if response.drag_started() || response.clicked() {
-                    if let Some(pos) = response.interact_pointer_pos() {
+                    let comment = response
+                        .interact_pointer_pos()
+                        .filter(|_| response.clicked() && !shift && !column)
+                        .and_then(comment_hit);
+                    tab.finish_comment();
+                    if let Some(id) = comment {
+                        tab.ui_actions.push(crate::app::Action::ShowComment(id));
+                    } else if let Some(pos) = response.interact_pointer_pos() {
                         if let Some((page, x, y)) = hit(pos) {
                             tab.send(Request::Click {
                                 page,
@@ -698,6 +733,11 @@ pub(crate) fn show(
                 // The context menu: suggestions for a misspelt word.
                 if response.secondary_clicked() {
                     let at = response.interact_pointer_pos().and_then(hit);
+                    tab.finish_comment();
+                    tab.context = None;
+                    if let Some((page, x, y)) = at {
+                        tab.send(Request::ContextClick { page, x, y });
+                    }
                     tab.view.spell_menu = at
                         .and_then(|(page, x, y)| {
                             tab.spelling.iter().find(|error| {
@@ -729,6 +769,9 @@ pub(crate) fn show(
                     ctx.set_cursor_icon(match over_handle {
                         Some(handle) => handle_cursor(handle),
                         None if over_object => egui::CursorIcon::Grab,
+                        None if pointer.and_then(comment_hit).is_some() => {
+                            egui::CursorIcon::PointingHand
+                        }
                         None => egui::CursorIcon::Text,
                     });
                     let zoom = ui.input(egui::InputState::zoom_delta);
@@ -748,6 +791,17 @@ pub(crate) fn show(
 /// The page's context menu: what can replace a misspelt word under the
 /// pointer, then cut and copy.
 fn context_menu(ui: &mut egui::Ui, tab: &mut DocTab, i18n: &crate::i18n::I18n) {
+    use crate::app::Action;
+    use crate::worker::{ContextObject, TableCommand, WrapStyle};
+    // The first frame may contain only a spinner while the worker hit-tests.
+    // Reserve the menu width before that frame is cached by the popup.
+    ui.set_min_width(260.0);
+    ui.set_max_width(420.0);
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    let Some(context) = tab.context.clone() else {
+        ui.spinner();
+        return;
+    };
     if let Some(menu) = tab.view.spell_menu.clone() {
         if menu.suggestions.is_empty() {
             ui.label(egui::RichText::new(i18n.t("spell.no_suggestions")).weak());
@@ -783,12 +837,194 @@ fn context_menu(ui: &mut egui::Ui, tab: &mut DocTab, i18n: &crate::i18n::I18n) {
         }
         ui.separator();
     }
-    if ui.button(i18n.t("cmd.cut")).clicked() {
-        tab.send(Request::Copy { cut: true });
-        ui.close();
+    let copy = context.selection || context.object.is_some();
+    let mut item = |ui: &mut egui::Ui, key: &str, enabled: bool, action: Action| {
+        if ui
+            .add_enabled(enabled, egui::Button::new(i18n.t(key)))
+            .clicked()
+        {
+            tab.ui_actions.push(action);
+            ui.close();
+        }
+    };
+    item(
+        ui,
+        "cmd.cut",
+        context.editable && copy,
+        Action::Doc(Request::Copy { cut: true }),
+    );
+    item(
+        ui,
+        "cmd.copy",
+        copy,
+        Action::Doc(Request::Copy { cut: false }),
+    );
+    item(ui, "cmd.paste", context.editable, Action::Paste);
+    ui.separator();
+    if let Some(object) = context.object {
+        match object {
+            ContextObject::Chart => {
+                item(ui, "cmd.chart_edit", context.editable, Action::ChartDialog);
+            }
+            ContextObject::Formula => item(
+                ui,
+                "context.formula_edit",
+                context.editable,
+                Action::FormulaDialog,
+            ),
+            ContextObject::Picture => {
+                item(
+                    ui,
+                    "context.recognize_formula",
+                    context.editable && cfg!(feature = "ocr"),
+                    Action::RecognizePicture { formula: true },
+                );
+                item(ui, "context.crop", context.editable, Action::ToggleCrop);
+                item(ui, "context.adjust", context.editable, Action::AdjustDialog);
+                item(
+                    ui,
+                    "context.reset_size",
+                    context.editable,
+                    Action::Doc(Request::Object(ObjectCommand::ResetSize)),
+                );
+            }
+            ContextObject::Shape => {}
+        }
+        item(
+            ui,
+            "context.delete_object",
+            context.editable,
+            Action::Doc(Request::Object(ObjectCommand::Delete)),
+        );
+        if object != ContextObject::Formula {
+            ui.menu_button(i18n.t("context.wrap"), |ui| {
+                for (key, style) in [
+                    ("wrap.inline", WrapStyle::Inline),
+                    ("wrap.square", WrapStyle::Square),
+                    ("wrap.top_bottom", WrapStyle::TopAndBottom),
+                    ("wrap.front", WrapStyle::Front),
+                    ("wrap.behind", WrapStyle::Behind),
+                ] {
+                    item(
+                        ui,
+                        key,
+                        context.editable,
+                        Action::Doc(Request::Object(ObjectCommand::Wrap(style))),
+                    );
+                }
+            });
+        }
+    } else {
+        item(
+            ui,
+            "paragraph.title",
+            context.editable,
+            Action::ParagraphDialog,
+        );
+        item(
+            ui,
+            "context.new_comment",
+            context.editable,
+            Action::NewComment,
+        );
+        if let Some(id) = context.comment {
+            item(
+                ui,
+                "context.show_comment",
+                true,
+                Action::ShowComment(id.clone()),
+            );
+            item(
+                ui,
+                "context.delete_comment",
+                context.editable,
+                Action::Doc(Request::Comments(crate::worker::CommentCommand::Delete(id))),
+            );
+        }
+        if context.table {
+            ui.separator();
+            for (key, command) in [
+                ("context.select_row", TableCommand::SelectRow),
+                ("context.select_column", TableCommand::SelectColumn),
+                ("context.select_table", TableCommand::SelectTable),
+                ("context.row_above", TableCommand::RowAbove),
+                ("context.row_below", TableCommand::RowBelow),
+                ("context.delete_row", TableCommand::DeleteRows),
+            ] {
+                item(
+                    ui,
+                    key,
+                    context.editable,
+                    Action::Doc(Request::Table(command)),
+                );
+            }
+        }
+        ui.separator();
+        item(ui, "cmd.select_all", true, Action::Doc(Request::SelectAll));
     }
-    if ui.button(i18n.t("cmd.copy")).clicked() {
-        tab.send(Request::Copy { cut: false });
-        ui.close();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::i18n::I18n;
+
+    #[test]
+    fn asynchronous_context_menu_keeps_readable_width_after_loading() {
+        let ctx = egui::Context::default();
+        let i18n = I18n::load(&[]);
+        let mut tab = DocTab::open(
+            91,
+            crate::formats::Source::New,
+            "test".into(),
+            1.0,
+            false,
+            &ctx,
+        );
+        let pointer = pos2(50.0, 50.0);
+        let mut loading = false;
+        let mut populated = false;
+        for frame in 0..9 {
+            if frame == 5 {
+                tab.context = Some(crate::worker::ContextState {
+                    editable: true,
+                    selection: false,
+                    table: false,
+                    object: None,
+                    comment: None,
+                });
+            }
+            let mut events = vec![egui::Event::PointerMoved(pointer)];
+            if frame == 2 || frame == 3 {
+                events.push(egui::Event::PointerButton {
+                    pos: pointer,
+                    button: egui::PointerButton::Secondary,
+                    pressed: frame == 2,
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(900.0, 700.0))),
+                    events,
+                    time: Some(f64::from(frame) * 0.1),
+                    ..Default::default()
+                },
+                |ui| {
+                    let (_, response) = ui.allocate_exact_size(vec2(500.0, 500.0), Sense::click());
+                    response.context_menu(|ui| {
+                        context_menu(ui, &mut tab, &i18n);
+                        assert!(ui.min_rect().width() >= 260.0, "{:?}", ui.min_rect());
+                        if tab.context.is_some() {
+                            populated = true;
+                            assert!(ui.min_rect().height() < 400.0);
+                        } else {
+                            loading = true;
+                        }
+                    });
+                },
+            );
+        }
+        assert!(loading && populated, "both popup states must be exercised");
     }
 }

@@ -30,6 +30,8 @@
 mod ai;
 mod app;
 mod canvas;
+mod cleanup;
+mod clipboard;
 mod dialog;
 mod docfonts;
 mod formats;
@@ -37,6 +39,7 @@ mod formula;
 mod i18n;
 mod icons;
 mod nav;
+mod paragraph;
 mod print;
 mod raster;
 mod ribbon;

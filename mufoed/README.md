@@ -22,12 +22,43 @@ What it shows:
   inserting another document, page orientation / size / margins, find and
   replace, accept / reject tracked changes, undo and redo - all through the
   transactional editor (`strict_ooxml::edit`).
+- **Equations and charts**: click to select and drag the handles to resize;
+  drag the selected object's body to move it in the text, double-click an
+  equation to edit it. Moving is one undoable operation; equations stay as
+  editable OMML, including when copied and pasted.
+- **Text from file**: also accepts UTF-8/UTF-16 TXT. If a document contains
+  package-bound content the structured importer cannot transfer, its text
+  is inserted and the status line reports that formatting and linked objects
+  were not transferred. The entire insertion is one Undo/Redo step.
+- **Comments**: Done, Escape, closing the pane or clicking the document commits
+  the draft. Saving also commits the current draft. Click highlighted text
+  to open, scroll to and highlight its comment card.
+- **Paragraph**: the Home paragraph group's launcher and the context menu open
+  indents/spacing and line/page controls with a preview. Only changed fields
+  are applied to selected paragraphs, together in one undoable operation.
+- **Context menu**: uses the clicked text, table or object; preserves an existing
+  selection when clicked inside it and offers the actions that apply there.
+- **AI → Clean up document**: review whitespace, extra empty paragraphs, manual
+  indents, soft hyphens and invisible separators before applying selected fixes
+  in one Undo step. Leading spaces can become a real tab or first-line indent.
+  AI suggests accidental paragraph joins without rewriting text; joins require
+  individual selection. Turn off AI joins for offline technical cleanup.
+  Formatting survives; protected content and recognized code are skipped.
+  Editing the document after analysis invalidates the plan and requires a rescan.
 - **Tables**: Tab / Shift+Tab walk the cells (Tab in the last cell adds a
   row); a click left of a row selects it, Ctrl+click a column, a drag across
   cells a block of them; selected cells are cleared, copied (tabs between
   cells) and formatted together; rows are inserted above / below and deleted
   from the Layout tab. Outside tables Tab inserts a tab.
 - **Save**: Strict DOCX; export to PDF (embedded fonts), SVG pages, plain text.
+
+OLE cached previews use the same selection, resize, move and wrapping commands
+as pictures. In a picture's context menu, **Recognize equation (OCR → MathML)**
+uses the configured Ollama vision model. A review dialog shows the formula and
+lets you copy its MathML. Only **Replace with equation** changes the document,
+as one Undo step; Cancel keeps the picture. Editable DOCX equations are stored
+as standard OMML. OLE payload preservation follows the toolkit's import report;
+editing a preview does not execute the embedded object.
 
 ## Localization
 
@@ -62,3 +93,20 @@ interface thread's stack (names and lines when `mufoed.pdb` lies beside the
 executable: build with `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only`).
 `MUFOED_TRACE=1` also logs every key, text and clipboard event and every
 document request with its timing.
+# Форматированный системный буфер
+
+В Windows команда вставки читает RTF и HTML с изображениями. Приоритет — RTF,
+затем HTML, затем обычный текст. HTML разбирает отдельный `strict-ooxml-html`;
+редактор отвечает за системный буфер, загрузку ресурсов и одну операцию Undo.
+Поддерживаются встроенные картинки и ссылки на доступные файлы/HTTP(S)-ресурсы.
+Недоступные картинки заменяются альтернативным текстом с уведомлением о потерях.
+Для HTML применяется документированный поднабор форматирования; полная вёрстка
+браузера не воспроизводится. Загрузка изображений выполняется в рабочем потоке,
+с ограничениями объёма и общего времени HTTP-запросов.
+
+HTML (`.html`, `.htm`) и RTF доступны также через «Открыть», «Импорт документа»
+и «Вставить текст из файла». При вставке сохраняются поддерживаемое форматирование
+и изображения, заменяется выделение; вся операция отменяется одним Undo.
+Относительные пути изображений HTML разрешаются от папки исходного файла.
+HTML читается в UTF-8, с BOM UTF-16 или в кодировке, указанной в `meta charset`.
+Исходный файл не перезаписывается: результат сохраняется в DOCX.

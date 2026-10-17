@@ -25,6 +25,10 @@ pub(crate) enum Status {
 
 /// What a tab has to tell the application after a poll.
 pub(crate) enum TabEvent {
+    FormulaRecognition(Box<crate::worker::FormulaRecognition>),
+    CleanupResult(bool),
+    CommentSelected,
+    ParagraphFormat(Box<crate::paragraph::Format>),
     Note(Note),
     Clipboard(String),
     ClipboardObjects(Box<crate::worker::ClipObjects>),
@@ -103,6 +107,7 @@ pub(crate) struct ViewState {
     pub(crate) zoom_changed: f64,
     pub(crate) scroll_to_page: Option<usize>,
     pub(crate) scroll_to_caret: bool,
+    pub(crate) caret_at_top: bool,
     pub(crate) last_drag: Option<egui::Pos2>,
     /// Visible size of the canvas, for fit-to-width and one-page zoom.
     pub(crate) viewport: egui::Vec2,
@@ -162,6 +167,7 @@ impl ViewState {
             zoom_changed: -1.0,
             scroll_to_page: None,
             scroll_to_caret: false,
+            caret_at_top: false,
             last_drag: None,
             viewport: egui::vec2(800.0, 600.0),
             current_page: 0,
@@ -206,6 +212,11 @@ pub(crate) struct DocTab {
     pub(crate) comments: Vec<crate::worker::CommentView>,
     /// The comment whose text the pane edits, and the text so far.
     pub(crate) editing_comment: Option<(String, String)>,
+    pub(crate) focus_comment: bool,
+    pub(crate) selected_comment: Option<String>,
+    pub(crate) scroll_comment: Option<String>,
+    pub(crate) context: Option<crate::worker::ContextState>,
+    pub(crate) ui_actions: Vec<crate::app::Action>,
     /// Comments were there once, so the pane was shown.
     comments_seen: bool,
     /// The misspelt words.
@@ -261,6 +272,11 @@ impl DocTab {
             busy: None,
             comments: Vec::new(),
             editing_comment: None,
+            focus_comment: false,
+            selected_comment: None,
+            scroll_comment: None,
+            context: None,
+            ui_actions: Vec::new(),
             comments_seen: false,
             spelling: Vec::new(),
             speller: None,
@@ -274,6 +290,16 @@ impl DocTab {
 
     pub(crate) fn send(&self, request: Request) {
         let _ = self.requests.send(request);
+    }
+
+    pub(crate) fn finish_comment(&mut self) {
+        if let Some((id, text)) = self.editing_comment.take() {
+            self.send(Request::Comments(crate::worker::CommentCommand::Edit {
+                id,
+                text,
+            }));
+        }
+        self.focus_comment = false;
     }
 
     pub(crate) fn ready(&self) -> bool {
@@ -302,6 +328,15 @@ impl DocTab {
 
     fn apply(&mut self, reply: Reply, events: &mut Vec<TabEvent>) {
         match reply {
+            Reply::FormulaRecognition(plan) => events.push(TabEvent::FormulaRecognition(plan)),
+            Reply::CleanupResult(applied) => events.push(TabEvent::CleanupResult(applied)),
+            Reply::Context(context) => self.context = Some(context),
+            Reply::CommentFocused(id) => {
+                self.selected_comment = Some(id.clone());
+                self.scroll_comment = Some(id);
+                events.push(TabEvent::CommentSelected);
+            }
+            Reply::ParagraphFormat(format) => events.push(TabEvent::ParagraphFormat(format)),
             Reply::Loaded(info) => {
                 self.kind = Some(info.kind);
                 if matches!(info.kind, Kind::Docx) {
@@ -325,6 +360,7 @@ impl DocTab {
             Reply::Cursor(cursor) => {
                 if cursor.scroll {
                     self.view.scroll_to_caret = true;
+                    self.view.caret_at_top |= cursor.at_top;
                 }
                 self.cursor = Some(cursor);
             }
@@ -350,7 +386,10 @@ impl DocTab {
                 }
             }
             Reply::CommentAdded(id) => {
+                self.selected_comment = Some(id.clone());
+                self.scroll_comment = Some(id.clone());
                 self.editing_comment = Some((id, String::new()));
+                self.focus_comment = true;
                 events.push(TabEvent::CommentAdded);
             }
             Reply::Busy(busy) => self.busy = busy,
@@ -402,5 +441,316 @@ impl Drop for DocTab {
     fn drop(&mut self) {
         self.control.cancel();
         let _ = self.requests.send(Request::Shutdown);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn until(tab: &mut DocTab, ready: impl Fn(&DocTab) -> bool) {
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let events = tab.poll();
+            for event in events {
+                if let TabEvent::Note(note) = event {
+                    assert!(!note.error, "{}: {}", note.key, note.detail);
+                }
+            }
+            if ready(tab) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "worker did not respond");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn chart_mouse_selection_resize_and_caret_work_with_rulers() {
+        use crate::worker::{Motion, ObjectView};
+        use strict_ooxml::model::chart::*;
+        let file =
+            std::env::temp_dir().join(format!("mufoed-chart-mouse-{}.rtf", std::process::id()));
+        std::fs::write(&file, br"{\rtf1\ansi\pard\par}").unwrap();
+        for source in [
+            Source::New,
+            Source::File {
+                path: file.clone(),
+                import: crate::formats::ImportOptions::default(),
+            },
+        ] {
+            let ctx = egui::Context::default();
+            let i18n = crate::i18n::I18n::load(&[]);
+            let mut tab = DocTab::open(4, source, "test".into(), 1.0, false, &ctx);
+            until(&mut tab, |t| t.cursor.is_some());
+            tab.send(Request::PutChart(Box::new(ChartData {
+                kind: ChartKind::Bar {
+                    horizontal: false,
+                    grouping: BarGrouping::Clustered,
+                },
+                title: Some("Chart".into()),
+                categories: vec!["A".into(), "B".into()],
+                series: vec![ChartSeries {
+                    name: Some("Series".into()),
+                    values: vec![Some(1.0), Some(2.0)],
+                    ..Default::default()
+                }],
+                legend: true,
+                legend_position: LegendPosition::Bottom,
+                unsupported: vec![],
+            })));
+            until(&mut tab, |t| t.state.can_undo);
+            let view = tab
+                .cursor
+                .as_ref()
+                .unwrap()
+                .object
+                .clone()
+                .expect("chart frame");
+            assert!(view.chart);
+            tab.send(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            });
+            until(&mut tab, |t| t.cursor.as_ref().unwrap().object.is_none());
+            let mut frame = 0_u32;
+            let mut paint = |tab: &mut DocTab, events| {
+                let _ = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(1000.0, 850.0),
+                        )),
+                        time: Some(f64::from(frame) * 0.1),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        crate::ruler::desk(
+                            ui,
+                            tab,
+                            crate::theme::palette(false),
+                            true,
+                            true,
+                            &i18n,
+                        );
+                    },
+                );
+                frame += 1;
+            };
+            for _ in 0..3 {
+                paint(&mut tab, vec![]);
+            }
+            let rect_on_screen = |tab: &DocTab, view: &ObjectView| {
+                let r = view.rects[0];
+                let page = tab.view.page_screens[r.page].unwrap();
+                #[allow(clippy::cast_possible_truncation)]
+                egui::Rect::from_min_size(
+                    page.min + egui::vec2(r.x as f32, r.y as f32),
+                    egui::vec2(r.width as f32, r.height as f32),
+                )
+            };
+            let pointer_event = |pos, pressed| {
+                vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ]
+            };
+            // A blank corner of the chart must select the complete drawing.
+            let corner = rect_on_screen(&tab, &view).min + egui::vec2(3.0, 3.0);
+            paint(&mut tab, pointer_event(corner, true));
+            paint(&mut tab, pointer_event(corner, false));
+            until(&mut tab, |t| {
+                t.cursor
+                    .as_ref()
+                    .unwrap()
+                    .object
+                    .as_ref()
+                    .is_some_and(|o| o.chart)
+            });
+            paint(&mut tab, vec![]);
+            let handle = rect_on_screen(&tab, &view).right_bottom();
+            let destination = handle - egui::vec2(60.0, 36.0);
+            paint(&mut tab, pointer_event(handle, true));
+            paint(&mut tab, vec![egui::Event::PointerMoved(destination)]);
+            paint(&mut tab, pointer_event(destination, false));
+            until(&mut tab, |t| {
+                t.cursor
+                    .as_ref()
+                    .unwrap()
+                    .object
+                    .as_ref()
+                    .is_some_and(|o| o.width < view.width)
+            });
+            paint(&mut tab, vec![]);
+            let resized = tab.cursor.as_ref().unwrap().object.as_ref().unwrap();
+            let point = rect_on_screen(&tab, resized).right_bottom() + egui::vec2(15.0, 15.0);
+            paint(&mut tab, pointer_event(point, true));
+            paint(&mut tab, pointer_event(point, false));
+            until(&mut tab, |t| {
+                let c = t.cursor.as_ref().unwrap();
+                c.object.is_none() && c.carets.iter().any(|r| r.page == view.rects[0].page)
+            });
+            tab.send(Request::Type("Typed beside chart".into()));
+            until(&mut tab, |t| t.state.words == 3);
+        }
+        std::fs::remove_file(file).unwrap();
+    }
+
+    #[test]
+    fn navigation_aligns_a_caret_near_the_last_page_bottom_to_the_view_top() {
+        let ctx = egui::Context::default();
+        let mut tab = DocTab::open(1, Source::New, "test".into(), 1.0, false, &ctx);
+        tab.pages = vec![Arc::new(PageData {
+            width: 800.0,
+            height: 1100.0,
+            generation: 1,
+            placed: strict_ooxml::PlacedPage {
+                width_px: 800.0,
+                height_px: 1100.0,
+                items: vec![],
+                section_index: 0,
+            },
+        })];
+        tab.cursor = Some(Box::new(Cursor {
+            object: None,
+            ruler: None,
+            header_footer: None,
+            carets: vec![strict_ooxml::edit::VisualRect {
+                page: 0,
+                x: 100.0,
+                y: 1000.0,
+                width: 1.0,
+                height: 16.0,
+            }],
+            selection: vec![],
+            scroll: true,
+            at_top: true,
+            format: crate::worker::CaretFormat::default(),
+        }));
+        tab.view.scroll_to_caret = true;
+        tab.view.caret_at_top = true;
+        let i18n = crate::i18n::I18n::load(&[]);
+        let mut top = 0.0;
+        for frame in 0..20 {
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 400.0),
+                    )),
+                    time: Some(f64::from(frame) / 20.0),
+                    ..Default::default()
+                },
+                |ui| {
+                    top = ui.max_rect().top();
+                    crate::canvas::show(ui, &mut tab, crate::theme::palette(false), true, &i18n);
+                },
+            );
+        }
+        let page = tab.view.page_screens[0].unwrap();
+        assert!(
+            (page.top() + 1000.0 - top).abs() <= 4.0,
+            "caret at {}, viewport top {top}",
+            page.top() + 1000.0
+        );
+    }
+
+    #[test]
+    fn clicking_comment_text_requests_the_card_and_focus_reply_selects_it() {
+        let ctx = egui::Context::default();
+        let mut tab = DocTab::open(3, Source::New, "test".into(), 1.0, false, &ctx);
+        tab.pages = vec![Arc::new(PageData {
+            width: 800.0,
+            height: 1100.0,
+            generation: 1,
+            placed: strict_ooxml::PlacedPage {
+                width_px: 800.0,
+                height_px: 1100.0,
+                items: vec![],
+                section_index: 0,
+            },
+        })];
+        tab.comments = vec![crate::worker::CommentView {
+            id: "7".into(),
+            author: "Ann".into(),
+            date: String::new(),
+            text: "Comment".into(),
+            page: 0,
+            y: 100.0,
+            rects: vec![strict_ooxml::edit::VisualRect {
+                page: 0,
+                x: 100.0,
+                y: 100.0,
+                width: 60.0,
+                height: 20.0,
+            }],
+        }];
+        let i18n = crate::i18n::I18n::load(&[]);
+        let mut pointer = egui::Pos2::ZERO;
+        for frame in 0..5 {
+            let mut events = Vec::new();
+            if frame == 2 || frame == 3 {
+                events.push(egui::Event::PointerMoved(pointer));
+                events.push(egui::Event::PointerButton {
+                    pos: pointer,
+                    button: egui::PointerButton::Primary,
+                    pressed: frame == 2,
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 400.0),
+                    )),
+                    time: Some(f64::from(frame) * 0.1),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    crate::canvas::show(ui, &mut tab, crate::theme::palette(false), true, &i18n);
+                },
+            );
+            pointer = tab.view.page_screens[0].unwrap().min + egui::vec2(125.0, 110.0);
+        }
+        assert!(tab
+            .ui_actions
+            .iter()
+            .any(|action| matches!(action, crate::app::Action::ShowComment(id) if id == "7")));
+        let mut events = Vec::new();
+        tab.apply(Reply::CommentFocused("7".into()), &mut events);
+        assert_eq!(tab.selected_comment.as_deref(), Some("7"));
+        assert_eq!(tab.scroll_comment.as_deref(), Some("7"));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, TabEvent::CommentSelected)));
+    }
+
+    #[test]
+    fn leaving_a_comment_commits_the_draft_and_releases_editing() {
+        let ctx = egui::Context::default();
+        let mut tab = DocTab::open(2, Source::New, "test".into(), 1.0, false, &ctx);
+        until(&mut tab, |t| t.cursor.is_some());
+        tab.send(Request::Comments(crate::worker::CommentCommand::Add {
+            author: "Ann".into(),
+            initials: "A".into(),
+        }));
+        until(&mut tab, |t| t.editing_comment.is_some());
+        tab.editing_comment.as_mut().unwrap().1 = "Saved draft".into();
+        tab.finish_comment();
+        assert!(tab.editing_comment.is_none());
+        assert!(!tab.focus_comment);
+        until(&mut tab, |t| {
+            t.comments.first().is_some_and(|c| c.text == "Saved draft")
+        });
+        tab.send(Request::Type("Back in document".into()));
+        until(&mut tab, |t| t.state.words == 3);
     }
 }
