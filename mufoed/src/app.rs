@@ -34,6 +34,8 @@ pub(crate) enum Action {
     ToggleAiPane,
     /// The selected picture's text translated in place.
     TranslatePicture,
+    /// The formula dialog, for the formula at the caret or a new one.
+    FormulaDialog,
     AiLanguage(String),
     New,
     OpenDialog,
@@ -175,6 +177,8 @@ pub(crate) enum Dialog {
         space_cm: f32,
         separator: bool,
     },
+    /// A formula typed as LaTeX, new or in place of one.
+    Formula(Box<FormulaDialog>),
     /// Ollama and its models: what is there, what to fetch.
     AiSetup,
     /// The user's own instruction for rewriting the selection.
@@ -195,6 +199,58 @@ pub(crate) enum Dialog {
         selected: Option<usize>,
     },
 }
+
+/// The formula dialog's state.
+pub(crate) struct FormulaDialog {
+    source: String,
+    /// The formula it replaces: paragraph and inline index.
+    replace: Option<(strict_ooxml::edit::Address, usize)>,
+    /// The source the preview shows, and the preview.
+    shown: String,
+    preview: Option<egui::TextureHandle>,
+    error: Option<String>,
+}
+
+impl std::fmt::Debug for FormulaDialog {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FormulaDialog")
+            .field("source", &self.source)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Clone for FormulaDialog {
+    fn clone(&self) -> Self {
+        Self {
+            source: self.source.clone(),
+            replace: self.replace.clone(),
+            shown: self.shown.clone(),
+            preview: self.preview.clone(),
+            error: self.error.clone(),
+        }
+    }
+}
+
+/// Templates the formula dialog puts in: the button and the LaTeX.
+const FORMULA_TEMPLATES: &[(&str, &str)] = &[
+    ("x²", "^{2}"),
+    ("x_i", "_{i}"),
+    ("a⁄b", "\\frac{a}{b}"),
+    ("√x", "\\sqrt{x}"),
+    ("n√x", "\\sqrt[n]{x}"),
+    ("∑", "\\sum_{i=1}^{n} "),
+    ("∫", "\\int_{a}^{b} "),
+    ("∏", "\\prod_{i=1}^{n} "),
+    ("lim", "\\lim_{x \\to 0} "),
+    ("( )", "\\left( \\right)"),
+    ("[ ]", "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}"),
+    ("x̄", "\\bar{x}"),
+    ("vec v", "\\vec{v}"),
+    ("α β π", "\\alpha \\beta \\pi"),
+    ("≤ ≠ ±", "\\le \\ne \\pm"),
+    ("H₂O", "\\ce{H2O}"),
+    ("A + B = C", "\\ce{A + B -> C}"),
+];
 
 /// The print dialog's fields.
 #[derive(Clone, Debug)]
@@ -815,6 +871,11 @@ impl App {
                 self.dialog = Some(Dialog::AiSetup);
             }
             Action::ToggleAiPane => self.ai.open = !self.ai.open,
+            Action::FormulaDialog => {
+                if let Some(tab) = self.active_tab() {
+                    tab.send(Request::FormulaAtCaret);
+                }
+            }
             Action::TranslatePicture => {
                 if self.ai_ready_for_pictures(ctx) {
                     if let Some(tab) = self.active_tab() {
@@ -906,6 +967,7 @@ impl App {
         let mut missing_scripts = Vec::new();
         let mut missing_fonts = Vec::new();
         let mut ai_sources = Vec::new();
+        let mut formula_found = None;
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             for event in tab.poll() {
                 match event {
@@ -970,6 +1032,7 @@ impl App {
                     TabEvent::SpellingMissing(scripts) => missing_scripts.extend(scripts),
                     TabEvent::FontsMissing(packs) => missing_fonts.extend(packs),
                     TabEvent::AiSource { job, source } => ai_sources.push((tab.id, job, source)),
+                    TabEvent::Formula(found) => formula_found = Some(found),
                     TabEvent::Loaded => {
                         messages.push((
                             self.i18n.tf("status.opened", &[("file", &tab.title)]),
@@ -987,6 +1050,22 @@ impl App {
         }
         for (text, error) in messages {
             self.say(text, error, now);
+        }
+        if let Some(found) = formula_found {
+            let (source, replace) = match found {
+                Some(found) => {
+                    let (at, index, expression) = *found;
+                    (crate::formula::to_latex(&expression), Some((at, index)))
+                }
+                None => (String::new(), None),
+            };
+            self.dialog = Some(Dialog::Formula(Box::new(FormulaDialog {
+                source,
+                replace,
+                shown: String::new(),
+                preview: None,
+                error: None,
+            })));
         }
         for (tab, job, source) in ai_sources {
             self.ai_source(ctx, tab, job, *source);
@@ -1375,6 +1454,28 @@ impl App {
     }
 }
 
+/// Puts `text` where the cursor of the text field `id` is (at the end when
+/// it has none).
+fn insert_at_cursor(ctx: &egui::Context, id: egui::Id, target: &mut String, text: &str) {
+    let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+    let chars = target.chars().count();
+    let at = state
+        .cursor
+        .char_range()
+        .map_or(chars, |range| usize::from(range.primary.index).min(chars));
+    let byte = target
+        .char_indices()
+        .nth(at)
+        .map_or(target.len(), |(b, _)| b);
+    target.insert_str(byte, text);
+    let after = egui::text::CCursor::new(at + text.chars().count());
+    state
+        .cursor
+        .set_char_range(Some(egui::text::CCursorRange::one(after)));
+    state.store(ctx, id);
+    ctx.memory_mut(|memory| memory.request_focus(id));
+}
+
 /// Loads the installed dictionaries off the interface thread.
 fn load_speller(ctx: &egui::Context) -> std::sync::mpsc::Receiver<crate::spell::Speller> {
     let (tx, rx) = std::sync::mpsc::channel();
@@ -1574,6 +1675,13 @@ impl App {
             "exit" => Some(Dialog::ConfirmExit),
             "dictionary" => Some(Dialog::Dictionary { code: "ru" }),
             "font-pack" => Some(Dialog::FontPack { id: "devanagari" }),
+            "formula" => Some(Dialog::Formula(Box::new(FormulaDialog {
+                source: "x = \\frac{-b \\pm \\sqrt{b^{2}-4ac}}{2a}".to_owned(),
+                replace: None,
+                shown: String::new(),
+                preview: None,
+                error: None,
+            }))),
             "ai-setup" => {
                 actions.push(Action::AiSetup);
                 None
@@ -2957,6 +3065,112 @@ impl App {
                         space_cm,
                         separator,
                     });
+                }
+            }
+            Dialog::Formula(mut dialog) => {
+                let mut put = false;
+                // The preview follows the text.
+                if dialog.shown != dialog.source {
+                    dialog.shown.clone_from(&dialog.source);
+                    match crate::formula::from_latex(&dialog.source) {
+                        Ok(expression) => {
+                            dialog.error = None;
+                            dialog.preview =
+                                crate::formula::preview(&expression).map(|(w, h, rgba)| {
+                                    ctx.load_texture(
+                                        "formula-preview",
+                                        egui::ColorImage::from_rgba_premultiplied([w, h], &rgba),
+                                        egui::TextureOptions::LINEAR,
+                                    )
+                                });
+                        }
+                        Err(error) => {
+                            dialog.error = (!error.is_empty()).then_some(error);
+                            dialog.preview = None;
+                        }
+                    }
+                }
+                let editing = dialog.replace.is_some();
+                let response = modal("formula").show(ctx, |ui| {
+                    crate::dialog::title(ui, &t("formula.title"));
+                    ui.set_max_width(560.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+                        for (label, latex) in FORMULA_TEMPLATES {
+                            if ui.button(*label).on_hover_text(*latex).clicked() {
+                                insert_at_cursor(
+                                    ui.ctx(),
+                                    egui::Id::new("formula-source"),
+                                    &mut dialog.source,
+                                    latex,
+                                );
+                            }
+                        }
+                    });
+                    let field = ui.add(
+                        egui::TextEdit::multiline(&mut dialog.source)
+                            .id(egui::Id::new("formula-source"))
+                            .font(egui::TextStyle::Monospace)
+                            .desired_rows(3)
+                            .desired_width(540.0)
+                            .hint_text(t("formula.hint")),
+                    );
+                    if !field.has_focus() && dialog.source.is_empty() {
+                        field.request_focus();
+                    }
+                    ui.label(RichText::new(t("formula.help")).weak().size(11.0));
+                    let frame = egui::Frame::new()
+                        .fill(Color32::WHITE)
+                        .stroke(Stroke::new(1.0, Color32::from_gray(200)))
+                        .corner_radius(4)
+                        .inner_margin(10);
+                    frame.show(ui, |ui| {
+                        ui.set_min_size(vec2(520.0, 70.0));
+                        match (&dialog.preview, &dialog.error) {
+                            (Some(texture), _) => {
+                                let size = texture.size_vec2() * 0.6;
+                                let scale = (500.0 / size.x).min(1.0);
+                                ui.vertical_centered(|ui| {
+                                    ui.add(egui::Image::new((texture.id(), size * scale)));
+                                });
+                            }
+                            (None, Some(error)) => {
+                                ui.colored_label(Color32::from_rgb(190, 40, 40), error);
+                            }
+                            (None, None) => {
+                                ui.label(RichText::new(t("formula.empty")).weak());
+                            }
+                        }
+                    });
+                    crate::dialog::buttons(ui, |ui| {
+                        let label = if editing {
+                            t("formula.update")
+                        } else {
+                            t("button.insert")
+                        };
+                        if crate::dialog::primary_enabled(ui, dialog.preview.is_some(), &label)
+                            .clicked()
+                        {
+                            put = true;
+                            ui.close();
+                        }
+                        if crate::dialog::button(ui, &t("button.cancel")).clicked() {
+                            ui.close();
+                        }
+                    });
+                });
+                if put {
+                    if let Ok(expression) = crate::formula::from_latex(&dialog.source) {
+                        actions.push(Action::Doc(Request::PutFormula {
+                            expression: Box::new(expression),
+                            replace: dialog.replace.clone(),
+                        }));
+                    }
+                }
+                if response.should_close() || put {
+                    keep = false;
+                } else {
+                    next = Some(Dialog::Formula(dialog));
                 }
             }
             Dialog::AiSetup => {

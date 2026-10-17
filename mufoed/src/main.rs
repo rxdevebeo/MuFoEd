@@ -33,6 +33,7 @@ mod canvas;
 mod dialog;
 mod docfonts;
 mod formats;
+mod formula;
 mod i18n;
 mod icons;
 mod nav;

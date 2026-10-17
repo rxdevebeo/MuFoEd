@@ -46,6 +46,16 @@ pub(crate) enum TabEvent {
     SpellingMissing(Vec<crate::spell::Script>),
     /// The document has text no font draws; these packs would.
     FontsMissing(Vec<&'static str>),
+    /// The formula at the caret was asked for, to edit (or none: a new one).
+    Formula(
+        Option<
+            Box<(
+                strict_ooxml::edit::Address,
+                usize,
+                strict_ooxml::model::math::MathExpression,
+            )>,
+        >,
+    ),
     /// The text an AI job asked for.
     AiSource {
         job: u64,
@@ -329,6 +339,7 @@ impl DocTab {
             }
             Reply::FontsMissing(packs) => events.push(TabEvent::FontsMissing(packs)),
             Reply::AiSource { job, source } => events.push(TabEvent::AiSource { job, source }),
+            Reply::Formula(found) => events.push(TabEvent::Formula(found)),
             Reply::Spelling { errors, missing } => {
                 self.spelling = errors;
                 if !missing.is_empty() {

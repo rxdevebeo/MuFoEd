@@ -149,7 +149,7 @@ pub(crate) const OPEN_EXTENSIONS: &[&str] = &["docx", "docm", "dotx", "rtf", "pd
 /// RTF is the one format the toolkit builds a complete Strict package from
 /// with nothing but text in hand, so a new document is a tiny RTF with a style
 /// sheet, imported.
-const NEW_DOCUMENT_RTF: &str = concat!(
+pub(crate) const NEW_DOCUMENT_RTF: &str = concat!(
     r"{\rtf1\ansi\ansicpg1252\deff0",
     r"{\fonttbl{\f0\fswiss Calibri;}{\f1\froman Cambria;}}",
     r"{\colortbl;\red0\green0\blue0;\red31\green56\blue100;}",

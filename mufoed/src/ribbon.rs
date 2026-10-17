@@ -1757,6 +1757,16 @@ fn insert(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
         ) {
             actions.push(Action::Open(Dialog::Symbols));
         }
+        if big_clicked(
+            ui,
+            Icon::Formula,
+            s.t("cmd.formula"),
+            s.t("tip.formula"),
+            editable,
+            p,
+        ) {
+            actions.push(Action::FormulaDialog);
+        }
     });
 }
 

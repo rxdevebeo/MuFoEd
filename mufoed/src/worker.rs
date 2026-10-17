@@ -147,6 +147,15 @@ pub(crate) enum Request {
         old: String,
         new: String,
     },
+    /// The formula beside the caret, to edit: answered with
+    /// [`Reply::Formula`].
+    FormulaAtCaret,
+    /// A formula put at the caret, or in place of the one at
+    /// (paragraph, inline index).
+    PutFormula {
+        expression: Box<strict_ooxml::model::math::MathExpression>,
+        replace: Option<(Address, usize)>,
+    },
     /// Paragraph styles by kind, the styles made when the document lacks
     /// them.
     ApplyKinds(Vec<(Address, crate::ai::Kind)>),
@@ -871,6 +880,8 @@ pub(crate) enum Reply {
         job: u64,
         source: Box<AiSource>,
     },
+    /// The formula beside the caret (where it is and what it says), or none.
+    Formula(Option<Box<(Address, usize, strict_ooxml::model::math::MathExpression)>>),
     /// Font packs that would draw text nothing draws now (their ids).
     FontsMissing(Vec<&'static str>),
     /// The misspelt words, and the scripts with words no dictionary checks.
@@ -1385,6 +1396,11 @@ impl<'a, 's> Worker<'a, 's> {
                 self.respell();
                 Outcome::Quiet
             }
+            Request::FormulaAtCaret => {
+                let found = self.formula_at_caret().map(Box::new);
+                self.send(Reply::Formula(found));
+                Outcome::Quiet
+            }
             Request::AiSource { whole, job } => {
                 let source = self.ai_source(whole);
                 self.send(Reply::AiSource {
@@ -1445,6 +1461,10 @@ impl<'a, 's> Worker<'a, 's> {
                 self.paste(&new)
             }
             Request::ApplyKinds(kinds) => self.apply_kinds(&kinds),
+            Request::PutFormula {
+                expression,
+                replace,
+            } => self.put_formula(*expression, replace),
             Request::ReplaceWord {
                 start,
                 end,
@@ -2802,6 +2822,71 @@ impl<'a, 's> Worker<'a, 's> {
             picture: matches!(graphic, Some(Graphic::Picture(_))),
             wrap: wrap_style(&drawing),
         })
+    }
+
+    // ----- formulas -----------------------------------------------------
+
+    /// An inline formula at the caret's place (formulas take no caret
+    /// position of their own, so the caret is just before or after one).
+    fn formula_at_caret(
+        &self,
+    ) -> Option<(Address, usize, strict_ooxml::model::math::MathExpression)> {
+        let caret = self.caret.as_ref()?;
+        let paragraph = self.paragraph(&caret.paragraph)?;
+        paragraph
+            .inlines
+            .iter()
+            .enumerate()
+            .find_map(|(index, inline)| match inline {
+                strict_ooxml::model::Inline::Math(expression)
+                    if self.offset_of_inline(&caret.paragraph, index) == caret.offset =>
+                {
+                    Some((caret.paragraph.clone(), index, expression.clone()))
+                }
+                _ => None,
+            })
+    }
+
+    fn put_formula(
+        &mut self,
+        expression: strict_ooxml::model::math::MathExpression,
+        replace: Option<(Address, usize)>,
+    ) -> Outcome {
+        if let Some((at, index)) = replace {
+            let still = self
+                .paragraph(&at)
+                .and_then(|paragraph| paragraph.inlines.get(index))
+                .is_some_and(|inline| matches!(inline, strict_ooxml::model::Inline::Math(_)));
+            if !still {
+                return Outcome::Quiet;
+            }
+            let commands = [
+                Edit::DeleteInline {
+                    at: at.clone(),
+                    index,
+                },
+                Edit::InsertInline {
+                    at,
+                    index,
+                    inline: Box::new(strict_ooxml::model::Inline::Math(expression)),
+                },
+            ];
+            return if self.transact(&commands) {
+                Outcome::Edited
+            } else {
+                Outcome::Quiet
+            };
+        }
+        self.delete_selection();
+        let Some(caret) = self.caret.clone() else {
+            return Outcome::Quiet;
+        };
+        let commands = self.inline_at_caret(&caret, strict_ooxml::model::Inline::Math(expression));
+        if self.transact(&commands) {
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
     }
 
     // ----- AI -----------------------------------------------------------
@@ -8578,6 +8663,43 @@ mod tests {
             _ => None,
         });
         assert_eq!(style, "Heading1");
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    /// A formula goes in at the caret, is found there again and replaced.
+    #[test]
+    fn a_formula_is_inserted_found_and_replaced() {
+        let (requests, replies) = new_document();
+        send_all(&requests, typed("a"));
+        let square = crate::formula::from_latex("x^{2}").unwrap();
+        requests
+            .send(Request::PutFormula {
+                expression: Box::new(square),
+                replace: None,
+            })
+            .unwrap();
+        requests.send(Request::FormulaAtCaret).unwrap();
+        let found = wait(&replies, |reply| match reply {
+            Reply::Formula(found) => Some(found),
+            _ => None,
+        })
+        .expect("the formula at the caret");
+        let (at, index, expression) = *found;
+        assert_eq!(crate::formula::to_latex(&expression), "{x}^{2}");
+        let cube = crate::formula::from_latex("x^{3}").unwrap();
+        requests
+            .send(Request::PutFormula {
+                expression: Box::new(cube),
+                replace: Some((at, index)),
+            })
+            .unwrap();
+        requests.send(Request::FormulaAtCaret).unwrap();
+        let found = wait(&replies, |reply| match reply {
+            Reply::Formula(found) => Some(found),
+            _ => None,
+        })
+        .expect("still there");
+        assert_eq!(crate::formula::to_latex(&found.2), "{x}^{3}");
         requests.send(Request::Shutdown).unwrap();
     }
 

@@ -149,7 +149,8 @@
       "column_break": "Column break",
       "spelling": "Spelling",
       "dictionaries": "Dictionaries",
-      "translate_picture": "Translate text"
+      "translate_picture": "Translate text",
+      "formula": "Equation"
     },
     "tip": {
       "start_page": "Start page",
@@ -268,7 +269,8 @@
       "ai_unify": "Bring every paragraph to one style (previewed first)",
       "ai_pane": "Show the AI results",
       "ai_settings": "Ollama and the model",
-      "translate_picture": "Read the picture's labels, translate them into the AI tab's language and write them in instead"
+      "translate_picture": "Read the picture's labels, translate them into the AI tab's language and write them in instead",
+      "formula": "Insert an equation (or edit the one at the caret): LaTeX and chemistry \\ce{}"
     },
     "font": {
       "default": "(from style)",
@@ -704,6 +706,13 @@
       "picture_done": "The picture's text is translated (Ctrl+Z undoes it)",
       "picture_failed": "Could not translate the text: {error}",
       "need_vision": "Pictures need the recognition model {model}."
+    },
+    "formula": {
+      "title": "Equation",
+      "hint": "For example: E = mc^{2}  or  \\ce{2H2 + O2 -> 2H2O}",
+      "help": "LaTeX: ^{} raises, _{} lowers, \\frac{}{} divides, \\sqrt{} roots, \\alpha … Greek; chemistry in \\ce{…}.",
+      "empty": "The equation shows here",
+      "update": "Replace"
     }
   }
 }
