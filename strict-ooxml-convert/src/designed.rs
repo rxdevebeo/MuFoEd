@@ -167,14 +167,40 @@ fn frame_anchor(
         blocks.push(Block::Paragraph(paragraph));
         previous = Some(line);
     }
-    let emu = |points: f64| Emu((points * EMU_PER_POINT).round() as i64);
     // Room for a substitute font that sets a little wider than the source's:
     // the box does not wrap, and a clipped right edge is no loss.
+    Some(text_box_at(
+        Arc::from(format!("text-{index}")),
+        [
+            frame.left,
+            top,
+            (frame.right - frame.left).max(1.0) + 6.0,
+            (bottom - top).max(1.0),
+        ],
+        blocks,
+        "none",
+        false,
+    ))
+}
+
+/// A text box anchored to the page: `area` is its left, top, width and
+/// height in points from the page's corner, `blocks` its content, `wrap` the
+/// box's own wrapping of its text (`none` keeps a source line one line,
+/// `square` wraps a paragraph in the box's width); `turned` sets the text
+/// reading upward (`vert270`), a vertical label's.
+pub(crate) fn text_box_at(
+    name: Arc<str>,
+    area: [f64; 4],
+    blocks: Vec<Block>,
+    wrap: &str,
+    turned: bool,
+) -> Inline {
+    let emu = |points: f64| Emu((points * EMU_PER_POINT).round() as i64);
+    let [left, top, width, height] = area;
     let extent = Extent {
-        cx: emu((frame.right - frame.left).max(1.0) + 6.0),
-        cy: emu((bottom - top).max(1.0)),
+        cx: emu(width.max(1.0)),
+        cy: emu(height.max(1.0)),
     };
-    let name: Arc<str> = Arc::from(format!("text-{index}"));
     let zero = Some(Emu(0));
     let shape = Shape {
         name: Some(Arc::clone(&name)),
@@ -200,7 +226,8 @@ fn frame_anchor(
                 top_inset: zero,
                 right_inset: zero,
                 bottom_inset: zero,
-                wrap: Some(Arc::from("none")),
+                wrap: Some(Arc::from(wrap)),
+                vert: turned.then(|| Arc::from("vert270")),
                 ..TextBoxBody::default()
             }),
             blocks,
@@ -215,7 +242,7 @@ fn frame_anchor(
         offset: Some(emu(offset)),
         percent_offset: None,
     };
-    Some(Inline::Drawing(Drawing {
+    Inline::Drawing(Drawing {
         kind: DrawingKind::Anchor(AnchorDrawing {
             extent: Some(extent),
             effect_extent: None,
@@ -229,7 +256,7 @@ fn frame_anchor(
             simple_pos: false,
             simple_pos_point: None,
             hidden: None,
-            position_h: Some(position(frame.left)),
+            position_h: Some(position(left)),
             position_v: Some(position(top)),
             wrap: Some(Wrap {
                 kind: WrapKind::None,
@@ -257,5 +284,5 @@ fn frame_anchor(
             location: SourceLocation::unknown(),
         }),
         location: SourceLocation::unknown(),
-    }))
+    })
 }

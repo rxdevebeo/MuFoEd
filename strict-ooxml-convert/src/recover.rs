@@ -139,6 +139,28 @@ pub(crate) enum RecoveredItem {
         /// Each column's items, top to bottom.
         cells: Vec<Vec<RecoveredItem>>,
     },
+    /// A block set where it stood on the scan: its box on the shown page, in
+    /// points (left, top, width, height), and its items.
+    Placed {
+        /// Left, top, width and height, in points of the shown page.
+        area: [f64; 4],
+        /// The block's items, top to bottom.
+        items: Vec<RecoveredItem>,
+        /// A vertical label: its text set turned, reading upward.
+        turned: bool,
+    },
+}
+
+impl RecoveredItem {
+    /// How many paragraphs the item holds, inside columns and placed blocks.
+    pub(crate) fn paragraphs(&self) -> usize {
+        match self {
+            Self::Paragraph(_) => 1,
+            Self::Picture(_) | Self::Table(_) => 0,
+            Self::Columns { cells, .. } => cells.iter().flatten().map(Self::paragraphs).sum(),
+            Self::Placed { items, .. } => items.iter().map(Self::paragraphs).sum(),
+        }
+    }
 }
 
 /// A picture cut out of a scanned page.
@@ -271,10 +293,8 @@ pub(crate) fn recover_pages(
                     layout::rebuild(&*recovery, &pixels, &frame, options, report)
                 {
                     report.recovered_pages += 1;
-                    report.recovered_paragraphs += items
-                        .iter()
-                        .filter(|item| matches!(item, RecoveredItem::Paragraph(_)))
-                        .count();
+                    report.recovered_paragraphs +=
+                        items.iter().map(RecoveredItem::paragraphs).sum::<usize>();
                     out.blocks.entry(index).or_default().push(RecoveredBlock {
                         items,
                         whole_page: true,
