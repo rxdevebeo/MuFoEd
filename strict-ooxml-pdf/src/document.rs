@@ -956,21 +956,7 @@ impl<'a> PageResources<'a> {
         // the font table is missing never finds the picture. That is the normal
         // case for a scanned document.
         if let Ok(states) = resources.get(b"ExtGState") {
-            for (name, object) in dictionary_entries(resolve, states) {
-                let Some(state) = resolve.get(&object).and_then(|state| state.as_dict().ok())
-                else {
-                    continue;
-                };
-                let alpha = |key: &[u8]| {
-                    state
-                        .get(key)
-                        .ok()
-                        .and_then(|value| resolve.get(value))
-                        .and_then(|value| value.as_float().ok())
-                        .map(f64::from)
-                };
-                ext_g_states.insert(name, (alpha(b"ca"), alpha(b"CA")));
-            }
+            ext_g_states = graphics_states(resolve, states);
         }
         if let Ok(shading_object) = resources.get(b"Shading") {
             for (name, object) in dictionary_entries(resolve, shading_object) {
@@ -1059,6 +1045,29 @@ impl<'a> PageResources<'a> {
 /// nothing, and the page comes back with no text and no pictures — silently,
 /// because a font that is not in the table is reported as missing and the text
 /// that needed it is simply not drawn.
+/// The fill and stroke opacity (`ca`, `CA`) of each graphics state.
+fn graphics_states(
+    resolve: crate::fonts::Resolver<'_>,
+    states: &Object,
+) -> BTreeMap<String, (Option<f64>, Option<f64>)> {
+    let mut out = BTreeMap::new();
+    for (name, object) in dictionary_entries(resolve, states) {
+        let Some(state) = resolve.get(&object).and_then(|state| state.as_dict().ok()) else {
+            continue;
+        };
+        let alpha = |key: &[u8]| {
+            state
+                .get(key)
+                .ok()
+                .and_then(|value| resolve.get(value))
+                .and_then(|value| value.as_float().ok())
+                .map(f64::from)
+        };
+        out.insert(name, (alpha(b"ca"), alpha(b"CA")));
+    }
+    out
+}
+
 fn dictionary_entries(
     resolve: crate::fonts::Resolver<'_>,
     object: &Object,

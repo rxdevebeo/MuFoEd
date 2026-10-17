@@ -374,14 +374,6 @@ struct Region {
     origin: Origin,
 }
 
-/// Where a picture lies on the page as it is displayed - the page the
-/// rasterizer draws and the crop is cut from.
-///
-/// A placed image keeps PDF's frame: unrotated, with `y` its lower edge measured
-/// up from the bottom. A scanned book stored as landscape pages turned by
-/// `/Rotate 90` was cropped to its unrotated 842x595 box on a 595x842 page, and
-/// the bottom third of every page never reached the model.
-#[cfg(feature = "raster")]
 /// Whether the page's own painted text stands on a picture (three glyphs or
 /// more inside its box, in the page's unturned frame).
 #[cfg(feature = "raster")]
@@ -406,6 +398,14 @@ fn text_over(page: &PdfPage, image: &strict_ooxml_pdf::PlacedImage) -> bool {
     inside >= 3
 }
 
+/// Where a picture lies on the page as it is displayed - the page the
+/// rasterizer draws and the crop is cut from.
+///
+/// A placed image keeps PDF's frame: unrotated, with `y` its lower edge measured
+/// up from the bottom. A scanned book stored as landscape pages turned by
+/// `/Rotate 90` was cropped to its unrotated 842x595 box on a 595x842 page, and
+/// the bottom third of every page never reached the model.
+#[cfg(feature = "raster")]
 fn picture_region(page: &PdfPage, image: &strict_ooxml_pdf::PlacedImage) -> Region {
     let (left, top, width, height) = displayed_rect(
         page.geometry,
