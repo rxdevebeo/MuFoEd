@@ -32,6 +32,19 @@ fn right_and_centred_lines_are_aligned() {
     let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
     let converted =
         convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    // A one-line paragraph the width of the text may run 15% past its edge:
+    // 200 pt wide, so 30 pt (600 twips) into the right margin.
+    let first_end = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .find_map(|block| match block {
+            Block::Paragraph(paragraph) => paragraph.props.indentation.and_then(|i| i.end),
+            _ => None,
+        })
+        .map(|end| end.0);
+    assert_eq!(first_end, Some(-600));
     let aligned: Vec<(String, Option<Justification>)> = converted
         .document
         .body

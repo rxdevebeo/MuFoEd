@@ -334,8 +334,16 @@ pub(crate) fn build(
         // own content, indented to the region's left edge.
         for block in recovered.page(index) {
             let mut placed = recovered_blocks(block, index, &mut media, report, text_area);
-            if block.whole_page && !blocks.is_empty() {
-                start_page(&mut placed);
+            if block.whole_page && page_start > 0 {
+                if blocks.len() > page_start {
+                    // The page is open already - its pictures and shapes hold
+                    // its first paragraph - and the rebuilt text runs on it: a
+                    // break before the text put a slide's background on one
+                    // page and its words on the next.
+                    break_page(&mut blocks, page_start);
+                } else {
+                    start_page(&mut placed);
+                }
             }
             blocks.extend(placed);
         }
@@ -390,6 +398,8 @@ fn paragraphs_of(
     // took eleven.
     let mut furthest: Option<f64> = None;
     let edges = text_edges(lines);
+    // The open paragraph's line while it has only one.
+    let mut single: Option<&GlyphLine> = None;
     let starts: Vec<f64> = lines
         .iter()
         .filter(|line| !line.text().trim().is_empty())
@@ -428,7 +438,8 @@ fn paragraphs_of(
                         || !same_format(previous, line)
                 }));
         if starts_new || paragraph.is_none() {
-            if let Some(finished) = paragraph.take() {
+            if let Some(mut finished) = paragraph.take() {
+                give_room(&mut finished, single, edges);
                 out.push(finished);
             }
             let heading = if allow_headings {
@@ -467,7 +478,9 @@ fn paragraphs_of(
                 }
             }
             paragraph = Some(fresh);
+            single = Some(line);
         } else if let Some(paragraph) = paragraph.as_mut() {
+            single = None;
             if let Some(previous) = previous {
                 set_line_gap(paragraph, line, line.baseline - previous.baseline);
             }
@@ -489,10 +502,49 @@ fn paragraphs_of(
         furthest =
             Some(furthest.map_or(line.baseline, |furthest: f64| furthest.max(line.baseline)));
     }
-    if let Some(finished) = paragraph {
+    if let Some(mut finished) = paragraph {
+        give_room(&mut finished, single, edges);
         out.push(finished);
     }
     out
+}
+
+/// Lets a paragraph of one source line run past the text's edge by as much
+/// as a substitute font a little wider than the source's needs (15% of the
+/// line), so the line does not break: the source set it as one line, and a
+/// right-aligned cover title that broke in two pushed the rest of the cover
+/// onto a second page.
+fn give_room(paragraph: &mut Paragraph, single: Option<&GlyphLine>, edges: Option<(f64, f64)>) {
+    let (Some(line), Some((left, right))) = (single, edges) else {
+        return;
+    };
+    if line.text().trim().is_empty() {
+        return;
+    }
+    let wanted = line.width * 1.15;
+    let alignment = paragraph.props.alignment;
+    let room = match alignment {
+        Some(Justification::End | Justification::Center) => right - left,
+        _ => right - line.x,
+    };
+    let need = wanted - room;
+    if !(need.is_finite() && need > 0.5) {
+        return;
+    }
+    let need = Twips(-to_twips(need));
+    let half = Twips(need.0 / 2);
+    let indentation = paragraph
+        .props
+        .indentation
+        .get_or_insert_with(Indentation::default);
+    match alignment {
+        Some(Justification::End) => indentation.start = Some(need),
+        Some(Justification::Center) => {
+            indentation.start = Some(half);
+            indentation.end = Some(half);
+        }
+        _ => indentation.end = Some(need),
+    }
 }
 
 /// Appends a run of lines to a block list.
