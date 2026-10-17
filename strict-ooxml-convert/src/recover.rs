@@ -382,6 +382,30 @@ struct Region {
 /// `/Rotate 90` was cropped to its unrotated 842x595 box on a 595x842 page, and
 /// the bottom third of every page never reached the model.
 #[cfg(feature = "raster")]
+/// Whether the page's own painted text stands on a picture (three glyphs or
+/// more inside its box, in the page's unturned frame).
+#[cfg(feature = "raster")]
+fn text_over(page: &PdfPage, image: &strict_ooxml_pdf::PlacedImage) -> bool {
+    let top = page.geometry.height - (image.y + image.height);
+    let inside = page
+        .items()
+        .iter()
+        .filter(|item| match item {
+            strict_ooxml_pdf::Item::Glyph(glyph) => {
+                glyph.render_mode.paints()
+                    && !glyph.text.trim().is_empty()
+                    && glyph.x >= image.x
+                    && glyph.x <= image.x + image.width
+                    && glyph.y >= top
+                    && glyph.y <= top + image.height
+            }
+            _ => false,
+        })
+        .take(3)
+        .count();
+    inside >= 3
+}
+
 fn picture_region(page: &PdfPage, image: &strict_ooxml_pdf::PlacedImage) -> Region {
     let (left, top, width, height) = displayed_rect(
         page.geometry,
@@ -531,7 +555,12 @@ fn mixed_regions_of(
         .items()
         .iter()
         .filter_map(|item| match item {
-            strict_ooxml_pdf::Item::Image(image) if image.image.is_some() => {
+            // A picture the page's own text is set over is a background: its
+            // raster holds that text, and a model asked about it read the
+            // text again, after the page, a slide's words twice.
+            strict_ooxml_pdf::Item::Image(image)
+                if image.image.is_some() && !text_over(page, image) =>
+            {
                 Some(picture_region(page, image))
             }
             _ => None,

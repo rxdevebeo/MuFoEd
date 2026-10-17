@@ -401,6 +401,15 @@ fn a_mixed_page_offers_the_picture_and_not_the_page() {
     );
 }
 
+/// A picture the page's own text is set over is a background (a slide's): its
+/// raster holds that text, and asking about it read the slide's words twice.
+#[test]
+fn a_picture_under_the_pages_text_is_not_asked_about() {
+    let (recovered, report, calls) = mixed_recovered(100);
+    assert_eq!(calls, 0, "the caption stands on the picture:\n{report}");
+    assert!(recovered.is_empty(), "{report}");
+}
+
 /// The call is about the **picture**, not about the page: the recovered paragraph
 /// is indented to the picture's left edge, and it is marked as recovered so a
 /// reader of the document can tell.
