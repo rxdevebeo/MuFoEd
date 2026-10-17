@@ -164,6 +164,7 @@ struct Parser<'a> {
     table_rows: usize,
     table_cells: usize,
     list_depth: usize,
+    nesting: usize,
     in_document: bool,
     token_count: usize,
     text_scalars: usize,
@@ -297,6 +298,7 @@ impl<'a> Parser<'a> {
             table_rows: 0,
             table_cells: 0,
             list_depth: 0,
+            nesting: 0,
             in_document,
             token_count: 0,
             text_scalars: 0,
@@ -378,6 +380,8 @@ impl<'a> Parser<'a> {
             builder: &mut self.builder,
             file,
             reject: self.options.unsupported_policy == UnsupportedPolicy::Reject,
+            depth: 0,
+            max_depth: self.options.limits.nesting,
         }
     }
 
@@ -441,6 +445,25 @@ impl<'a> Parser<'a> {
             });
         }
         Ok(())
+    }
+
+    /// Raises the structural nesting depth, refusing a descent that would
+    /// overflow the stack. Groups, environments, lists and tables each recurse,
+    /// so an adversarial `{{{{…}}}}` or `\begin{center}…` a hundred thousand deep
+    /// is a stack overflow and an aborted process without this bound.
+    fn enter_nesting(&mut self) -> Result<(), LatexError> {
+        if self.nesting >= self.options.limits.nesting {
+            return Err(LatexError::LimitExceeded {
+                limit: "nesting",
+                observed: self.nesting + 1,
+            });
+        }
+        self.nesting += 1;
+        Ok(())
+    }
+
+    fn leave_nesting(&mut self) {
+        self.nesting = self.nesting.saturating_sub(1);
     }
 
     fn take_paragraph_props(&mut self) -> ParagraphProperties {
@@ -706,6 +729,13 @@ impl<'a> Parser<'a> {
     // ----- block parsing -------------------------------------------------
 
     fn parse_blocks(&mut self, stop_env: Option<&str>) -> Result<(), LatexError> {
+        self.enter_nesting()?;
+        let result = self.parse_blocks_inner(stop_env);
+        self.leave_nesting();
+        result
+    }
+
+    fn parse_blocks_inner(&mut self, stop_env: Option<&str>) -> Result<(), LatexError> {
         loop {
             if !self.in_document {
                 self.preamble_step()?;
@@ -887,6 +917,17 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_inlines(&mut self, fmt: &mut Format, stop: Stop) -> Result<InlineEnd, LatexError> {
+        self.enter_nesting()?;
+        let result = self.parse_inlines_inner(fmt, stop);
+        self.leave_nesting();
+        result
+    }
+
+    fn parse_inlines_inner(
+        &mut self,
+        fmt: &mut Format,
+        stop: Stop,
+    ) -> Result<InlineEnd, LatexError> {
         loop {
             let Some(kind) = self.peek_kind().cloned() else {
                 return Ok(InlineEnd::Eof);
@@ -1213,7 +1254,7 @@ impl<'a> Parser<'a> {
             "footnotetext" => self.footnotetext()?,
             "endnote" => self.endnote(fmt)?,
             "includegraphics" => self.includegraphics(fmt, span)?,
-            "graphicspath" => self.graphicspath()?,
+            "graphicspath" => self.graphicspath(span)?,
             "ensuremath" => self.ensuremath(fmt)?,
             "hspace" | "vspace" | "hskip" | "vskip" | "kern" | "mkern" | "mskip" | "vphantom"
             | "hphantom" | "phantom" => {
@@ -1409,7 +1450,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Records the search directories declared by `\graphicspath`.
-    fn graphicspath(&mut self) -> Result<(), LatexError> {
+    fn graphicspath(&mut self, span: LatexSpan) -> Result<(), LatexError> {
         self.skip_spaces()?;
         if !matches!(self.peek_kind(), Some(TokenKind::LBrace)) {
             return Ok(());
@@ -1435,7 +1476,14 @@ impl<'a> Parser<'a> {
                 kind => inner.push_str(&kind.raw()),
             }
         }
-        self.graphics_paths = parse_graphics_paths(&inner);
+        let (paths, truncated) = parse_graphics_paths(&inner);
+        self.graphics_paths = paths;
+        // Each directory multiplies the names tried per figure, so a declaration
+        // with millions of them is a work and allocation bomb; the extra
+        // directories are dropped and named.
+        if truncated {
+            self.loss(span, "graphicspath:too-many-directories")?;
+        }
         Ok(())
     }
 
@@ -2201,11 +2249,17 @@ impl<'a> Parser<'a> {
         self.skip_optional_position()?;
         let spec = self.consume_braced_raw()?;
         let body = self.collect_environment_body(env)?;
+        let max_columns = self.options.limits.table_columns;
+        let max_cells = self
+            .options
+            .limits
+            .table_cells
+            .saturating_sub(self.table_cells);
         let table = {
             let mut render = |tokens: &[Token]| {
                 self.parse_tokens_as_inlines(tokens.to_vec(), &Format::default())
             };
-            crate::table::build(&spec, &body, &mut render)?.table
+            crate::table::build(&spec, &body, max_columns, max_cells, &mut render)?.table
         };
 
         let cell_count: usize = table.rows.iter().map(|row| row.cells.len()).sum();
@@ -2532,9 +2586,16 @@ fn parse_length_emu(text: &str) -> Option<i64> {
     None
 }
 
-/// Parses `\graphicspath{{a/}{b/}}` into a list of directory prefixes.
-fn parse_graphics_paths(text: &str) -> Vec<String> {
+/// Maximum search directories honoured from one `\graphicspath`. Each directory
+/// multiplies the names tried per figure, so this bounds both the candidate list
+/// and the number of provider reads a single `\includegraphics` can cause.
+const MAX_GRAPHICS_PATHS: usize = 64;
+
+/// Parses `\graphicspath{{a/}{b/}}` into directory prefixes, truncated to
+/// [`MAX_GRAPHICS_PATHS`]. The flag is `true` when more were declared.
+fn parse_graphics_paths(text: &str) -> (Vec<String>, bool) {
     let mut paths = Vec::new();
+    let mut truncated = false;
     let mut chars = text.trim().chars().peekable();
     while let Some(&c) = chars.peek() {
         if c == '{' {
@@ -2548,7 +2609,11 @@ fn parse_graphics_paths(text: &str) -> Vec<String> {
             }
             let group = group.trim().to_owned();
             if !group.is_empty() {
-                paths.push(group);
+                if paths.len() >= MAX_GRAPHICS_PATHS {
+                    truncated = true;
+                } else {
+                    paths.push(group);
+                }
             }
         } else {
             chars.next();
@@ -2556,10 +2621,14 @@ fn parse_graphics_paths(text: &str) -> Vec<String> {
     }
     if paths.is_empty() {
         for part in text.split_whitespace() {
+            if paths.len() >= MAX_GRAPHICS_PATHS {
+                truncated = true;
+                break;
+            }
             paths.push(part.to_owned());
         }
     }
-    paths
+    (paths, truncated)
 }
 
 /// Builds a footnote or endnote reference run.

@@ -17,6 +17,7 @@ unicode-normalization.workspace = true
 
 [dev-dependencies]
 strict-ooxml-write = { version = "0.1.0", path = "../strict-ooxml-write" }
+strict-ooxml-testkit = { version = "0.1.0", path = "../strict-ooxml-testkit" }
 serde_json.workspace = true
 
 [lints]

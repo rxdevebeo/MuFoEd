@@ -2406,6 +2406,7 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "strict-ooxml-core",
+ "strict-ooxml-testkit",
  "strict-ooxml-wml",
  "strict-ooxml-write",
  "thiserror",

@@ -56,12 +56,19 @@ pub(crate) struct BuiltTable {
 type CellRenderer<'a> = dyn FnMut(&[Token]) -> Result<Vec<Inline>, LatexError> + 'a;
 
 /// Builds a table from a column specification and the body tokens.
+///
+/// `max_columns` bounds the declared columns (a `*{N}{…}` pack or a wide
+/// `\multicolumn` can otherwise turn a handful of input bytes into billions of
+/// column definitions before any limit is consulted); `max_cells` bounds the
+/// grid before it is allocated.
 pub(crate) fn build(
     spec: &str,
     body: &[Token],
+    max_columns: usize,
+    max_cells: usize,
     render_cell: &mut CellRenderer<'_>,
 ) -> Result<BuiltTable, LatexError> {
-    let (columns, bars) = parse_columns(spec);
+    let (columns, bars, mut overflow) = parse_columns(spec, max_columns);
     let mut column_defs = columns;
     if column_defs.is_empty() {
         column_defs.push(ColumnDef::default());
@@ -91,9 +98,16 @@ pub(crate) fn build(
             None => extracted.top,
         };
         let cells = split_top_level(&extracted.cells, &TokenKind::Ampersand);
-        let parsed: Vec<ParsedCell> = cells.iter().map(|cell| parse_cell(cell)).collect();
+        let parsed: Vec<ParsedCell> = cells
+            .iter()
+            .map(|cell| parse_cell(cell, max_columns))
+            .collect();
         let width = parsed.iter().map(|cell| cell.span.max(1)).sum::<usize>();
-        extra_columns = extra_columns.max(width.saturating_sub(column_count));
+        let extra = width.saturating_sub(column_count);
+        if column_count.saturating_add(extra_columns.max(extra)) > max_columns {
+            overflow = true;
+        }
+        extra_columns = extra_columns.max(extra).min(max_columns);
         rows.push(BuiltRow {
             cells: parsed,
             top,
@@ -102,7 +116,22 @@ pub(crate) fn build(
         });
     }
 
-    let columns = (column_count + extra_columns).max(1);
+    let columns = column_count.saturating_add(extra_columns).max(1);
+    if overflow || columns > max_columns {
+        return Err(LatexError::LimitExceeded {
+            limit: "table_columns",
+            observed: columns,
+        });
+    }
+    // Bound the grid before allocating it: every row is padded to `columns`, so
+    // the cell count is `rows * columns` whatever the body says.
+    let cells_estimate = rows.len().saturating_mul(columns);
+    if cells_estimate > max_cells {
+        return Err(LatexError::LimitExceeded {
+            limit: "table_cells",
+            observed: cells_estimate,
+        });
+    }
     let mut bars = bars;
     bars.resize(columns + 1, false);
     let grid = build_grid(&column_defs, columns);
@@ -494,7 +523,7 @@ fn skip_group(tokens: &[Token], index: &mut usize) {
 }
 
 /// Parses a cell's leading commands (`\multicolumn`, `\multirow`, `\cellcolor`).
-fn parse_cell(tokens: &[Token]) -> ParsedCell {
+fn parse_cell(tokens: &[Token], max_columns: usize) -> ParsedCell {
     let mut cell = ParsedCell {
         span: 1,
         ..ParsedCell::default()
@@ -514,10 +543,19 @@ fn parse_cell(tokens: &[Token]) -> ParsedCell {
                 let count = read_group(tokens, &mut cursor);
                 let spec = read_group(tokens, &mut cursor);
                 let text = read_group_tokens(tokens, &mut cursor);
-                cell.span = count
+                // A `\multicolumn{N}` with an astronomically large `N` must not
+                // widen the grid to `N` columns. Anything over budget is lifted
+                // one past it so `build` refuses the table rather than importing a
+                // silently truncated one.
+                let parsed = count
                     .as_deref()
-                    .and_then(|value| value.trim().parse().ok())
+                    .and_then(|value| value.trim().parse::<usize>().ok())
                     .unwrap_or(1);
+                cell.span = if parsed > max_columns {
+                    max_columns.saturating_add(1)
+                } else {
+                    parsed
+                };
                 cell.align = spec.as_deref().and_then(align_of);
                 cell.tokens = text.unwrap_or_default();
                 index = cursor;
@@ -649,9 +687,15 @@ fn split_top_level(tokens: &[Token], separator: &TokenKind) -> Vec<Vec<Token>> {
 }
 
 /// Parses a column specification into column definitions and vertical bars.
-fn parse_columns(spec: &str) -> (Vec<ColumnDef>, Vec<bool>) {
+///
+/// `max` bounds the declared columns; the returned flag is `true` when the
+/// specification asked for more than `max` (so the caller can refuse the table
+/// rather than silently importing a truncated one).
+fn parse_columns(spec: &str, max: usize) -> (Vec<ColumnDef>, Vec<bool>, bool) {
+    let max = max.max(1);
     let mut columns: Vec<ColumnDef> = Vec::new();
     let mut bars: Vec<bool> = vec![false];
+    let mut overflow = false;
     let mut chars = spec.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
@@ -661,13 +705,48 @@ fn parse_columns(spec: &str) -> (Vec<ColumnDef>, Vec<bool>) {
                 }
             }
             ' ' | '\n' | '\t' => {}
-            'l' => push_column(&mut columns, &mut bars, Justification::Start, None),
-            'c' => push_column(&mut columns, &mut bars, Justification::Center, None),
-            'r' => push_column(&mut columns, &mut bars, Justification::End, None),
-            'X' => push_column(&mut columns, &mut bars, Justification::Both, None),
+            'l' => push_column(
+                &mut columns,
+                &mut bars,
+                Justification::Start,
+                None,
+                max,
+                &mut overflow,
+            ),
+            'c' => push_column(
+                &mut columns,
+                &mut bars,
+                Justification::Center,
+                None,
+                max,
+                &mut overflow,
+            ),
+            'r' => push_column(
+                &mut columns,
+                &mut bars,
+                Justification::End,
+                None,
+                max,
+                &mut overflow,
+            ),
+            'X' => push_column(
+                &mut columns,
+                &mut bars,
+                Justification::Both,
+                None,
+                max,
+                &mut overflow,
+            ),
             'p' | 'm' | 'b' => {
                 let width = read_dimension(&mut chars);
-                push_column(&mut columns, &mut bars, Justification::Start, width);
+                push_column(
+                    &mut columns,
+                    &mut bars,
+                    Justification::Start,
+                    width,
+                    max,
+                    &mut overflow,
+                );
             }
             '@' => {
                 skip_braces(&mut chars);
@@ -677,8 +756,18 @@ fn parse_columns(spec: &str) -> (Vec<ColumnDef>, Vec<bool>) {
                     .and_then(|value| value.trim().parse::<usize>().ok())
                     .unwrap_or(0);
                 let inner = read_group_chars(&mut chars).unwrap_or_default();
-                let (inner_columns, inner_bars) = parse_columns(&inner);
-                for _ in 0..count {
+                let (inner_columns, inner_bars, inner_overflow) = parse_columns(&inner, max);
+                overflow |= inner_overflow;
+                if count > max {
+                    overflow = true;
+                }
+                // The repeat count is clamped so a `*{1000000000}` does not spin
+                // the loop a billion times even when the inner spec is empty.
+                for _ in 0..count.min(max) {
+                    if columns.len().saturating_add(inner_columns.len()) > max {
+                        overflow = true;
+                        break;
+                    }
                     columns.extend(inner_columns.iter().copied());
                     bars.extend(inner_bars.iter().copied());
                 }
@@ -686,7 +775,7 @@ fn parse_columns(spec: &str) -> (Vec<ColumnDef>, Vec<bool>) {
             _ => {}
         }
     }
-    (columns, bars)
+    (columns, bars, overflow)
 }
 
 fn push_column(
@@ -694,7 +783,13 @@ fn push_column(
     bars: &mut Vec<bool>,
     align: Justification,
     width: Option<i32>,
+    max: usize,
+    overflow: &mut bool,
 ) {
+    if columns.len() >= max {
+        *overflow = true;
+        return;
+    }
     columns.push(ColumnDef {
         align: Some(align),
         width,

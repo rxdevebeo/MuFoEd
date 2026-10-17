@@ -74,6 +74,9 @@ pub struct LatexLimits {
     pub input_bytes: usize,
     /// Maximum number of simultaneously open `\input`/`\include` files.
     pub depth: usize,
+    /// Maximum nesting of groups, environments, lists and math. Bounds the
+    /// recursive descent so deeply nested input cannot overflow the stack.
+    pub nesting: usize,
     /// Maximum lexical tokens across every file.
     pub tokens: usize,
     /// Maximum emitted Unicode scalar values, or emitted count in a report.
@@ -88,6 +91,8 @@ pub struct LatexLimits {
     pub table_rows: usize,
     /// Maximum table cells across the document.
     pub table_cells: usize,
+    /// Maximum columns one table may declare, before any layout is allocated.
+    pub table_columns: usize,
     /// Maximum bytes in one embedded image.
     pub media_part_bytes: usize,
     /// Maximum embedded image bytes across the document.
@@ -99,6 +104,7 @@ impl Default for LatexLimits {
         Self {
             input_bytes: 64 * 1024 * 1024,
             depth: 32,
+            nesting: 32,
             tokens: 10_000_000,
             text_scalars: 16_000_000,
             nodes: 1_000_000,
@@ -106,6 +112,7 @@ impl Default for LatexLimits {
             include_files: 1024,
             table_rows: 100_000,
             table_cells: 1_000_000,
+            table_columns: 4096,
             media_part_bytes: 32 * 1024 * 1024,
             media_total_bytes: 64 * 1024 * 1024,
         }

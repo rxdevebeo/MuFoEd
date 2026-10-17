@@ -26,6 +26,12 @@ pub(crate) struct MathContext<'a> {
     pub file: String,
     /// Whether unsupported constructs must abort the import.
     pub reject: bool,
+    /// Current recursive descent depth, shared across nested `translate` calls
+    /// (`\text{$\frac{…}$}`, `\substack`), so a deeply nested formula cannot
+    /// overflow the stack.
+    pub depth: usize,
+    /// Maximum [`depth`](Self::depth).
+    pub max_depth: usize,
 }
 
 impl MathContext<'_> {
@@ -433,6 +439,19 @@ impl MathParser<'_, '_, '_> {
     }
 
     fn parse_atom(&mut self) -> Result<Vec<MathNode>, LatexError> {
+        if self.ctx.depth >= self.ctx.max_depth {
+            return Err(LatexError::LimitExceeded {
+                limit: "nesting",
+                observed: self.ctx.depth + 1,
+            });
+        }
+        self.ctx.depth += 1;
+        let result = self.parse_atom_inner();
+        self.ctx.depth -= 1;
+        result
+    }
+
+    fn parse_atom_inner(&mut self) -> Result<Vec<MathNode>, LatexError> {
         let Some(token) = self.advance() else {
             return Ok(Vec::new());
         };
