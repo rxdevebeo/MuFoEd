@@ -166,7 +166,14 @@ pub(crate) fn build(
             .and_then(|margins| margins.left)
             .map_or(0.0, |left| f64::from(left.0) / 20.0);
         sections.begin_page(&mut blocks, section, false);
-        let raw_lines = join_fragments(strict_ooxml_pdf::text::lines(page.items()));
+        // A page rebuilt by a model was rebuilt because its own text layer could
+        // not be read; that layer's lines in the flow as well put the page's
+        // text in the document twice, the model's copy on a page of its own.
+        let raw_lines = if rebuilt {
+            Vec::new()
+        } else {
+            join_fragments(strict_ooxml_pdf::text::lines(page.items()))
+        };
         report.lines += raw_lines.len();
         let column_plan = crate::columns::plan(page, &raw_lines, report);
         let lines = margin_lines_in_place(
@@ -330,6 +337,16 @@ pub(crate) fn build(
         // broke the page (a slide, a chapter's last page): the next page
         // starts a page of its own rather than running on under it.
         break_next = ends_short(&lines, page.geometry.height);
+        // A blank page is a page: with nothing in the flow it vanished, and
+        // every page after it was one page early.
+        if blocks.len() == page_start && recovered.page(index).is_empty() {
+            let mut blank = empty_paragraph();
+            if page_start > 0 {
+                blank.props.page_break_before = strict_ooxml_wml::model::values::TriState::On;
+            }
+            blocks.push(Block::Paragraph(blank));
+            break_next = true;
+        }
         // Text a model read off a picture-only region comes after the page's
         // own content, indented to the region's left edge.
         for block in recovered.page(index) {
@@ -425,6 +442,24 @@ fn paragraphs_of(
         let is_item_text = items.get(&at).is_some();
         let with_its_marker = is_item_text
             && previous.is_some_and(|previous| (previous.baseline - line.baseline).abs() < 0.5);
+        // A piece of the line before, further along its baseline (a table of
+        // contents' page number, a form's value after its label, a second
+        // signatory's name): the same line, reached by a tab. As a paragraph
+        // of its own it stood a line lower, and a contents page took two.
+        if marker_item.is_none() && !is_item_text {
+            if let (Some(before), Some(open)) = (previous, paragraph.as_mut()) {
+                if (before.baseline - line.baseline).abs() < 0.5
+                    && line.x > before.x + before.width
+                    && !line.text().trim().is_empty()
+                {
+                    tab_to(open, line, origin, edges);
+                    push_runs_from(open, line, 0);
+                    single = None;
+                    previous = Some(line);
+                    continue;
+                }
+            }
+        }
         // A marker's line always begins a paragraph, whatever the gap to the line
         // above says: it is a structural boundary, and a paragraph that swallowed
         // one would end up holding two items.
@@ -507,6 +542,31 @@ fn paragraphs_of(
         out.push(finished);
     }
     out
+}
+
+/// Adds a tab stop at a piece's place on its line (at its end when it ends
+/// at the text's right edge, which is where a page number is aligned) and the
+/// tab that reaches it.
+fn tab_to(paragraph: &mut Paragraph, line: &GlyphLine, origin: f64, edges: Option<(f64, f64)>) {
+    use strict_ooxml_wml::model::values::{TabAlignment, TabStop};
+    let end = line.x + line.width;
+    let at_edge = edges.is_some_and(|(_, right)| (end - right).abs() <= 2.0);
+    let (alignment, position) = if at_edge {
+        (TabAlignment::End, end)
+    } else {
+        (TabAlignment::Start, line.x)
+    };
+    paragraph.props.tabs.push(TabStop {
+        position: Twips(to_twips(position - origin)),
+        alignment,
+        leader: None,
+    });
+    paragraph.inlines.push(Inline::Run(Run {
+        props: RunProperties::default(),
+        content: vec![RunContent::Tab],
+        revision: None,
+        location: strict_ooxml_core::error::SourceLocation::unknown(),
+    }));
 }
 
 /// Lets a paragraph of one source line run past the text's edge by as much

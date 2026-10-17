@@ -80,6 +80,8 @@ pub(crate) fn placed_blocks_for(
 struct Rect {
     /// An axial shading's linear gradient, in place of the solid fill.
     gradient: Option<ShapeFill>,
+    /// The fill's opacity (1 = opaque).
+    fill_alpha: f64,
     x: f64,
     y: f64,
     width: f64,
@@ -131,6 +133,7 @@ fn rectangle(vector: &Vector, page_height: f64) -> Option<Rect> {
         width,
         height,
         gradient: gradient_fill(vector),
+        fill_alpha: vector.fill_alpha,
         fill: vector.fill,
         stroke: vector.stroke,
         line_width: vector.line_width,
@@ -208,6 +211,7 @@ fn outline(vector: &Vector, page_height: f64) -> Option<(Rect, CustomGeometry)> 
             width,
             height,
             gradient: gradient_fill(vector),
+            fill_alpha: vector.fill_alpha,
             fill: vector.fill,
             stroke: vector.stroke,
             line_width: vector.line_width,
@@ -301,10 +305,21 @@ fn shape_paragraph(index: usize, rect: &Rect, geometry: ShapeGeometry) -> Block 
             markup: None,
         }
     };
-    let fill = rect
-        .gradient
-        .clone()
-        .or_else(|| rect.fill.map(|rgb| ShapeFill::Solid { color: color(rgb) }));
+    // A translucent fill (the graphics state's `ca`) keeps its opacity as
+    // the colour's `a:alpha`, in Strict's percentage form.
+    let fill = rect.gradient.clone().or_else(|| {
+        rect.fill.map(|rgb| {
+            let mut fill_color = color(rgb);
+            if rect.fill_alpha < 0.999 {
+                let [r, g, b] = rgb.to_rgb8();
+                let percent = (rect.fill_alpha.clamp(0.0, 1.0) * 100_000.0).round() / 1000.0;
+                fill_color.markup = Some(Arc::from(format!(
+                    "<a:srgbClr val=\"{r:02X}{g:02X}{b:02X}\"><a:alpha val=\"{percent}%\"/></a:srgbClr>"
+                )));
+            }
+            ShapeFill::Solid { color: fill_color }
+        })
+    });
     let stroke = rect.stroke.map(|rgb| ShapeStroke {
         color: Some(color(rgb)),
         width: Some(emu(rect.line_width.max(0.25))),

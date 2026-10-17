@@ -869,6 +869,8 @@ struct PageResources<'a> {
     images: BTreeMap<String, lopdf::ObjectId>,
     forms: BTreeMap<String, lopdf::ObjectId>,
     shadings: BTreeMap<String, crate::content::AxialGradient>,
+    /// Graphics states' fill and stroke opacity (`ca`, `CA`).
+    ext_g_states: BTreeMap<String, (Option<f64>, Option<f64>)>,
     limits: PdfLimits,
     /// The resources a form falls back on, when the form declares none itself.
     parent: Option<&'a PageResources<'a>>,
@@ -926,6 +928,7 @@ impl<'a> PageResources<'a> {
         let mut images = BTreeMap::new();
         let mut forms = BTreeMap::new();
         let mut shadings = BTreeMap::new();
+        let mut ext_g_states = BTreeMap::new();
         let mut notes: Vec<(String, String)> = Vec::new();
         let Some(resources) = inherited
             .get(b"Resources".as_slice())
@@ -941,6 +944,7 @@ impl<'a> PageResources<'a> {
                 images,
                 forms,
                 shadings,
+                ext_g_states,
                 limits,
                 parent,
                 notes,
@@ -951,6 +955,9 @@ impl<'a> PageResources<'a> {
         // picture has no `/Font` at all, and a reader that stops looking when
         // the font table is missing never finds the picture. That is the normal
         // case for a scanned document.
+        if let Ok(states) = resources.get(b"ExtGState") {
+            ext_g_states = graphics_states(resolve, states);
+        }
         if let Ok(shading_object) = resources.get(b"Shading") {
             for (name, object) in dictionary_entries(resolve, shading_object) {
                 if let Some(shading) = crate::shading::decode(resolve, &object) {
@@ -1017,6 +1024,7 @@ impl<'a> PageResources<'a> {
             images,
             forms,
             shadings,
+            ext_g_states,
             limits,
             parent,
             notes,
@@ -1037,6 +1045,29 @@ impl<'a> PageResources<'a> {
 /// nothing, and the page comes back with no text and no pictures — silently,
 /// because a font that is not in the table is reported as missing and the text
 /// that needed it is simply not drawn.
+/// The fill and stroke opacity (`ca`, `CA`) of each graphics state.
+fn graphics_states(
+    resolve: crate::fonts::Resolver<'_>,
+    states: &Object,
+) -> BTreeMap<String, (Option<f64>, Option<f64>)> {
+    let mut out = BTreeMap::new();
+    for (name, object) in dictionary_entries(resolve, states) {
+        let Some(state) = resolve.get(&object).and_then(|state| state.as_dict().ok()) else {
+            continue;
+        };
+        let alpha = |key: &[u8]| {
+            state
+                .get(key)
+                .ok()
+                .and_then(|value| resolve.get(value))
+                .and_then(|value| value.as_float().ok())
+                .map(f64::from)
+        };
+        out.insert(name, (alpha(b"ca"), alpha(b"CA")));
+    }
+    out
+}
+
 fn dictionary_entries(
     resolve: crate::fonts::Resolver<'_>,
     object: &Object,
@@ -1051,6 +1082,12 @@ fn dictionary_entries(
 }
 
 impl ResourceProvider for PageResources<'_> {
+    fn ext_g_state(&self, name: &str) -> Option<(Option<f64>, Option<f64>)> {
+        self.ext_g_states
+            .get(name)
+            .copied()
+            .or_else(|| self.parent.and_then(|parent| parent.ext_g_state(name)))
+    }
     fn shading(&self, name: &str) -> Option<crate::content::AxialGradient> {
         self.shadings
             .get(name)

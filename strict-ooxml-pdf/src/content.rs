@@ -306,6 +306,8 @@ pub struct Vector {
     pub fill: Option<Rgb>,
     /// A non-solid fill retained from an axial shading operator.
     pub gradient: Option<AxialGradient>,
+    /// The fill's opacity, from the graphics state's `ca` (1 = opaque).
+    pub fill_alpha: f64,
     /// Stroke colour, when the path is stroked.
     pub stroke: Option<Rgb>,
     /// Line width in points.
@@ -541,6 +543,8 @@ struct State {
     /// them is text in the shading's colour, not a box the size of the clip
     /// before them.
     text_clip: Option<usize>,
+    /// Fill opacity from the graphics state's `ca` (1 = opaque).
+    fill_alpha: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -572,6 +576,7 @@ impl Default for State {
             rise: 0.0,
             render_mode: RenderMode::Fill,
             text_clip: None,
+            fill_alpha: 1.0,
         }
     }
 }
@@ -631,6 +636,11 @@ impl Ignored {
 
 /// The resources a page needs to interpret its operators.
 pub trait Resources {
+    /// The fill and stroke opacity (`ca`, `CA`) a graphics state `name` sets,
+    /// each `None` when it does not set it.
+    fn ext_g_state(&self, _name: &str) -> Option<(Option<f64>, Option<f64>)> {
+        None
+    }
     /// A supported RGB axial shading. Unsupported resources return `None`.
     fn shading(&self, _name: &str) -> Option<AxialGradient> {
         None
@@ -1034,9 +1044,18 @@ fn interpret_from(
                     current.dash.clear();
                 }
             }
-            "gs" => out
-                .ignored
-                .push(Ignored::new("pdf.ext_g_state", "ExtGState is not carried")),
+            // Of a graphics state, the fill opacity is carried (a translucent
+            // box over a photograph); the rest is reported.
+            "gs" => match name_at(args, 0).and_then(|name| resources.ext_g_state(&name)) {
+                Some((fill, _stroke)) => {
+                    if let Some(alpha) = fill.filter(|alpha| alpha.is_finite()) {
+                        current.fill_alpha = alpha.clamp(0.0, 1.0);
+                    }
+                }
+                None => out
+                    .ignored
+                    .push(Ignored::new("pdf.ext_g_state", "ExtGState is not carried")),
+            },
             // `BT` resets the text matrix and nothing else; `ET` ends the object
             // and has no state of its own.
             "BT" | "ET" => text.reset(),
@@ -1372,8 +1391,18 @@ fn interpret_from(
                     }
                     continue;
                 }
+                // The shading is painted in the space `sh` is given in, which
+                // a `cm` after the clip may have moved (how Illustrator sets
+                // a gradient: a unit axis scaled onto the shape); the axis is
+                // carried into the clip's space, where the outline is.
+                let gradient = match (gradient, &current.clip) {
+                    (Some(gradient), Some(clip)) if clip.ctm != current.ctm => {
+                        remap_axis(gradient, current.ctm, clip.ctm)
+                    }
+                    (gradient, _) => gradient,
+                };
                 if let (Some(gradient), Some(clip)) = (gradient, &current.clip) {
-                    if clip.ctm == current.ctm && !clip.intersected && !clip.subpaths.is_empty() {
+                    if !clip.intersected && !clip.subpaths.is_empty() {
                         let points = clip
                             .subpaths
                             .iter()
@@ -1382,10 +1411,12 @@ fn interpret_from(
                         if !budget.charge_path_points(points, &limits) {
                             break;
                         }
+                        let mut painter = current.clone();
+                        painter.ctm = clip.ctm;
                         paint(
                             &mut out,
                             (*clip.subpaths).clone(),
-                            &current,
+                            &painter,
                             false,
                             false,
                             clip.even_odd,
@@ -1430,6 +1461,7 @@ fn paint(
         subpaths,
         fill: fill.then_some(state.fill),
         gradient: None,
+        fill_alpha: state.fill_alpha,
         stroke: stroke.then_some(state.stroke),
         line_width: state.line_width * scale,
         line_cap: state.line_cap,
@@ -1719,6 +1751,28 @@ fn render_glyph(
         render_mode: state.render_mode,
         mapped,
     })
+}
+
+/// A shading's axis given in `from`'s space, carried into `to`'s.
+fn remap_axis(gradient: AxialGradient, from: Matrix, to: Matrix) -> Option<AxialGradient> {
+    let det = to.a * to.d - to.b * to.c;
+    if !(det.is_finite() && det.abs() > 1e-12) {
+        return None;
+    }
+    let back = |(x, y): (f64, f64)| {
+        let (dx, dy) = (x - to.e, y - to.f);
+        ((to.d * dx - to.c * dy) / det, (to.a * dy - to.b * dx) / det)
+    };
+    let start = back(from.apply(gradient.start.0, gradient.start.1));
+    let end = back(from.apply(gradient.end.0, gradient.end.1));
+    [start.0, start.1, end.0, end.1]
+        .iter()
+        .all(|value| value.is_finite())
+        .then_some(AxialGradient {
+            start,
+            end,
+            ..gradient
+        })
 }
 
 /// Notes that text shown in a clipping render mode began at `before`.
