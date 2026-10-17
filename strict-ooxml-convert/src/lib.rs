@@ -537,31 +537,10 @@ pub fn convert(pdf: &mut PdfDocument, options: &PdfOptions) -> Result<Converted,
     })
 }
 
-/// Removes characters XML 1.0 cannot carry from every text node (AUD-83).
+/// Removes characters XML 1.0 cannot carry from every text node (AUD-83):
+/// the body's paragraphs, its tables' cells and its text boxes alike.
 fn sanitize_xml_text(document: &mut Document, report: &mut ConversionReport) {
-    use strict_ooxml_core::xml::escape::is_xml_char;
-    use strict_ooxml_wml::model::block::Block;
-    use strict_ooxml_wml::model::inline::{Inline, RunContent};
-
-    let mut removed = 0usize;
-    for block in &mut document.body.blocks {
-        let Block::Paragraph(paragraph) = block else {
-            continue;
-        };
-        for inline in &mut paragraph.inlines {
-            let Inline::Run(run) = inline else {
-                continue;
-            };
-            for content in &mut run.content {
-                let RunContent::Text(node) = content else {
-                    continue;
-                };
-                let before = node.text.chars().count();
-                node.text = node.text.chars().filter(|&ch| is_xml_char(ch)).collect();
-                removed += before - node.text.chars().count();
-            }
-        }
-    }
+    let removed = sanitize_blocks(&mut document.body.blocks, 0);
     if removed > 0 {
         report.record(
             "convert.invalid-xml-char",
@@ -569,6 +548,63 @@ fn sanitize_xml_text(document: &mut Document, report: &mut ConversionReport) {
             format!("{removed} character(s) that XML 1.0 cannot carry were removed from the text"),
         );
     }
+}
+
+/// [`sanitize_xml_text`] over blocks; `depth` bounds the descent through
+/// tables and text boxes.
+fn sanitize_blocks(blocks: &mut [strict_ooxml_wml::model::block::Block], depth: usize) -> usize {
+    use strict_ooxml_core::xml::escape::is_xml_char;
+    use strict_ooxml_wml::model::block::Block;
+    use strict_ooxml_wml::model::drawing::{DrawingKind, Graphic};
+    use strict_ooxml_wml::model::inline::{Inline, RunContent};
+
+    if depth > 16 {
+        return 0;
+    }
+    let mut removed = 0usize;
+    for block in blocks {
+        match block {
+            Block::Paragraph(paragraph) => {
+                for inline in &mut paragraph.inlines {
+                    match inline {
+                        Inline::Run(run) => {
+                            for content in &mut run.content {
+                                let RunContent::Text(node) = content else {
+                                    continue;
+                                };
+                                let before = node.text.chars().count();
+                                node.text =
+                                    node.text.chars().filter(|&ch| is_xml_char(ch)).collect();
+                                removed += before - node.text.chars().count();
+                            }
+                        }
+                        Inline::Drawing(drawing) => {
+                            let graphic = match &mut drawing.kind {
+                                DrawingKind::Anchor(anchor) => Some(anchor.graphic.as_mut()),
+                                DrawingKind::Inline(inline) => Some(inline.graphic.as_mut()),
+                                DrawingKind::Opaque(_) => None,
+                            };
+                            if let Some(Graphic::Shape(shape)) = graphic {
+                                if let Some(text) = shape.text.as_mut() {
+                                    removed += sanitize_blocks(&mut text.blocks, depth + 1);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Block::Table(table) => {
+                for row in &mut table.rows {
+                    for cell in &mut row.cells {
+                        removed += sanitize_blocks(&mut cell.blocks, depth + 1);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    removed
 }
 
 /// Points to twips, rounded to the nearest twentieth of a point.

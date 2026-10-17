@@ -161,5 +161,9 @@ fn a_turned_picture_keeps_its_turn() {
     let extent = anchor.extent.expect("an extent");
     assert_eq!((extent.cx.0, extent.cy.0), (50 * 12_700, 100 * 12_700));
     // Centred on its box: x 200..300, so the 50 pt picture starts at 225.
-    assert_eq!(points(anchor).0.round(), 225.0);
+    assert!(
+        (points(anchor).0 - 225.0).abs() < 0.5,
+        "{:?}",
+        points(anchor)
+    );
 }
