@@ -29,6 +29,10 @@ encoding_rs.workspace = true
 hayro-jpeg2000 = { version = "0.4.1", default-features = false, features = ["std", "simd"] }
 hayro-ccitt = { version = "0.4.0", default-features = false }
 hayro-jbig2 = { version = "0.3.1", default-features = false, features = ["std"] }
+# A JPEG with a soft mask is decoded to put the mask in a PNG's alpha; the
+# same pinned decoder the DjVu reader uses, so nothing new enters the lock.
+zune-jpeg = "=0.5.15"
+zune-core = "0.5"
 
 [features]
 default = []
