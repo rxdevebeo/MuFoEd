@@ -308,7 +308,8 @@ fn one_bullet_is_not_a_list() {
     );
     assert_eq!(
         texts_of(&document),
-        vec!["•alone".to_owned()],
+        // The bullet stood apart from its word, and keeps the space between.
+        vec!["• alone".to_owned()],
         "and the text is intact"
     );
 }

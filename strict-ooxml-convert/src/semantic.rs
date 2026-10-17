@@ -238,6 +238,31 @@ pub(crate) fn build(
             }
             continue;
         }
+        // A running head, a footer, a page number: set where they stand, in
+        // text boxes, out of the flow. In the flow the footer came last with
+        // the page's whole foot above it, and the least excess of the text
+        // over the source's carried it, and the page, onto the next page.
+        let lines = {
+            let height = page.geometry.height;
+            let in_margin =
+                |line: &GlyphLine| line.baseline < height * 0.1 || line.baseline > height * 0.9;
+            let inked_margin = lines
+                .iter()
+                .filter(|line| in_margin(line) && !line.text().trim().is_empty())
+                .count();
+            if inked_margin == 0 || inked_margin > MAX_MARGIN_LINES {
+                lines
+            } else {
+                let (margin, flow): (Vec<GlyphLine>, Vec<GlyphLine>) =
+                    lines.into_iter().partition(|line| in_margin(line));
+                anchored.extend(crate::designed::text_frames(
+                    &margin,
+                    pitch / body,
+                    push_runs,
+                ));
+                flow
+            }
+        };
         let plan = tables::plan(
             page,
             index + 1,
@@ -518,6 +543,16 @@ fn paragraphs_of(
             single = None;
             if let Some(previous) = previous {
                 set_line_gap(paragraph, line, line.baseline - previous.baseline);
+            }
+            // A line that runs on is a word apart from the one before. Word
+            // writes the space at the line's end; LaTeX, browsers and design
+            // tools do not, and every line break glued two words together.
+            if needs_space(paragraph, line) {
+                if let Some(glyph) = line.glyphs.first() {
+                    paragraph
+                        .inlines
+                        .push(run(run_properties(glyph), " ".to_owned()));
+                }
             }
         }
         // The marker's line is *all* marker, and the character is in the
@@ -1169,6 +1204,36 @@ impl FontName {
     }
 }
 
+/// Whether a line joining a paragraph needs a space before it: the text so
+/// far ends in a letter or a mark (not a space, nor a hyphen that breaks a
+/// word), and neither side is CJK, which sets no spaces between words.
+fn needs_space(paragraph: &Paragraph, line: &GlyphLine) -> bool {
+    let last = paragraph
+        .inlines
+        .iter()
+        .rev()
+        .find_map(|inline| match inline {
+            Inline::Run(run) => run.content.iter().rev().find_map(|content| match content {
+                RunContent::Text(node) => node.text.chars().last(),
+                RunContent::Tab => Some('\t'),
+                _ => None,
+            }),
+            _ => None,
+        });
+    let Some(last) = last else {
+        return false;
+    };
+    let Some(first) = line.text().chars().find(|c| !c.is_whitespace()) else {
+        return false;
+    };
+    let cjk = |c: char| matches!(u32::from(c), 0x3000..=0x9FFF | 0xF900..=0xFAFF | 0xFF00..=0xFFEF | 0xAC00..=0xD7AF);
+    !(last.is_whitespace()
+        || matches!(last, '-' | '\u{AD}' | '\u{2010}' | '/')
+        || line.text().starts_with(char::is_whitespace)
+        || cjk(last)
+        || cjk(first))
+}
+
 /// One run with its text.
 fn run(properties: RunProperties, text: String) -> Inline {
     // A run whose text begins or ends with a space needs `xml:space`, or the
@@ -1376,6 +1441,10 @@ fn place_first_line(
         spacing.before = Some(Twips(to_twips(before)));
     }
 }
+
+/// The most lines a page's top and bottom tenths may hold and still be its
+/// running head and footer; more is body text set to the paper's edge.
+const MAX_MARGIN_LINES: usize = 8;
 
 /// The share of a page below its last line of body text from which the page
 /// ended short.
@@ -1835,6 +1904,44 @@ fn sized_image_paragraph(
     }
 }
 
+/// How a picture's matrix turns and mirrors it, when it does.
+#[derive(Clone, Copy, Debug)]
+struct Turn {
+    /// The picture's own width and height, in points.
+    width: f64,
+    height: f64,
+    /// Clockwise, as DrawingML turns, in degrees `0..360`.
+    degrees: f64,
+    /// Mirrored top to bottom before the turn.
+    mirrored: bool,
+}
+
+impl Turn {
+    fn of(ctm: strict_ooxml_pdf::content::Matrix) -> Option<Self> {
+        let width = ctm.a.hypot(ctm.b);
+        let height = ctm.c.hypot(ctm.d);
+        let det = ctm.a * ctm.d - ctm.b * ctm.c;
+        if !(width > 0.0 && height > 0.0 && det.is_finite() && det.abs() > f64::EPSILON) {
+            return None;
+        }
+        // PDF turns anticlockwise with y up; DrawingML clockwise with y down,
+        // which on the page is the same turn the other way round.
+        let degrees = (-ctm.b.atan2(ctm.a).to_degrees()).rem_euclid(360.0);
+        let degrees = if (360.0 - degrees) < 0.01 {
+            0.0
+        } else {
+            degrees
+        };
+        let mirrored = det < 0.0;
+        (degrees > 0.01 || mirrored).then_some(Self {
+            width,
+            height,
+            degrees,
+            mirrored,
+        })
+    }
+}
+
 /// A picture anchored to the page at its place on it.
 fn anchored_image(
     image: &strict_ooxml_pdf::PlacedImage,
@@ -1845,15 +1952,35 @@ fn anchored_image(
 ) -> Option<Inline> {
     use strict_ooxml_wml::model::drawing::{AnchorDrawing, Position, Wrap, WrapKind};
     let emu = |points: f64| Emu((points * 12_700.0).round() as i64);
-    let Paragraph { mut inlines, .. } =
-        sized_image_paragraph(image.width, image.height, part, description);
+    let turn = Turn::of(image.ctm);
+    // A turned or mirrored picture is its own size, turned about the centre
+    // of the box it covers: the box alone set a turned photograph upright
+    // and stretched, and a mirrored one the right way round.
+    let (width, height, left, top) = match turn {
+        Some(turn) => (
+            turn.width,
+            turn.height,
+            image.x + image.width / 2.0 - turn.width / 2.0,
+            top + image.height / 2.0 - turn.height / 2.0,
+        ),
+        None => (image.width, image.height, image.x, top),
+    };
+    let Paragraph { mut inlines, .. } = sized_image_paragraph(width, height, part, description);
     let Some(Inline::Drawing(Drawing {
-        kind: DrawingKind::Inline(inline),
+        kind: DrawingKind::Inline(mut inline),
         location,
     })) = inlines.pop()
     else {
         return None;
     };
+    if let (Some(turn), Graphic::Picture(picture)) = (turn, inline.graphic.as_mut()) {
+        picture.xfrm = Some(strict_ooxml_wml::model::drawing::Xfrm {
+            offset: None,
+            rot: (turn.degrees.abs() > 0.01).then(|| (turn.degrees * 60_000.0).round() as i32),
+            flip_h: false,
+            flip_v: turn.mirrored,
+        });
+    }
     let position = |offset: f64| Position {
         relative_from: Some(Arc::from("page")),
         align: None,
@@ -1872,7 +1999,7 @@ fn anchored_image(
             simple_pos: false,
             simple_pos_point: None,
             hidden: None,
-            position_h: Some(position(image.x)),
+            position_h: Some(position(left)),
             position_v: Some(position(top)),
             wrap: Some(Wrap {
                 kind,
