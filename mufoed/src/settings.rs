@@ -35,6 +35,10 @@ pub(crate) struct Settings {
     pub(crate) author: String,
     /// Mark misspelt words.
     pub(crate) spelling: bool,
+    /// The Ollama model the AI tab writes with; empty chooses one.
+    pub(crate) ai_model: String,
+    /// The language the AI tab translates into (its English name).
+    pub(crate) ai_language: String,
 }
 
 impl Default for Settings {
@@ -62,6 +66,8 @@ impl Default for Settings {
             ocr_model: model,
             ocr_language: String::new(),
             spelling: true,
+            ai_model: String::new(),
+            ai_language: "English".to_owned(),
             author: std::env::var("USERNAME")
                 .or_else(|_| std::env::var("USER"))
                 .unwrap_or_default(),

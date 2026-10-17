@@ -127,6 +127,29 @@ pub(crate) enum Request {
     Speller(Option<Arc<crate::spell::Speller>>),
     /// The words again, after the user's dictionary changed.
     Respell,
+    /// The text the AI tab works on: the selection's, else (or with
+    /// `whole`) every body paragraph's. `job` comes back with it.
+    AiSource {
+        whole: bool,
+        job: u64,
+    },
+    /// A paragraph's text replaced, if it still reads `old`.
+    SetParagraphText {
+        at: Address,
+        old: String,
+        new: String,
+    },
+    /// A stretch of text replaced (new lines making paragraphs), if it
+    /// still reads `old`.
+    ReplaceRange {
+        start: Logical,
+        end: Logical,
+        old: String,
+        new: String,
+    },
+    /// Paragraph styles by kind, the styles made when the document lacks
+    /// them.
+    ApplyKinds(Vec<(Address, crate::ai::Kind)>),
     /// A misspelt word replaced, if it is still there.
     ReplaceWord {
         start: Logical,
@@ -641,6 +664,15 @@ pub(crate) enum CommentCommand {
     },
 }
 
+/// The text an AI job works on.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct AiSource {
+    /// The paragraphs, each with its text.
+    pub(crate) paragraphs: Vec<(Address, String)>,
+    /// The selection, when the job is about it: its ends and its text.
+    pub(crate) selection: Option<(Logical, Logical, String)>,
+}
+
 /// A word the speller does not know, and where it is drawn.
 #[derive(Clone, Debug)]
 pub(crate) struct SpellError {
@@ -832,6 +864,11 @@ pub(crate) enum Reply {
     ClipboardObjects(Box<ClipObjects>),
     /// The comments, in the order of the text.
     Comments(Vec<CommentView>),
+    /// The text an AI job asked for.
+    AiSource {
+        job: u64,
+        source: Box<AiSource>,
+    },
     /// Font packs that would draw text nothing draws now (their ids).
     FontsMissing(Vec<&'static str>),
     /// The misspelt words, and the scripts with words no dictionary checks.
@@ -1346,6 +1383,14 @@ impl<'a, 's> Worker<'a, 's> {
                 self.send_spelling();
                 Outcome::Quiet
             }
+            Request::AiSource { whole, job } => {
+                let source = self.ai_source(whole);
+                self.send(Reply::AiSource {
+                    job,
+                    source: Box::new(source),
+                });
+                Outcome::Quiet
+            }
             Request::Respell => {
                 self.spelling.clear();
                 self.send_spelling();
@@ -1365,6 +1410,39 @@ impl<'a, 's> Worker<'a, 's> {
     fn edit_request(&mut self, request: Request) -> Outcome {
         match request {
             Request::Type(text) => self.type_text(&text),
+            Request::SetParagraphText { at, old, new } => {
+                let text = self.text_of(&at);
+                if text != old || text.contains(nav::OBJECT) {
+                    return Outcome::Quiet;
+                }
+                self.story = Story::Body;
+                self.cells = None;
+                self.anchor = Some(Logical {
+                    paragraph: at.clone(),
+                    offset: 0,
+                });
+                self.caret = Some(Logical {
+                    paragraph: at,
+                    offset: text.chars().count(),
+                });
+                self.type_text(&new)
+            }
+            Request::ReplaceRange {
+                start,
+                end,
+                old,
+                new,
+            } => {
+                self.story = Story::Body;
+                self.cells = None;
+                self.anchor = Some(start);
+                self.caret = Some(end);
+                if self.selected_text().unwrap_or_default() != old {
+                    return Outcome::Moved;
+                }
+                self.paste(&new)
+            }
+            Request::ApplyKinds(kinds) => self.apply_kinds(&kinds),
             Request::ReplaceWord {
                 start,
                 end,
@@ -2722,6 +2800,160 @@ impl<'a, 's> Worker<'a, 's> {
             picture: matches!(graphic, Some(Graphic::Picture(_))),
             wrap: wrap_style(&drawing),
         })
+    }
+
+    // ----- AI -----------------------------------------------------------
+
+    fn ai_source(&self, whole: bool) -> AiSource {
+        let selection = if whole {
+            None
+        } else {
+            self.selection().and_then(|(start, end)| {
+                let text = self.selected_text()?;
+                Some((start, end, text))
+            })
+        };
+        let addresses = if selection.is_some() {
+            self.selected_paragraphs()
+        } else {
+            self.paragraphs(&Story::Body)
+        };
+        let paragraphs = addresses
+            .into_iter()
+            .map(|at| {
+                let text = self.text_of(&at);
+                (at, text)
+            })
+            .collect();
+        AiSource {
+            paragraphs,
+            selection,
+        }
+    }
+
+    /// Sets each paragraph's style from its kind, making the styles a
+    /// document lacks from its default paragraph style.
+    fn apply_kinds(&mut self, kinds: &[(Address, crate::ai::Kind)]) -> Outcome {
+        use crate::ai::Kind;
+        use strict_ooxml::model::values::StyleType;
+        let document = self.session.document();
+        let default = document
+            .styles
+            .iter()
+            .find(|style| style.style_type == StyleType::Paragraph && style.is_default)
+            .cloned();
+        let default_id = default
+            .as_ref()
+            .map_or_else(|| StyleId::new("Normal"), |style| style.id.clone());
+        let mut definitions = Vec::new();
+        let mut made: Vec<StyleId> = Vec::new();
+        let mut style_for = |kind: Kind| -> Option<StyleId> {
+            let (id, name) = match kind {
+                Kind::Body => return Some(default_id.clone()),
+                Kind::Title => ("Title".to_owned(), "Title".to_owned()),
+                Kind::Heading(level) => (format!("Heading{level}"), format!("heading {level}")),
+                Kind::Quote => ("Quote".to_owned(), "Quote".to_owned()),
+                Kind::Caption => ("Caption".to_owned(), "caption".to_owned()),
+            };
+            let id = StyleId::new(id);
+            if document.styles.contains(&id) || made.contains(&id) {
+                return Some(id);
+            }
+            let mut style = default.clone()?;
+            style.id = id.clone();
+            style.name = Some(name.into());
+            style.is_default = false;
+            style.q_format = true;
+            style.based_on = Some(default_id.clone());
+            style.next = Some(default_id.clone());
+            style.based_on_chain = vec![default_id.clone()];
+            style.paragraph = ParagraphProperties::default();
+            style.run = strict_ooxml::model::props::RunProperties::default();
+            match kind {
+                Kind::Title => {
+                    style.run.size = Some(HalfPoints(52));
+                    style.paragraph.alignment = Some(Justification::Center);
+                }
+                Kind::Heading(level) => {
+                    style.run.bold = TriState::On;
+                    style.run.size = Some(HalfPoints(match level {
+                        1 => 32,
+                        2 => 28,
+                        _ => 26,
+                    }));
+                    style.paragraph.keep_next = TriState::On;
+                    style.paragraph.outline_level = Some(level.saturating_sub(1));
+                    style.paragraph.spacing = Some(strict_ooxml::model::values::Spacing {
+                        before: Some(Twips(240)),
+                        after: Some(Twips(120)),
+                        ..Default::default()
+                    });
+                }
+                Kind::Quote => {
+                    style.run.italic = TriState::On;
+                    style.paragraph.indentation = Some(strict_ooxml::model::values::Indentation {
+                        start: Some(Twips(720)),
+                        end: Some(Twips(720)),
+                        ..Default::default()
+                    });
+                }
+                Kind::Caption => {
+                    style.run.italic = TriState::On;
+                    style.run.size = Some(HalfPoints(18));
+                }
+                Kind::Body => {}
+            }
+            made.push(id.clone());
+            definitions.push(strict_ooxml::edit::Definition::CreateStyle(Box::new(style)));
+            Some(id)
+        };
+        let mut commands = Vec::new();
+        for (at, kind) in kinds {
+            let Some(style) = style_for(*kind) else {
+                continue;
+            };
+            let Some(paragraph) = self.paragraph(at) else {
+                continue;
+            };
+            let current = paragraph
+                .props
+                .style
+                .clone()
+                .unwrap_or_else(|| default_id.clone());
+            // Only a paragraph in the default style, or in a heading style,
+            // takes the model's kind: one in a style of its own (body text
+            // in Times, a list) keeps it, and body text leaves a heading
+            // style only.
+            let heading = self
+                .session
+                .document()
+                .styles
+                .get(&current)
+                .is_some_and(|s| {
+                    s.paragraph.outline_level.is_some()
+                        || s.id.as_str().starts_with("Heading")
+                        || s.id.as_str() == "Title"
+                });
+            let plain = current == default_id && paragraph.props.numbering.is_none();
+            let takes = match kind {
+                Kind::Body => heading,
+                Kind::Title | Kind::Heading(_) => plain || heading,
+                Kind::Quote | Kind::Caption => plain,
+            };
+            if current == style || !takes {
+                continue;
+            }
+            let mut properties = paragraph.props.clone();
+            properties.style = Some(style);
+            commands.push(Edit::ParagraphProperties {
+                at: at.clone(),
+                properties: Box::new(properties),
+            });
+        }
+        if commands.is_empty() {
+            return Outcome::Quiet;
+        }
+        self.define_and_transact(&definitions, &commands)
     }
 
     // ----- spelling -----------------------------------------------------
@@ -8275,6 +8507,65 @@ mod tests {
             })
             .unwrap();
         assert_eq!(settle(&requests, &replies), "кот кот");
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    /// The AI tab's text comes back by paragraph; a paragraph's text and
+    /// its style are set from what the model answered.
+    #[test]
+    fn ai_results_change_the_text_and_the_styles() {
+        let (requests, replies) = new_document();
+        send_all(&requests, typed("Введение"));
+        send_all(&requests, vec![Request::Enter]);
+        send_all(&requests, typed("Текст статьи."));
+        requests
+            .send(Request::AiSource {
+                whole: true,
+                job: 7,
+            })
+            .unwrap();
+        let source = wait(&replies, |reply| match reply {
+            Reply::AiSource { job: 7, source } => Some(source),
+            _ => None,
+        });
+        let texts: Vec<&str> = source
+            .paragraphs
+            .iter()
+            .map(|(_, text)| text.as_str())
+            .collect();
+        assert_eq!(texts, ["Введение", "Текст статьи."]);
+        let (first, second) = (
+            source.paragraphs[0].0.clone(),
+            source.paragraphs[1].0.clone(),
+        );
+        requests
+            .send(Request::SetParagraphText {
+                at: second.clone(),
+                old: "Текст статьи.".to_owned(),
+                new: "The article.".to_owned(),
+            })
+            .unwrap();
+        // A paragraph that no longer reads as it did is left alone.
+        requests
+            .send(Request::SetParagraphText {
+                at: first.clone(),
+                old: "Другое".to_owned(),
+                new: "Nope".to_owned(),
+            })
+            .unwrap();
+        assert_eq!(settle(&requests, &replies), "Введение\nThe article.");
+        requests
+            .send(Request::ApplyKinds(vec![
+                (first.clone(), crate::ai::Kind::Heading(1)),
+                (second, crate::ai::Kind::Body),
+            ]))
+            .unwrap();
+        requests.send(Request::GoTo(first)).unwrap();
+        let style = wait(&replies, |reply| match reply {
+            Reply::Cursor(cursor) => cursor.format.style.clone().filter(|s| s == "Heading1"),
+            _ => None,
+        });
+        assert_eq!(style, "Heading1");
         requests.send(Request::Shutdown).unwrap();
     }
 

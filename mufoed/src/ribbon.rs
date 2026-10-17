@@ -30,6 +30,8 @@ pub(crate) enum RibbonTab {
     Review,
     View,
     Recognition,
+    /// A local language model's help with the text.
+    Ai,
     /// The picture tools, shown while a drawing is selected.
     Picture,
     /// The header and footer tools, shown while one is edited.
@@ -37,12 +39,13 @@ pub(crate) enum RibbonTab {
 }
 
 impl RibbonTab {
-    pub(crate) const ALL: [Self; 7] = [
+    pub(crate) const ALL: [Self; 8] = [
         Self::Home,
         Self::Insert,
         Self::Layout,
         Self::References,
         Self::Review,
+        Self::Ai,
         Self::View,
         Self::Recognition,
     ];
@@ -56,6 +59,7 @@ impl RibbonTab {
             Self::Review => "ribbon.review",
             Self::View => "ribbon.view",
             Self::Recognition => "ribbon.recognition",
+            Self::Ai => "ribbon.ai",
             Self::Picture => "ribbon.picture",
             Self::HeaderFooter => "ribbon.header_footer",
         }
@@ -87,6 +91,10 @@ pub(crate) struct RibbonState<'a> {
     pub(crate) comments_open: bool,
     /// Misspelt words are marked.
     pub(crate) spelling: bool,
+    /// The language the AI tab translates into.
+    pub(crate) ai_language: &'a str,
+    /// The AI pane is shown.
+    pub(crate) ai_open: bool,
     /// The header or footer being edited.
     pub(crate) header_footer: Option<&'a crate::worker::HeaderFooterView>,
     /// Faces to draw font names in.
@@ -408,6 +416,7 @@ pub(crate) fn body(
                         RibbonTab::Layout => layout(ui, state, actions),
                         RibbonTab::References => references(ui, state, actions),
                         RibbonTab::Review => review(ui, state, actions),
+                        RibbonTab::Ai => ai_tab(ui, state, actions),
                         RibbonTab::View => view(ui, state, actions),
                         RibbonTab::Recognition => recognition(ui, state, actions),
                         RibbonTab::Picture => picture(ui, state, actions),
@@ -2467,6 +2476,172 @@ fn layout(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
 }
 
 // ----- Review ---------------------------------------------------------------
+
+fn ai_tab(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
+    use crate::app::AiAction;
+    let editable = s.editable();
+    let on = s.document;
+    let p = s.palette;
+    group(ui, s.t("group.ai_text"), p, |ui| {
+        big_menu(
+            ui,
+            Icon::Summary,
+            s.t("ai.summary"),
+            s.t("tip.ai_summary"),
+            on,
+            p,
+            |ui| {
+                if ui.button(s.t("ai.of_selection")).clicked() {
+                    actions.push(Action::Ai(AiAction::Summary { whole: false }));
+                    ui.close();
+                }
+                if ui.button(s.t("ai.of_document")).clicked() {
+                    actions.push(Action::Ai(AiAction::Summary { whole: true }));
+                    ui.close();
+                }
+            },
+        );
+        big_menu(
+            ui,
+            Icon::Rewrite,
+            s.t("ai.rewrite"),
+            s.t("tip.ai_rewrite"),
+            on,
+            p,
+            |ui| {
+                for key in [
+                    "ai.improve",
+                    "ai.formal",
+                    "ai.simpler",
+                    "ai.shorter",
+                    "ai.fix",
+                ] {
+                    if ui.button(s.t(key)).clicked() {
+                        actions.push(Action::Ai(AiAction::Rewrite(
+                            rewrite_instruction(key).to_owned(),
+                        )));
+                        ui.close();
+                    }
+                }
+                ui.separator();
+                if ui.button(s.t("ai.own")).clicked() {
+                    actions.push(Action::Open(Dialog::AiPrompt {
+                        text: String::new(),
+                    }));
+                    ui.close();
+                }
+            },
+        );
+    });
+    group(ui, s.t("group.ai_translate"), p, |ui| {
+        let language = crate::ai::LANGUAGES
+            .iter()
+            .find(|(name, _)| *name == s.ai_language)
+            .map_or(s.ai_language, |(_, key)| s.t(key));
+        column(ui, |ui| {
+            let item = Small::new(Icon::Translate, language, s.t("tip.ai_language"), true).menu();
+            let width = small_width(ui, std::slice::from_ref(&item));
+            small_menu(ui, &item, width, p, |ui| {
+                for (name, key) in crate::ai::LANGUAGES {
+                    if ui
+                        .selectable_label(*name == s.ai_language, s.t(key))
+                        .clicked()
+                    {
+                        actions.push(Action::AiLanguage((*name).to_owned()));
+                        ui.close();
+                    }
+                }
+            });
+        });
+        big_menu(
+            ui,
+            Icon::Translate,
+            s.t("ai.translate"),
+            s.t("tip.ai_translate"),
+            on,
+            p,
+            |ui| {
+                if ui.button(s.t("ai.translate_selection")).clicked() {
+                    actions.push(Action::Ai(AiAction::TranslateSelection));
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(editable, egui::Button::new(s.t("ai.translate_document")))
+                    .clicked()
+                {
+                    actions.push(Action::Ai(AiAction::TranslateDocument));
+                    ui.close();
+                }
+                if ui.button(s.t("ai.parallel")).clicked() {
+                    actions.push(Action::Ai(AiAction::Parallel));
+                    ui.close();
+                }
+            },
+        );
+    });
+    group(ui, s.t("group.ai_style"), p, |ui| {
+        if big_clicked(
+            ui,
+            Icon::Styles,
+            s.t("ai.styles"),
+            s.t("tip.ai_styles"),
+            editable,
+            p,
+        ) {
+            actions.push(Action::Ai(AiAction::Styles));
+        }
+        if big_clicked(
+            ui,
+            Icon::Assess,
+            s.t("ai.assess"),
+            s.t("tip.ai_assess"),
+            on,
+            p,
+        ) {
+            actions.push(Action::Ai(AiAction::Assess));
+        }
+        if big_clicked(
+            ui,
+            Icon::Rewrite,
+            s.t("ai.unify"),
+            s.t("tip.ai_unify"),
+            editable,
+            p,
+        ) {
+            actions.push(Action::Ai(AiAction::Unify));
+        }
+    });
+    group(ui, s.t("group.ai_assistant"), p, |ui| {
+        column(ui, |ui| {
+            let items = [
+                Small::new(Icon::Sparkle, s.t("ai.pane"), s.t("tip.ai_pane"), true)
+                    .with_on(s.ai_open),
+                Small::new(
+                    Icon::Sparkle,
+                    s.t("ai.settings"),
+                    s.t("tip.ai_settings"),
+                    true,
+                ),
+            ];
+            match small_column(ui, &items, p) {
+                Some(0) => actions.push(Action::ToggleAiPane),
+                Some(_) => actions.push(Action::AiSetup),
+                None => {}
+            }
+        });
+    });
+}
+
+/// What the model is told for each rewriting choice.
+fn rewrite_instruction(key: &str) -> &'static str {
+    match key {
+        "ai.formal" => "make it more formal and businesslike",
+        "ai.simpler" => "make it simpler and easier to read",
+        "ai.shorter" => "make it shorter, keeping every point",
+        "ai.fix" => "correct spelling, grammar and punctuation only",
+        _ => "improve its clarity and flow",
+    }
+}
 
 fn review(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
     let editable = s.editable();

@@ -27,6 +27,7 @@
     clippy::doc_markdown
 )]
 
+mod ai;
 mod app;
 mod canvas;
 mod dialog;

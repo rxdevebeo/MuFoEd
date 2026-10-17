@@ -30,8 +30,9 @@ impl Shot {
     }
 
     /// Each frame: asks for the screenshot once settled, saves it when it
-    /// comes and closes the window.
-    pub(crate) fn frame(&mut self, ctx: &egui::Context) {
+    /// comes and closes the window; `true` once closing, unsaved changes
+    /// or not.
+    pub(crate) fn frame(&mut self, ctx: &egui::Context) -> bool {
         self.frames += 1;
         if self.frames == self.settle {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
@@ -47,8 +48,10 @@ impl Shot {
                 eprintln!("MUFOED_SHOT: {error}");
             }
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return true;
         }
         ctx.request_repaint();
+        false
     }
 }
 

@@ -1,0 +1,567 @@
+//! The AI tab: a local Ollama model summarises, translates, rewrites, sets
+//! the styles and judges the writing of a document. Nothing leaves the
+//! machine: the model runs in Ollama on this computer (or wherever its
+//! address in the settings points).
+//!
+//! A job runs on a thread of its own and reports through a channel, so the
+//! editor stays usable; the document is changed only when the user applies
+//! a result, through the document's worker like any other edit.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
+use std::time::Duration;
+
+use serde_json::{json, Value};
+
+/// Where the model is and which one.
+#[derive(Clone, Debug)]
+pub(crate) struct Config {
+    pub(crate) endpoint: String,
+    pub(crate) model: String,
+}
+
+/// Models to offer when none suits: small first.
+pub(crate) const RECOMMENDED: &[(&str, f32)] = &[("qwen3.5:4b", 3.4), ("qwen3.5:9b", 6.6)];
+
+/// The Windows installer and the download page.
+pub(crate) const OLLAMA_PAGE: &str = "https://ollama.com/download";
+pub(crate) const OLLAMA_WINDOWS: &str = "https://ollama.com/download/OllamaSetup.exe";
+pub(crate) const OLLAMA_LINUX: &str = "curl -fsSL https://ollama.com/install.sh | sh";
+
+fn agent(timeout: Duration) -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(5)))
+        .timeout_global(Some(timeout))
+        .http_status_as_error(false)
+        .build()
+        .into()
+}
+
+fn url(endpoint: &str, path: &str) -> String {
+    format!("{}{path}", endpoint.trim_end_matches('/'))
+}
+
+/// The models Ollama has, or why it cannot be reached.
+pub(crate) fn models(endpoint: &str) -> Result<Vec<String>, String> {
+    let mut response = agent(Duration::from_secs(10))
+        .get(&url(endpoint, "/api/tags"))
+        .call()
+        .map_err(|error| error.to_string())?;
+    let body: Value = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|error| error.to_string())
+        .and_then(|text| serde_json::from_str(&text).map_err(|error| error.to_string()))?;
+    Ok(body
+        .get("models")
+        .and_then(Value::as_array)
+        .map(|models| {
+            models
+                .iter()
+                .filter_map(|model| model.get("name").and_then(Value::as_str))
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+/// Whether a model is for text (not pictures, code or embeddings).
+fn writes_text(name: &str) -> bool {
+    let name = name.to_lowercase();
+    !["vl", "ocr", "coder", "embed", "vision", "paddle", "intern"]
+        .iter()
+        .any(|word| name.contains(word))
+}
+
+/// The model to use: the configured one when Ollama has it, else the first
+/// text model of a family known to write well, else any text model.
+pub(crate) fn choose(configured: &str, installed: &[String]) -> Option<String> {
+    if !configured.is_empty() && installed.iter().any(|name| name == configured) {
+        return Some(configured.to_owned());
+    }
+    let text: Vec<&String> = installed.iter().filter(|name| writes_text(name)).collect();
+    for family in [
+        "qwen3.5:9b",
+        "qwen3.5",
+        "qwen3",
+        "gemma",
+        "qwen2.5",
+        "llama3",
+        "mistral",
+    ] {
+        if let Some(name) = text.iter().find(|name| name.starts_with(family)) {
+            return Some((*name).clone());
+        }
+    }
+    text.first().map(|name| (*name).clone())
+}
+
+/// One answer from the model, its reasoning (if it shows any) left out.
+pub(crate) fn chat(config: &Config, system: &str, prompt: &str) -> Result<String, String> {
+    let body = |think: bool| {
+        let mut body = json!({
+            "model": config.model,
+            "stream": false,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "options": {"temperature": 0.2, "num_ctx": 16384},
+        });
+        if !think {
+            if let Some(map) = body.as_object_mut() {
+                map.insert("think".to_owned(), Value::Bool(false));
+            }
+        }
+        body
+    };
+    let agent = agent(Duration::from_secs(900));
+    let call = |body: Value| -> Result<(u16, Value), String> {
+        let mut response = agent
+            .post(&url(&config.endpoint, "/api/chat"))
+            .header("content-type", "application/json")
+            .send(body.to_string())
+            .map_err(|error| error.to_string())?;
+        let status = response.status().as_u16();
+        let value: Value = response
+            .body_mut()
+            .read_to_string()
+            .map_err(|error| error.to_string())
+            .and_then(|text| serde_json::from_str(&text).map_err(|error| error.to_string()))?;
+        Ok((status, value))
+    };
+    let (mut status, mut value) = call(body(false))?;
+    // A model that cannot think refuses being told not to.
+    if status != 200 && error_of(&value).contains("think") {
+        (status, value) = call(body(true))?;
+    }
+    if status != 200 {
+        return Err(format!("HTTP {status}: {}", error_of(&value)));
+    }
+    let content = value
+        .pointer("/message/content")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    Ok(without_thinking(content).trim().to_owned())
+}
+
+fn error_of(value: &Value) -> String {
+    value
+        .get("error")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// The text after a `<think>…</think>` block, if the model wrote one.
+fn without_thinking(text: &str) -> &str {
+    match text.find("</think>") {
+        Some(end) => text.get(end + "</think>".len()..).unwrap_or_default(),
+        None => text,
+    }
+}
+
+/// Fetches a model into Ollama, reporting (status, done bytes, total bytes).
+pub(crate) fn pull(
+    endpoint: &str,
+    model: &str,
+    cancel: &AtomicBool,
+    mut progress: impl FnMut(&str, u64, u64),
+) -> Result<(), String> {
+    use std::io::BufRead as _;
+    let mut response = agent(Duration::from_secs(6 * 3600))
+        .post(&url(endpoint, "/api/pull"))
+        .header("content-type", "application/json")
+        .send(json!({"model": model, "stream": true}).to_string())
+        .map_err(|error| error.to_string())?;
+    let status = response.status().as_u16();
+    if status != 200 {
+        return Err(format!("HTTP {status}"));
+    }
+    let reader = std::io::BufReader::new(response.body_mut().as_reader());
+    for line in reader.lines() {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("cancelled".to_owned());
+        }
+        let line = line.map_err(|error| error.to_string())?;
+        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        let error = error_of(&value);
+        if !error.is_empty() {
+            return Err(error);
+        }
+        let status = value
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let done = value.get("completed").and_then(Value::as_u64).unwrap_or(0);
+        let total = value.get("total").and_then(Value::as_u64).unwrap_or(0);
+        progress(status, done, total);
+        if status == "success" {
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
+/// Fetches the Ollama installer for Windows into the temporary folder.
+pub(crate) fn download_installer(
+    cancel: &AtomicBool,
+    mut progress: impl FnMut(u64, u64),
+) -> Result<std::path::PathBuf, String> {
+    use std::io::{Read as _, Write as _};
+    let mut response = agent(Duration::from_secs(3600))
+        .get(OLLAMA_WINDOWS)
+        .call()
+        .map_err(|error| error.to_string())?;
+    if response.status().as_u16() != 200 {
+        return Err(format!("HTTP {}", response.status()));
+    }
+    let total = response
+        .headers()
+        .get("content-length")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    let path = std::env::temp_dir().join("OllamaSetup.exe");
+    let mut file = std::fs::File::create(&path).map_err(|error| error.to_string())?;
+    let mut reader = response.body_mut().as_reader();
+    let mut buffer = vec![0u8; 1 << 16];
+    let mut done = 0u64;
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("cancelled".to_owned());
+        }
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|error| error.to_string())?;
+        if read == 0 {
+            break;
+        }
+        file.write_all(buffer.get(..read).unwrap_or_default())
+            .map_err(|error| error.to_string())?;
+        done += u64::try_from(read).unwrap_or(0);
+        progress(done, total);
+    }
+    Ok(path)
+}
+
+/// What the user asked the model to do.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum Task {
+    /// A summary of the text.
+    Summary,
+    /// Each paragraph in another language.
+    Translate { language: String },
+    /// The text rewritten as asked.
+    Rewrite { instruction: String },
+    /// Each paragraph's kind, for its style.
+    Styles,
+    /// A judgement of the writing.
+    Assess,
+    /// Each paragraph rewritten in one style.
+    Unify,
+}
+
+/// A paragraph's kind, for automatic styling.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Kind {
+    Title,
+    Heading(u8),
+    Body,
+    Quote,
+    Caption,
+}
+
+impl Kind {
+    fn parse(text: &str) -> Option<Self> {
+        let text = text.trim().to_lowercase();
+        Some(match text.as_str() {
+            "title" => Self::Title,
+            "h1" | "heading1" | "heading 1" => Self::Heading(1),
+            "h2" | "heading2" | "heading 2" => Self::Heading(2),
+            "h3" | "heading3" | "heading 3" => Self::Heading(3),
+            "body" | "normal" | "text" | "list" => Self::Body,
+            "quote" => Self::Quote,
+            "caption" => Self::Caption,
+            _ => return None,
+        })
+    }
+}
+
+/// What a job reports.
+#[derive(Debug)]
+pub(crate) enum Event {
+    /// Paragraphs done of all.
+    Progress(usize, usize),
+    /// The whole answer.
+    Text(String),
+    /// One paragraph's new text, by its index in the job.
+    Paragraph(usize, String),
+    /// The paragraphs' kinds, by index.
+    Kinds(Vec<(usize, Kind)>),
+    Failed(String),
+    Finished,
+}
+
+/// The language the interface speaks, for answers about the document.
+fn answer_language(code: &str) -> &'static str {
+    match code {
+        "ru" => "Russian",
+        _ => "English",
+    }
+}
+
+/// Runs `task` over `paragraphs` on a thread of its own.
+pub(crate) fn start(
+    config: Config,
+    task: Task,
+    paragraphs: Vec<String>,
+    interface: &str,
+    events: Sender<Event>,
+    cancel: Arc<AtomicBool>,
+    ctx: eframe::egui::Context,
+) {
+    let answer = answer_language(interface);
+    std::thread::spawn(move || {
+        let send = |event: Event| {
+            let _ = events.send(event);
+            ctx.request_repaint();
+        };
+        let result = run(&config, &task, &paragraphs, answer, &cancel, &send);
+        match result {
+            Ok(()) => send(Event::Finished),
+            Err(error) => send(Event::Failed(error)),
+        }
+    });
+}
+
+/// The longest text sent at once, in characters.
+const CHUNK: usize = 12_000;
+
+fn run(
+    config: &Config,
+    task: &Task,
+    paragraphs: &[String],
+    answer: &str,
+    cancel: &AtomicBool,
+    send: &dyn Fn(Event),
+) -> Result<(), String> {
+    let whole = || paragraphs.join("\n\n");
+    let cancelled = || cancel.load(Ordering::Relaxed);
+    match task {
+        Task::Summary => {
+            let text = clip(&whole(), CHUNK * 2);
+            let summary = chat(
+                config,
+                &format!(
+                    "You summarise documents. Write the summary in {answer}: a short paragraph, \
+                     then the key points as a list with \"- \". Plain text, no Markdown headings."
+                ),
+                &text,
+            )?;
+            send(Event::Text(summary));
+        }
+        Task::Assess => {
+            let text = clip(&whole(), CHUNK * 2);
+            let review = chat(
+                config,
+                &format!(
+                    "You are an editor. In {answer}, judge the writing style of the document: \
+                     its register, consistency of terms and tone, sentence length, clarity, and \
+                     typical faults with short examples quoted from the text. End with a list \
+                     \"- \" of concrete advice for making the style uniform. Plain text."
+                ),
+                &text,
+            )?;
+            send(Event::Text(review));
+        }
+        Task::Rewrite { instruction } => {
+            let text = whole();
+            let rewritten = chat(
+                config,
+                &format!(
+                    "Rewrite the user's text: {instruction}. Keep its language, meaning and \
+                     paragraph breaks. Answer with the rewritten text only, no comments."
+                ),
+                &text,
+            )?;
+            send(Event::Text(rewritten));
+        }
+        Task::Translate { language } => {
+            let system = format!(
+                "Translate the user's text into {language}. Keep names, numbers and formulas. \
+                 Answer with the translation only, no comments or quotes."
+            );
+            per_paragraph(config, &system, paragraphs, cancelled, send)?;
+        }
+        Task::Unify => {
+            let sample = clip(&whole(), CHUNK);
+            let guide = chat(
+                config,
+                "You are an editor. Describe in five short rules the prevailing style of this \
+                 document (register, person, tense, terms, punctuation habits). Rules only.",
+                &sample,
+            )?;
+            let system = format!(
+                "Edit the user's paragraph so that it follows these style rules, changing as \
+                 little as possible and keeping its language and meaning:\n{guide}\n\
+                 Answer with the edited paragraph only."
+            );
+            per_paragraph(config, &system, paragraphs, cancelled, send)?;
+        }
+        Task::Styles => {
+            let mut kinds = Vec::new();
+            let mut start = 0;
+            // A few dozen paragraphs at a time, each cut short: the kind
+            // shows in the opening words.
+            for batch in paragraphs.chunks(40) {
+                if cancelled() {
+                    return Err("cancelled".to_owned());
+                }
+                let mut listing = String::new();
+                for (i, text) in batch.iter().enumerate() {
+                    use std::fmt::Write as _;
+                    let _ = writeln!(listing, "{}: {}", start + i, clip(text, 160));
+                }
+                let answer = chat(
+                    config,
+                    "Classify each numbered paragraph of a document as one of: title, h1, h2, \
+                     h3, body, quote, caption. A title is the document's name, once at the top; \
+                     headings are short lines that open sections (h1 for the top level). \
+                     Answer with one line per paragraph: \"<number>: <kind>\".",
+                    &listing,
+                )?;
+                for line in answer.lines() {
+                    let Some((number, kind)) = line.split_once(':') else {
+                        continue;
+                    };
+                    let number = number.trim().trim_start_matches('-').trim();
+                    if let (Ok(index), Some(kind)) = (number.parse::<usize>(), Kind::parse(kind)) {
+                        if (start..start + batch.len()).contains(&index) {
+                            kinds.push((index, kind));
+                        }
+                    }
+                }
+                start += batch.len();
+                send(Event::Progress(start, paragraphs.len()));
+            }
+            send(Event::Kinds(kinds));
+        }
+    }
+    Ok(())
+}
+
+/// Each non-empty paragraph through the model, one at a time.
+fn per_paragraph(
+    config: &Config,
+    system: &str,
+    paragraphs: &[String],
+    cancelled: impl Fn() -> bool,
+    send: &dyn Fn(Event),
+) -> Result<(), String> {
+    for (index, text) in paragraphs.iter().enumerate() {
+        if cancelled() {
+            return Err("cancelled".to_owned());
+        }
+        if text.trim().chars().any(char::is_alphabetic) {
+            let out = chat(config, system, text)?;
+            send(Event::Paragraph(index, out));
+        }
+        send(Event::Progress(index + 1, paragraphs.len()));
+    }
+    Ok(())
+}
+
+fn clip(text: &str, limit: usize) -> String {
+    match text.char_indices().nth(limit) {
+        Some((at, _)) => format!("{}…", text.get(..at).unwrap_or_default()),
+        None => text.to_owned(),
+    }
+}
+
+/// Languages to translate into: the name the model is told, the locale key.
+pub(crate) const LANGUAGES: &[(&str, &str)] = &[
+    ("English", "ai.lang_en"),
+    ("Russian", "ai.lang_ru"),
+    ("German", "ai.lang_de"),
+    ("French", "ai.lang_fr"),
+    ("Spanish", "ai.lang_es"),
+    ("Italian", "ai.lang_it"),
+    ("Chinese (Simplified)", "ai.lang_zh"),
+    ("Japanese", "ai.lang_ja"),
+    ("Ukrainian", "ai.lang_uk"),
+    ("Serbian (Latin)", "ai.lang_sr"),
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_model_is_chosen_for_text() {
+        let installed: Vec<String> = [
+            "qwen3-vl:8b",
+            "qwen2.5-coder:14b",
+            "llama3:latest",
+            "qwen3.5:4b",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+        assert_eq!(choose("", &installed).as_deref(), Some("qwen3.5:4b"));
+        assert_eq!(
+            choose("llama3:latest", &installed).as_deref(),
+            Some("llama3:latest")
+        );
+        assert_eq!(
+            choose("missing:1b", &installed).as_deref(),
+            Some("qwen3.5:4b")
+        );
+        assert_eq!(choose("", &["qwen3-vl:8b".to_owned()]), None);
+    }
+
+    #[test]
+    fn thinking_is_left_out_and_kinds_are_read() {
+        assert_eq!(without_thinking("<think>hmm</think>\nДа").trim(), "Да");
+        assert_eq!(Kind::parse(" H2 "), Some(Kind::Heading(2)));
+        assert_eq!(Kind::parse("list"), Some(Kind::Body));
+        assert_eq!(Kind::parse("table"), None);
+        assert_eq!(clip("абвгд", 3), "абв…");
+    }
+
+    /// A live call: `MUFOED_LIVE_AI=1` with Ollama running.
+    #[test]
+    #[ignore = "needs Ollama"]
+    fn a_live_translation() {
+        if std::env::var("MUFOED_LIVE_AI").is_err() {
+            return;
+        }
+        let endpoint = "http://127.0.0.1:11434".to_owned();
+        let model = choose("", &models(&endpoint).unwrap()).unwrap();
+        let config = Config { endpoint, model };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let cancel = AtomicBool::new(false);
+        let send = |event: Event| {
+            let _ = tx.send(event);
+        };
+        run(
+            &config,
+            &Task::Translate {
+                language: "English".to_owned(),
+            },
+            &["Мама мыла раму.".to_owned()],
+            "English",
+            &cancel,
+            &send,
+        )
+        .unwrap();
+        let events: Vec<Event> = rx.try_iter().collect();
+        eprintln!("{events:?}");
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, Event::Paragraph(0, text) if text.to_lowercase().contains("mom") || text.to_lowercase().contains("mother"))));
+    }
+}

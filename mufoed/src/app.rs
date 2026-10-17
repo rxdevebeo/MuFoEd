@@ -7,6 +7,8 @@ use std::sync::Arc;
 use eframe::egui::{self, vec2, Color32, FontFamily, FontId, Key, RichText, Sense, Stroke};
 use strict_ooxml::Mode;
 
+mod ai_ui;
+
 use crate::canvas;
 use crate::formats::{self, ImportOptions, Kind, OcrSettings, Source};
 use crate::i18n::I18n;
@@ -20,12 +22,17 @@ use crate::worker::{
     HeaderFooterCommand, Insert, Motion, ObjectCommand, PictureEdit, Request, SaveFormat,
 };
 use crate::worker::{CommentCommand, PageChange, ReferenceCommand};
+pub(crate) use ai_ui::AiAction;
 
 /// Everything a click can ask for.
 pub(crate) enum Action {
     ToggleSpelling,
     DownloadDictionary(&'static str),
     DownloadFontPack(&'static str),
+    Ai(AiAction),
+    AiSetup,
+    ToggleAiPane,
+    AiLanguage(String),
     New,
     OpenDialog,
     OpenPath(PathBuf),
@@ -166,6 +173,12 @@ pub(crate) enum Dialog {
         space_cm: f32,
         separator: bool,
     },
+    /// Ollama and its models: what is there, what to fetch.
+    AiSetup,
+    /// The user's own instruction for rewriting the selection.
+    AiPrompt {
+        text: String,
+    },
     /// A font pack to fetch, for text no font draws.
     FontPack {
         id: &'static str,
@@ -280,6 +293,8 @@ pub(crate) struct App {
     font_download: Option<(&'static str, std::sync::mpsc::Receiver<Result<(), String>>)>,
     /// Font packs offered this session.
     fonts_offered: Vec<&'static str>,
+    /// The AI tab's jobs, pane and setup.
+    ai: ai_ui::AiState,
     font_color: [u8; 3],
     status: Option<StatusLine>,
     next_id: u64,
@@ -356,6 +371,7 @@ impl App {
             dictionaries_offered: Vec::new(),
             font_download: None,
             fonts_offered: Vec::new(),
+            ai: ai_ui::AiState::default(),
             font_color: [192, 0, 0],
             status: None,
             next_id: 1,
@@ -791,6 +807,16 @@ impl App {
             }
             Action::DownloadDictionary(code) => self.download_dictionary(ctx, code, now),
             Action::DownloadFontPack(id) => self.download_font_pack(ctx, id, now),
+            Action::Ai(action) => self.ai_run(ctx, action),
+            Action::AiSetup => {
+                self.ai_probe(ctx);
+                self.dialog = Some(Dialog::AiSetup);
+            }
+            Action::ToggleAiPane => self.ai.open = !self.ai.open,
+            Action::AiLanguage(language) => {
+                self.settings.ai_language = language;
+                self.settings.save();
+            }
             Action::NewComment => {
                 let author = self.settings.author.clone();
                 let initials: String = author
@@ -868,6 +894,7 @@ impl App {
         let mut pictures = Vec::new();
         let mut missing_scripts = Vec::new();
         let mut missing_fonts = Vec::new();
+        let mut ai_sources = Vec::new();
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             for event in tab.poll() {
                 match event {
@@ -931,6 +958,7 @@ impl App {
                     TabEvent::CommentAdded => self.comments_open = true,
                     TabEvent::SpellingMissing(scripts) => missing_scripts.extend(scripts),
                     TabEvent::FontsMissing(packs) => missing_fonts.extend(packs),
+                    TabEvent::AiSource { job, source } => ai_sources.push((tab.id, job, source)),
                     TabEvent::Loaded => {
                         messages.push((
                             self.i18n.tf("status.opened", &[("file", &tab.title)]),
@@ -948,6 +976,9 @@ impl App {
         }
         for (text, error) in messages {
             self.say(text, error, now);
+        }
+        for (tab, job, source) in ai_sources {
+            self.ai_source(ctx, tab, job, *source);
         }
         self.offer_font_packs(&missing_fonts);
         self.offer_dictionaries(&missing_scripts);
@@ -1480,6 +1511,32 @@ impl App {
 
     /// A dialog by the name `MUFOED_DIALOG` gives, to look at.
     fn open_named_dialog(&mut self, name: &str, actions: &mut Vec<Action>) {
+        // `ribbon:ai` shows a ribbon tab; `ai:<action>` runs an AI action.
+        for part in name.split(',').skip(1) {
+            self.open_named_dialog(part, actions);
+        }
+        let name = name.split(',').next().unwrap_or_default();
+        if let Some(tab) = name.strip_prefix("ribbon:") {
+            if let Some(found) = RibbonTab::ALL
+                .into_iter()
+                .find(|t| t.key() == format!("ribbon.{tab}"))
+            {
+                self.ribbon_tab = found;
+            }
+            return;
+        }
+        if let Some(action) = name.strip_prefix("ai:") {
+            let action = match action {
+                "summary" => AiAction::Summary { whole: true },
+                "assess" => AiAction::Assess,
+                "styles" => AiAction::Styles,
+                "parallel" => AiAction::Parallel,
+                "unify" => AiAction::Unify,
+                _ => return,
+            };
+            actions.push(Action::Ai(action));
+            return;
+        }
         self.dialog = match name {
             "table" => Some(Dialog::Table {
                 rows: 3,
@@ -1505,6 +1562,13 @@ impl App {
             "exit" => Some(Dialog::ConfirmExit),
             "dictionary" => Some(Dialog::Dictionary { code: "ru" }),
             "font-pack" => Some(Dialog::FontPack { id: "devanagari" }),
+            "ai-setup" => {
+                actions.push(Action::AiSetup);
+                None
+            }
+            "ai-prompt" => Some(Dialog::AiPrompt {
+                text: String::new(),
+            }),
             "print" => {
                 actions.push(Action::PrintDialog);
                 None
@@ -1530,12 +1594,13 @@ impl eframe::App for App {
         for path in std::mem::take(&mut self.startup) {
             self.open_path(&ctx, path, now);
         }
-        if let Some(shot) = self.shot.as_mut() {
-            shot.frame(&ctx);
+        if self.shot.as_mut().is_some_and(|shot| shot.frame(&ctx)) {
+            self.exit_confirmed = true;
         }
         let startup_dialog = self.startup_dialog.take();
         self.poll_tabs(&ctx, now);
         self.poll_spelling(&ctx, now);
+        self.ai_poll(&ctx);
         self.handle_drops(&ctx, now);
         self.handle_close_request(&ctx);
         let mut actions = Vec::new();
@@ -1593,6 +1658,14 @@ impl eframe::App for App {
                     .active_tab()
                     .is_some_and(|tab| !tab.comments.is_empty());
                 let _ = has_comments;
+                if self.ai.open && self.active_tab().is_some() {
+                    egui::Panel::right("ai")
+                        .resizable(true)
+                        .default_size(340.0)
+                        .size_range(240.0..=640.0)
+                        .frame(egui::Frame::new().fill(palette.ribbon).inner_margin(10))
+                        .show(ui, |ui| self.ai_pane(ui, palette));
+                }
                 if self.comments_open && self.active_tab().is_some() {
                     egui::Panel::right("comments")
                         .resizable(true)
@@ -1965,6 +2038,8 @@ impl App {
             crop: tab.is_some_and(|tab| tab.view.crop),
             comments_open: self.comments_open,
             spelling: self.settings.spelling,
+            ai_language: &self.settings.ai_language,
+            ai_open: self.ai.open,
             header_footer: tab
                 .and_then(|tab| tab.cursor.as_ref())
                 .and_then(|cursor| cursor.header_footer.as_ref()),
@@ -2870,6 +2945,50 @@ impl App {
                         space_cm,
                         separator,
                     });
+                }
+            }
+            Dialog::AiSetup => {
+                if self.ai_setup_ui(ctx) {
+                    next = Some(Dialog::AiSetup);
+                } else {
+                    keep = false;
+                }
+            }
+            Dialog::AiPrompt { mut text } => {
+                let mut go = false;
+                let response = modal("ai-prompt").show(ctx, |ui| {
+                    crate::dialog::title(ui, &t("ai.own_title"));
+                    ui.label(t("ai.own_hint"));
+                    let field = ui.add(
+                        egui::TextEdit::multiline(&mut text)
+                            .desired_rows(3)
+                            .desired_width(420.0)
+                            .hint_text(t("ai.own_example")),
+                    );
+                    field.request_focus();
+                    crate::dialog::buttons(ui, |ui| {
+                        if crate::dialog::primary_enabled(
+                            ui,
+                            !text.trim().is_empty(),
+                            &t("ai.rewrite"),
+                        )
+                        .clicked()
+                        {
+                            go = true;
+                            ui.close();
+                        }
+                        if crate::dialog::button(ui, &t("button.cancel")).clicked() {
+                            ui.close();
+                        }
+                    });
+                });
+                if go {
+                    actions.push(Action::Ai(AiAction::Rewrite(text.trim().to_owned())));
+                }
+                if response.should_close() || go {
+                    keep = false;
+                } else {
+                    next = Some(Dialog::AiPrompt { text });
                 }
             }
             Dialog::FontPack { id } => {

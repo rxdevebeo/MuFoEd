@@ -31,6 +31,12 @@ pub(crate) enum Icon {
     Toc,
     Columns,
     Spelling,
+    Sparkle,
+    Translate,
+    Summary,
+    Rewrite,
+    Styles,
+    Assess,
     Comment,
     Footnote,
     Bookmark,
@@ -410,6 +416,104 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                 ],
                 color,
                 Stroke::NONE,
+            ));
+        }
+        Icon::Sparkle => {
+            // A four-pointed star and a small one.
+            let star = |c: egui::Pos2, s: f32| {
+                let k = s * 0.28;
+                egui::Shape::convex_polygon(
+                    vec![
+                        c + vec2(0.0, -s),
+                        c + vec2(k, -k),
+                        c + vec2(s, 0.0),
+                        c + vec2(k, k),
+                        c + vec2(0.0, s),
+                        c + vec2(-k, k),
+                        c + vec2(-s, 0.0),
+                        c + vec2(-k, -k),
+                    ],
+                    accent,
+                    Stroke::NONE,
+                )
+            };
+            painter.add(star(
+                r.center() + vec2(-r.width() * 0.08, r.height() * 0.08),
+                r.width() * 0.38,
+            ));
+            painter.add(star(
+                r.center() + vec2(r.width() * 0.3, -r.height() * 0.3),
+                r.width() * 0.16,
+            ));
+        }
+        Icon::Translate => {
+            painter.text(
+                r.left_top() + vec2(r.width() * 0.3, r.height() * 0.35),
+                egui::Align2::CENTER_CENTER,
+                "A",
+                egui::FontId::proportional(r.height() * 0.55),
+                color,
+            );
+            painter.text(
+                r.left_top() + vec2(r.width() * 0.7, r.height() * 0.68),
+                egui::Align2::CENTER_CENTER,
+                "Я",
+                egui::FontId::proportional(r.height() * 0.55),
+                accent,
+            );
+        }
+        Icon::Summary => {
+            page(painter, page_rect, color, paper);
+            let inner = page_rect.shrink(page_rect.width() * 0.18);
+            for (i, width) in [(0.12, 1.0), (0.34, 1.0), (0.56, 1.0), (0.85, 0.55)] {
+                let y = inner.top() + inner.height() * i;
+                let tint = if width < 1.0 { accent } else { color };
+                painter.line_segment(
+                    [
+                        pos2(inner.left(), y),
+                        pos2(inner.left() + inner.width() * width, y),
+                    ],
+                    stroke(tint, thin * if width < 1.0 { 2.0 } else { 1.0 }),
+                );
+            }
+        }
+        Icon::Rewrite => {
+            page(painter, page_rect, color, paper);
+            // A pencil across the page.
+            let a = pos2(
+                page_rect.left() + page_rect.width() * 0.2,
+                page_rect.bottom() - page_rect.height() * 0.15,
+            );
+            let b = pos2(r.right() - r.width() * 0.05, r.top() + r.height() * 0.15);
+            painter.line_segment([a, b], stroke(accent, thin * 3.0));
+            painter.circle_filled(a, thin * 1.2, color);
+        }
+        Icon::Styles => {
+            for (i, size) in [(0.0, 0.42), (0.38, 0.3), (0.68, 0.22)] {
+                painter.text(
+                    pos2(
+                        r.left() + r.width() * 0.08,
+                        r.top() + r.height() * (i + 0.12),
+                    ),
+                    egui::Align2::LEFT_TOP,
+                    "Aa",
+                    egui::FontId::proportional(r.height() * size),
+                    if i == 0.0 { accent } else { color },
+                );
+            }
+        }
+        Icon::Assess => {
+            page(painter, page_rect, color, paper);
+            // A tick over the page.
+            let c = page_rect.center();
+            let s = page_rect.width() * 0.3;
+            painter.add(egui::Shape::line(
+                vec![
+                    c + vec2(-s, 0.0),
+                    c + vec2(-s * 0.25, s * 0.7),
+                    c + vec2(s, -s * 0.8),
+                ],
+                stroke(accent, thin * 2.2),
             ));
         }
         Icon::Spelling => {

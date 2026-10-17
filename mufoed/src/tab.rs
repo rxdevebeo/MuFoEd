@@ -46,6 +46,11 @@ pub(crate) enum TabEvent {
     SpellingMissing(Vec<crate::spell::Script>),
     /// The document has text no font draws; these packs would.
     FontsMissing(Vec<&'static str>),
+    /// The text an AI job asked for.
+    AiSource {
+        job: u64,
+        source: Box<crate::worker::AiSource>,
+    },
 }
 
 /// What happens once a pending save finishes.
@@ -323,6 +328,7 @@ impl DocTab {
                 self.comments = comments;
             }
             Reply::FontsMissing(packs) => events.push(TabEvent::FontsMissing(packs)),
+            Reply::AiSource { job, source } => events.push(TabEvent::AiSource { job, source }),
             Reply::Spelling { errors, missing } => {
                 self.spelling = errors;
                 if !missing.is_empty() {
