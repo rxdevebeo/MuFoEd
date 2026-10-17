@@ -166,7 +166,14 @@ pub(crate) fn build(
             .and_then(|margins| margins.left)
             .map_or(0.0, |left| f64::from(left.0) / 20.0);
         sections.begin_page(&mut blocks, section, false);
-        let raw_lines = join_fragments(strict_ooxml_pdf::text::lines(page.items()));
+        // A page rebuilt by a model was rebuilt because its own text layer could
+        // not be read; that layer's lines in the flow as well put the page's
+        // text in the document twice, the model's copy on a page of its own.
+        let raw_lines = if rebuilt {
+            Vec::new()
+        } else {
+            join_fragments(strict_ooxml_pdf::text::lines(page.items()))
+        };
         report.lines += raw_lines.len();
         let column_plan = crate::columns::plan(page, &raw_lines, report);
         let lines = margin_lines_in_place(

@@ -888,3 +888,31 @@ fn a_recovered_page_is_not_a_lost_page() {
         converted.report
     );
 }
+
+/// A page whose text layer cannot be read is read by the model, and the page's
+/// own glyphs are not set beside the model's text: a slide's words came out
+/// twice, the second copy on a page of its own.
+#[test]
+fn a_page_a_model_rebuilt_keeps_one_copy_of_its_text() {
+    // A font with no encoding and no ToUnicode: every glyph is a guess.
+    let bytes = pdf(&[
+        text("<< /Type /Catalog /Pages 2 0 R >>"),
+        text("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        text(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << \
+             /F1 5 0 R >> >> /Contents 4 0 R >>",
+        ),
+        stream(b"BT /F1 12 Tf 1 0 0 1 10 50 Tm (GUESSED) Tj ET"),
+        text("<< /Type /Font /Subtype /Type1 /BaseFont /Unknown >>"),
+    ]);
+    let model = Scripted::answering("Read by the model");
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open");
+    let converted = convert(
+        &mut reader,
+        &PdfOptions::default().text_recovery(Some(model.clone())),
+    )
+    .expect("convert");
+    let texts = texts_of(&converted.document.body.blocks).join("|");
+    assert!(texts.contains("Read by the model"), "{texts}");
+    assert!(!texts.contains("GUESSED"), "{texts}");
+}
