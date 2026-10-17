@@ -552,7 +552,15 @@ fn a_list_item_carries_the_geometry_the_pdf_had() {
     let hanging = indent.hanging.expect("a hanging indent").0;
     // 52 pt is 1040 twips, and the marker is 12 pt to its left, so the marker lands
     // at 40 pt — where the PDF drew it, and not one hanging indent further out.
-    assert_eq!(start, 1080, "the text starts where the PDF put it");
+    // The indent is measured from the left margin, which is where the ink
+    // starts.
+    let margin = document
+        .sections
+        .first()
+        .and_then(|section| section.properties.page_margins)
+        .and_then(|margins| margins.left)
+        .map_or(0, |left| left.0);
+    assert_eq!(start + margin, 1080, "the text starts where the PDF put it");
     assert_eq!(hanging, 280, "and the marker hangs 14 pt to its left");
     assert_eq!(
         paragraphs[0]
