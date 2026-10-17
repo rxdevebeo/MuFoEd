@@ -342,6 +342,30 @@ pub struct PlacedImage {
     pub height: f64,
     /// Why the image is missing, when it is.
     pub missing: Option<String>,
+    /// The matrix that maps the image's unit square onto the page (PDF
+    /// space, y up): its turn and mirror, which the box above does not say.
+    pub ctm: Matrix,
+}
+
+/// The box a matrix maps the unit square to: `(x, y, width, height)`, with
+/// `y` the lower edge, PDF space. All four corners: two of them gave a
+/// turned picture's box wrong.
+fn unit_square_box(ctm: Matrix) -> (f64, f64, f64, f64) {
+    let corners = [
+        ctm.apply(0.0, 0.0),
+        ctm.apply(1.0, 0.0),
+        ctm.apply(0.0, 1.0),
+        ctm.apply(1.0, 1.0),
+    ];
+    let (mut min_x, mut min_y) = (f64::INFINITY, f64::INFINITY);
+    let (mut max_x, mut max_y) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for (x, y) in corners {
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    (min_x, min_y, max_x - min_x, max_y - min_y)
 }
 
 /// One item of a page.
@@ -1552,15 +1576,15 @@ fn place_inline(
         ));
         return;
     };
-    let lower = state.ctm.apply(0.0, 0.0);
-    let upper = state.ctm.apply(1.0, 1.0);
+    let (x, y, width, height) = unit_square_box(state.ctm);
     out.items.push(Item::Image(PlacedImage {
         image: image.encoded.clone(),
-        x: lower.0.min(upper.0),
-        y: lower.1.min(upper.1),
-        width: (upper.0 - lower.0).abs(),
-        height: (upper.1 - lower.1).abs(),
+        x,
+        y,
+        width,
+        height,
         missing: image.missing.clone(),
+        ctm: state.ctm,
     }));
 }
 
@@ -1587,6 +1611,7 @@ fn place_image(
                 width: 0.0,
                 height: 0.0,
                 missing: Some(missing),
+                ctm: Matrix::IDENTITY,
             }));
             return;
         }
@@ -1598,20 +1623,21 @@ fn place_image(
                 width: 0.0,
                 height: 0.0,
                 missing: Some(error.to_string()),
+                ctm: Matrix::IDENTITY,
             }));
             return;
         }
     };
     let _ = (pixel_width, pixel_height);
-    let lower = state.ctm.apply(0.0, 0.0);
-    let upper = state.ctm.apply(1.0, 1.0);
+    let (x, y, width, height) = unit_square_box(state.ctm);
     out.items.push(Item::Image(PlacedImage {
         image: Some(decoded),
-        x: lower.0.min(upper.0),
-        y: lower.1.min(upper.1),
-        width: (upper.0 - lower.0).abs(),
-        height: (upper.1 - lower.1).abs(),
+        x,
+        y,
+        width,
+        height,
         missing: None,
+        ctm: state.ctm,
     }));
     let _ = geometry;
 }

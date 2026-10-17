@@ -1904,6 +1904,44 @@ fn sized_image_paragraph(
     }
 }
 
+/// How a picture's matrix turns and mirrors it, when it does.
+#[derive(Clone, Copy, Debug)]
+struct Turn {
+    /// The picture's own width and height, in points.
+    width: f64,
+    height: f64,
+    /// Clockwise, as DrawingML turns, in degrees `0..360`.
+    degrees: f64,
+    /// Mirrored top to bottom before the turn.
+    mirrored: bool,
+}
+
+impl Turn {
+    fn of(ctm: strict_ooxml_pdf::content::Matrix) -> Option<Self> {
+        let width = ctm.a.hypot(ctm.b);
+        let height = ctm.c.hypot(ctm.d);
+        let det = ctm.a * ctm.d - ctm.b * ctm.c;
+        if !(width > 0.0 && height > 0.0 && det.is_finite() && det.abs() > f64::EPSILON) {
+            return None;
+        }
+        // PDF turns anticlockwise with y up; DrawingML clockwise with y down,
+        // which on the page is the same turn the other way round.
+        let degrees = (-ctm.b.atan2(ctm.a).to_degrees()).rem_euclid(360.0);
+        let degrees = if (360.0 - degrees) < 0.01 {
+            0.0
+        } else {
+            degrees
+        };
+        let mirrored = det < 0.0;
+        (degrees > 0.01 || mirrored).then_some(Self {
+            width,
+            height,
+            degrees,
+            mirrored,
+        })
+    }
+}
+
 /// A picture anchored to the page at its place on it.
 fn anchored_image(
     image: &strict_ooxml_pdf::PlacedImage,
@@ -1914,15 +1952,35 @@ fn anchored_image(
 ) -> Option<Inline> {
     use strict_ooxml_wml::model::drawing::{AnchorDrawing, Position, Wrap, WrapKind};
     let emu = |points: f64| Emu((points * 12_700.0).round() as i64);
-    let Paragraph { mut inlines, .. } =
-        sized_image_paragraph(image.width, image.height, part, description);
+    let turn = Turn::of(image.ctm);
+    // A turned or mirrored picture is its own size, turned about the centre
+    // of the box it covers: the box alone set a turned photograph upright
+    // and stretched, and a mirrored one the right way round.
+    let (width, height, left, top) = match turn {
+        Some(turn) => (
+            turn.width,
+            turn.height,
+            image.x + image.width / 2.0 - turn.width / 2.0,
+            top + image.height / 2.0 - turn.height / 2.0,
+        ),
+        None => (image.width, image.height, image.x, top),
+    };
+    let Paragraph { mut inlines, .. } = sized_image_paragraph(width, height, part, description);
     let Some(Inline::Drawing(Drawing {
-        kind: DrawingKind::Inline(inline),
+        kind: DrawingKind::Inline(mut inline),
         location,
     })) = inlines.pop()
     else {
         return None;
     };
+    if let (Some(turn), Graphic::Picture(picture)) = (turn, inline.graphic.as_mut()) {
+        picture.xfrm = Some(strict_ooxml_wml::model::drawing::Xfrm {
+            offset: None,
+            rot: (turn.degrees.abs() > 0.01).then(|| (turn.degrees * 60_000.0).round() as i32),
+            flip_h: false,
+            flip_v: turn.mirrored,
+        });
+    }
     let position = |offset: f64| Position {
         relative_from: Some(Arc::from("page")),
         align: None,
@@ -1941,7 +1999,7 @@ fn anchored_image(
             simple_pos: false,
             simple_pos_point: None,
             hidden: None,
-            position_h: Some(position(image.x)),
+            position_h: Some(position(left)),
             position_v: Some(position(top)),
             wrap: Some(Wrap {
                 kind,

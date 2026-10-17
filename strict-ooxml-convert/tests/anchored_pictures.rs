@@ -132,3 +132,34 @@ fn without_images_nothing_is_anchored() {
     let converted = convert(&mut reader, &options).expect("convert");
     assert!(anchors(&converted.document.body.blocks).is_empty());
 }
+
+#[test]
+fn a_turned_picture_keeps_its_turn() {
+    // 50 by 100 pt, turned a quarter anticlockwise (PDF): its box on the page
+    // is 100 wide and 50 tall, and DrawingML turns it 270 degrees clockwise.
+    let mut pdf = PdfBuilder::new();
+    let picture = pdf.stream(
+        "/Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8",
+        &[0x80; 12],
+        true,
+    );
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /XObject << /Im1 {picture} 0 R >> >>");
+    pdf.page_with(b"q 0 50 -100 0 300 400 cm /Im1 Do Q", &resources);
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let found = anchors(&converted.document.body.blocks);
+    let (_, anchor) = found.first().expect("the picture is anchored");
+    let strict_ooxml_wml::model::drawing::Graphic::Picture(picture) = anchor.graphic.as_ref()
+    else {
+        panic!("a picture")
+    };
+    let xfrm = picture.xfrm.expect("a turn");
+    assert_eq!(xfrm.rot, Some(270 * 60_000));
+    let extent = anchor.extent.expect("an extent");
+    assert_eq!((extent.cx.0, extent.cy.0), (50 * 12_700, 100 * 12_700));
+    // Centred on its box: x 200..300, so the 50 pt picture starts at 225.
+    assert_eq!(points(anchor).0.round(), 225.0);
+}
