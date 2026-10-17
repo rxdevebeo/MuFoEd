@@ -506,6 +506,13 @@ def cmd_find(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Document names carry any script; a redirected stdout would otherwise raise
+    # on the first non-ASCII ident under a legacy console encoding.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):
+            pass
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
 
