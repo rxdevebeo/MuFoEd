@@ -44,20 +44,36 @@ fn interpolation(resolve: Resolver<'_>, object: &Object) -> Option<(Rgb, Rgb)> {
     Some((colour(resolve, dict, b"C0")?, colour(resolve, dict, b"C1")?))
 }
 
+/// `DeviceRGB`, or an ICC-based space of three components - how design
+/// tools and browsers write their gradients' colour.
+fn is_rgb_space(resolve: Resolver<'_>, space: &Object) -> bool {
+    match space {
+        Object::Name(name) => name == b"DeviceRGB",
+        Object::Array(items) => {
+            let [Object::Name(kind), profile] = items.as_slice() else {
+                return false;
+            };
+            kind == b"ICCBased"
+                && resolve
+                    .get(profile)
+                    .and_then(|profile| profile.as_stream().ok())
+                    .and_then(|profile| profile.dict.get(b"N").ok())
+                    .and_then(|n| n.as_i64().ok())
+                    == Some(3)
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn decode(resolve: Resolver<'_>, object: &Object) -> Option<AxialGradient> {
     let dict = resolve.get(object)?.as_dict().ok()?;
     if dict.get(b"ShadingType").ok()?.as_i64().ok()? != 2
-        || resolve.get(dict.get(b"ColorSpace").ok()?)?.as_name().ok()? != b"DeviceRGB"
+        || !is_rgb_space(resolve, resolve.get(dict.get(b"ColorSpace").ok()?)?)
     {
         return None;
     }
-    let extend = resolve.get(dict.get(b"Extend").ok()?)?.as_array().ok()?;
-    if !matches!(
-        extend.as_slice(),
-        [Object::Boolean(true), Object::Boolean(true)]
-    ) {
-        return None;
-    }
+    // `/Extend` only says whether the colour runs on past the axis's ends;
+    // a gradient that stops there is still that gradient between them.
     let coords = numbers(resolve, dict, b"Coords")?;
     let &[x1, y1, x2, y2] = coords.as_slice() else {
         return None;
@@ -159,5 +175,24 @@ mod tests {
             &sample(1, b"DeviceRGB", &[f32::INFINITY; 4])
         )
         .is_none());
+    }
+
+    #[test]
+    fn an_icc_based_rgb_space_and_no_extend_are_carried() {
+        let mut document = Document::with_version("1.7");
+        let profile = document.add_object(lopdf::Stream::new(dictionary! { "N" => 3 }, Vec::new()));
+        let Object::Dictionary(mut shading) = sample(1, b"DeviceRGB", &[0.0, 0.0, 100.0, 0.0])
+        else {
+            unreachable!()
+        };
+        shading.set(
+            "ColorSpace",
+            Object::Array(vec![
+                Object::Name(b"ICCBased".to_vec()),
+                Object::Reference(profile),
+            ]),
+        );
+        shading.remove(b"Extend");
+        assert!(decode(resolver(&document), &Object::Dictionary(shading)).is_some());
     }
 }
