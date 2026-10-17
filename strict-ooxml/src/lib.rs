@@ -126,6 +126,14 @@ pub use strict_ooxml_edit as edit;
 mod rtf;
 #[cfg(feature = "rtf")]
 pub use rtf::{RtfOpenError, RtfOpened, RtfStatus};
+#[cfg(feature = "html")]
+mod html;
+#[cfg(feature = "html")]
+pub use html::{HtmlOpenError, HtmlOpened};
+#[cfg(feature = "html")]
+pub use strict_ooxml_html::{
+    HtmlError, HtmlImported, HtmlIssue, HtmlOptions, HtmlReport, HtmlResolver,
+};
 #[cfg(feature = "rtf")]
 pub use strict_ooxml_rtf::{
     CompatibilityProfile, InvalidTextPolicy, NulPolicy, RtfError, RtfIssue, RtfLimits, RtfOptions,

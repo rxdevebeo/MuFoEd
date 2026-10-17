@@ -50,8 +50,10 @@ parallel = ["strict-ooxml-wml/parallel"]
 edit = ["dep:strict-ooxml-edit", "write", "svg"]
 # Import builds an owned Strict package so existing media/render/write paths work.
 rtf = ["dep:strict-ooxml-rtf", "write"]
+html = ["dep:strict-ooxml-html", "write"]
 
 [dependencies]
+strict-ooxml-html = { version = "0.1.0", path = "../strict-ooxml-html", optional = true }
 strict-ooxml-rtf = { version = "0.1.0", path = "../strict-ooxml-rtf", optional = true }
 strict-ooxml-djvu = { version = "0.1.0", path = "../strict-ooxml-djvu", optional = true }
 strict-ooxml-ocr = { version = "0.1.0", path = "../strict-ooxml-ocr", optional = true }
