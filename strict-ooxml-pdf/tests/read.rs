@@ -315,6 +315,50 @@ fn td_moves_from_the_start_of_the_line_not_from_the_pen() {
 }
 
 #[test]
+fn text_a_shading_is_painted_through_is_text_in_its_colour() {
+    // Design tools set gradient titles as clipping text (`7 Tr`) and a
+    // shading painted through it. The page's own clip before the text is not
+    // what is painted: no page-sized gradient box, and the title is text.
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << /F1 5 0 R >> /Shading << /Sh0 6 0 R >> >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\nq 0 0 200 100 re W n BT /F1 10 Tf 7 Tr 1 0 0 1 10 50 Tm (AB) Tj ET /Sh0 sh Q\nendstream",
+        FONT,
+        "<< /ShadingType 2 /ColorSpace /DeviceRGB /Coords [0 0 200 0] /Function << /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [0 0 1] /N 1 >> >>",
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    assert!(
+        !page
+            .items()
+            .iter()
+            .any(|item| matches!(item, Item::Vector(_))),
+        "no gradient box: {:?}",
+        page.items()
+    );
+    let lines = strict_ooxml_pdf::text::lines(page.items());
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0].text(), "AB");
+    assert_ne!(lines[0].glyphs[0].color.to_rgb8(), [0, 0, 0]);
+}
+
+#[test]
+fn clipping_text_without_a_shading_is_not_on_the_page() {
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\nBT /F1 10 Tf 7 Tr 1 0 0 1 10 50 Tm (AB) Tj ET\nendstream",
+        FONT,
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    assert!(strict_ooxml_pdf::text::lines(page.items()).is_empty());
+    assert!(page.text().trim().is_empty(), "{}", page.text());
+}
+
+#[test]
 fn invisible_text_is_measured_but_not_drawn() {
     let objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",
