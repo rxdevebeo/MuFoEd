@@ -512,3 +512,97 @@ fn a_comment_is_written_read_back_and_undone() {
     e.undo(1).unwrap();
     assert!(e.document().comments.is_empty());
 }
+
+/// A chart made in the session: drawn from its data, saved as a chart part
+/// the document refers to, and read back with the same data.
+#[test]
+fn an_added_chart_is_drawn_saved_and_read_back() {
+    use std::sync::Arc;
+    use strict_ooxml_edit::{chart_drawing, unused_drawing_id, MediaLayer};
+    use strict_ooxml_wml::model::chart::{
+        BarGrouping, ChartData, ChartKind, ChartSeries, LegendPosition,
+    };
+    use strict_ooxml_wml::model::*;
+    let data = ChartData {
+        kind: ChartKind::Bar {
+            horizontal: false,
+            grouping: BarGrouping::Clustered,
+        },
+        title: Some("Sales & costs".to_owned()),
+        categories: vec!["Q1".to_owned(), "Q2".to_owned(), "Q3".to_owned()],
+        series: vec![
+            ChartSeries {
+                name: Some("Sales".to_owned()),
+                values: vec![Some(1.5), Some(2.0), Some(3.25)],
+                ..ChartSeries::default()
+            },
+            ChartSeries {
+                name: Some("Costs".to_owned()),
+                values: vec![Some(1.0), None, Some(2.0)],
+                color: Some("FF0000".to_owned()),
+                ..ChartSeries::default()
+            },
+        ],
+        legend: true,
+        legend_position: LegendPosition::Bottom,
+        unsupported: Vec::new(),
+    };
+    let source = package();
+    let mut d = parse_document(&source, &ParseOptions::default()).unwrap();
+    let mut e = Editor::new(&mut d, EditLimits::default()).unwrap();
+    let id = e.add_chart(&data);
+    let drawing = chart_drawing(
+        &id,
+        Arc::new(data.clone()),
+        Emu(5_486_400),
+        Emu(3_200_400),
+        unused_drawing_id(e.document()),
+        "Chart",
+    );
+    e.transact(
+        0,
+        &[Edit::InsertInline {
+            at: Address::body(0),
+            index: 0,
+            inline: Box::new(Inline::Drawing(drawing)),
+        }],
+    )
+    .unwrap();
+    let media = MediaLayer::new(e.added_media(), Some(&source));
+    let saved = e
+        .save(
+            1,
+            Some(&media),
+            &WriteOptions::default(),
+            SavePolicy::AllowDegraded,
+        )
+        .unwrap();
+    let out = Package::open_reader(saved.bytes.as_slice(), &OpenOptions::default()).unwrap();
+    let reopened = parse_document(&out, &ParseOptions::default()).unwrap();
+    let Some(Block::Paragraph(paragraph)) = reopened.body.blocks.first() else {
+        panic!("paragraph");
+    };
+    let chart = paragraph
+        .inlines
+        .iter()
+        .find_map(|inline| match inline {
+            Inline::Drawing(Drawing {
+                kind: DrawingKind::Inline(inline),
+                ..
+            }) => match inline.graphic.as_ref() {
+                Graphic::Chart(refs) => refs.chart.clone(),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("the chart, read back");
+    assert_eq!(chart.kind, data.kind);
+    assert_eq!(chart.title, data.title);
+    assert_eq!(chart.categories, data.categories);
+    assert_eq!(chart.series.len(), 2);
+    assert_eq!(chart.series[0].values, data.series[0].values);
+    assert_eq!(chart.series[1].values, data.series[1].values);
+    assert_eq!(chart.series[1].color.as_deref(), Some("FF0000"));
+    assert_eq!(chart.legend_position, LegendPosition::Bottom);
+    assert!(chart.unsupported.is_empty(), "{:?}", chart.unsupported);
+}

@@ -24,9 +24,11 @@ use strict_ooxml_wml::model::{
 
 mod structured;
 pub use structured::{Address, Container, Edit, EditFailure, Editor, InlinePoint, Story};
+mod chart;
 mod definitions;
 mod import;
 mod lists;
+pub use chart::{chart_drawing, chart_part, CHART_CONTENT_TYPE, CHART_RELATIONSHIP};
 mod media;
 pub use definitions::{
     comment_blocks, header_footer_reference, new_comment, new_header_footer, restarted,

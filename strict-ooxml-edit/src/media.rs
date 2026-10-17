@@ -19,23 +19,45 @@ use strict_ooxml_wml::model::{
 
 use crate::{EditError, Invariant};
 
-/// Bytes of the pictures a session added, by media part.
+/// Bytes of the pictures a session added, by media part, and the chart
+/// parts it added (see [`AddedMedia::add_chart`]).
 #[derive(Clone, Debug, Default)]
 pub struct AddedMedia {
     parts: BTreeMap<PartId, Arc<[u8]>>,
+    pub(crate) charts: Vec<AddedChart>,
+}
+
+/// A chart part a session added, with its relationship from the document.
+#[derive(Clone, Debug)]
+pub(crate) struct AddedChart {
+    /// The relationship id the drawing carries.
+    pub(crate) id: String,
+    pub(crate) part: PartId,
+    /// The target relative to the document part.
+    pub(crate) target: String,
+    pub(crate) bytes: Arc<[u8]>,
 }
 
 impl AddedMedia {
     /// The bytes of an added part.
     #[must_use]
     pub fn get(&self, part: &PartId) -> Option<&Arc<[u8]>> {
-        self.parts.get(part)
+        self.parts.get(part).or_else(|| {
+            self.charts
+                .iter()
+                .find(|chart| chart.part == *part)
+                .map(|chart| &chart.bytes)
+        })
+    }
+
+    fn chart(&self, part: &PartId) -> Option<&AddedChart> {
+        self.charts.iter().find(|chart| chart.part == *part)
     }
 
     /// Whether nothing was added.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.parts.is_empty()
+        self.parts.is_empty() && self.charts.is_empty()
     }
 
     /// Keeps `bytes` under a media part name neither `document` nor this
@@ -279,6 +301,18 @@ impl<S: strict_ooxml_write::package::Source + ?Sized> strict_ooxml_write::packag
         from: &PartId,
         rel_id: &str,
     ) -> Option<strict_ooxml_write::package::RelationshipInfo> {
+        // An added chart: its id is the session's own, and its target sits
+        // under `/word/`, beside every part that can hold a drawing.
+        if let Some(chart) = self.added.charts.iter().find(|chart| chart.id == rel_id) {
+            return Some(strict_ooxml_write::package::RelationshipInfo {
+                id: chart.id.clone(),
+                target: chart.target.clone(),
+                rel_type: strict_ooxml_core::opc::rels::RelType::from_uri(
+                    crate::chart::CHART_RELATIONSHIP,
+                ),
+                external: false,
+            });
+        }
         self.base?.relationship(from, rel_id)
     }
 
@@ -289,6 +323,9 @@ impl<S: strict_ooxml_write::package::Source + ?Sized> strict_ooxml_write::packag
     }
 
     fn content_type(&self, part: &PartId) -> Option<String> {
+        if self.added.chart(part).is_some() {
+            return Some(crate::chart::CHART_CONTENT_TYPE.to_owned());
+        }
         if self.added.get(part).is_some() {
             return picture_format(self.added.get(part)?)
                 .map(|(_, content_type, _)| content_type.to_owned());
@@ -302,10 +339,14 @@ impl<S: strict_ooxml_write::package::Source + ?Sized> strict_ooxml_write::packag
             .map(strict_ooxml_write::package::Source::parts)
             .unwrap_or_default();
         parts.extend(self.added.parts.keys().cloned());
+        parts.extend(self.added.charts.iter().map(|chart| chart.part.clone()));
         parts
     }
 
     fn reachable_parts(&self, from: &PartId) -> strict_ooxml_core::error::Result<Vec<PartId>> {
+        if self.added.chart(from).is_some() {
+            return Ok(Vec::new());
+        }
         self.base
             .map_or_else(|| Ok(Vec::new()), |base| base.reachable_parts(from))
     }

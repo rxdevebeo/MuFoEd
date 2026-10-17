@@ -116,6 +116,11 @@ impl<'a> Editor<'a> {
     ) -> Result<strict_ooxml_wml::model::MediaItem, EditError> {
         self.added_media.add(self.document, bytes)
     }
+    /// Writes a chart part for `data` into this session's added parts and
+    /// returns the relationship id a [`crate::chart_drawing`] carries.
+    pub fn add_chart(&mut self, data: &strict_ooxml_wml::model::chart::ChartData) -> String {
+        self.added_media.add_chart(data)
+    }
     /// The pictures this session added; layer them over the source with
     /// [`crate::MediaLayer`] to render or save.
     pub fn added_media(&self) -> &crate::AddedMedia {
