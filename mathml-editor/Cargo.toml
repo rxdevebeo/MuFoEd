@@ -1,0 +1,21 @@
+[package]
+name = "mathml-editor"
+description = "Visual Presentation MathML editor widget for egui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+egui = "0.35"
+quick-xml.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+eframe = "0.35"
+sys-locale = "0.3"
+
+[lints]
+workspace = true
