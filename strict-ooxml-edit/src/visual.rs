@@ -74,6 +74,7 @@ pub struct VisualMap {
     revision: u64,
     spans: Vec<Span>,
     objects: Vec<(DrawingPosition, VisualRect)>,
+    formulas: Vec<(TextPosition, VisualRect)>,
     nodes: Vec<(TextPosition, Vec<usize>)>,
 }
 struct Span {
@@ -86,10 +87,47 @@ struct Node {
     text: String,
     cursor: usize,
     drawing: Option<DrawingPosition>,
+    formula: bool,
     /// A tab: its caret anchor spans it, offset 0 before it and 1 after it.
     tab: bool,
 }
 impl VisualMap {
+    /// Rectangles of an inline or display formula; boundary offsets are 0 and 1.
+    pub fn formula_rects(
+        &self,
+        revision: u64,
+        at: &TextPosition,
+    ) -> Result<Vec<VisualRect>, EditError> {
+        self.check(revision)?;
+        Ok(self
+            .formulas
+            .iter()
+            .filter(|(p, _)| same_node(p, at))
+            .map(|(_, r)| *r)
+            .collect())
+    }
+
+    /// The last painted inline or display formula containing a page point.
+    pub fn hit_formula(
+        &self,
+        revision: u64,
+        page: usize,
+        x: f64,
+        y: f64,
+    ) -> Result<Option<TextPosition>, EditError> {
+        self.check(revision)?;
+        if !x.is_finite() || !y.is_finite() {
+            return Err(EditError::InvalidRange);
+        }
+        Ok(self
+            .formulas
+            .iter()
+            .rev()
+            .find(|(_, r)| {
+                r.page == page && x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height
+            })
+            .map(|(p, _)| p.clone()))
+    }
     /// Select across text nodes in logical story order. Reversed endpoints are
     /// accepted; endpoints in different stories or inside graphemes are rejected.
     pub fn selection_between(
@@ -362,16 +400,56 @@ impl Editor<'_> {
         let provider = options.font_provider.make();
         let mut spans = vec![];
         let mut objects = vec![];
+        let mut formulas: Vec<(TextPosition, VisualRect)> = vec![];
         for (page, p) in placement.iter().enumerate() {
             for item in &p.items {
+                // Display equations are placed as block primitives rather
+                // than the single group used by inline equations. Attribute
+                // their ink through the same colour-only disposable copy.
+                if !matches!(item, Item::Group(_)) {
+                    let key = match item {
+                        Item::Text(t) => t.run.color.as_deref(),
+                        Item::Line(l) => Some(l.color.as_str()),
+                        Item::Path(p) => p.stroke.as_deref().or(p.fill.as_deref()),
+                        _ => None,
+                    };
+                    if let Some(node) = key.and_then(|key| nodes.get(key)).filter(|n| n.formula) {
+                        if let Some(rect) = formula_primitive_rect(item, page, provider.as_ref()) {
+                            formulas.push((node.position.clone(), rect));
+                        }
+                    }
+                }
+                if let Item::Group(group) = item {
+                    let formula = group.items.iter().flat_map(Item::leaves).find_map(|child| {
+                        let key = match child {
+                            Item::Text(t) => t.run.color.as_deref(),
+                            Item::Line(l) => Some(l.color.as_str()),
+                            Item::Path(p) => p.stroke.as_deref().or(p.fill.as_deref()),
+                            _ => None,
+                        }?;
+                        nodes.get(key).filter(|node| node.formula)
+                    });
+                    if let Some(node) = formula {
+                        let rect = VisualRect {
+                            page,
+                            x: group.bounds[0],
+                            y: group.bounds[1],
+                            width: group.bounds[2],
+                            height: group.bounds[3],
+                        };
+                        formulas.push((node.position.clone(), rect));
+                    }
+                }
                 let object = match item {
                     Item::Group(group) => {
                         group.items.iter().flat_map(Item::leaves).find_map(|child| {
                             let key = match child {
                                 Item::Image(image) => Some(image.alt.as_str()),
-                                Item::Path(path) => path.fill.as_deref(),
+                                Item::Path(path) => path.fill.as_deref().or(path.stroke.as_deref()),
+                                Item::Rect(rect) => rect.fill.as_deref().or(rect.stroke.as_deref()),
+                                Item::Line(line) => Some(line.color.as_str()),
                                 Item::Text(text) => text.run.color.as_deref(),
-                                _ => None,
+                                Item::Group(_) => None,
                             }?;
                             let at = nodes.get(key)?.drawing.clone()?;
                             Some((
@@ -386,6 +464,24 @@ impl Editor<'_> {
                             ))
                         })
                     }
+                    Item::Text(text) if text.is_caret_anchor() => text
+                        .run
+                        .color
+                        .as_ref()
+                        .and_then(|key| nodes.get(key))
+                        .and_then(|node| node.drawing.clone())
+                        .map(|at| {
+                            (
+                                at,
+                                VisualRect {
+                                    page,
+                                    x: text.x,
+                                    y: text.baseline - text.size_px,
+                                    width: text.width,
+                                    height: text.size_px,
+                                },
+                            )
+                        }),
                     Item::Image(i) => nodes.get(&i.alt).and_then(|n| n.drawing.clone()).map(|at| {
                         (
                             at,
@@ -426,7 +522,7 @@ impl Editor<'_> {
                 let Some(node) = text.run.color.as_ref().and_then(|key| nodes.get_mut(key)) else {
                     continue;
                 };
-                if node.drawing.is_some() {
+                if node.drawing.is_some() || node.formula {
                     continue;
                 }
                 // Text that took an anchor's colour without being the anchor:
@@ -440,10 +536,47 @@ impl Editor<'_> {
                 spans.push(text_span(text, node, page, provider.as_ref())?);
             }
         }
+        let mut merged: Vec<(TextPosition, VisualRect)> = Vec::new();
+        for (position, rect) in formulas {
+            if let Some((_, old)) = merged
+                .iter_mut()
+                .find(|(p, r)| same_node(p, &position) && r.page == rect.page)
+            {
+                let right = (old.x + old.width).max(rect.x + rect.width);
+                let bottom = (old.y + old.height).max(rect.y + rect.height);
+                old.x = old.x.min(rect.x);
+                old.y = old.y.min(rect.y);
+                old.width = right - old.x;
+                old.height = bottom - old.y;
+            } else {
+                merged.push((position, rect));
+            }
+        }
+        let formulas = merged;
+        for (position, rect) in &formulas {
+            spans.push(Span {
+                position: position.clone(),
+                rect: *rect,
+                stops: vec![(0, rect.x), (1, rect.x + rect.width)],
+            });
+        }
+        for (position, rect) in &objects {
+            spans.push(Span {
+                position: TextPosition {
+                    paragraph: position.paragraph.clone(),
+                    inline: position.inline.clone(),
+                    content: position.content.unwrap_or(0),
+                    offset: 0,
+                },
+                rect: *rect,
+                stops: vec![(0, rect.x), (1, rect.x + rect.width)],
+            });
+        }
         Ok(VisualMap {
             revision,
             spans,
             objects,
+            formulas,
             nodes: logical_nodes(&nodes),
         })
     }
@@ -451,9 +584,8 @@ impl Editor<'_> {
 fn logical_nodes(nodes: &BTreeMap<String, Node>) -> Vec<(TextPosition, Vec<usize>)> {
     nodes
         .values()
-        .filter(|n| n.drawing.is_none())
         .map(|n| {
-            if n.tab {
+            if n.tab || n.formula || n.drawing.is_some() {
                 return (n.position.clone(), vec![0, 1]);
             }
             let mut boundaries = vec![0];
@@ -710,10 +842,19 @@ fn stamp_blocks(
                     block,
                 };
                 if !crate::structured::complex_fields(&p.inlines) {
-                    let empty = p.inlines.iter().all(|i| {
-                        matches!(i, Inline::Run(r)
-                        if r.revision.is_none() && r.content.iter().all(|c|
-                            matches!(c, RunContent::Text(t) if t.text.is_empty())))
+                    let empty = p.inlines.iter().all(|i| match i {
+                        Inline::Run(r) => {
+                            r.revision.is_none()
+                                && r.content
+                                    .iter()
+                                    .all(|c| matches!(c, RunContent::Text(t) if t.text.is_empty()))
+                        }
+                        Inline::BookmarkStart(_)
+                        | Inline::BookmarkEnd(_)
+                        | Inline::CommentRangeStart(_)
+                        | Inline::CommentRangeEnd(_)
+                        | Inline::CommentReference(_) => true,
+                        _ => false,
                     });
                     if empty {
                         stamp_empty(p, &address, used, nodes)?;
@@ -772,6 +913,7 @@ fn stamp_empty(
             text: String::new(),
             cursor: 0,
             drawing: None,
+            formula: false,
             tab: false,
         },
     );
@@ -793,6 +935,7 @@ fn next_color(
     }
     Err(VisualError::Edit(EditError::LimitExceeded))
 }
+#[allow(clippy::too_many_lines)]
 fn stamp_inlines(
     inlines: &mut Vec<Inline>,
     address: &Address,
@@ -834,6 +977,7 @@ fn stamp_inlines(
                                 text: t.text.clone(),
                                 cursor: 0,
                                 drawing: None,
+                                formula: false,
                                 tab: false,
                             },
                         );
@@ -857,6 +1001,48 @@ fn stamp_inlines(
             Inline::SdtInline(v) => stamp_inlines(&mut v.inlines, address, &path, used, nodes)?,
             Inline::Directional(v) => stamp_inlines(&mut v.inlines, address, &path, used, nodes)?,
             Inline::Drawing(d) => stamp_drawing(d, address, &path, None, used, nodes)?,
+            Inline::Math(expression) => {
+                let key = next_color(used, nodes)?;
+                stamp_formula(expression, &key);
+                nodes.insert(
+                    key,
+                    Node {
+                        position: TextPosition {
+                            paragraph: address.clone(),
+                            inline: path.clone(),
+                            content: 0,
+                            offset: 0,
+                        },
+                        text: String::new(),
+                        cursor: 0,
+                        drawing: None,
+                        formula: true,
+                        tab: false,
+                    },
+                );
+            }
+            Inline::MathParagraph(paragraph) => {
+                let key = next_color(used, nodes)?;
+                for expression in &mut paragraph.equations {
+                    stamp_formula(expression, &key);
+                }
+                nodes.insert(
+                    key,
+                    Node {
+                        position: TextPosition {
+                            paragraph: address.clone(),
+                            inline: path.clone(),
+                            content: 0,
+                            offset: 0,
+                        },
+                        text: String::new(),
+                        cursor: 0,
+                        drawing: None,
+                        formula: true,
+                        tab: false,
+                    },
+                );
+            }
             Inline::Tab => {
                 // A tab between runs is laid out as a tab in a run is; in the
                 // copy it gets a run of its own to carry the key.
@@ -900,10 +1086,12 @@ fn tab_node(address: &Address, path: &[usize], content: usize) -> Node {
         text: String::new(),
         cursor: 0,
         drawing: None,
+        formula: false,
         tab: true,
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn stamp_drawing(
     d: &mut strict_ooxml_wml::model::Drawing,
     address: &Address,
@@ -927,6 +1115,27 @@ fn stamp_drawing(
             Graphic::Group(g) => {
                 for child in &mut g.children {
                     mark_graphic(child, key);
+                }
+            }
+            Graphic::Chart(refs) => {
+                // A chart nested in a grouped drawing has no independent
+                // drawing anchor; its ink still identifies the parent group.
+                if let Some(chart) = &mut refs.chart {
+                    let chart = std::sync::Arc::make_mut(chart);
+                    for series in &mut chart.series {
+                        series.color = Some(hex_digits(key).to_owned());
+                        for (_, color) in &mut series.point_colors {
+                            hex_digits(key).clone_into(color);
+                        }
+                        if matches!(
+                            chart.kind,
+                            strict_ooxml_wml::model::chart::ChartKind::Pie { .. }
+                        ) {
+                            series.point_colors = (0..series.values.len())
+                                .map(|index| (index, hex_digits(key).to_owned()))
+                                .collect();
+                        }
+                    }
                 }
             }
             _ => {}
@@ -974,17 +1183,26 @@ fn stamp_drawing(
                 .descr = Some(key.clone().into());
             v.graphic.as_mut()
         }
-        DrawingKind::Anchor(v) => v.graphic.as_mut(),
+        DrawingKind::Anchor(v) => {
+            v.doc_pr
+                .get_or_insert_with(strict_ooxml_wml::model::DocPr::default)
+                .descr = Some(key.clone().into());
+            v.graphic.as_mut()
+        }
         DrawingKind::Opaque(_) => return Ok(()),
     };
-    mark_graphic(graphic, &key);
+    // Standalone charts use their full-extent anchor, including empty charts.
+    // Leave their cached series untouched, even on the attribution copy.
+    if !matches!(graphic, Graphic::Chart(_)) {
+        mark_graphic(graphic, &key);
+    }
     nodes.insert(
         key,
         Node {
             position: TextPosition {
                 paragraph: address.clone(),
                 inline: inline.to_vec(),
-                content: content.unwrap_or(usize::MAX),
+                content: content.unwrap_or(0),
                 offset: 0,
             },
             text: String::new(),
@@ -994,8 +1212,74 @@ fn stamp_drawing(
                 inline: inline.to_vec(),
                 content,
             }),
+            formula: false,
             tab: false,
         },
     );
     walk(graphic, address, inline, content, &[], used, nodes)
+}
+
+fn stamp_formula(expression: &mut strict_ooxml_wml::model::MathExpression, key: &str) {
+    for node in &mut expression.nodes {
+        use strict_ooxml_wml::model::math::MathNode;
+        let control = match node {
+            MathNode::Run(n) => &mut n.properties.control,
+            MathNode::Fraction(n) => &mut n.control,
+            MathNode::Radical(n) => &mut n.control,
+            MathNode::Superscript(n) => &mut n.control,
+            MathNode::Subscript(n) => &mut n.control,
+            MathNode::SubSuperscript(n) => &mut n.control,
+            MathNode::PreScript(n) => &mut n.control,
+            MathNode::NaryOperator(n) => &mut n.control,
+            MathNode::Delimiter(n) => &mut n.control,
+            MathNode::Function(n) => &mut n.control,
+            MathNode::Limit(n) => &mut n.control,
+            MathNode::Matrix(n) => &mut n.control,
+            MathNode::EquationArray(n) => &mut n.control,
+            MathNode::Accent(n) => &mut n.control,
+            MathNode::Bar(n) => &mut n.control,
+            MathNode::GroupCharacter(n) => &mut n.control,
+            MathNode::Boxed(n) => &mut n.control,
+            MathNode::BorderBox(n) => &mut n.control,
+            MathNode::Phantom(n) => &mut n.control,
+            MathNode::Unknown(_) => continue,
+        };
+        let props = control.get_or_insert_with(Default::default);
+        props.color = Some(Color::new(hex_digits(key)));
+        props.color_theme = None;
+    }
+}
+
+fn formula_primitive_rect(
+    item: &Item,
+    page: usize,
+    font: &dyn strict_ooxml_render_svg::FontProvider,
+) -> Option<VisualRect> {
+    let (x, y, width, height) = match item {
+        Item::Text(t) => {
+            let family = chosen_family(&t.run, &t.text);
+            let metrics = font.metrics(&family, t.run.bold, t.run.italic);
+            (
+                t.x,
+                t.baseline - t.size_px * metrics.ascender,
+                t.width,
+                t.size_px * (metrics.ascender + metrics.descender),
+            )
+        }
+        Item::Line(l) => (
+            l.x1.min(l.x2) - l.width / 2.0,
+            l.y1.min(l.y2) - l.width / 2.0,
+            (l.x2 - l.x1).abs() + l.width,
+            (l.y2 - l.y1).abs() + l.width,
+        ),
+        Item::Path(p) => (p.x, p.y, p.w, p.h),
+        _ => return None,
+    };
+    Some(VisualRect {
+        page,
+        x,
+        y,
+        width,
+        height,
+    })
 }

@@ -401,3 +401,213 @@ fn leading_spaces_have_carets_before_the_first_word() {
         x(3)
     );
 }
+
+#[test]
+fn empty_annotated_paragraph_keeps_its_virtual_caret() {
+    let (map, _) = tab_map(
+        "<w:p><w:bookmarkStart w:id=\"1\" w:name=\"Start\"/><w:bookmarkEnd w:id=\"1\"/></w:p>",
+    );
+    let pos = at(vec![], 0, 0);
+    let rect = map.caret(0, &pos).unwrap()[0];
+    assert_eq!(
+        map.hit_test(0, rect.page, rect.x, rect.y).unwrap(),
+        Some(pos)
+    );
+}
+
+#[test]
+fn formulas_have_independent_hit_boxes_and_two_caret_boundaries() {
+    let body = concat!("<w:p xmlns:m=\"http://purl.oclc.org/ooxml/officeDocument/math\">",
+        "<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>",
+        "<m:oMath><m:f><m:num><m:r><m:t>a</m:t></m:r></m:num><m:den><m:r><m:t>b</m:t></m:r></m:den></m:f></m:oMath></w:p>");
+    let bytes = DocxBuilder::strict().body(body).build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let mut document = parse_document(&package, &ParseOptions::default()).unwrap();
+    let original = document.body.clone();
+    let editor = Editor::new(&mut document, EditLimits::default()).unwrap();
+    let map = editor
+        .visual_map(0, &RenderOptions::default(), Some(&package))
+        .unwrap();
+    for index in 0..2 {
+        let pos = at(vec![index], 0, 0);
+        let rects = map.formula_rects(0, &pos).unwrap();
+        assert_eq!(rects.len(), 1);
+        let rect = rects[0];
+        assert_eq!(
+            map.hit_formula(
+                0,
+                rect.page,
+                rect.x + rect.width / 2.0,
+                rect.y + rect.height / 2.0
+            )
+            .unwrap(),
+            Some(pos.clone())
+        );
+        let before = map.caret(0, &pos).unwrap()[0];
+        let after = map.caret(0, &at(vec![index], 0, 1)).unwrap()[0];
+        assert!(after.x > before.x);
+        assert_eq!(map.selection(0, &pos, 1).unwrap(), rects);
+        assert_eq!(map.formula_rects(1, &pos), Err(EditError::StaleRevision));
+    }
+    assert_eq!(
+        map.hit_formula(0, 0, f64::NAN, 0.0),
+        Err(EditError::InvalidRange)
+    );
+    assert_eq!(
+        editor.document().body,
+        original,
+        "attribution leaves the document intact"
+    );
+}
+
+#[test]
+fn display_formulas_have_hit_boxes_without_changing_the_model_or_placement() {
+    let body = concat!("<w:p xmlns:m=\"http://purl.oclc.org/ooxml/officeDocument/math\"><m:oMathPara>",
+        "<m:oMathParaPr><m:jc m:val=\"center\"/></m:oMathParaPr>",
+        "<m:oMath><m:f><m:num><m:r><m:t>a</m:t></m:r></m:num><m:den><m:r><m:t>b</m:t></m:r></m:den></m:f></m:oMath>",
+        "<m:oMath><m:r><m:t>+c</m:t></m:r></m:oMath></m:oMathPara></w:p>");
+    let bytes = DocxBuilder::strict().body(body).build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let mut document = parse_document(&package, &ParseOptions::default()).unwrap();
+    let before = document.clone();
+    let options = RenderOptions::default().caret_anchors(true);
+    let placed = place_pages(&document, &options, Some(&package)).unwrap();
+    let painted = strict_ooxml_render_svg::paint_page(&placed[0], &options);
+    let editor = Editor::new(&mut document, EditLimits::default()).unwrap();
+    let map = editor
+        .visual_map_placed(0, &options, Some(&package), &placed)
+        .unwrap();
+    let pos = TextPosition {
+        paragraph: Address::body(0),
+        inline: vec![0],
+        content: 0,
+        offset: 0,
+    };
+    let rects = map.formula_rects(0, &pos).unwrap();
+    assert_eq!(rects.len(), 1);
+    let rect = rects[0];
+    assert!(rect.width > 15.0 && rect.height > 15.0, "{rect:?}");
+    assert_eq!(
+        map.hit_formula(
+            0,
+            rect.page,
+            rect.x + rect.width / 2.0,
+            rect.y + rect.height / 2.0
+        )
+        .unwrap(),
+        Some(pos.clone())
+    );
+    assert!(!map.caret(0, &pos).unwrap().is_empty());
+    assert!(!map
+        .caret(0, &TextPosition { offset: 1, ..pos })
+        .unwrap()
+        .is_empty());
+    assert_eq!(editor.document().body, before.body);
+    let again = place_pages(editor.document(), &options, Some(&package)).unwrap();
+    assert_eq!(
+        strict_ooxml_render_svg::paint_page(&again[0], &options),
+        painted
+    );
+}
+
+#[test]
+fn every_chart_kind_has_one_full_frame_and_carets_even_without_data() {
+    use std::sync::Arc;
+    use strict_ooxml_edit::{chart_drawing, DrawingPosition};
+    use strict_ooxml_wml::model::chart::*;
+    use strict_ooxml_wml::model::{Emu, Inline};
+    for kind in [
+        ChartKind::Bar {
+            horizontal: false,
+            grouping: BarGrouping::Clustered,
+        },
+        ChartKind::Bar {
+            horizontal: true,
+            grouping: BarGrouping::Stacked,
+        },
+        ChartKind::Bar {
+            horizontal: false,
+            grouping: BarGrouping::PercentStacked,
+        },
+        ChartKind::Line,
+        ChartKind::Area,
+        ChartKind::Scatter,
+        ChartKind::Pie { doughnut: false },
+        ChartKind::Pie { doughnut: true },
+    ] {
+        for values in [
+            vec![Some(1.0), Some(2.0)],
+            vec![Some(0.0), Some(0.0)],
+            vec![None, None],
+            vec![],
+        ] {
+            let chart = ChartData {
+                kind: kind.clone(),
+                title: Some("Title".into()),
+                categories: vec!["A".into(), "B".into()],
+                series: vec![ChartSeries {
+                    name: Some("Series".into()),
+                    values,
+                    ..Default::default()
+                }],
+                legend: true,
+                legend_position: LegendPosition::Bottom,
+                unsupported: vec![],
+            };
+            let bytes = DocxBuilder::strict().body("<w:p/>").build();
+            let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+            let mut document = parse_document(&package, &ParseOptions::default()).unwrap();
+            let strict_ooxml_wml::model::Block::Paragraph(paragraph) = &mut document.body.blocks[0]
+            else {
+                panic!("paragraph")
+            };
+            paragraph.inlines = vec![Inline::Drawing(chart_drawing(
+                "rIdChart",
+                Arc::new(chart),
+                Emu(2_857_500),
+                Emu(1_714_500),
+                1,
+                "Chart",
+            ))];
+            let before = document.body.clone();
+            let editor = Editor::new(&mut document, EditLimits::default()).unwrap();
+            let options = RenderOptions::default();
+            let map = editor.visual_map(0, &options, Some(&package)).unwrap();
+            let position = DrawingPosition {
+                paragraph: Address::body(0),
+                inline: vec![0],
+                content: None,
+            };
+            let rects = map.drawing_rects(0, &position).unwrap();
+            assert_eq!(rects.len(), 1, "{kind:?}");
+            let r = rects[0];
+            assert!(
+                (r.width - 300.0).abs() < 1e-6 && (r.height - 180.0).abs() < 1e-6,
+                "{kind:?}: {r:?}"
+            );
+            for (x, y) in [
+                (r.x + 1.0, r.y + 1.0),
+                (r.x + r.width - 1.0, r.y + r.height - 1.0),
+            ] {
+                assert_eq!(
+                    map.hit_drawing(0, r.page, x, y).unwrap(),
+                    Some(position.clone()),
+                    "{kind:?}"
+                );
+            }
+            let start = at(vec![0], 0, 0);
+            let end = at(vec![0], 0, 1);
+            assert!(
+                (map.caret(0, &end).unwrap()[0].x - map.caret(0, &start).unwrap()[0].x - r.width)
+                    .abs()
+                    < 1e-6
+            );
+            assert_eq!(
+                map.hit_test(0, r.page, r.x + r.width + 10.0, r.y + r.height + 10.0)
+                    .unwrap(),
+                Some(end)
+            );
+            assert_eq!(editor.document().body, before);
+        }
+    }
+}
