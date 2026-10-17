@@ -179,6 +179,30 @@ fn pdf_red_box(bytes: &[u8]) -> (f64, f64, f64, f64) {
 }
 
 #[test]
+fn f19_text_and_vector_is_not_lossless_when_vector_missing() {
+    // A path with more points than a shape keeps is still not dropped
+    // without a name, including on a page that still has readable text.
+    use std::fmt::Write as _;
+    let mut path = String::from("1 0 0 rg 100 100 m ");
+    for step in 0..20_001 {
+        let _ = write!(path, "{} {} l ", 100 + step % 50, 100 + (step / 50) % 50);
+    }
+    path.push_str("h f 0 0 0 rg");
+    for mode in [Mode::Visual, Mode::Semantic] {
+        let (svg, report, _pdf) = round_trip(mode, &path);
+        assert!(
+            report.contains("vector.unsupported"),
+            "{mode:?} names the path: {report}"
+        );
+        assert!(
+            !report.contains("nothing inferred or lost"),
+            "{mode:?} must not call the page lossless: {report}"
+        );
+        assert_eq!(visible_text(&svg), "Here", "{mode:?} keeps the text once");
+    }
+}
+
+#[test]
 fn f19_a_triangle_survives_as_its_outline() {
     // A triangle is no rectangle: it is kept as a custom geometry of its
     // outline, where the page drew it, and the text is kept once.

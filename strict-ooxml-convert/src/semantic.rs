@@ -375,6 +375,11 @@ fn paragraphs_of(
     // took eleven.
     let mut furthest: Option<f64> = None;
     let edges = text_edges(lines);
+    let starts: Vec<f64> = lines
+        .iter()
+        .filter(|line| !line.text().trim().is_empty())
+        .map(|line| line.x)
+        .collect();
     for (at, line) in lines.iter().enumerate() {
         // Spaces on the baseline of the line before show nothing, and as a
         // paragraph of their own each took a line's height: a letter's row of
@@ -429,7 +434,7 @@ fn paragraphs_of(
                 );
             }
             let mut fresh = new_paragraph(line, heading, origin);
-            align_paragraph(&mut fresh, line, edges);
+            align_paragraph(&mut fresh, line, edges, &starts);
             if let Some(furthest) = furthest {
                 set_paragraph_gap(&mut fresh, line, line.baseline - furthest, pitch / body);
             }
@@ -834,7 +839,12 @@ fn text_edges(lines: &[GlyphLine]) -> Option<(f64, f64)> {
 /// substitute font a little wider than the source's then ran past the right
 /// margin, and a cover's right-aligned title broke word by word and its date
 /// letter by letter.
-fn align_paragraph(paragraph: &mut Paragraph, line: &GlyphLine, edges: Option<(f64, f64)>) {
+fn align_paragraph(
+    paragraph: &mut Paragraph,
+    line: &GlyphLine,
+    edges: Option<(f64, f64)>,
+    starts: &[f64],
+) {
     let Some((left, right)) = edges else {
         return;
     };
@@ -843,10 +853,21 @@ fn align_paragraph(paragraph: &mut Paragraph, line: &GlyphLine, edges: Option<(f
     }
     let span = right - left;
     let indent = line.x - left;
+    // Lines that share a start are a column's edge or an indent, not text
+    // pushed to the right: a two-column page's right column ends at the right
+    // edge too.
+    if starts
+        .iter()
+        .filter(|start| (**start - line.x).abs() <= 1.5)
+        .count()
+        >= 3
+    {
+        return;
+    }
     let end = line.x + line.width;
     let alignment = if (end - right).abs() <= (span * 0.004).max(1.5) && indent > span * 0.15 {
         Justification::End
-    } else if ((line.x + end) / 2.0 - (left + right) / 2.0).abs() <= span * 0.01 + 1.0
+    } else if (f64::midpoint(line.x, end) - f64::midpoint(left, right)).abs() <= span * 0.01 + 1.0
         && indent > span * 0.08
     {
         Justification::Center

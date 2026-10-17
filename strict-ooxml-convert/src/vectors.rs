@@ -148,7 +148,7 @@ fn outline(vector: &Vector, page_height: f64) -> Option<(Rect, CustomGeometry)> 
         .iter()
         .map(|subpath| subpath.points.len())
         .sum();
-    if total < 2 || total > MAX_PATH_POINTS {
+    if !(2..=MAX_PATH_POINTS).contains(&total) {
         return None;
     }
     let mut placed: Vec<(Vec<(f64, f64)>, bool)> = Vec::with_capacity(vector.subpaths.len());

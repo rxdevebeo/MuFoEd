@@ -239,7 +239,8 @@ package = "strict-ooxml-convert"
 tests = [
     "f19_text_and_vector_is_not_lossless_when_vector_missing",
     "f19_supported_rectangle_survives",
-    "f19_unsupported_cubic_is_named",
+    "f19_a_triangle_survives_as_its_outline",
+    "f19_a_cubic_is_kept_flattened",
 ]
 
 [[task]]
