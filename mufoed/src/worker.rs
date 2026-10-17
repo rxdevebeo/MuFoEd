@@ -44,6 +44,7 @@ use strict_ooxml_core::error::SourceLocation;
 use crate::formats::{self, Kind, Source};
 use crate::nav;
 mod rich_paste;
+pub(crate) mod scheme;
 
 /// A recognition result tied to the original drawing and document revision.
 #[derive(Clone, Debug)]
@@ -57,6 +58,8 @@ pub(crate) struct FormulaRecognition {
 /// What the interface asks of a document.
 #[derive(Debug)]
 pub(crate) enum Request {
+    SchemeOfObject,
+    PutScheme(Box<scheme::Plan>),
     PasteRich {
         content: crate::clipboard::Rich,
         fallback: String,
@@ -739,6 +742,7 @@ pub(crate) struct CommentView {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ContextObject {
+    Scheme,
     Picture,
     Chart,
     Formula,
@@ -847,6 +851,7 @@ pub(crate) struct RulerInfo {
 /// A selected drawing, as the canvas and the ribbon show it.
 #[derive(Clone, Debug)]
 pub(crate) struct ObjectView {
+    pub(crate) scheme: bool,
     /// Where it is drawn (more than one rect for a header's repeats).
     pub(crate) rects: Vec<VisualRect>,
     /// Its size, in EMU.
@@ -906,6 +911,7 @@ pub(crate) struct Note {
 
 /// What a document tells the interface.
 pub(crate) enum Reply {
+    Scheme(Box<scheme::Plan>),
     FormulaRecognition(Box<FormulaRecognition>),
     CleanupResult(bool),
     Context(ContextState),
@@ -1285,6 +1291,7 @@ enum Outcome {
 }
 
 struct Worker<'a, 's> {
+    scheme_sources: Vec<(strict_ooxml::model::Graphic, diagram_editor::Diagram)>,
     session: Session<'a>,
     options: RenderOptions,
     system_fonts: bool,
@@ -1337,6 +1344,7 @@ impl<'a, 's> Worker<'a, 's> {
         let saved_revision = session.revision();
         Self {
             session,
+            scheme_sources: vec![],
             options,
             system_fonts: false,
             font_families: Vec::new(),
@@ -1450,6 +1458,8 @@ impl<'a, 's> Worker<'a, 's> {
                 | Request::Copy { .. }
                 | Request::Click { .. }
                 | Request::ChartOfObject
+                | Request::SchemeOfObject
+                | Request::PutScheme(_)
                 | Request::PutChart(_)
                 | Request::Save { .. }
                 | Request::SystemFonts(_)
@@ -1587,6 +1597,14 @@ impl<'a, 's> Worker<'a, 's> {
                 self.send(Reply::Chart(data));
                 Outcome::Quiet
             }
+            Request::SchemeOfObject => {
+                match self.scheme_plan() {
+                    Ok(plan) => self.send(Reply::Scheme(Box::new(plan))),
+                    Err(error) => self.note("scheme.failed", error, true),
+                }
+                Outcome::Quiet
+            }
+            Request::PutScheme(plan) => self.put_scheme(*plan),
             Request::FormulaAtCaret => {
                 let found = self.formula_at_caret().map(Box::new);
                 self.send(Reply::Formula(found));
@@ -2278,7 +2296,12 @@ impl<'a, 's> Worker<'a, 's> {
                 self.cells = None;
                 return Outcome::Moved;
             }
-            if let Ok(Some(object)) = map.hit_drawing(revision, page, x, y) {
+            if let Some(object) = map
+                .hit_drawing(revision, page, x, y)
+                .ok()
+                .flatten()
+                .or_else(|| self.scheme_hit(page, x, y))
+            {
                 if let Some(offset) = self.object_offset(&object) {
                     self.caret = Some(Logical {
                         paragraph: object.paragraph.clone(),
@@ -2436,17 +2459,18 @@ impl<'a, 's> Worker<'a, 's> {
                 .any(contains)
             })
             || self.cell_rects().iter().any(contains);
-        let object_hit = self.map.as_ref().is_some_and(|map| {
-            map.hit_drawing(self.session.revision(), page, x, y)
-                .ok()
-                .flatten()
-                .is_some()
-                || map
-                    .hit_formula(self.session.revision(), page, x, y)
+        let object_hit = self.scheme_hit(page, x, y).is_some()
+            || self.map.as_ref().is_some_and(|map| {
+                map.hit_drawing(self.session.revision(), page, x, y)
                     .ok()
                     .flatten()
                     .is_some()
-        });
+                    || map
+                        .hit_formula(self.session.revision(), page, x, y)
+                        .ok()
+                        .flatten()
+                        .is_some()
+            });
         if object_hit || !selected {
             self.click(page, x, y, false, false);
         }
@@ -2455,6 +2479,8 @@ impl<'a, 's> Worker<'a, 's> {
                 ContextObject::Formula
             } else if o.chart {
                 ContextObject::Chart
+            } else if o.scheme {
+                ContextObject::Scheme
             } else if o.picture {
                 ContextObject::Picture
             } else {
@@ -2473,6 +2499,14 @@ impl<'a, 's> Worker<'a, 's> {
 
     fn select_word(&mut self, page: usize, x: f64, y: f64) -> Outcome {
         self.ensure_layout();
+        if self.scheme_hit(page, x, y).is_some() {
+            self.click(page, x, y, false, false);
+            match self.scheme_plan() {
+                Ok(plan) => self.send(Reply::Scheme(Box::new(plan))),
+                Err(error) => self.note("scheme.failed", error, true),
+            }
+            return Outcome::Moved;
+        }
         if let Some(at) = self.map.as_ref().and_then(|map| {
             map.hit_formula(self.session.revision(), page, x, y)
                 .ok()
@@ -3220,17 +3254,21 @@ impl<'a, 's> Worker<'a, 's> {
                 rects,
                 picture: false,
                 chart: false,
+                scheme: false,
                 formula: true,
                 wrap: WrapStyle::Inline,
             });
         }
         let object = self.object.as_ref()?;
         let map = self.map.as_ref()?;
-        let rects = map
+        let mut rects = map
             .drawing_rects(self.session.revision(), object)
             .ok()
             .filter(|rects| !rects.is_empty())?;
         let drawing = self.drawing_at(object)?;
+        if scheme::is_scheme(&drawing) {
+            rects = scheme::frame(&drawing, &rects, self.options.scale);
+        }
         let (extent, graphic) = match &drawing.kind {
             DrawingKind::Inline(v) => (v.extent, Some(&*v.graphic)),
             DrawingKind::Anchor(v) => (v.extent, Some(&*v.graphic)),
@@ -3242,6 +3280,7 @@ impl<'a, 's> Worker<'a, 's> {
             height: extent.map_or(0, |e| e.cy.0),
             picture: matches!(graphic, Some(Graphic::Picture(_))),
             chart: matches!(graphic, Some(Graphic::Chart(_))),
+            scheme: scheme::is_scheme(&drawing),
             formula: false,
             wrap: wrap_style(&drawing),
         })
@@ -9123,7 +9162,7 @@ mod tests {
         });
     }
 
-    fn with_worker_replies(check: impl FnOnce(&mut Worker<'_, '_>, &Receiver<Reply>)) {
+    pub(super) fn with_worker_replies(check: impl FnOnce(&mut Worker<'_, '_>, &Receiver<Reply>)) {
         let mut loaded = formats::open(&Source::New, &OpenControl::new()).unwrap();
         let editor = loaded.document.edit(EditLimits::default()).unwrap();
         let (tx, rx) = std::sync::mpsc::channel();

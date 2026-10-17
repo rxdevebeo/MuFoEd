@@ -10,6 +10,7 @@ use strict_ooxml::Mode;
 mod ai_ui;
 mod chart_ui;
 pub(crate) mod recognition_ui;
+mod scheme_ui;
 
 use crate::canvas;
 use crate::formats::{self, ImportOptions, Kind, OcrSettings, Source};
@@ -43,6 +44,7 @@ pub(crate) enum Action {
     FormulaDialog,
     /// The chart dialog, for the selected chart or a new one.
     ChartDialog,
+    SchemeDialog,
     AiLanguage(String),
     New,
     OpenDialog,
@@ -155,6 +157,7 @@ pub(crate) enum Zoom {
 /// Modal and floating dialogs.
 #[derive(Clone, Debug)]
 pub(crate) enum Dialog {
+    Scheme(Box<scheme_ui::SchemeDialog>),
     FormulaRecognition(Box<recognition_ui::RecognitionDialog>),
     Cleanup(crate::cleanup::Options),
     Paragraph(Box<crate::paragraph::Dialog>),
@@ -925,6 +928,11 @@ impl App {
                     tab.send(Request::ChartOfObject);
                 }
             }
+            Action::SchemeDialog => {
+                if let Some(tab) = self.active_tab() {
+                    tab.send(Request::SchemeOfObject);
+                }
+            }
             Action::FormulaDialog => {
                 if let Some(tab) = self.active_tab() {
                     tab.send(Request::FormulaAtCaret);
@@ -1027,6 +1035,10 @@ impl App {
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             for event in tab.poll() {
                 match event {
+                    TabEvent::Scheme(plan) => match scheme_ui::SchemeDialog::new(tab.id, plan) {
+                        Ok(dialog) => self.dialog = Some(Dialog::Scheme(Box::new(dialog))),
+                        Err(error) => messages.push((error, true)),
+                    },
                     TabEvent::FormulaRecognition(plan) => {
                         self.dialog = Some(Dialog::FormulaRecognition(Box::new(
                             recognition_ui::RecognitionDialog::new(ctx, tab.id, plan),
@@ -1782,6 +1794,10 @@ impl App {
             "exit" => Some(Dialog::ConfirmExit),
             "dictionary" => Some(Dialog::Dictionary { code: "ru" }),
             "font-pack" => Some(Dialog::FontPack { id: "devanagari" }),
+            "scheme" => {
+                actions.push(Action::SchemeDialog);
+                None
+            }
             "chart" => {
                 let categories: Vec<String> = ["Q1", "Q2", "Q3", "Q4"].map(str::to_owned).to_vec();
                 let series: Vec<String> = ["A", "B"].map(str::to_owned).to_vec();
@@ -3225,6 +3241,19 @@ impl App {
             Dialog::Chart(mut dialog) => {
                 if self.chart_dialog_ui(ctx, &mut dialog, actions) {
                     next = Some(Dialog::Chart(dialog));
+                } else {
+                    keep = false;
+                }
+            }
+            Dialog::Scheme(mut dialog) => {
+                let (keep_open, apply) = dialog.show(ctx, &self.i18n);
+                if apply {
+                    if let Some(tab) = self.tabs.iter().find(|tab| tab.id == dialog.tab) {
+                        tab.send(Request::PutScheme(dialog.plan.clone()));
+                    }
+                }
+                if keep_open {
+                    next = Some(Dialog::Scheme(dialog));
                 } else {
                     keep = false;
                 }

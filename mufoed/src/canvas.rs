@@ -863,6 +863,9 @@ fn context_menu(ui: &mut egui::Ui, tab: &mut DocTab, i18n: &crate::i18n::I18n) {
     ui.separator();
     if let Some(object) = context.object {
         match object {
+            ContextObject::Scheme => {
+                item(ui, "scheme.edit", context.editable, Action::SchemeDialog);
+            }
             ContextObject::Chart => {
                 item(ui, "cmd.chart_edit", context.editable, Action::ChartDialog);
             }

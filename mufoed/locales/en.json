@@ -466,6 +466,7 @@
       "no_ocr_build": "This build has no recognition (feature `ocr`)."
     },
     "button": {
+      "apply": "Apply",
       "ok": "OK",
       "cancel": "Cancel",
       "close": "Close",
@@ -822,6 +823,18 @@
       "row_above": "Insert row above",
       "row_below": "Insert row below",
       "delete_row": "Delete selected rows"
+    },
+    "scheme": {
+      "insert": "Diagram",
+      "edit": "Edit diagram",
+      "tip": "Insert a diagram or edit the selected one",
+      "title": "Shapes and diagram editor",
+      "storage_note": "Exact connections are saved in JSON. After reopening DOCX, connections are inferred from geometry.",
+      "load_json": "Open JSON…",
+      "save_json": "Save JSON…",
+      "failed": "Could not update diagram",
+      "stale": "The document changed. Open the diagram editor again.",
+      "applied": "Diagram applied with notes"
     },
     "chart": {
       "title": "Chart",

@@ -1060,6 +1060,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "diagram-editor"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "png",
+ "quick-xml",
+ "rfd",
+ "serde",
+ "serde_json",
+ "strict-ooxml",
+ "strict-ooxml-core",
+]
+
+[[package]]
 name = "digest"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2696,6 +2711,7 @@ dependencies = [
 name = "mufoed"
 version = "0.1.0"
 dependencies = [
+ "diagram-editor",
  "eframe",
  "encoding_rs",
  "png",

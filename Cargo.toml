@@ -29,6 +29,7 @@ members = [
     "strict-ooxml-view",
     "mufoed",
     "mathml-editor",
+    "diagram-editor",
     "strict-ooxml-testkit",
     "xtool",
 ]

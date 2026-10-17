@@ -30,6 +30,7 @@ pub(crate) enum Icon {
     Print,
     Toc,
     Chart,
+    Scheme,
     Columns,
     Spelling,
     Sparkle,
@@ -538,6 +539,33 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                 points,
                 stroke(Color32::from_rgb(220, 40, 40), thin * 1.3),
             ));
+        }
+        Icon::Scheme => {
+            let top =
+                Rect::from_min_max(rect.min + rect.size() * 0.12, rect.min + rect.size() * 0.46);
+            let bottom =
+                Rect::from_min_max(rect.min + rect.size() * 0.54, rect.min + rect.size() * 0.88);
+            painter.rect_stroke(top, 2.0, Stroke::new(1.5, color), egui::StrokeKind::Inside);
+            painter.rect_stroke(
+                bottom,
+                2.0,
+                Stroke::new(1.5, accent),
+                egui::StrokeKind::Inside,
+            );
+            painter.line_segment(
+                [
+                    top.center_bottom(),
+                    egui::pos2(top.center().x, bottom.center().y),
+                ],
+                Stroke::new(1.5, color),
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(top.center().x, bottom.center().y),
+                    bottom.left_center(),
+                ],
+                Stroke::new(1.5, color),
+            );
         }
         Icon::Chart => {
             // Three columns on an axis.

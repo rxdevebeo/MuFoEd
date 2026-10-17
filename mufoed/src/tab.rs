@@ -25,6 +25,7 @@ pub(crate) enum Status {
 
 /// What a tab has to tell the application after a poll.
 pub(crate) enum TabEvent {
+    Scheme(Box<crate::worker::scheme::Plan>),
     FormulaRecognition(Box<crate::worker::FormulaRecognition>),
     CleanupResult(bool),
     CommentSelected,
@@ -379,6 +380,7 @@ impl DocTab {
             Reply::AiSource { job, source } => events.push(TabEvent::AiSource { job, source }),
             Reply::Formula(found) => events.push(TabEvent::Formula(found)),
             Reply::Chart(data) => events.push(TabEvent::Chart(data)),
+            Reply::Scheme(plan) => events.push(TabEvent::Scheme(plan)),
             Reply::Spelling { errors, missing } => {
                 self.spelling = errors;
                 if !missing.is_empty() {

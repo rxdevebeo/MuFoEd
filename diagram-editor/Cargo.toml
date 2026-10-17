@@ -1,0 +1,33 @@
+[package]
+name = "diagram-editor"
+description = "Native egui shape and diagram editor MVP"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+default = []
+demo = ["dep:eframe", "dep:rfd", "dep:png", "docx"]
+docx = ["dep:strict-ooxml", "dep:strict-ooxml-core"]
+
+[dependencies]
+egui = "0.35"
+serde.workspace = true
+serde_json.workspace = true
+eframe = { version = "0.35", optional = true }
+rfd = { version = "0.17", optional = true }
+png = { workspace = true, optional = true }
+strict-ooxml = {path="../strict-ooxml",optional=true,default-features=false,features=["rtf","write","svg"]}
+strict-ooxml-core = {path="../strict-ooxml-core",optional=true}
+
+[dev-dependencies]
+quick-xml.workspace = true
+
+[[bin]]
+name = "diagram-editor-demo"
+path = "src/main.rs"
+required-features = ["demo"]
+
+[lints]
+workspace = true

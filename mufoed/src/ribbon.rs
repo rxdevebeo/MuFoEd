@@ -1791,6 +1791,21 @@ fn insert(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
         ) {
             actions.push(Action::ChartDialog);
         }
+        let scheme_selected = s.object.is_some_and(|o| o.scheme);
+        if big_clicked(
+            ui,
+            Icon::Scheme,
+            s.t(if scheme_selected {
+                "scheme.edit"
+            } else {
+                "scheme.insert"
+            }),
+            s.t("scheme.tip"),
+            editable,
+            p,
+        ) {
+            actions.push(Action::SchemeDialog);
+        }
     });
 }
 
