@@ -451,10 +451,46 @@ def cmd_corpora(args) -> int:
     return 0
 
 
+def cmd_overlap(args) -> int:
+    """Runs the overlap metric over a label's store (see `overlap.py`)."""
+    import overlap
+
+    argv = [
+        "report",
+        "--store",
+        str(args.store),
+        "--data-root",
+        str(args.data_root),
+        "--label",
+        resolve_label(args),
+        "--side",
+        args.side,
+        "--min-ratio",
+        str(args.min_ratio),
+        "--max-pages",
+        str(args.max_pages),
+        "--top",
+        str(args.top),
+        "--images-per-doc",
+        str(args.images_per_doc),
+    ]
+    for corpus in args.corpus or ():
+        argv += ["--corpus", corpus]
+    if args.limit:
+        argv += ["--limit", str(args.limit)]
+    if args.with_paths:
+        argv.append("--with-paths")
+    if args.no_images:
+        argv.append("--no-images")
+    if args.verbose:
+        argv.append("--verbose")
+    return overlap.main(argv)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name, fn in (("capture", cmd_capture), ("render", cmd_render), ("compare", cmd_compare), ("report", cmd_report), ("run", cmd_run), ("corpora", cmd_corpora)):
+    for name, fn in (("capture", cmd_capture), ("render", cmd_render), ("compare", cmd_compare), ("report", cmd_report), ("run", cmd_run), ("corpora", cmd_corpora), ("overlap", cmd_overlap)):
         p = sub.add_parser(name)
         p.set_defaults(fn=fn)
         p.add_argument("--store", type=Path, default=common.default_store(), help="output store (default: <main copy>/wps-qa)")
@@ -473,6 +509,15 @@ def main(argv: list[str] | None = None) -> int:
             action="append",
             help="render: an extra argument for `to-pdf` (repeatable; e.g. --to-pdf-arg=--system-fonts)",
         )
+        if name == "overlap":
+            p.add_argument("--side", choices=["ours", "ref", "both"], default="ours", help="which PDFs to measure (default ours; both also measures the WPS reference)")
+            p.add_argument("--min-ratio", type=float, default=0.15, help="overlap share of the smaller box to report")
+            p.add_argument("--with-paths", action="store_true", help="also match vector paths (borders, rules) against text and images")
+            p.add_argument("--max-pages", type=int, default=0, help="pages per document to analyze (0 = all)")
+            p.add_argument("--top", type=int, default=40, help="worst documents per side in the report")
+            p.add_argument("--images-per-doc", type=int, default=2, help="overlay images written per document with findings")
+            p.add_argument("--no-images", action="store_true", help="write no overlay images")
+            p.add_argument("--verbose", action="store_true", help="print each document as it is measured")
     args = parser.parse_args(argv)
     args.store = args.store.resolve()
     return args.fn(args)
