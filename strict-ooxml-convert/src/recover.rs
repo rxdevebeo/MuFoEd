@@ -291,10 +291,8 @@ pub(crate) fn recover_pages(
                     layout::rebuild(&*recovery, &pixels, &frame, options, report)
                 {
                     report.recovered_pages += 1;
-                    report.recovered_paragraphs += items
-                        .iter()
-                        .map(RecoveredItem::paragraphs)
-                        .sum::<usize>();
+                    report.recovered_paragraphs +=
+                        items.iter().map(RecoveredItem::paragraphs).sum::<usize>();
                     out.blocks.entry(index).or_default().push(RecoveredBlock {
                         items,
                         whole_page: true,
