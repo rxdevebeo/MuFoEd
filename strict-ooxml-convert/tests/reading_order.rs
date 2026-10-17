@@ -183,3 +183,38 @@ fn a_page_that_ends_short_breaks_before_the_next() {
         .collect();
     assert_eq!(broken, ["Two"]);
 }
+
+#[test]
+fn a_blank_page_is_a_page() {
+    // A blank page between two pages keeps its place: without it every page
+    // after it was one page early.
+    let mut pdf = PdfBuilder::new();
+    let font = pdf.object(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    );
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+    pdf.page_with(b"BT /F1 12 Tf 72 700 Td (One) Tj ET", &resources);
+    pdf.page_with(b"", &resources);
+    pdf.page_with(b"BT /F1 12 Tf 72 700 Td (Three) Tj ET", &resources);
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let breaks: Vec<String> = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Paragraph(paragraph)
+                if paragraph.props.page_break_before
+                    == strict_ooxml_wml::model::values::TriState::On =>
+            {
+                Some(outline(std::slice::from_ref(block)).concat())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(breaks, ["", "Three"]);
+}

@@ -83,3 +83,58 @@ fn right_and_centred_lines_are_aligned() {
         "{aligned:?}"
     );
 }
+
+#[test]
+fn a_page_number_on_its_entrys_line_is_reached_by_a_tab() {
+    let mut pdf = PdfBuilder::new();
+    let widths = vec!["500"; 95].join(" ");
+    let font = pdf.object(format!(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+         /FirstChar 32 /LastChar 126 /Widths [{widths}] >>"
+    ));
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+    // Text runs 72..272; the entry's number "9" ends at 272.
+    let body = "A".repeat(40);
+    let stream = format!(
+        "BT /F1 10 Tf 72 700 Td ({body}) Tj ET\n\
+         BT /F1 10 Tf 72 680 Td (Intro) Tj ET\n\
+         BT /F1 10 Tf 267 680 Td (9) Tj ET"
+    );
+    pdf.page_with(stream.as_bytes(), &resources);
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let entry = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .find_map(|block| {
+            match block {
+            Block::Paragraph(paragraph)
+                if paragraph.inlines.iter().any(|inline| {
+                    matches!(inline, Inline::Run(run) if run.content.contains(&RunContent::Tab))
+                }) =>
+            {
+                Some(paragraph)
+            }
+            _ => None,
+        }
+        })
+        .expect("the entry and its number are one paragraph");
+    let stop = entry.props.tabs.first().expect("a tab stop");
+    assert_eq!(
+        stop.alignment,
+        strict_ooxml_wml::model::values::TabAlignment::End
+    );
+    let margin = converted
+        .document
+        .sections
+        .first()
+        .and_then(|section| section.properties.page_margins)
+        .and_then(|margins| margins.left)
+        .map_or(0, |left| left.0);
+    assert_eq!(stop.position.0 + margin, 272 * 20);
+}
