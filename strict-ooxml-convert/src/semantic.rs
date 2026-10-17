@@ -519,6 +519,16 @@ fn paragraphs_of(
             if let Some(previous) = previous {
                 set_line_gap(paragraph, line, line.baseline - previous.baseline);
             }
+            // A line that runs on is a word apart from the one before. Word
+            // writes the space at the line's end; LaTeX, browsers and design
+            // tools do not, and every line break glued two words together.
+            if needs_space(paragraph, line) {
+                if let Some(glyph) = line.glyphs.first() {
+                    paragraph
+                        .inlines
+                        .push(run(run_properties(glyph), " ".to_owned()));
+                }
+            }
         }
         // The marker's line is *all* marker, and the character is in the
         // numbering definition now — see lists for why that moves a character
@@ -1167,6 +1177,36 @@ impl FontName {
             italic,
         }
     }
+}
+
+/// Whether a line joining a paragraph needs a space before it: the text so
+/// far ends in a letter or a mark (not a space, nor a hyphen that breaks a
+/// word), and neither side is CJK, which sets no spaces between words.
+fn needs_space(paragraph: &Paragraph, line: &GlyphLine) -> bool {
+    let last = paragraph
+        .inlines
+        .iter()
+        .rev()
+        .find_map(|inline| match inline {
+            Inline::Run(run) => run.content.iter().rev().find_map(|content| match content {
+                RunContent::Text(node) => node.text.chars().last(),
+                RunContent::Tab => Some('\t'),
+                _ => None,
+            }),
+            _ => None,
+        });
+    let Some(last) = last else {
+        return false;
+    };
+    let Some(first) = line.text().chars().find(|c| !c.is_whitespace()) else {
+        return false;
+    };
+    let cjk = |c: char| matches!(u32::from(c), 0x3000..=0x9FFF | 0xF900..=0xFAFF | 0xFF00..=0xFFEF | 0xAC00..=0xD7AF);
+    !(last.is_whitespace()
+        || matches!(last, '-' | '\u{AD}' | '\u{2010}' | '/')
+        || line.text().starts_with(char::is_whitespace)
+        || cjk(last)
+        || cjk(first))
 }
 
 /// One run with its text.

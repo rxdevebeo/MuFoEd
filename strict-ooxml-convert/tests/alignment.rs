@@ -138,3 +138,48 @@ fn a_page_number_on_its_entrys_line_is_reached_by_a_tab() {
         .map_or(0, |left| left.0);
     assert_eq!(stop.position.0 + margin, 272 * 20);
 }
+
+#[test]
+fn lines_that_run_on_are_a_word_apart() {
+    // No space at the first line's end, as LaTeX and browsers write it.
+    let mut pdf = PdfBuilder::new();
+    let widths = vec!["500"; 95].join(" ");
+    let font = pdf.object(format!(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+         /FirstChar 32 /LastChar 126 /Widths [{widths}] >>"
+    ));
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+    let stream = "BT /F1 10 Tf 72 700 Td (the first line ends) Tj ET\n\
+                  BT /F1 10 Tf 72 688 Td (and the second runs on) Tj ET\n\
+                  BT /F1 10 Tf 72 676 Td (with a hyphen- ated word) Tj ET";
+    pdf.page_with(stream.as_bytes(), &resources);
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let text: String = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        })
+        .flat_map(|paragraph| paragraph.inlines.iter())
+        .filter_map(|inline| match inline {
+            Inline::Run(run) => Some(run),
+            _ => None,
+        })
+        .flat_map(|run| run.content.iter())
+        .filter_map(|content| match content {
+            RunContent::Text(node) => Some(node.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        text,
+        "the first line ends and the second runs on with a hyphen- ated word"
+    );
+}
