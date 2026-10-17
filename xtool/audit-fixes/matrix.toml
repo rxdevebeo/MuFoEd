@@ -651,8 +651,8 @@ status = "measured"
 card = "F19"
 id = "F19-matrix-stroke-cubic-pattern"
 kind = "matrix"
-test = "f19_unsupported_cubic_is_named"
-oracle = "stroke, cubic, pattern/clip unsupported, empty page"
+test = "f19_a_cubic_is_kept_flattened"
+oracle = "a cubic (and any path) is kept as its flattened outline"
 status = "measured"
 
 [[scenario]]

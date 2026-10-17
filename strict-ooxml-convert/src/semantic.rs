@@ -138,6 +138,9 @@ pub(crate) fn build(
 
     let scan_frame =
         scan_margins(pages, recovered).map(|margins| (scan_size(pages, recovered), margins));
+    // The page before was set as a design, in anchored boxes that take no room
+    // in the flow: this page starts a page of its own.
+    let mut break_next = false;
     for (index, page) in pages.iter().enumerate() {
         // A size or margin change closes the previous page before these blocks
         // are appended. Identical neighbours stay in the open section.
@@ -148,6 +151,20 @@ pub(crate) fn build(
             section.page_margins = Some(*margins);
         }
         let text_area = text_area(&section);
+        let top_margin = section
+            .page_margins
+            .as_ref()
+            .and_then(|margins| margins.top)
+            .map(|top| f64::from(top.0) / 20.0);
+        // An indent is measured from the left margin, and the margin is where
+        // the page's ink starts: an indent of the line's x from the page's
+        // edge put a paper's text a margin further in than it stood, and its
+        // lines, narrowed by as much, each broke in two.
+        let left_margin = section
+            .page_margins
+            .as_ref()
+            .and_then(|margins| margins.left)
+            .map_or(0.0, |left| f64::from(left.0) / 20.0);
         sections.begin_page(&mut blocks, section, false);
         let raw_lines = join_fragments(strict_ooxml_pdf::text::lines(page.items()));
         report.lines += raw_lines.len();
@@ -158,6 +175,62 @@ pub(crate) fn build(
         );
         let body = body_size(&lines);
         let pitch = body_pitch(&lines);
+
+        // A rebuilt scan's pictures, each with the top of its box (points
+        // from the page's top). On a single-column page they join the flow
+        // where they stand: before the first line below their top. A
+        // two-column page keeps them after its text, because "below" means
+        // nothing across a gutter.
+        let mut figures: Vec<(f64, Block)> = Vec::new();
+        // A page's own pictures stand where the page put them, anchored to it:
+        // a logo above the letterhead, two signatures and a stamp in one row
+        // are not a column of paragraphs, and stacking them pushed a letter's
+        // last lines onto a second page. A scan rebuilt from its layout keeps
+        // the flow: its picture is the page, and anchored it would push the
+        // text it was read into off the page.
+        let mut anchored = Vec::new();
+        if options.embed_images && rebuilt {
+            figures.extend(images_of(page, &mut media, report, options));
+        } else if options.embed_images {
+            anchored = anchored_images_of(page, &lines, &mut media, report, options);
+        }
+        let page_start = blocks.len();
+        // A page laid out as a design (side-by-side blocks, boxes, grids)
+        // keeps its text where it stood, in text boxes; as one flow its
+        // blocks stacked onto page after page.
+        if !rebuilt
+            && !matches!(column_plan, crate::columns::ColumnPlan::Two { .. })
+            && crate::designed::is_designed(&lines, page.geometry.height)
+        {
+            let frames = crate::designed::text_frames(&lines, pitch / body, push_runs);
+            report.record(
+                "layout.designed",
+                Severity::Inferred,
+                format!(
+                    "page {}: its text stands in blocks side by side rather than in one \
+                     column, and is set as {} text box(es) at their places on the page",
+                    index + 1,
+                    frames.len()
+                ),
+            );
+            anchored.splice(0..0, page_shapes(page, report, true));
+            anchored.extend(frames);
+            // Anchors take no room in the flow, so the page is a page of its
+            // own: it starts one, and the page after it starts another.
+            let mut host = empty_paragraph();
+            if page_start > 0 {
+                host.props.page_break_before = strict_ooxml_wml::model::values::TriState::On;
+            }
+            blocks.push(Block::Paragraph(host));
+            hold_anchors(&mut blocks, page_start, anchored);
+            break_next = true;
+            for block in recovered.page(index) {
+                blocks.extend(recovered_blocks(
+                    block, index, &mut media, report, text_area,
+                ));
+            }
+            continue;
+        }
         let plan = tables::plan(
             page,
             index + 1,
@@ -167,19 +240,15 @@ pub(crate) fn build(
             options.max_table_cells,
             report,
         );
-
-        // Pictures and drawn shapes, each with the top of its box (points from
-        // the page's top). On a single-column page they join the flow where they
-        // stand: before the first line below their top. A two-column page keeps
-        // them after its text, because "below" means nothing across a gutter.
-        let mut figures: Vec<(f64, Block)> = Vec::new();
-        if options.embed_images {
-            figures.extend(images_of(page, &mut media, report, options));
-        }
-        figures.extend(crate::vectors::placed_blocks_for(page, report));
+        // Drawn shapes are anchored to the page as well, behind its text, and
+        // before its pictures (a PDF paints its backgrounds first): placed in
+        // the flow, a multi-column page's shapes went after all of its text,
+        // onto whatever page that text reached, and a dark box no longer lay
+        // under its white words. Thin rules are a table's borders where the
+        // page has tables.
+        anchored.splice(0..0, page_shapes(page, report, plan.tables.is_empty()));
         let interleave = matches!(column_plan, crate::columns::ColumnPlan::Single);
         if interleave {
-            // Stable: equal tops keep pictures before shapes, as before.
             figures.sort_by(|a, b| a.0.total_cmp(&b.0));
         }
         let mut figures = figures.into_iter().peekable();
@@ -198,6 +267,7 @@ pub(crate) fn build(
                         &mut flow,
                         body,
                         pitch,
+                        left_margin,
                         options,
                         &mut numbering,
                         report,
@@ -214,6 +284,7 @@ pub(crate) fn build(
                     &mut flow,
                     body,
                     pitch,
+                    left_margin,
                     options,
                     &mut numbering,
                     report,
@@ -232,18 +303,47 @@ pub(crate) fn build(
             &mut flow,
             body,
             pitch,
+            left_margin,
             options,
             &mut numbering,
             report,
             index + 1,
         );
         blocks.extend(figures.map(|(_, figure)| figure));
+        // Only where the page starts at the top: the document's first page, or
+        // one after a hard break. In a flow a page's first line follows the
+        // last one before it.
+        if index == 0 || break_next {
+            if let (Some(top), Some(first)) = (top_margin, lines.first()) {
+                if plan.starts_table(0).is_none() {
+                    place_first_line(&mut blocks, page_start, first, top, pitch / body);
+                }
+            }
+        }
+        hold_anchors(&mut blocks, page_start, anchored);
+        if break_next {
+            break_page(&mut blocks, page_start);
+        } else if index > 0 {
+            mark_page_start(&mut blocks, page_start);
+        }
+        // A page whose text stops well above its foot ended where its author
+        // broke the page (a slide, a chapter's last page): the next page
+        // starts a page of its own rather than running on under it.
+        break_next = ends_short(&lines, page.geometry.height);
         // Text a model read off a picture-only region comes after the page's
         // own content, indented to the region's left edge.
         for block in recovered.page(index) {
             let mut placed = recovered_blocks(block, index, &mut media, report, text_area);
-            if block.whole_page && !blocks.is_empty() {
-                start_page(&mut placed);
+            if block.whole_page && page_start > 0 {
+                if blocks.len() > page_start {
+                    // The page is open already - its pictures and shapes hold
+                    // its first paragraph - and the rebuilt text runs on it: a
+                    // break before the text put a slide's background on one
+                    // page and its words on the next.
+                    break_page(&mut blocks, page_start);
+                } else {
+                    start_page(&mut placed);
+                }
             }
             blocks.extend(placed);
         }
@@ -291,7 +391,29 @@ fn paragraphs_of(
     let mut out: Vec<Paragraph> = Vec::new();
     let mut paragraph: Option<Paragraph> = None;
     let mut previous: Option<&GlyphLine> = None;
+    // The lowest baseline the flow has reached. A paragraph's room above is
+    // measured from it, not from the line before: a page read column by
+    // column climbs back to the top at each column, and gaps measured from
+    // the line before added each column's height again - a two-page brochure
+    // took eleven.
+    let mut furthest: Option<f64> = None;
+    let edges = text_edges(lines);
+    // The open paragraph's line while it has only one.
+    let mut single: Option<&GlyphLine> = None;
+    let starts: Vec<f64> = lines
+        .iter()
+        .filter(|line| !line.text().trim().is_empty())
+        .map(|line| line.x)
+        .collect();
     for (at, line) in lines.iter().enumerate() {
+        // Spaces on the baseline of the line before show nothing, and as a
+        // paragraph of their own each took a line's height: a letter's row of
+        // signature gaps pushed its names three lines down.
+        if line.text().trim().is_empty()
+            && previous.is_some_and(|previous| (previous.baseline - line.baseline).abs() < 0.5)
+        {
+            continue;
+        }
         // Is this line nothing but the marker of an item whose text is the next
         // line? And is this line the text of the marker above it? The two
         // questions have different keys, and the difference is the whole feature:
@@ -316,7 +438,8 @@ fn paragraphs_of(
                         || !same_format(previous, line)
                 }));
         if starts_new || paragraph.is_none() {
-            if let Some(finished) = paragraph.take() {
+            if let Some(mut finished) = paragraph.take() {
+                give_room(&mut finished, single, edges);
                 out.push(finished);
             }
             let heading = if allow_headings {
@@ -337,11 +460,27 @@ fn paragraphs_of(
                 );
             }
             let mut fresh = new_paragraph(line, heading, origin);
+            align_paragraph(&mut fresh, line, edges, &starts);
+            if let Some(furthest) = furthest {
+                set_paragraph_gap(&mut fresh, line, line.baseline - furthest, pitch / body);
+            }
             if let Some(item) = marker_item.filter(|item| item.numbered) {
-                crate::lists::mark(&mut fresh, item);
+                crate::lists::mark(&mut fresh, item, origin);
+                // The number is drawn with the paragraph mark's properties;
+                // without them it was the default black, invisible on a dark
+                // slide. The marker's own glyph says how it looked.
+                if let Some(glyph) = line
+                    .glyphs
+                    .iter()
+                    .find(|glyph| !glyph.text.trim().is_empty())
+                {
+                    fresh.props.run_props = Some(run_properties(glyph));
+                }
             }
             paragraph = Some(fresh);
+            single = Some(line);
         } else if let Some(paragraph) = paragraph.as_mut() {
+            single = None;
             if let Some(previous) = previous {
                 set_line_gap(paragraph, line, line.baseline - previous.baseline);
             }
@@ -360,11 +499,52 @@ fn paragraphs_of(
             push_runs_from(paragraph, line, skip);
         }
         previous = Some(line);
+        furthest =
+            Some(furthest.map_or(line.baseline, |furthest: f64| furthest.max(line.baseline)));
     }
-    if let Some(finished) = paragraph {
+    if let Some(mut finished) = paragraph {
+        give_room(&mut finished, single, edges);
         out.push(finished);
     }
     out
+}
+
+/// Lets a paragraph of one source line run past the text's edge by as much
+/// as a substitute font a little wider than the source's needs (15% of the
+/// line), so the line does not break: the source set it as one line, and a
+/// right-aligned cover title that broke in two pushed the rest of the cover
+/// onto a second page.
+fn give_room(paragraph: &mut Paragraph, single: Option<&GlyphLine>, edges: Option<(f64, f64)>) {
+    let (Some(line), Some((left, right))) = (single, edges) else {
+        return;
+    };
+    if line.text().trim().is_empty() {
+        return;
+    }
+    let wanted = line.width * 1.15;
+    let alignment = paragraph.props.alignment;
+    let room = match alignment {
+        Some(Justification::End | Justification::Center) => right - left,
+        _ => right - line.x,
+    };
+    let need = wanted - room;
+    if !(need.is_finite() && need > 0.5) {
+        return;
+    }
+    let need = Twips(-to_twips(need));
+    let half = Twips(need.0 / 2);
+    let indentation = paragraph
+        .props
+        .indentation
+        .get_or_insert_with(Indentation::default);
+    match alignment {
+        Some(Justification::End) => indentation.start = Some(need),
+        Some(Justification::Center) => {
+            indentation.start = Some(half);
+            indentation.end = Some(half);
+        }
+        _ => indentation.end = Some(need),
+    }
 }
 
 /// Appends a run of lines to a block list.
@@ -707,11 +887,102 @@ fn set_line_gap(paragraph: &mut Paragraph, line: &GlyphLine, pitch: f64) {
     if !(pitch >= line.size * 0.8 && pitch <= line.size * 3.0) {
         return;
     }
-    paragraph.props.spacing = Some(Spacing {
-        line: Some(Twips(to_twips(pitch))),
-        line_rule: Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact),
-        ..Spacing::default()
-    });
+    let spacing = paragraph.props.spacing.get_or_insert_with(Spacing::default);
+    spacing.line = Some(Twips(to_twips(pitch)));
+    spacing.line_rule = Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact);
+}
+
+/// A page's drawn shapes as anchored drawings.
+fn page_shapes(page: &PdfPage, report: &mut ConversionReport, rules: bool) -> Vec<Inline> {
+    crate::vectors::placed_blocks_for(page, report, rules)
+        .into_iter()
+        .flat_map(|(_, block)| match block {
+            Block::Paragraph(paragraph) => paragraph.inlines,
+            _ => Vec::new(),
+        })
+        .collect()
+}
+
+/// The left and right edges of the lines' text.
+fn text_edges(lines: &[GlyphLine]) -> Option<(f64, f64)> {
+    let inked = lines.iter().filter(|line| !line.text().trim().is_empty());
+    let left = inked.clone().map(|line| line.x).reduce(f64::min)?;
+    let right = inked.map(|line| line.x + line.width).reduce(f64::max)?;
+    (right - left > 1.0).then_some((left, right))
+}
+
+/// Aligns a paragraph whose first line stands at the right edge or in the
+/// middle of the text, rather than indenting it to where it starts: a
+/// substitute font a little wider than the source's then ran past the right
+/// margin, and a cover's right-aligned title broke word by word and its date
+/// letter by letter.
+fn align_paragraph(
+    paragraph: &mut Paragraph,
+    line: &GlyphLine,
+    edges: Option<(f64, f64)>,
+    starts: &[f64],
+) {
+    let Some((left, right)) = edges else {
+        return;
+    };
+    if line.text().trim().is_empty() {
+        return;
+    }
+    let span = right - left;
+    let indent = line.x - left;
+    // Lines that share a start are a column's edge or an indent, not text
+    // pushed to the right: a two-column page's right column ends at the right
+    // edge too.
+    if starts
+        .iter()
+        .filter(|start| (**start - line.x).abs() <= 1.5)
+        .count()
+        >= 3
+    {
+        return;
+    }
+    let end = line.x + line.width;
+    let alignment = if (end - right).abs() <= (span * 0.004).max(1.5) && indent > span * 0.15 {
+        Justification::End
+    } else if (f64::midpoint(line.x, end) - f64::midpoint(left, right)).abs() <= span * 0.01 + 1.0
+        && indent > span * 0.08
+    {
+        Justification::Center
+    } else {
+        return;
+    };
+    paragraph.props.alignment = Some(alignment);
+    if let Some(indentation) = paragraph.props.indentation.as_mut() {
+        indentation.start = None;
+    }
+}
+
+/// Sets the room above a paragraph, so its first baseline lands where the PDF
+/// put it: `gap` is the distance from the baseline above. The line is given
+/// its own height exactly (the page's tightest pitch for its size, `ratio`
+/// times it) and the rest of the gap goes above it. Word's space before and
+/// after, and the room an inline picture took, were lost without it, and a
+/// letter's text ran up under its letterhead and its names over its stamp.
+/// A line above this one's baseline (another column, a margin line moved)
+/// sets nothing.
+fn set_paragraph_gap(paragraph: &mut Paragraph, line: &GlyphLine, gap: f64, ratio: f64) {
+    let ratio = if ratio.is_finite() {
+        ratio.clamp(1.0, 1.6)
+    } else {
+        1.2
+    };
+    let height = line.size * ratio;
+    if !(gap.is_finite() && gap >= line.size * 0.8) || line.size <= 0.0 {
+        return;
+    }
+    let exact = gap.min(height);
+    let spacing = paragraph.props.spacing.get_or_insert_with(Spacing::default);
+    spacing.line = Some(Twips(to_twips(exact)));
+    spacing.line_rule = Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact);
+    let before = gap - exact;
+    if before > 0.5 {
+        spacing.before = Some(Twips(to_twips(before)));
+    }
 }
 
 /// Appends a line's glyphs as runs.
@@ -870,6 +1141,7 @@ fn flush_flow(
     flow: &mut Vec<GlyphLine>,
     body: f64,
     pitch: f64,
+    origin: f64,
     options: &PdfOptions,
     numbering: &mut strict_ooxml_wml::model::numbering::NumberingTable,
     report: &mut ConversionReport,
@@ -885,7 +1157,7 @@ fn flush_flow(
         body,
         pitch,
         options,
-        0.0,
+        origin,
         true,
         report,
         page,
@@ -905,6 +1177,234 @@ fn images_of(
     report: &mut ConversionReport,
     options: &PdfOptions,
 ) -> Vec<(f64, Block)> {
+    stored_images(page, media, report, options)
+        .into_iter()
+        .map(|(image, part, description)| {
+            let top = page.geometry.height - (image.y + image.height);
+            (
+                top,
+                Block::Paragraph(image_paragraph(image, &part, description)),
+            )
+        })
+        .collect()
+}
+
+/// The page's pictures as page-anchored drawings, each wrapped by what the
+/// page sets around it: text over a picture puts it behind the text, text
+/// beside it wraps square, and otherwise it stands in front and wraps
+/// nothing. The flow keeps the room a picture stands in (each paragraph's
+/// space before is the PDF's), so a picture that pushed text as well moved a
+/// letter's names a line below their signatures and its footer onto a second
+/// page.
+fn anchored_images_of(
+    page: &PdfPage,
+    lines: &[GlyphLine],
+    media: &mut MediaCollector,
+    report: &mut ConversionReport,
+    options: &PdfOptions,
+) -> Vec<Inline> {
+    stored_images(page, media, report, options)
+        .into_iter()
+        .filter_map(|(image, part, description)| {
+            let top = page.geometry.height - (image.y + image.height);
+            let (left, right, bottom) = (image.x, image.x + image.width, top + image.height);
+            let mut wrap = PictureWrap::Over;
+            for line in lines {
+                let (line_top, line_bottom) = (line.baseline - line.ascent, line.baseline);
+                let shared = line_bottom.min(bottom) - line_top.max(top);
+                if shared <= line.size * 0.25 {
+                    continue;
+                }
+                if line.text().trim().is_empty() {
+                    continue;
+                }
+                if line.x < right && line.x + line.width > left {
+                    wrap = PictureWrap::Behind;
+                    break;
+                }
+                wrap = PictureWrap::Square;
+            }
+            anchored_image(image, &part, description, top, wrap)
+        })
+        .collect()
+}
+
+/// How a page-anchored picture meets the text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PictureWrap {
+    /// Text set over it: the picture is behind the text and wraps nothing.
+    Behind,
+    /// No text across it: in front, and it wraps nothing.
+    Over,
+    /// Text beside it.
+    Square,
+}
+
+/// Puts a page's anchored drawings, in paint order, into its first paragraph, which is on the
+/// page they belong to whatever the text before it does; a page without one
+/// gets a paragraph of their own.
+fn hold_anchors(blocks: &mut Vec<Block>, page_start: usize, mut anchors: Vec<Inline>) {
+    if anchors.is_empty() {
+        return;
+    }
+    // Stacked in the order the page painted them: with one height for all, a
+    // page's background box could be drawn over the picture set on it.
+    let mut height = 0u32;
+    for inline in &mut anchors {
+        if let Inline::Drawing(Drawing {
+            kind: DrawingKind::Anchor(anchor),
+            ..
+        }) = inline
+        {
+            height = height.saturating_add(1);
+            anchor.relative_height = Some(height);
+        }
+    }
+    let first = blocks
+        .iter_mut()
+        .skip(page_start)
+        .find_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        });
+    if let Some(paragraph) = first {
+        paragraph.inlines.splice(0..0, anchors);
+        return;
+    }
+    let mut paragraph = empty_paragraph();
+    paragraph.inlines = anchors;
+    blocks.push(Block::Paragraph(paragraph));
+}
+
+/// Sets the room above a page's first paragraph, so its first baseline lands
+/// where the PDF put it rather than on the top margin. The margin is the
+/// page's least, and a cover's title set a third of the way down stood at
+/// the top of the page.
+fn place_first_line(
+    blocks: &mut [Block],
+    page_start: usize,
+    line: &GlyphLine,
+    top: f64,
+    ratio: f64,
+) {
+    let Some(Block::Paragraph(paragraph)) = blocks.get_mut(page_start) else {
+        return;
+    };
+    let ratio = if ratio.is_finite() {
+        ratio.clamp(1.0, 1.6)
+    } else {
+        1.2
+    };
+    let spacing = paragraph.props.spacing.get_or_insert_with(Spacing::default);
+    if spacing.before.is_some() {
+        return;
+    }
+    let height =
+        if let (Some(line), Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact)) =
+            (spacing.line, spacing.line_rule)
+        {
+            f64::from(line.0) / 20.0
+        } else {
+            let height = line.size * ratio;
+            spacing.line = Some(Twips(to_twips(height)));
+            spacing.line_rule = Some(strict_ooxml_wml::model::values::LineSpacingRule::Exact);
+            height
+        };
+    // An exact line's baseline is 0.8 of the way down its box.
+    let before = line.baseline - top - 0.8 * height;
+    if before > 0.5 {
+        spacing.before = Some(Twips(to_twips(before)));
+    }
+}
+
+/// The share of a page below its last line of body text from which the page
+/// ended short.
+const SHORT_PAGE_SHARE: f64 = 0.3;
+
+/// Whether the page's body text (its foot's margin lines aside) stops more
+/// than [`SHORT_PAGE_SHARE`] of the page above its bottom.
+fn ends_short(lines: &[GlyphLine], page_height: f64) -> bool {
+    if !(page_height.is_finite() && page_height > 0.0) {
+        return false;
+    }
+    let foot = page_height * 0.9;
+    let last = lines
+        .iter()
+        .filter(|line| !line.text().trim().is_empty() && line.baseline < foot)
+        .map(|line| line.baseline)
+        .reduce(f64::max);
+    last.is_some_and(|last| last < page_height * (1.0 - SHORT_PAGE_SHARE))
+}
+
+/// An empty paragraph.
+fn empty_paragraph() -> Paragraph {
+    Paragraph {
+        props: ParagraphProperties::default(),
+        inlines: Vec::new(),
+        rsids: Rsids::default(),
+        para_id: None,
+        text_id: None,
+        revision: None,
+        location: strict_ooxml_core::error::SourceLocation::unknown(),
+    }
+}
+
+/// Starts the page's first paragraph on a new page.
+fn break_page(blocks: &mut [Block], page_start: usize) {
+    if let Some(paragraph) = blocks
+        .iter_mut()
+        .skip(page_start)
+        .find_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        })
+    {
+        paragraph.props.page_break_before = strict_ooxml_wml::model::values::TriState::On;
+    }
+}
+
+/// Marks where a PDF page begins in the flow with `w:lastRenderedPageBreak`,
+/// Word's own note that a page broke there when the document was last laid
+/// out - which for a PDF it did. The flow runs on without a hard break, and
+/// the note is how a reader (and the scan-beside-result comparison) finds the
+/// source's pages again.
+fn mark_page_start(blocks: &mut [Block], page_start: usize) {
+    let Some(paragraph) = blocks
+        .iter_mut()
+        .skip(page_start)
+        .find_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        })
+    else {
+        return;
+    };
+    if paragraph.props.page_break_before == strict_ooxml_wml::model::values::TriState::On {
+        return;
+    }
+    paragraph.inlines.insert(
+        0,
+        Inline::Run(Run {
+            props: RunProperties::default(),
+            content: vec![RunContent::LastRenderedPageBreak],
+            revision: None,
+            location: strict_ooxml_core::error::SourceLocation::unknown(),
+        }),
+    );
+}
+
+/// The page's pictures stored as media parts, each with what a model said of
+/// it.
+fn stored_images<'p>(
+    page: &'p PdfPage,
+    media: &mut MediaCollector,
+    report: &mut ConversionReport,
+    options: &PdfOptions,
+) -> Vec<(
+    &'p strict_ooxml_pdf::PlacedImage,
+    strict_ooxml_core::part::PartId,
+    Option<String>,
+)> {
     let page_number = page.number;
     let mut out = Vec::new();
     for item in page.items() {
@@ -931,11 +1431,7 @@ fn images_of(
                 continue;
             }
         };
-        let top = page.geometry.height - (image.y + image.height);
-        out.push((
-            top,
-            Block::Paragraph(image_paragraph(image, &part, description)),
-        ));
+        out.push((image, part, description));
     }
     out
 }
@@ -1279,6 +1775,78 @@ fn sized_image_paragraph(
     }
 }
 
+/// A picture anchored to the page at its place on it.
+fn anchored_image(
+    image: &strict_ooxml_pdf::PlacedImage,
+    part: &strict_ooxml_core::part::PartId,
+    description: Option<String>,
+    top: f64,
+    wrap: PictureWrap,
+) -> Option<Inline> {
+    use strict_ooxml_wml::model::drawing::{AnchorDrawing, Position, Wrap, WrapKind};
+    let emu = |points: f64| Emu((points * 12_700.0).round() as i64);
+    let Paragraph { mut inlines, .. } =
+        sized_image_paragraph(image.width, image.height, part, description);
+    let Some(Inline::Drawing(Drawing {
+        kind: DrawingKind::Inline(inline),
+        location,
+    })) = inlines.pop()
+    else {
+        return None;
+    };
+    let position = |offset: f64| Position {
+        relative_from: Some(Arc::from("page")),
+        align: None,
+        offset: Some(emu(offset)),
+        percent_offset: None,
+    };
+    let kind = match wrap {
+        PictureWrap::Behind | PictureWrap::Over => WrapKind::None,
+        PictureWrap::Square => WrapKind::Square,
+    };
+    Some(Inline::Drawing(Drawing {
+        kind: DrawingKind::Anchor(AnchorDrawing {
+            extent: inline.extent,
+            effect_extent: None,
+            doc_pr: inline.doc_pr,
+            simple_pos: false,
+            simple_pos_point: None,
+            hidden: None,
+            position_h: Some(position(image.x)),
+            position_v: Some(position(top)),
+            wrap: Some(Wrap {
+                kind,
+                wrap_text: if kind == WrapKind::Square {
+                    Some(Arc::from("bothSides"))
+                } else {
+                    None
+                },
+                dist_left: None,
+                dist_right: None,
+                dist_top: None,
+                dist_bottom: None,
+                polygon: Vec::new(),
+                polygon_edited: None,
+            }),
+            behind_doc: wrap == PictureWrap::Behind,
+            relative_height: Some(1),
+            dist_top: None,
+            dist_bottom: None,
+            dist_left: None,
+            dist_right: None,
+            allow_overlap: true,
+            layout_in_cell: true,
+            locked: false,
+            graphic_uri: inline.graphic_uri,
+            graphic: inline.graphic,
+            size_rel_h: None,
+            size_rel_v: None,
+            location: location.clone(),
+        }),
+        location,
+    }))
+}
+
 #[cfg(test)]
 mod fragment_tests {
     use super::join_fragments;
@@ -1307,6 +1875,28 @@ mod fragment_tests {
             width,
             glyphs: vec![glyph],
         }
+    }
+
+    #[test]
+    fn a_paragraph_keeps_the_room_above_it() {
+        use strict_ooxml_wml::model::values::{LineSpacingRule, Twips};
+        let line = run("Names", 72.0, 30.0);
+        let spacing = |gap: f64| {
+            let mut paragraph = super::new_paragraph(&line, None, 0.0);
+            super::set_paragraph_gap(&mut paragraph, &line, gap, 1.2);
+            paragraph.props.spacing
+        };
+        // 9 pt at 1.2 is a 10.8 pt line; the other 39.2 pt of a 50 pt gap
+        // (the room a row of signatures took) go above it.
+        let wide = spacing(50.0).expect("spacing");
+        assert_eq!(wide.line, Some(Twips(216)));
+        assert_eq!(wide.line_rule, Some(LineSpacingRule::Exact));
+        assert_eq!(wide.before, Some(Twips(784)));
+        // A tight gap is the line's own height, and nothing goes above.
+        let tight = spacing(10.0).expect("spacing");
+        assert_eq!((tight.line, tight.before), (Some(Twips(200)), None));
+        // A line above this one (another column) sets nothing.
+        assert!(spacing(-300.0).is_none());
     }
 
     #[test]

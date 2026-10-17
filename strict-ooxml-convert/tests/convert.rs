@@ -184,30 +184,36 @@ fn the_modes_reproduce_different_documents() {
             "612 pt is 12240 twips"
         );
     }
-    // Semantic indent is the PDF x measured from the page edge. Visual indent
-    // is that same x measured from the 72 pt section margin, so the margin is
-    // not applied twice when the page is rendered.
-    let indent_of = |document: &strict_ooxml_wml::model::Document| {
+    // Both modes put the first line where the PDF did: its indent plus the
+    // section's left margin is the line's x on the page. (The semantic indent
+    // was the page x itself, on top of a margin measured to the ink, which
+    // put the text a margin further in than it stood.)
+    let start_of = |document: &strict_ooxml_wml::model::Document| {
         let Some(strict_ooxml_wml::model::block::Block::Paragraph(paragraph)) =
             document.body.blocks.first()
         else {
             panic!("expected a paragraph");
         };
-        paragraph
+        let indent = paragraph
             .props
             .indentation
             .as_ref()
             .and_then(|indent| indent.start)
-            .expect("an indent")
-            .0
+            .map_or(0, |start| start.0);
+        let margin = document
+            .sections
+            .first()
+            .and_then(|section| section.properties.page_margins)
+            .and_then(|margins| margins.left)
+            .map_or(0, |left| left.0);
+        indent + margin
     };
-    let semantic_indent = indent_of(&semantic.document);
-    let visual_indent = indent_of(&visual.document);
-    assert!(semantic_indent > 0, "the first line starts inside the page");
-    assert_eq!(
-        semantic_indent - visual_indent,
-        1_440,
-        "visual indent is the page x minus the 72 pt margin"
+    let semantic_start = start_of(&semantic.document);
+    assert!(semantic_start > 0, "the first line starts inside the page");
+    let visual_start = start_of(&visual.document);
+    assert!(
+        (semantic_start - visual_start).abs() <= 1,
+        "both modes start the line at its page x: {semantic_start} and {visual_start}"
     );
 }
 

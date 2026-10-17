@@ -552,7 +552,15 @@ fn a_list_item_carries_the_geometry_the_pdf_had() {
     let hanging = indent.hanging.expect("a hanging indent").0;
     // 52 pt is 1040 twips, and the marker is 12 pt to its left, so the marker lands
     // at 40 pt — where the PDF drew it, and not one hanging indent further out.
-    assert_eq!(start, 1080, "the text starts where the PDF put it");
+    // The indent is measured from the left margin, which is where the ink
+    // starts.
+    let margin = document
+        .sections
+        .first()
+        .and_then(|section| section.properties.page_margins)
+        .and_then(|margins| margins.left)
+        .map_or(0, |left| left.0);
+    assert_eq!(start + margin, 1080, "the text starts where the PDF put it");
     assert_eq!(hanging, 280, "and the marker hangs 14 pt to its left");
     assert_eq!(
         paragraphs[0]
@@ -596,4 +604,36 @@ fn a_caller_who_wants_longer_lists_gets_text() {
         !report.contains("list.inferred"),
         "and nothing was reported: {report}"
     );
+}
+
+/// A list's number is drawn with its paragraph mark's properties: they are
+/// the marker's own, or a white number on a dark slide came out black.
+#[test]
+fn a_list_number_is_set_like_its_marker() {
+    let (document, report) = convert_pdf(&numbered_items(
+        &["first", "second", "third"],
+        &["1.", "2.", "3."],
+        40.0,
+        58.0,
+    ));
+    let marks: Vec<bool> = document
+        .body
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            strict_ooxml_wml::model::Block::Paragraph(paragraph)
+                if paragraph.props.numbering.is_some() =>
+            {
+                Some(
+                    paragraph
+                        .props
+                        .run_props
+                        .as_ref()
+                        .is_some_and(|props| props.size.is_some()),
+                )
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(marks, [true, true, true], "{report}");
 }

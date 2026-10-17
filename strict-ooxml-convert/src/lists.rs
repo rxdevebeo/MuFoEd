@@ -753,7 +753,13 @@ fn next_num_id(numbering: &NumberingTable) -> u32 {
 /// Putting the marker's x in `w:ind/@start` instead would draw the marker one
 /// hanging indent too far left — the kind of half-point error a screenshot gate
 /// finds and a unit test does not.
-pub(crate) fn mark(paragraph: &mut strict_ooxml_wml::model::block::Paragraph, item: &Item) {
+/// `origin` is the x the indent is measured from (the left margin, or a
+/// cell's edge).
+pub(crate) fn mark(
+    paragraph: &mut strict_ooxml_wml::model::block::Paragraph,
+    item: &Item,
+    origin: f64,
+) {
     use strict_ooxml_wml::model::props::NumPr;
 
     paragraph.props.numbering = Some(NumPr {
@@ -761,7 +767,7 @@ pub(crate) fn mark(paragraph: &mut strict_ooxml_wml::model::block::Paragraph, it
         ilvl: Some(Ilvl(0)),
     });
     paragraph.props.indentation = Some(Indentation {
-        start: Some(Twips(to_twips(item.text_x))),
+        start: Some(Twips(to_twips(item.text_x - origin))),
         hanging: Some(Twips(to_twips(item.text_x - item.marker_x))),
         ..Indentation::default()
     });

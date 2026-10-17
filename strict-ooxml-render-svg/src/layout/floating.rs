@@ -120,7 +120,10 @@ pub(crate) fn resolve(
     }
     behind.sort_by_key(|(page, order, _)| (*page, *order));
     front.sort_by_key(|(page, order, _)| (*page, *order));
-    for (page, _, mut items) in behind {
+    // Each behind-text item goes in front of what the page holds so far, so
+    // they are taken highest first: in ascending order the lowest was put in
+    // front last and a page-sized background covered the picture set on it.
+    for (page, _, mut items) in behind.into_iter().rev() {
         if let Some(page) = pages.get_mut(page) {
             ctx.charge_items(items.iter().map(|item| item.leaves().count()).sum())?;
             let mut combined = std::mem::take(&mut items);

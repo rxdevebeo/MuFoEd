@@ -207,18 +207,12 @@ fn two_columns_read_left_then_right() {
 fn two_column_paragraphs_keep_measured_x_indent() {
     let (document, _) = convert_pdf(&two_column_interleaved());
     let indents = indents_of(&document);
+    // 50 pt and 350 pt: measured from the left margin (where the ink starts,
+    // at the left column), the right column is 300 pt (6000 twips) further in.
+    let left = indents.iter().copied().min().unwrap_or(0);
     assert!(
-        indents.iter().any(|&twips| twips > 0),
-        "expected measured indents, got {indents:?}"
-    );
-    // 50 pt and 350 pt at 20 twips/pt → 1000 and 7000.
-    assert!(
-        indents.contains(&1000) || indents.iter().any(|&t| (980..1020).contains(&t)),
-        "left column x≈50 pt missing: {indents:?}"
-    );
-    assert!(
-        indents.contains(&7000) || indents.iter().any(|&t| (6980..7020).contains(&t)),
-        "right column x≈350 pt missing: {indents:?}"
+        indents.iter().any(|&t| (5980..6020).contains(&(t - left))),
+        "right column 300 pt right of the left one missing: {indents:?}"
     );
 }
 

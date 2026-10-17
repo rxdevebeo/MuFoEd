@@ -190,7 +190,16 @@ impl RenderMode {
         }
     }
 
-    /// Whether the mode paints anything.
+    /// Whether the mode adds the glyphs to the clip (modes 4 to 7).
+    #[must_use]
+    pub const fn clips(self) -> bool {
+        matches!(
+            self,
+            Self::FillClip | Self::StrokeClip | Self::FillStrokeClip | Self::Clip
+        )
+    }
+
+    /// Whether the glyph leaves marks on the page.
     #[must_use]
     pub const fn paints(self) -> bool {
         !matches!(self, Self::Invisible | Self::Clip)
@@ -527,6 +536,11 @@ struct State {
     leading: f64,
     rise: f64,
     render_mode: RenderMode,
+    /// Where the glyphs that clip (render modes 4-7) begin in the page's
+    /// items, once text has clipped in this scope: a shading painted through
+    /// them is text in the shading's colour, not a box the size of the clip
+    /// before them.
+    text_clip: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -557,6 +571,7 @@ impl Default for State {
             leading: 0.0,
             rise: 0.0,
             render_mode: RenderMode::Fill,
+            text_clip: None,
         }
     }
 }
@@ -564,13 +579,21 @@ impl Default for State {
 /// The text state, which `q`/`Q` does *not* save.
 #[derive(Clone, Debug)]
 struct TextState {
+    /// The text matrix: where the next glyph goes.
     matrix: Matrix,
+    /// The text line matrix: where the current line began (ISO 32000-1
+    /// 9.4.2). `Td`, `TD`, `T*`, `'` and `"` move from it, not from the pen;
+    /// moving from the pen put a line that followed shown text that text's
+    /// width to the right, and a table of contents climbed off the page as a
+    /// staircase.
+    line: Matrix,
 }
 
 impl Default for TextState {
     fn default() -> Self {
         Self {
             matrix: Matrix::IDENTITY,
+            line: Matrix::IDENTITY,
         }
     }
 }
@@ -578,6 +601,13 @@ impl Default for TextState {
 impl TextState {
     fn reset(&mut self) {
         self.matrix = Matrix::IDENTITY;
+        self.line = Matrix::IDENTITY;
+    }
+
+    /// Starts a new line `(x, y)` from the start of the current one.
+    fn next_line(&mut self, x: f64, y: f64) {
+        self.line = Matrix::chain(Matrix::translate(x, y), self.line);
+        self.matrix = self.line;
     }
 }
 
@@ -949,13 +979,14 @@ fn interpret_from(
                         continue;
                     }
                 };
-                if operator.starts_with('s') && operator.ends_with('c') {
-                    // `sc`/`scn` set the fill; `SC`/`SCN` the stroke.
-                    if operator == "sc" || operator == "scn" {
-                        current.fill = colour;
-                    } else {
-                        current.stroke = colour;
-                    }
+                // `sc`/`scn` set the fill; `SC`/`SCN` the stroke. (The test
+                // was "starts with s and ends with c", which only `sc` passes:
+                // every `scn` fill - an ICC-based space's, which is how browsers
+                // and design tools write colour - stayed black.)
+                if operator == "sc" || operator == "scn" {
+                    current.fill = colour;
+                } else {
+                    current.stroke = colour;
                 }
             }
             "cm" => {
@@ -1047,13 +1078,13 @@ fn interpret_from(
             }
             "Td" => {
                 if let (Some(x), Some(y)) = (number_at(args, 0), number_at(args, 1)) {
-                    text.matrix = Matrix::chain(Matrix::translate(x, y), text.matrix);
+                    text.next_line(x, y);
                 }
             }
             "TD" => {
                 if let (Some(x), Some(y)) = (number_at(args, 0), number_at(args, 1)) {
                     current.leading = -y;
-                    text.matrix = Matrix::chain(Matrix::translate(x, y), text.matrix);
+                    text.next_line(x, y);
                 }
             }
             "Tm" => {
@@ -1066,16 +1097,14 @@ fn interpret_from(
                     number_at(args, 5),
                 ) {
                     text.matrix = Matrix { a, b, c, d, e, f };
+                    text.line = text.matrix;
                 }
             }
-            "T*" => {
-                text.matrix = Matrix::chain(Matrix::translate(0.0, -current.leading), text.matrix);
-            }
+            "T*" => text.next_line(0.0, -current.leading),
             "Tj" | "'" | "\"" => {
                 if operator != "Tj" {
                     // `'` and `"` both move to the next line first.
-                    text.matrix =
-                        Matrix::chain(Matrix::translate(0.0, -current.leading), text.matrix);
+                    text.next_line(0.0, -current.leading);
                 }
                 if operator == "\"" {
                     if let (Some(aw), Some(ac)) = (number_at(args, 0), number_at(args, 1)) {
@@ -1091,12 +1120,15 @@ fn interpret_from(
                     args.len().saturating_sub(1)
                 };
                 if let Some(bytes) = args.get(string_index).and_then(string_of) {
+                    let before = out.items.len();
                     show_text(
                         &bytes, &mut text, &current, resources, geometry, limits, budget, &mut out,
                     );
+                    note_text_clip(&mut current, before, out.items.len());
                 }
             }
             "TJ" => {
+                let before = out.items.len();
                 if let Some(Object::Array(items)) = args.first() {
                     for item in items {
                         match item {
@@ -1120,6 +1152,7 @@ fn interpret_from(
                         }
                     }
                 }
+                note_text_clip(&mut current, before, out.items.len());
             }
             "m" => {
                 if let (Some(x), Some(y)) = (number_at(args, 0), number_at(args, 1)) {
@@ -1323,6 +1356,22 @@ fn interpret_from(
             }
             "sh" => {
                 let gradient = name_at(args, 0).and_then(|name| resources.shading(&name));
+                // Painted through clipping text: the text, in the shading's
+                // middle colour. The clip path before the text is not what is
+                // painted, and a page-sized gradient would cover the page.
+                if let Some(start) = current.text_clip {
+                    if let Some(colour) = gradient.as_ref().and_then(middle_colour) {
+                        for item in out.items.iter_mut().skip(start) {
+                            if let Item::Glyph(glyph) = item {
+                                if glyph.render_mode.clips() {
+                                    glyph.render_mode = RenderMode::Fill;
+                                    glyph.color = colour;
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
                 if let (Some(gradient), Some(clip)) = (gradient, &current.clip) {
                     if clip.ctm == current.ctm && !clip.intersected && !clip.subpaths.is_empty() {
                         let points = clip
@@ -1576,8 +1625,11 @@ fn show_text(
             // `glyph_advance` is already in text space, where one unit is one em
             // scaled by `Tfs`, so on an identity CTM it is the device distance.
             // Scaling it again by the font size is what turned a 7.6 pt advance
-            // into 1937 pt.
-            glyph.width = advance.abs() * state.ctm.scale_factor();
+            // into 1937 pt. The text matrix's own scale is the other half:
+            // `1 Tf` with `72 0 0 72 x y Tm` (how Google Docs and Chrome set
+            // text) is a 72 pt glyph a fraction of a point wide, and every
+            // letter of a word read as a word of its own.
+            glyph.width = advance.abs() * Matrix::chain(text.matrix, state.ctm).scale_factor();
         }
         adjust_text(advance, text, state, geometry);
         if let Some(glyph) = glyph {
@@ -1598,7 +1650,9 @@ fn render_glyph(
     geometry: PageGeometry,
     out: &mut Content,
 ) -> Option<Glyph> {
-    if !state.render_mode.paints() {
+    // A clipping-only glyph is kept, marked so: a consumer of painted text
+    // skips it, and a shading painted through it makes it painted text.
+    if !state.render_mode.paints() && !state.render_mode.clips() {
         // The glyph still advances the pen: invisible text is still text, and
         // dropping the advance would shift everything after it.
         return None;
@@ -1665,6 +1719,22 @@ fn render_glyph(
         render_mode: state.render_mode,
         mapped,
     })
+}
+
+/// Notes that text shown in a clipping render mode began at `before`.
+fn note_text_clip(current: &mut State, before: usize, after: usize) {
+    if current.render_mode.clips() && after > before && current.text_clip.is_none() {
+        current.text_clip = Some(before);
+    }
+}
+
+/// The colour at the middle of a shading's axis: the stop nearest it.
+fn middle_colour(gradient: &AxialGradient) -> Option<Rgb> {
+    gradient
+        .stops
+        .iter()
+        .min_by(|a, b| (a.0 - 0.5).abs().total_cmp(&(b.0 - 0.5).abs()))
+        .map(|(_, colour)| *colour)
 }
 
 /// The advance of one code, in text space, before the transformation.

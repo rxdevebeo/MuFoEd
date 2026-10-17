@@ -225,3 +225,24 @@ fn wps_namespaces_are_declared() {
     assert_eq!(common::WPS, WPS);
     assert_eq!(common::WPG, WPG);
 }
+
+#[test]
+fn behind_text_objects_stack_by_relative_height() {
+    // A page-sized background (height 1) under a picture set on it (height
+    // 2): the lower one is painted first, whatever their document order.
+    let shape = |fill: &str, height: u32| {
+        anchor(&format!(
+            "<a:graphic><a:graphicData uri=\"{SHAPE_DATA_URI}\">{}</a:graphicData></a:graphic>",
+            rect_shape(fill)
+        ))
+        .replace(
+            "behindDoc=\"0\" relativeHeight=\"1\"",
+            &format!("behindDoc=\"1\" relativeHeight=\"{height}\""),
+        )
+    };
+    let body = format!("{}{}", shape("00FF00", 2), shape("FF0000", 1));
+    let svg = assert_single_page(&body);
+    let red = svg.find("fill=\"#ff0000\"").expect("the background");
+    let green = svg.find("fill=\"#00ff00\"").expect("the picture");
+    assert!(red < green, "height 1 is painted under height 2: {svg}");
+}

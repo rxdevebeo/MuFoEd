@@ -1,8 +1,9 @@
-//! Figures join the reading order where they stand on a single-column page.
+//! Figures stand where the page put them.
 //!
 //! A semantic conversion used to append every picture and drawn shape after
 //! all of its page's text, so a figure in the middle of a page landed below the
-//! page's last paragraph.
+//! page's last paragraph. Then they joined the flow; now they are anchored to
+//! the page at their place.
 
 use strict_ooxml_convert::{convert, Mode, PdfOptions};
 use strict_ooxml_pdf::{PdfDocument, PdfLimits};
@@ -63,11 +64,122 @@ fn outline(blocks: &[Block]) -> Vec<String> {
 }
 
 #[test]
-fn a_figure_in_the_middle_of_a_page_stays_between_its_paragraphs() {
+fn a_figure_in_the_middle_of_a_page_stands_where_the_page_put_it() {
+    // A drawn shape is anchored to its page at its place, held by the page's
+    // first paragraph; the text keeps its own order around it.
     let bytes = page_with_a_middle_figure();
     let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
     let converted =
         convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
     let order = outline(&converted.document.body.blocks);
-    assert_eq!(order, ["Above", "[figure]", "Below"], "{order:?}");
+    assert_eq!(order, ["[figure]", "Below"], "{order:?}");
+    let Some(Block::Paragraph(first)) = converted.document.body.blocks.first() else {
+        panic!("no first paragraph");
+    };
+    let text: String = first
+        .inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Run(run) => Some(run),
+            _ => None,
+        })
+        .flat_map(|run| run.content.iter())
+        .filter_map(|content| match content {
+            RunContent::Text(node) => Some(node.text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(text.trim(), "Above");
+    let anchor = first.inlines.iter().find_map(|inline| match inline {
+        Inline::Drawing(strict_ooxml_wml::model::drawing::Drawing {
+            kind: strict_ooxml_wml::model::drawing::DrawingKind::Anchor(anchor),
+            ..
+        }) => Some(anchor),
+        _ => None,
+    });
+    let anchor = anchor.expect("the shape is anchored");
+    // 792 - (400 + 100) points from the page's top, behind the text.
+    let top = anchor
+        .position_v
+        .as_ref()
+        .and_then(|position| position.offset)
+        .expect("a vertical offset");
+    assert_eq!(top.0, 292 * 12_700);
+    assert!(anchor.behind_doc);
+}
+
+#[test]
+fn a_pdf_page_that_flows_on_is_marked_where_it_starts() {
+    // `w:lastRenderedPageBreak`: Word's note that a page broke here, and how
+    // the source's pages are found again in a flow without hard breaks.
+    let mut pdf = PdfBuilder::new();
+    let font = pdf.object(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    );
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+    // A full first page: its text runs to the foot, so the second page
+    // flows on from it.
+    let full = (0..44).fold(String::new(), |mut out, row| {
+        use std::fmt::Write as _;
+        let _ = writeln!(out, "BT /F1 12 Tf 72 {} Td (One) Tj ET", 720 - row * 14);
+        out
+    });
+    pdf.page_with(full.as_bytes(), &resources);
+    pdf.page_with(b"BT /F1 12 Tf 72 700 Td (Two) Tj ET", &resources);
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let marked: Vec<String> = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        })
+        .filter(|paragraph| {
+            paragraph.inlines.iter().any(|inline| {
+                matches!(inline, Inline::Run(run)
+                    if run.content.iter().any(|content| matches!(content, RunContent::LastRenderedPageBreak)))
+            })
+        })
+        .map(|paragraph| outline(&[Block::Paragraph(paragraph.clone())]).concat())
+        .collect();
+    assert_eq!(marked, ["Two"]);
+}
+
+#[test]
+fn a_page_that_ends_short_breaks_before_the_next() {
+    // A slide's text stops near its top: the next slide is a page of its own.
+    let mut pdf = PdfBuilder::new();
+    let font = pdf.object(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    );
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+    pdf.page_with(b"BT /F1 12 Tf 72 700 Td (One) Tj ET", &resources);
+    pdf.page_with(b"BT /F1 12 Tf 72 700 Td (Two) Tj ET", &resources);
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let broken: Vec<String> = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Paragraph(paragraph)
+                if paragraph.props.page_break_before
+                    == strict_ooxml_wml::model::values::TriState::On =>
+            {
+                Some(outline(std::slice::from_ref(block)).concat())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(broken, ["Two"]);
 }

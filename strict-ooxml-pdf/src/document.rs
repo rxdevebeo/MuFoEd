@@ -721,7 +721,8 @@ impl PdfPage {
             // A glyph and a picture are both ink even when the reader could not
             // decode the picture: an undecodable scan is exactly the case where a
             // model is the only way left to see the page.
-            Item::Glyph(_) | Item::Image(_) => true,
+            Item::Glyph(glyph) => glyph.render_mode.paints(),
+            Item::Image(_) => true,
             Item::Vector(vector) => !vector.subpaths.is_empty(),
         })
     }
@@ -735,6 +736,10 @@ impl PdfPage {
             let Item::Glyph(glyph) = item else {
                 continue;
             };
+            // Clipping-only text is not on the page.
+            if !glyph.render_mode.paints() {
+                continue;
+            }
             if !glyph.mapped {
                 // A character the reader had to substitute is reported, not
                 // silently inserted into the text of a document.
