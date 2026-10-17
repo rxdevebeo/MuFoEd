@@ -156,6 +156,15 @@ pub(crate) fn build(
             .as_ref()
             .and_then(|margins| margins.top)
             .map(|top| f64::from(top.0) / 20.0);
+        // An indent is measured from the left margin, and the margin is where
+        // the page's ink starts: an indent of the line's x from the page's
+        // edge put a paper's text a margin further in than it stood, and its
+        // lines, narrowed by as much, each broke in two.
+        let left_margin = section
+            .page_margins
+            .as_ref()
+            .and_then(|margins| margins.left)
+            .map_or(0.0, |left| f64::from(left.0) / 20.0);
         sections.begin_page(&mut blocks, section, false);
         let raw_lines = join_fragments(strict_ooxml_pdf::text::lines(page.items()));
         report.lines += raw_lines.len();
@@ -258,6 +267,7 @@ pub(crate) fn build(
                         &mut flow,
                         body,
                         pitch,
+                        left_margin,
                         options,
                         &mut numbering,
                         report,
@@ -274,6 +284,7 @@ pub(crate) fn build(
                     &mut flow,
                     body,
                     pitch,
+                    left_margin,
                     options,
                     &mut numbering,
                     report,
@@ -292,6 +303,7 @@ pub(crate) fn build(
             &mut flow,
             body,
             pitch,
+            left_margin,
             options,
             &mut numbering,
             report,
@@ -442,7 +454,7 @@ fn paragraphs_of(
                 set_paragraph_gap(&mut fresh, line, line.baseline - furthest, pitch / body);
             }
             if let Some(item) = marker_item.filter(|item| item.numbered) {
-                crate::lists::mark(&mut fresh, item);
+                crate::lists::mark(&mut fresh, item, origin);
                 // The number is drawn with the paragraph mark's properties;
                 // without them it was the default black, invisible on a dark
                 // slide. The marker's own glyph says how it looked.
@@ -1077,6 +1089,7 @@ fn flush_flow(
     flow: &mut Vec<GlyphLine>,
     body: f64,
     pitch: f64,
+    origin: f64,
     options: &PdfOptions,
     numbering: &mut strict_ooxml_wml::model::numbering::NumberingTable,
     report: &mut ConversionReport,
@@ -1092,7 +1105,7 @@ fn flush_flow(
         body,
         pitch,
         options,
-        0.0,
+        origin,
         true,
         report,
         page,
