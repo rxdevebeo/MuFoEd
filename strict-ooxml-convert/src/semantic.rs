@@ -375,6 +375,15 @@ pub(crate) fn build(
         // Text a model read off a picture-only region comes after the page's
         // own content, indented to the region's left edge.
         for block in recovered.page(index) {
+            // Blocks set where they stood take no room in the flow: the page
+            // after them starts a page of its own.
+            if block
+                .items
+                .iter()
+                .any(|item| matches!(item, crate::recover::RecoveredItem::Placed { .. }))
+            {
+                break_next = true;
+            }
             let mut placed = recovered_blocks(block, index, &mut media, report, text_area);
             if block.whole_page && page_start > 0 {
                 if blocks.len() > page_start {
@@ -1774,11 +1783,77 @@ pub(crate) fn recovered_blocks(
     report: &mut ConversionReport,
     fit: Option<(f64, f64)>,
 ) -> Vec<Block> {
+    use crate::recover::RecoveredItem;
     let mut out = Vec::with_capacity(block.items.len());
+    // Blocks set where they stood: their pictures under their text, all held
+    // by one paragraph at the page's top, taking no room in the flow.
+    let (mut pictures, mut boxes) = (Vec::new(), Vec::new());
     for item in &block.items {
-        out.extend(item_blocks(item, index, media, report, fit));
+        match item {
+            RecoveredItem::Placed { area, items } => {
+                if let [RecoveredItem::Picture(picture)] = items.as_slice() {
+                    pictures.extend(picture_at(picture, *area, index, media, report));
+                } else {
+                    let content: Vec<Block> = items
+                        .iter()
+                        .flat_map(|item| {
+                            item_blocks(item, index, media, report, Some((area[2], area[3])))
+                        })
+                        .collect();
+                    if !content.is_empty() {
+                        let name = Arc::from(format!("ocr-block-{}", boxes.len()));
+                        boxes.push(crate::designed::text_box_at(name, *area, content, "square"));
+                    }
+                }
+            }
+            _ => out.extend(item_blocks(item, index, media, report, fit)),
+        }
+    }
+    if !pictures.is_empty() || !boxes.is_empty() {
+        let mut anchors = pictures;
+        anchors.extend(boxes);
+        let mut held = vec![Block::Paragraph(empty_paragraph())];
+        hold_anchors(&mut held, 0, anchors);
+        out.splice(0..0, held);
     }
     out
+}
+
+/// A picture cut from a scan, anchored at its place on the page.
+fn picture_at(
+    picture: &crate::recover::RecoveredPicture,
+    area: [f64; 4],
+    index: usize,
+    media: &mut crate::media::MediaCollector,
+    report: &mut ConversionReport,
+) -> Option<Inline> {
+    let part = match media.add(index, &picture.image) {
+        Ok(part) => part,
+        Err(reason) => {
+            report.record(
+                "image.lost",
+                Severity::Lost,
+                format!("page {}: a picture cut from the scan: {reason}", index + 1),
+            );
+            return None;
+        }
+    };
+    let Paragraph { mut inlines, .. } =
+        sized_image_paragraph(area[2], area[3], &part, picture.description.clone());
+    let Some(Inline::Drawing(Drawing {
+        kind: DrawingKind::Inline(inline),
+        location,
+    })) = inlines.pop()
+    else {
+        return None;
+    };
+    Some(anchor_at(
+        inline,
+        location,
+        area[0],
+        area[1],
+        PictureWrap::Over,
+    ))
 }
 
 /// The blocks one recovered item places; `fit` is the room it has, in points.
@@ -1809,6 +1884,11 @@ fn item_blocks(
                 .collect();
             vec![Block::Table(tables::columns_table(widths, contents))]
         }
+        // A placed block met inside another is set in its flow.
+        RecoveredItem::Placed { items, .. } => items
+            .iter()
+            .flat_map(|item| item_blocks(item, index, media, report, fit))
+            .collect(),
         RecoveredItem::Picture(picture) => match media.add(index, &picture.image) {
             Ok(part) => {
                 // A picture cut from a scan is as large as the page it
@@ -1950,8 +2030,6 @@ fn anchored_image(
     top: f64,
     wrap: PictureWrap,
 ) -> Option<Inline> {
-    use strict_ooxml_wml::model::drawing::{AnchorDrawing, Position, Wrap, WrapKind};
-    let emu = |points: f64| Emu((points * 12_700.0).round() as i64);
     let turn = Turn::of(image.ctm);
     // A turned or mirrored picture is its own size, turned about the centre
     // of the box it covers: the box alone set a turned photograph upright
@@ -1981,6 +2059,20 @@ fn anchored_image(
             flip_v: turn.mirrored,
         });
     }
+    Some(anchor_at(inline, location, left, top, wrap))
+}
+
+/// An inline drawing anchored to the page at `left`, `top` (points from the
+/// page's corner), wrapped as `wrap` says.
+fn anchor_at(
+    inline: InlineDrawing,
+    location: strict_ooxml_core::error::SourceLocation,
+    left: f64,
+    top: f64,
+    wrap: PictureWrap,
+) -> Inline {
+    use strict_ooxml_wml::model::drawing::{AnchorDrawing, Position, Wrap, WrapKind};
+    let emu = |points: f64| Emu((points * 12_700.0).round() as i64);
     let position = |offset: f64| Position {
         relative_from: Some(Arc::from("page")),
         align: None,
@@ -1991,7 +2083,7 @@ fn anchored_image(
         PictureWrap::Behind | PictureWrap::Over => WrapKind::None,
         PictureWrap::Square => WrapKind::Square,
     };
-    Some(Inline::Drawing(Drawing {
+    Inline::Drawing(Drawing {
         kind: DrawingKind::Anchor(AnchorDrawing {
             extent: inline.extent,
             effect_extent: None,
@@ -2031,7 +2123,7 @@ fn anchored_image(
             location: location.clone(),
         }),
         location,
-    }))
+    })
 }
 
 #[cfg(test)]

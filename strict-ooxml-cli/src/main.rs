@@ -187,7 +187,7 @@ fn print_usage() {
     eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
     eprintln!("  from-djvu       import DjVu to Strict DOCX --out <file.docx> [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr]");
     eprintln!("  djvu-dump       inspect DjVu chunk headers and text-layer states");
-    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr [--ocr-model <name>] [--ocr-endpoint <url>] [--ocr-lang <tag>] [--fetch-lexicon] [--no-lexicon] [--ocr-layout]] [--report-out <json>] (--out is required)");
+    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr [--ocr-model <name>] [--ocr-endpoint <url>] [--ocr-lang <tag>] [--fetch-lexicon] [--no-lexicon] [--ocr-layout [--ocr-flow]]] [--report-out <json>] (--out is required)");
     eprintln!("  lexicons        word lists that restore diacritics in recognised text: list | install <id...|all> | remove <id...|all> | path");
     eprintln!("  import-rtf      import .rtf to Strict .docx (--out required); writes .rtf-report.json beside output; --wps-text --allow-unsigned-unicode --drop-nul --reject-unsupported are explicit opt-ins");
     eprintln!("  write           serialize the model back to a Strict .docx [--report-out <json>] (--out is required)");
@@ -1278,6 +1278,8 @@ struct OcrArgs {
     no_lexicon: bool,
     /// `--ocr-layout`: rebuild scanned pages block by block.
     layout: bool,
+    /// `--ocr-flow`: set a rebuilt page as one flow, not its blocks in place.
+    flow: bool,
 }
 
 impl OcrArgs {
@@ -1289,6 +1291,7 @@ impl OcrArgs {
             "--fetch-lexicon" => self.fetch_lexicon = true,
             "--no-lexicon" => self.no_lexicon = true,
             "--ocr-layout" => self.layout = true,
+            "--ocr-flow" => self.flow = true,
             "--ocr-model" | "--ocr-endpoint" | "--ocr-lang" => {
                 *index += 1;
                 let value = args
@@ -1328,6 +1331,7 @@ impl OcrArgs {
         options.text_recovery = Some(vision.clone());
         options.figure_classifier = Some(vision);
         options.recovery_layout = self.layout;
+        options.recovery_flow = self.flow;
         if let Some(language) = self.language {
             if !self.no_lexicon {
                 options.recovery_lexicon =
@@ -1356,7 +1360,8 @@ impl OcrArgs {
             || self.language.is_some()
             || self.fetch_lexicon
             || self.no_lexicon
-            || self.layout;
+            || self.layout
+            || self.flow;
         if !self.enabled && configured {
             return Err("OCR configuration requires --ocr".to_owned());
         }

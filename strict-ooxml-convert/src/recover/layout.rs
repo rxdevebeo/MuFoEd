@@ -1134,7 +1134,14 @@ fn build_items(
     let mut previous_bottom: Option<usize> = None;
     let (mut headings, mut figures, mut bold_blocks, mut tables) = (0usize, 0usize, 0usize, 0usize);
     let mut bold_words = 0usize;
-    let mut emit = |index: usize, items: &mut Vec<RecoveredItem>, figures: &mut usize| {
+    // Per item, the box it stands in when it is not its block's (a coloured
+    // area's picture).
+    let mut boxes: Vec<Option<PixelBox>> = Vec::new();
+    let placing = !options.recovery_flow;
+    let mut emit = |index: usize,
+                    items: &mut Vec<RecoveredItem>,
+                    boxes: &mut Vec<Option<PixelBox>>,
+                    figures: &mut usize| {
         let (Some(region), Some(done)) = (regions.get(index), emitted.get_mut(index)) else {
             return None;
         };
@@ -1153,6 +1160,7 @@ fn build_items(
             frame.scale,
             (!description.is_empty()).then_some(description),
         )));
+        boxes.push(Some(*region));
         Some(region.bottom)
     };
     // Where each block's items start in `items`.
@@ -1168,13 +1176,13 @@ fn build_items(
         for (index, region) in regions.iter().enumerate() {
             let unclaimed = region_text.get(index).is_none_or(Vec::is_empty);
             if unclaimed && region.top < measured.area.top {
-                if let Some(bottom) = emit(index, &mut items, &mut figures) {
+                if let Some(bottom) = emit(index, &mut items, &mut boxes, &mut figures) {
                     previous_bottom = Some(bottom);
                 }
             }
         }
         if let Some(index) = region_of(block) {
-            if let Some(bottom) = emit(index, &mut items, &mut figures) {
+            if let Some(bottom) = emit(index, &mut items, &mut boxes, &mut figures) {
                 previous_bottom = Some(bottom);
             }
             continue;
@@ -1229,9 +1237,14 @@ fn build_items(
             size: size_of(position, block.kind),
             bold,
             heading,
+            // Set in its own box, a block has no room above it nor indent:
+            // the box stands where the block did.
             before: previous_bottom
+                .filter(|_| !placing)
                 .map(|bottom| measured.area.top.saturating_sub(bottom) as f64 / frame.scale),
-            indent: if matches!(
+            indent: if placing {
+                0.0
+            } else if matches!(
                 measured.alignment(column, block.align),
                 Align::Left | Align::Justify
             ) {
@@ -1294,9 +1307,16 @@ fn build_items(
     }
     let placed_end = items.len();
     for index in 0..regions.len() {
-        let _ = emit(index, &mut items, &mut figures);
+        let _ = emit(index, &mut items, &mut boxes, &mut figures);
     }
-    let items = arrangement.apply(items, &starts, placed_end, frame.scale);
+    // Every item pushed with no box of its own stands in its block's.
+    boxes.resize(items.len(), None);
+    let items = if placing {
+        let areas: Vec<PixelBox> = placed.iter().map(|(_, measured)| measured.area).collect();
+        place_items(items, &boxes, &starts, &areas, frame)
+    } else {
+        arrangement.apply(items, &starts, placed_end, frame.scale)
+    };
     report.record(
         "text.recovered",
         Severity::Recovered,
@@ -1323,6 +1343,62 @@ fn build_items(
     }
     let extent = extent_of(placed.iter().map(|(_, measured)| measured.area), frame);
     (items, extent)
+}
+
+/// The items of a page, each block's in a box where the block stood (a
+/// coloured area's picture in the area's): `boxes` gives an item's own box,
+/// `starts` where each block's items begin.
+fn place_items(
+    items: Vec<RecoveredItem>,
+    boxes: &[Option<PixelBox>],
+    starts: &[usize],
+    areas: &[PixelBox],
+    frame: &Frame,
+) -> Vec<RecoveredItem> {
+    let to_points = |area: PixelBox| {
+        [
+            frame.origin.0 + area.left as f64 / frame.scale,
+            frame.origin.1 + area.top as f64 / frame.scale,
+            area.width() as f64 / frame.scale,
+            area.height() as f64 / frame.scale,
+        ]
+    };
+    let mut out = Vec::new();
+    let mut open: Option<(usize, Vec<RecoveredItem>)> = None;
+    let close = |open: &mut Option<(usize, Vec<RecoveredItem>)>, out: &mut Vec<RecoveredItem>| {
+        if let Some((block, items)) = open.take() {
+            if let Some(area) = areas.get(block) {
+                out.push(RecoveredItem::Placed {
+                    area: to_points(*area),
+                    items,
+                });
+            }
+        }
+    };
+    for (index, item) in items.into_iter().enumerate() {
+        if let Some(Some(area)) = boxes.get(index) {
+            close(&mut open, &mut out);
+            out.push(RecoveredItem::Placed {
+                area: to_points(*area),
+                items: vec![item],
+            });
+            continue;
+        }
+        // The block whose items this one is among: the last that starts at
+        // or before it.
+        let block = starts
+            .partition_point(|start| *start <= index)
+            .saturating_sub(1);
+        match open.as_mut() {
+            Some((current, items)) if *current == block => items.push(item),
+            _ => {
+                close(&mut open, &mut out);
+                open = Some((block, vec![item]));
+            }
+        }
+    }
+    close(&mut open, &mut out);
+    out
 }
 
 /// Whether a text is set in capitals: two letters or more, none lower case.
@@ -1780,6 +1856,49 @@ mod tests {
             .bands
             .iter()
             .all(|band| band.1.is_empty()));
+    }
+
+    #[test]
+    fn each_block_is_placed_in_its_own_box() {
+        use super::super::RecoveredItem;
+        let area = |left, top, right, bottom| PixelBox {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        let item = || RecoveredItem::Columns {
+            widths: Vec::new(),
+            cells: Vec::new(),
+        };
+        // Block 0's two items, a coloured area's picture met among them, and
+        // block 1's item; 2 pixels a point, the region from (10, 20).
+        let items = vec![item(), item(), item(), item()];
+        let boxes = [None, None, Some(area(100, 100, 300, 200)), None];
+        let starts = [0, 3];
+        let areas = [area(0, 0, 200, 40), area(0, 60, 400, 100)];
+        let frame = super::Frame {
+            scale: 2.0,
+            page: 1,
+            detail: None,
+            origin: (10.0, 20.0),
+        };
+        let placed = super::place_items(items, &boxes, &starts, &areas, &frame);
+        let shapes: Vec<([f64; 4], usize)> = placed
+            .iter()
+            .map(|item| match item {
+                RecoveredItem::Placed { area, items } => (*area, items.len()),
+                _ => panic!("every item is placed"),
+            })
+            .collect();
+        assert_eq!(
+            shapes,
+            vec![
+                ([10.0, 20.0, 100.0, 20.0], 2),
+                ([60.0, 70.0, 100.0, 50.0], 1),
+                ([10.0, 50.0, 200.0, 20.0], 1),
+            ]
+        );
     }
 
     #[test]

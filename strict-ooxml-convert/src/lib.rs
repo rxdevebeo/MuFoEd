@@ -282,6 +282,12 @@ pub struct PdfOptions {
     /// page, and a model that gives no layout falls back to plain lines.
     #[cfg(feature = "raster")]
     pub recovery_layout: bool,
+    /// Set a page rebuilt from its layout as one flow (bands, and columns side
+    /// by side as a borderless table) rather than each block in a text box
+    /// where it stood. Off by default: a textbook's boxes and columns set as
+    /// a flow grew each page onto two or three.
+    #[cfg(feature = "raster")]
+    pub recovery_flow: bool,
     /// Correct word forms of that language: a recovered word that is not one,
     /// but is one with the diacritics a model dropped restored, is restored
     /// ([`strict_ooxml_ocr::Lexicon`]). The report counts the repairs.
@@ -322,6 +328,8 @@ impl Default for PdfOptions {
             recovery_language: None,
             #[cfg(feature = "raster")]
             recovery_layout: false,
+            #[cfg(feature = "raster")]
+            recovery_flow: false,
             recovery_lexicon: None,
         }
     }
