@@ -8,6 +8,7 @@ use eframe::egui::{self, vec2, Color32, FontFamily, FontId, Key, RichText, Sense
 use strict_ooxml::Mode;
 
 mod ai_ui;
+mod chart_ui;
 
 use crate::canvas;
 use crate::formats::{self, ImportOptions, Kind, OcrSettings, Source};
@@ -36,6 +37,8 @@ pub(crate) enum Action {
     TranslatePicture,
     /// The formula dialog, for the formula at the caret or a new one.
     FormulaDialog,
+    /// The chart dialog, for the selected chart or a new one.
+    ChartDialog,
     AiLanguage(String),
     New,
     OpenDialog,
@@ -177,6 +180,8 @@ pub(crate) enum Dialog {
         space_cm: f32,
         separator: bool,
     },
+    /// A chart's kind and data, new or for the selected chart.
+    Chart(Box<chart_ui::ChartDialog>),
     /// A formula typed as LaTeX, new or in place of one.
     Formula(Box<FormulaDialog>),
     /// Ollama and its models: what is there, what to fetch.
@@ -871,6 +876,11 @@ impl App {
                 self.dialog = Some(Dialog::AiSetup);
             }
             Action::ToggleAiPane => self.ai.open = !self.ai.open,
+            Action::ChartDialog => {
+                if let Some(tab) = self.active_tab() {
+                    tab.send(Request::ChartOfObject);
+                }
+            }
             Action::FormulaDialog => {
                 if let Some(tab) = self.active_tab() {
                     tab.send(Request::FormulaAtCaret);
@@ -968,6 +978,7 @@ impl App {
         let mut missing_fonts = Vec::new();
         let mut ai_sources = Vec::new();
         let mut formula_found = None;
+        let mut chart_found = None;
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             for event in tab.poll() {
                 match event {
@@ -1033,6 +1044,7 @@ impl App {
                     TabEvent::FontsMissing(packs) => missing_fonts.extend(packs),
                     TabEvent::AiSource { job, source } => ai_sources.push((tab.id, job, source)),
                     TabEvent::Formula(found) => formula_found = Some(found),
+                    TabEvent::Chart(data) => chart_found = Some(data),
                     TabEvent::Loaded => {
                         messages.push((
                             self.i18n.tf("status.opened", &[("file", &tab.title)]),
@@ -1050,6 +1062,18 @@ impl App {
         }
         for (text, error) in messages {
             self.say(text, error, now);
+        }
+        if let Some(data) = chart_found {
+            let categories: Vec<String> = (1..=4)
+                .map(|n| self.i18n.tf("chart.category_n", &[("n", &n)]))
+                .collect();
+            let series: Vec<String> = (1..=2)
+                .map(|n| self.i18n.tf("chart.series_n", &[("n", &n)]))
+                .collect();
+            self.dialog = Some(Dialog::Chart(Box::new(chart_ui::ChartDialog::new(
+                data.map(|data| *data),
+                (&categories, &series),
+            ))));
         }
         if let Some(found) = formula_found {
             let (source, replace) = match found {
@@ -1675,6 +1699,14 @@ impl App {
             "exit" => Some(Dialog::ConfirmExit),
             "dictionary" => Some(Dialog::Dictionary { code: "ru" }),
             "font-pack" => Some(Dialog::FontPack { id: "devanagari" }),
+            "chart" => {
+                let categories: Vec<String> = ["Q1", "Q2", "Q3", "Q4"].map(str::to_owned).to_vec();
+                let series: Vec<String> = ["A", "B"].map(str::to_owned).to_vec();
+                Some(Dialog::Chart(Box::new(chart_ui::ChartDialog::new(
+                    None,
+                    (&categories, &series),
+                ))))
+            }
             "formula" => Some(Dialog::Formula(Box::new(FormulaDialog {
                 source: "x = \\frac{-b \\pm \\sqrt{b^{2}-4ac}}{2a}".to_owned(),
                 replace: None,
@@ -3065,6 +3097,13 @@ impl App {
                         space_cm,
                         separator,
                     });
+                }
+            }
+            Dialog::Chart(mut dialog) => {
+                if self.chart_dialog_ui(ctx, &mut dialog, actions) {
+                    next = Some(Dialog::Chart(dialog));
+                } else {
+                    keep = false;
                 }
             }
             Dialog::Formula(mut dialog) => {

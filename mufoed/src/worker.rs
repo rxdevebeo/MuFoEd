@@ -150,6 +150,11 @@ pub(crate) enum Request {
     /// The formula beside the caret, to edit: answered with
     /// [`Reply::Formula`].
     FormulaAtCaret,
+    /// The selected chart's data, to edit: answered with [`Reply::Chart`].
+    ChartOfObject,
+    /// A chart from `data`: in place of the selected chart's, else new at
+    /// the caret.
+    PutChart(Box<strict_ooxml::model::chart::ChartData>),
     /// A formula put at the caret, or in place of the one at
     /// (paragraph, inline index).
     PutFormula {
@@ -810,6 +815,8 @@ pub(crate) struct ObjectView {
     pub(crate) height: i64,
     /// A picture (not a shape or a chart).
     pub(crate) picture: bool,
+    /// A chart.
+    pub(crate) chart: bool,
     /// How text flows around it.
     pub(crate) wrap: WrapStyle,
 }
@@ -880,6 +887,8 @@ pub(crate) enum Reply {
         job: u64,
         source: Box<AiSource>,
     },
+    /// The selected chart's data, or none (a new chart).
+    Chart(Option<Box<strict_ooxml::model::chart::ChartData>>),
     /// The formula beside the caret (where it is and what it says), or none.
     Formula(Option<Box<(Address, usize, strict_ooxml::model::math::MathExpression)>>),
     /// Font packs that would draw text nothing draws now (their ids).
@@ -1396,6 +1405,11 @@ impl<'a, 's> Worker<'a, 's> {
                 self.respell();
                 Outcome::Quiet
             }
+            Request::ChartOfObject => {
+                let data = self.selected_chart().map(|data| Box::new((*data).clone()));
+                self.send(Reply::Chart(data));
+                Outcome::Quiet
+            }
             Request::FormulaAtCaret => {
                 let found = self.formula_at_caret().map(Box::new);
                 self.send(Reply::Formula(found));
@@ -1461,6 +1475,7 @@ impl<'a, 's> Worker<'a, 's> {
                 self.paste(&new)
             }
             Request::ApplyKinds(kinds) => self.apply_kinds(&kinds),
+            Request::PutChart(data) => self.put_chart(*data),
             Request::PutFormula {
                 expression,
                 replace,
@@ -2820,8 +2835,93 @@ impl<'a, 's> Worker<'a, 's> {
             width: extent.map_or(0, |e| e.cx.0),
             height: extent.map_or(0, |e| e.cy.0),
             picture: matches!(graphic, Some(Graphic::Picture(_))),
+            chart: matches!(graphic, Some(Graphic::Chart(_))),
             wrap: wrap_style(&drawing),
         })
+    }
+
+    // ----- charts -------------------------------------------------------
+
+    /// The data of the selected drawing, when it is a chart.
+    fn selected_chart(&self) -> Option<Arc<strict_ooxml::model::chart::ChartData>> {
+        use strict_ooxml::model::{DrawingKind, Graphic};
+        let drawing = self.drawing_at(self.object.as_ref()?)?;
+        let graphic = match &drawing.kind {
+            DrawingKind::Inline(v) => &*v.graphic,
+            DrawingKind::Anchor(v) => &*v.graphic,
+            DrawingKind::Opaque(_) => return None,
+        };
+        match graphic {
+            Graphic::Chart(refs) => refs.chart.clone(),
+            _ => None,
+        }
+    }
+
+    /// A chart part for `data`; the selected chart shows it, or a new chart
+    /// goes in at the caret, as wide as the text and three fifths as high.
+    fn put_chart(&mut self, data: strict_ooxml::model::chart::ChartData) -> Outcome {
+        use strict_ooxml::edit::{chart_drawing, unused_drawing_id};
+        use strict_ooxml::model::{DrawingKind, Emu, ForeignRefs, Graphic, Inline};
+        let data = Arc::new(data);
+        let selected = self
+            .selected_chart()
+            .is_some()
+            .then(|| self.object.clone())
+            .flatten();
+        let Some(editor) = self.editor() else {
+            return Outcome::Quiet;
+        };
+        let id = editor.add_chart(&data);
+        if let Some(object) = selected {
+            let Some(mut drawing) = self.drawing_at(&object) else {
+                return Outcome::Quiet;
+            };
+            let graphic = match &mut drawing.kind {
+                DrawingKind::Inline(v) => &mut v.graphic,
+                DrawingKind::Anchor(v) => &mut v.graphic,
+                DrawingKind::Opaque(_) => return Outcome::Quiet,
+            };
+            **graphic = Graphic::Chart(ForeignRefs {
+                rels: vec![Arc::from(id.as_str())],
+                chart: Some(data),
+                diagram: None,
+                location: SourceLocation::unknown(),
+            });
+            let command = Edit::Drawing {
+                at: object.paragraph.clone(),
+                inline: object.inline.clone(),
+                content: object.content,
+                drawing: Box::new(drawing),
+            };
+            let outcome = if self.transact(&[command]) {
+                Outcome::Edited
+            } else {
+                Outcome::Quiet
+            };
+            self.object = Some(object);
+            return outcome;
+        }
+        if self.selection().is_some() && matches!(self.delete_selection(), Outcome::Quiet) {
+            return Outcome::Quiet;
+        }
+        let Some(caret) = self.caret.clone() else {
+            return Outcome::Quiet;
+        };
+        let width = (i64::from(self.text_width().max(1440)) * 635).min(5_486_400);
+        let drawing = chart_drawing(
+            &id,
+            data,
+            Emu(width),
+            Emu(width * 3 / 5),
+            unused_drawing_id(self.session.document()),
+            "Chart",
+        );
+        let commands = self.inline_at_caret(&caret, Inline::Drawing(drawing));
+        if self.transact(&commands) {
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
     }
 
     // ----- formulas -----------------------------------------------------

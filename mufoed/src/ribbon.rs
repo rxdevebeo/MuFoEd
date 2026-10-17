@@ -1767,6 +1767,21 @@ fn insert(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
         ) {
             actions.push(Action::FormulaDialog);
         }
+        let chart_selected = s.object.is_some_and(|object| object.chart);
+        if big_clicked(
+            ui,
+            Icon::Chart,
+            s.t(if chart_selected {
+                "cmd.chart_edit"
+            } else {
+                "cmd.chart"
+            }),
+            s.t("tip.chart"),
+            editable,
+            p,
+        ) {
+            actions.push(Action::ChartDialog);
+        }
     });
 }
 

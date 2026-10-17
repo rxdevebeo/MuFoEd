@@ -150,7 +150,9 @@
       "spelling": "Spelling",
       "dictionaries": "Dictionaries",
       "translate_picture": "Translate text",
-      "formula": "Equation"
+      "formula": "Equation",
+      "chart": "Chart",
+      "chart_edit": "Chart data"
     },
     "tip": {
       "start_page": "Start page",
@@ -270,7 +272,8 @@
       "ai_pane": "Show the AI results",
       "ai_settings": "Ollama and the model",
       "translate_picture": "Read the picture's labels, translate them into the AI tab's language and write them in instead",
-      "formula": "Insert an equation (or edit the one at the caret): LaTeX and chemistry \\ce{}"
+      "formula": "Insert an equation (or edit the one at the caret): LaTeX and chemistry \\ce{}",
+      "chart": "Insert a chart (or edit the selected one): columns, lines, pie…"
     },
     "font": {
       "default": "(from style)",
@@ -713,6 +716,31 @@
       "help": "LaTeX: ^{} raises, _{} lowers, \\frac{}{} divides, \\sqrt{} roots, \\alpha … Greek; chemistry in \\ce{…}.",
       "empty": "The equation shows here",
       "update": "Replace"
+    },
+    "chart": {
+      "title": "Chart",
+      "column": "Column",
+      "bar": "Bar",
+      "line": "Line",
+      "area": "Area",
+      "pie": "Pie",
+      "doughnut": "Doughnut",
+      "clustered": "Side by side",
+      "stacked": "Stacked",
+      "percent": "100 % stacked",
+      "heading": "Title",
+      "legend": "Legend",
+      "bottom": "bottom",
+      "right": "right",
+      "top": "top",
+      "left": "left",
+      "data": "Data",
+      "add_row": "+ row",
+      "remove_row": "− row",
+      "add_series": "+ series",
+      "remove_series": "− series",
+      "series_n": "Series {n}",
+      "category_n": "Category {n}"
     }
   }
 }

@@ -33,8 +33,16 @@ pub(crate) fn from_latex(source: &str) -> Result<MathExpression, String> {
 /// The formula drawn as the document draws it, cropped to its ink:
 /// width, height and premultiplied RGBA.
 pub(crate) fn preview(expression: &MathExpression) -> Option<(usize, usize, Vec<u8>)> {
+    preview_inline(strict_ooxml::model::Inline::Math(expression.clone()))
+}
+
+/// An inline (a formula, a chart) drawn alone as the document draws it,
+/// cropped to its ink: width, height and premultiplied RGBA.
+pub(crate) fn preview_inline(
+    inline: strict_ooxml::model::Inline,
+) -> Option<(usize, usize, Vec<u8>)> {
     use std::sync::OnceLock;
-    use strict_ooxml::model::{Block, Inline, Paragraph, Rsids};
+    use strict_ooxml::model::{Block, Paragraph, Rsids};
     static BLANK: OnceLock<Option<strict_ooxml::model::Document>> = OnceLock::new();
     let blank = BLANK.get_or_init(|| {
         strict_ooxml::StrictDocument::import_rtf(
@@ -47,7 +55,7 @@ pub(crate) fn preview(expression: &MathExpression) -> Option<(usize, usize, Vec<
     let mut document = blank.clone()?;
     document.body.blocks = vec![Block::Paragraph(Paragraph {
         props: strict_ooxml::model::ParagraphProperties::default(),
-        inlines: vec![Inline::Math(expression.clone())],
+        inlines: vec![inline],
         rsids: Rsids::default(),
         revision: None,
         para_id: None,

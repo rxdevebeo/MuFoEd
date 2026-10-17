@@ -29,6 +29,7 @@ pub(crate) enum Icon {
     Picture,
     Print,
     Toc,
+    Chart,
     Columns,
     Spelling,
     Sparkle,
@@ -537,6 +538,32 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                 points,
                 stroke(Color32::from_rgb(220, 40, 40), thin * 1.3),
             ));
+        }
+        Icon::Chart => {
+            // Three columns on an axis.
+            let base = r.bottom() - r.height() * 0.1;
+            painter.line_segment(
+                [
+                    pos2(r.left() + r.width() * 0.08, base),
+                    pos2(r.right() - r.width() * 0.05, base),
+                ],
+                stroke(color, thin),
+            );
+            for (i, (height, tint)) in [(0.45, color), (0.75, accent), (0.6, color)]
+                .into_iter()
+                .enumerate()
+            {
+                #[allow(clippy::cast_precision_loss)]
+                let left = r.left() + r.width() * (0.15 + 0.27 * i as f32);
+                painter.rect_filled(
+                    Rect::from_min_max(
+                        pos2(left, base - r.height() * height),
+                        pos2(left + r.width() * 0.2, base),
+                    ),
+                    1.0,
+                    tint,
+                );
+            }
         }
         Icon::Columns => {
             page(painter, page_rect, color, paper);

@@ -46,6 +46,8 @@ pub(crate) enum TabEvent {
     SpellingMissing(Vec<crate::spell::Script>),
     /// The document has text no font draws; these packs would.
     FontsMissing(Vec<&'static str>),
+    /// The selected chart's data was asked for (none: a new chart).
+    Chart(Option<Box<strict_ooxml::model::chart::ChartData>>),
     /// The formula at the caret was asked for, to edit (or none: a new one).
     Formula(
         Option<
@@ -340,6 +342,7 @@ impl DocTab {
             Reply::FontsMissing(packs) => events.push(TabEvent::FontsMissing(packs)),
             Reply::AiSource { job, source } => events.push(TabEvent::AiSource { job, source }),
             Reply::Formula(found) => events.push(TabEvent::Formula(found)),
+            Reply::Chart(data) => events.push(TabEvent::Chart(data)),
             Reply::Spelling { errors, missing } => {
                 self.spelling = errors;
                 if !missing.is_empty() {
