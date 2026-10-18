@@ -1,0 +1,206 @@
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_latex-3u1fap543hyf7\s-hnc5cmxm5j-0r10gc1-working`
+
+warning: `strict-ooxml-latex` (lib) generated 1 warning
+    Checking strict-ooxml-render-svg v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-render-svg)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\hostile-00oh2f8tpdcgm\s-hnc5cneylh-1cpefiv-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\import-2ptktizi947t8\s-hnc5cnfg1a-03b4qhk-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_latex-1d21vpw46vjso\s-hnc5cmxznw-1qrprk6-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\small_commands-1avfsxzrglh8x\s-hnc5cneuoa-02xevpw-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\cc0_regressions-3le8c063pr6ni\s-hnc5cnf3qd-0mamrxc-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\extensions-1p5zdjiqny2dl\s-hnc5cnfani-0kjv7ix-working`
+
+warning: `strict-ooxml-latex` (test "hostile") generated 1 warning
+warning: `strict-ooxml-latex` (test "import") generated 1 warning
+warning: `strict-ooxml-latex` (lib test) generated 1 warning
+warning: `strict-ooxml-latex` (test "small_commands") generated 1 warning
+warning: `strict-ooxml-latex` (test "cc0_regressions") generated 1 warning
+warning: `strict-ooxml-latex` (test "extensions") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_render_svg-1steakdwy3h8p\s-hnc5dd0ox9-0xlnqdu-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_render_svg-0iv11rfe8cabm\s-hnc5dd0lzp-1hwtyep-working`
+
+warning: `strict-ooxml-render-svg` (lib) generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\numbering_properties-2wgya9jvhoywp\s-hnc5ddyxyv-1bscjwr-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\render-0odkdb0xque7e\s-hnc5ddzbx4-0pillnj-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\table_properties-2n79nt96ww45r\s-hnc5ddzbjo-05n5aoh-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\floating-2ho1mqbs4m1do\s-hnc5ddzdc5-0xkin5s-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\run_properties-25ceho4gkuo01\s-hnc5ddzdlg-12ky5fk-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\raster_svg-3sacwfp92lres\s-hnc5ddzexh-0g5jnb5-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f16_frames-1j315f9kokgrk\s-hnc5ddze53-1o7heil-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\render-3pgf23uxco34d\s-hnc5ddze9e-19uoh2h-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\vml_group_flow-2sixx5vwnh7ui\s-hnc5ddzeu1-1t7gr3s-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\page_properties-2jijbb4yfy91p\s-hnc5ddzf2e-17dlod7-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\images-3eslk9rzp6u7j\s-hnc5ddzg46-0beutlp-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_profile-0l95ahio08dsj\s-hnc5ddzfmj-1kkjmj1-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\d03_geometry_probe-2lik9v93861ko\s-hnc5ddzgh2-03t5nkq-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\svg_oracle-0ozldjepvm8a6\s-hnc5ddzgiy-1iw8r9t-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\complex_graphics-2l3nzag26p32t\s-hnc5ddzgtr-1blkhh9-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\metafile_preview-2a0ybjtmydefr\s-hnc5ddzgpe-0nql1rp-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\coverage-2un2vum0l38kv\s-hnc5ddzg7y-17gtk4d-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\page_diff-3b1qccv78nikc\s-hnc5de1v1i-1hg4pbe-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\headers-2jcu3pk4gmdp6\s-hnc5de1yv3-1c267fl-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\acceptance_r7-27mpwzv089mg2\s-hnc5de24jn-1qbs38e-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\waivers-0nzd2lr61ptmu\s-hnc5de2d5o-1tdxlxv-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f14_anchors-2he906ubeg5jw\s-hnc5de2pyb-0butz21-working`
+
+warning: `strict-ooxml-render-svg` (lib test) generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\wps_qa_fixes-3rpe0pa26trg6\s-hnc5de4am6-1fu53tj-working`
+
+warning: `strict-ooxml-render-svg` (example "raster_svg") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f09_tabs-0rena9yxvurzz\s-hnc5de6abu-14lxr2y-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\revisions-085e8ewb3wc1w\s-hnc5de6gea-10orua6-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\math_properties-1wswlqi6e8xwx\s-hnc5de6xh7-1y1jvi1-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\p7_p8-3ft1713zkixlo\s-hnc5de70vj-19zp1z9-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\chart_render-2yb65bpqdkzfk\s-hnc5de71dc-1q4zew0-working`
+
+warning: `strict-ooxml-render-svg` (test "numbering_properties") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\font_assets-16v9lutq190ur\s-hnc5de7lvg-0pg6zri-working`
+
+warning: `strict-ooxml-render-svg` (test "waivers") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\ssim-2yufhz9vz1iv5\s-hnc5de9in8-02ptpyk-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\p5_p6-0z7ncr8t4xe2i\s-hnc5de9kgm-0s8gbvf-working`
+
+warning: `strict-ooxml-render-svg` (test "d03_geometry_probe") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "page_properties") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "floating") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "svg_oracle") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "table_properties") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "strict_profile") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "render") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f16_frames") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "images") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "run_properties") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "coverage") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "vml_group_flow") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f14_anchors") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\paragraph_properties-2aireijj4dizw\s-hnc5ded9an-1cd8l72-working`
+
+warning: `strict-ooxml-render-svg` (test "acceptance_r7") generated 1 warning
+warning: `strict-ooxml-render-svg` (example "page_diff") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "complex_graphics") generated 1 warning
+warning: `strict-ooxml-render-svg` (bench "render") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "headers") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f12_shading-0tgn8q2ox2io5\s-hnc5dedulp-1r2uyn8-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\drawing_properties-0zt36ksrokv7m\s-hnc5dee5qh-1xyyir2-working`
+
+warning: `strict-ooxml-render-svg` (test "math_properties") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\math-1551xpl9xxr0u\s-hnc5deeazr-0vqn0c6-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\notes-3637qzlbuobmm\s-hnc5deeg4e-1al4sbt-working`
+
+warning: `strict-ooxml-render-svg` (test "metafile_preview") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\corpus-0mfv5w28yn42x\s-hnc5deeyvp-1u66eqd-working`
+
+warning: `strict-ooxml-render-svg` (test "wps_qa_fixes") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "p7_p8") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f09_tabs") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\table_style_conditions-0j4f2o58lqdi0\s-hnc5def4xf-181qdlp-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\sections_render-1wndnzoeps7ul\s-hnc5defq19-0etwize-working`
+
+warning: `strict-ooxml-render-svg` (test "revisions") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\diagram_render-2l6q997y3njm4\s-hnc5defsv5-0h8109c-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\system_fonts-1ntcpz4vjbe0l\s-hnc5degl5j-0sj0f7r-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f13_regions-3iz57alhbi7ja\s-hnc5deftgc-0fmd0xg-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\columns-1h7sxjvhk8pjk\s-hnc5degjzm-1a9gfx4-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\graphics_gallery-02xl2q3988twz\s-hnc5deg7iz-1twwidh-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f15_wrap-0uftsrfe33lk3\s-hnc5degwng-0jyisa7-working`
+
+warning: `strict-ooxml-render-svg` (test "chart_render") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\long_token-13bep90wss4sj\s-hnc5deg0uo-0epbygm-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\fields-1k1wsok3u6cq0\s-hnc5deg7fv-0e7w39g-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\tristate-10883rx6pzdpm\s-hnc5dehbuq-0ii1lrb-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\themes-24uq5hy7khaqg\s-hnc5dei7j4-0dlop8z-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\numbering-2ka8lnf3v8rtz\s-hnc5deiea6-0jlh07b-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f08_indent-3cuhw8xo12he2\s-hnc5deixvd-1ttxh0s-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f10_lists-2jyi4cfpf5m56\s-hnc5deizgd-1x1vnhn-working`
+
+warning: `strict-ooxml-render-svg` (test "font_assets") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\golden-226bez96s4v19\s-hnc5dej87x-16r4p95-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f11_tables-3lnxnaaa1bda7\s-hnc5dej8b5-0jyktke-working`
+
+warning: `strict-ooxml-render-svg` (test "p5_p6") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f06_toggles-2e60fglohvbye\s-hnc5dejipl-1q0ngk0-working`
+
+warning: `strict-ooxml-render-svg` (test "system_fonts") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\output_budget-10cw4cqphqja6\s-hnc5dekhey-12eriny-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f07_fonts-1rgs8vpi40tas\s-hnc5del9mi-1s3irnm-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\tables-3sa9tm0p7p6im\s-hnc5delb4t-1ng9jge-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\f17_merge-2mksdz7dojuqf\s-hnc5dem3ad-0aztxga-working`
+
+warning: `strict-ooxml-render-svg` (test "ssim") generated 1 warning
+warning: `strict-ooxml-render-svg` (example "graphics_gallery") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "notes") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "paragraph_properties") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f12_shading") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "table_style_conditions") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "tristate") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "drawing_properties") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "long_token") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "diagram_render") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f15_wrap") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "columns") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "fields") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "sections_render") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "themes") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f13_regions") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f06_toggles") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "numbering") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "corpus") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "output_budget") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "golden") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f08_indent") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "math") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f10_lists") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "tables") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f17_merge") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f11_tables") generated 1 warning
+warning: `strict-ooxml-render-svg` (test "f07_fonts") generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.55s

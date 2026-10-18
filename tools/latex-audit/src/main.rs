@@ -180,6 +180,11 @@ fn audit(input: &Path, out: &Path, end: usize) {
         }
     }
     result["render"] = json!({"pages":placement.pages.len(),"warnings":placement.warnings,"overflow_text":overflow,"overflow_count":overflow_count,"geometry":"page_coordinates_after_all_group_transforms; baseline_endpoints; clips_not_applied","text_items":text_items,"scope":if end==0 {"all_pages"} else {"prefix_only"}});
+    result["math_clearance_candidates"] = json!(placement
+        .warnings
+        .iter()
+        .filter(|message| message.starts_with("render.math-clearance:"))
+        .collect::<Vec<_>>());
     result["stage"] = json!("complete");
     result["total_ms"] = json!(start.elapsed().as_millis());
     save(out, &result);
@@ -202,6 +207,12 @@ mod tests {
 
 fn main() {
     let args: Vec<_> = std::env::args().collect();
+    if args.get(1).is_some_and(|arg| arg == "--raster") {
+        assert_eq!(args.len(), 4, "latex-audit --raster INPUT.svg OUTPUT.png");
+        let svg = fs::read_to_string(&args[2]).unwrap();
+        raster(&svg, Path::new(&args[3])).unwrap();
+        return;
+    }
     assert!(
         args.len() >= 3,
         "latex-audit INPUT.tex OUTPUT_DIR [PAGE_LIMIT; 0=all]"

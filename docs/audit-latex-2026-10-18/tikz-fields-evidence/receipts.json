@@ -1,0 +1,44 @@
+{
+  "flat": {
+    "input": "D:\\projects\\StrictLib\\testdata\\CC0_TEX\\part2\\files\\023_2408.03243.tex",
+    "input_sha256": "cb0d605cda137aa694737f478d647136bab516fd98b0dafb5620abbe518fc0cf",
+    "stage": "complete",
+    "render_page_limit": 1,
+    "first_field_results": [
+      "??",
+      "??",
+      "??",
+      "??",
+      "??",
+      "??",
+      "??",
+      "??"
+    ],
+    "unresolved_cached_fields": 99,
+    "tikz_config_diagnostic": {
+      "info": 0,
+      "loss": 1
+    }
+  },
+  "project": {
+    "input": "D:\\projects\\StrictLib\\testdata\\CC0_TEX\\part2\\projects\\023_2408.03243\\mainMB06Aug24.tex",
+    "input_sha256": "cb0d605cda137aa694737f478d647136bab516fd98b0dafb5620abbe518fc0cf",
+    "stage": "complete",
+    "render_page_limit": 1,
+    "first_field_results": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8"
+    ],
+    "unresolved_cached_fields": 0,
+    "tikz_config_diagnostic": {
+      "info": 0,
+      "loss": 1
+    }
+  }
+}

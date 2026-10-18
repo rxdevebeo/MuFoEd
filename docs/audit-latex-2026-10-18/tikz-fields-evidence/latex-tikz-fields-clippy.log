@@ -1,0 +1,275 @@
+    Checking strict-ooxml-latex v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-latex)
+    Checking serde_spanned v0.6.9
+    Checking toml_datetime v0.6.11
+    Checking strict-ooxml-render-svg v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-render-svg)
+    Checking strict-ooxml-pdf v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-pdf)
+    Checking strict-ooxml-report v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-report)
+    Checking strict-ooxml-djvu v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-djvu)
+    Checking strict-ooxml-ocr v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-ocr)
+    Checking strict-ooxml-html v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-html)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_latex-03cqrqjnwwk3e\s-hnc5s72le3-1oy9chc-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_pdf-2dz4a7dncr9bg\s-hnc5s731qr-1mvc53n-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_report-01neliifz09xb\s-hnc5s733q8-0pit77x-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_ocr-3j31kkynn27bh\s-hnc5s737v5-00x3wdb-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_djvu-06t7c41nlhw85\s-hnc5s73e4b-1ql295x-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_html-3i1n2krhfxhmp\s-hnc5s73h7o-0ipr2cx-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_render_svg-3h6giqeodv6cw\s-hnc5s72xl1-05ji7q1-working`
+
+    Checking toml_edit v0.22.27
+warning: `strict-ooxml-ocr` (lib) generated 1 warning
+warning: `strict-ooxml-html` (lib) generated 1 warning
+warning: `strict-ooxml-djvu` (lib) generated 1 warning
+warning: `strict-ooxml-report` (lib) generated 1 warning
+warning: `strict-ooxml-pdf` (lib) generated 1 warning
+    Checking strict-ooxml-convert v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-convert)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_convert-14fxfqcd3ebuk\s-hnc5s7j2dc-12pjjl9-working`
+
+warning: `strict-ooxml-latex` (lib) generated 1 warning
+    Checking toml v0.8.23
+warning: `strict-ooxml-convert` (lib) generated 1 warning
+    Checking strict-ooxml-testkit v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-testkit)
+warning: `strict-ooxml-render-svg` (lib) generated 1 warning
+    Checking strict-ooxml-edit v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-edit)
+    Checking strict-ooxml-render-pdf v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-render-pdf)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_render_pdf-2ehu47zhjexa5\s-hnc5s8wvw6-0fc2ewo-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_edit-2h3nlind8lrlz\s-hnc5s8wzvv-1tkhyiq-working`
+
+warning: `strict-ooxml-render-pdf` (lib) generated 1 warning
+warning: `strict-ooxml-edit` (lib) generated 1 warning
+    Checking strict-ooxml v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml-2hkbd13oq3vut\s-hnc5s9jx4t-1jmet7i-working`
+
+warning: `strict-ooxml` (lib) generated 1 warning
+    Checking diagram-editor v0.1.0 (D:\projects\StrictLib-mufoed\diagram-editor)
+    Checking chem-editor v0.1.0 (D:\projects\StrictLib-mufoed\chem-editor)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\chem_editor-37mox1r58d5nv\s-hnc5s9r6u5-124x8aa-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\diagram_editor-1ugjcrys9r67m\s-hnc5s9r92u-0ruq34u-working`
+
+warning: `diagram-editor` (lib) generated 1 warning
+warning: `chem-editor` (lib) generated 1 warning
+    Checking mufoed v0.1.0 (D:\projects\StrictLib-mufoed\mufoed)
+error: unnecessary hashes around raw string literal
+   --> mufoed\src\worker\navigation.rs:532:26
+    |
+532 |             field_target(r#"PAGEREF Chapter \h"#),
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#needless_raw_string_hashes
+    = note: `-D clippy::needless-raw-string-hashes` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::needless_raw_string_hashes)]`
+help: remove all the hashes around the string literal
+    |
+532 -             field_target(r#"PAGEREF Chapter \h"#),
+532 +             field_target(r"PAGEREF Chapter \h"),
+    |
+
+error: unneeded `return` statement
+   --> mufoed\src\canvas.rs:178:9
+    |
+178 | /         return Ok(crate::raster::Bitmap {
+179 | |             width: pixmap.width() as usize,
+180 | |             height: pixmap.height() as usize,
+181 | |             rgba: pixmap.data().to_vec(),
+182 | |         });
+    | |__________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#needless_return
+    = note: `-D clippy::needless-return` implied by `-D clippy::all`
+    = help: to override `-D clippy::all` add `#[allow(clippy::needless_return)]`
+help: remove `return`
+    |
+178 ~         Ok(crate::raster::Bitmap {
+179 +             width: pixmap.width() as usize,
+180 +             height: pixmap.height() as usize,
+181 +             rgba: pixmap.data().to_vec(),
+182 ~         })
+    |
+
+error: called `map(<f>).unwrap_or(<a>)` on an `Option` value
+   --> mufoed\src\tab.rs:281:32
+    |
+281 |                         first: import.pages.map(|(start, _)| start).unwrap_or(1),
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#map_unwrap_or
+    = note: `-D clippy::map-unwrap-or` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::map_unwrap_or)]`
+help: use `map_or(<a>, <f>)` instead
+    |
+281 -                         first: import.pages.map(|(start, _)| start).unwrap_or(1),
+281 +                         first: import.pages.map_or(1, |(start, _)| start),
+    |
+
+error: redundant closure
+   --> mufoed\src\theme.rs:170:31
+    |
+170 |     let Some(id) = ctx.memory(|memory| memory.focused()) else {
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace the closure with the method itself: `eframe::egui::Memory::focused`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#redundant_closure_for_method_calls
+    = note: `-D clippy::redundant-closure-for-method-calls` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::redundant_closure_for_method_calls)]`
+
+error: usage of wildcard import
+ --> mufoed\src\worker\navigation.rs:3:5
+  |
+3 | use super::*;
+  |     ^^^^^^^^ help: try: `super::{Address, Story, VisualRect, Logical, Session, HashMap, Block, Container, Color, nav, Paragraph, SourceLocation, PlacedPage, Worker, RenderOptions, Outcome, Reply, Request}`
+  |
+  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#wildcard_imports
+  = note: `-D clippy::wildcard-imports` implied by `-D warnings`
+  = help: to override `-D warnings` add `#[allow(clippy::wildcard_imports)]`
+
+error: calling `ResourceLimits::default()` is more clear than this expression
+  --> mufoed\src\worker\navigation.rs:84:30
+   |
+84 | ...                   &Default::default(),
+   |                        ^^^^^^^^^^^^^^^^^^ help: try: `ResourceLimits::default()`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#default_trait_access
+   = note: `-D clippy::default-trait-access` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::default_trait_access)]`
+
+error: this argument is passed by value, but not consumed in the function body
+   --> mufoed\src\worker\navigation.rs:159:20
+    |
+159 |         inherited: Option<Target>,
+    |                    ^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#needless_pass_by_value
+    = note: `-D clippy::needless-pass-by-value` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::needless_pass_by_value)]`
+help: consider taking a reference instead
+    |
+159 |         inherited: Option<&Target>,
+    |                           +
+
+error: consider adding a `;` to the last statement for consistent formatting
+   --> mufoed\src\worker\navigation.rs:241:21
+    |
+241 |                     self.inlines(&mut d.inlines, at, offset, inherited.clone())
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `self.inlines(&mut d.inlines, at, offset, inherited.clone());`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#semicolon_if_nothing_returned
+    = note: `-D clippy::semicolon-if-nothing-returned` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::semicolon_if_nothing_returned)]`
+
+error: calling `RunProperties::default()` is more clear than this expression
+   --> mufoed\src\worker\navigation.rs:257:32
+    |
+257 |                         props: Default::default(),
+    |                                ^^^^^^^^^^^^^^^^^^ help: try: `RunProperties::default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#default_trait_access
+
+error: calling `ParagraphProperties::default()` is more clear than this expression
+   --> mufoed\src\worker\navigation.rs:283:16
+    |
+283 |         props: Default::default(),
+    |                ^^^^^^^^^^^^^^^^^^ help: try: `ParagraphProperties::default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#default_trait_access
+
+error: calling `Rsids::default()` is more clear than this expression
+   --> mufoed\src\worker\navigation.rs:285:16
+    |
+285 |         rsids: Default::default(),
+    |                ^^^^^^^^^^^^^^^^^^ help: try: `Rsids::default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#default_trait_access
+
+error: redundant closure
+   --> mufoed\src\worker.rs:757:32
+    |
+757 |     sync.lock().unwrap_or_else(|poison| poison.into_inner())
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace the closure with the method itself: `std::sync::PoisonError::into_inner`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#redundant_closure_for_method_calls
+
+error: this argument is passed by value, but not consumed in the function body
+   --> mufoed\src\worker.rs:762:14
+    |
+762 |     speller: Arc<crate::spell::Speller>,
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+    |
+762 |     speller: &Arc<crate::spell::Speller>,
+    |              +
+
+error: this argument is passed by value, but not consumed in the function body
+   --> mufoed\src\worker.rs:763:17
+    |
+763 |     paragraphs: Vec<SpellSource>,
+    |                 ^^^^^^^^^^^^^^^^ help: consider changing the type to: `&[SpellSource]`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#needless_pass_by_value
+
+error: this argument is passed by value, but not consumed in the function body
+   --> mufoed\src\worker.rs:764:10
+    |
+764 |     map: Option<Arc<VisualMap>>,
+    |          ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+    |
+764 |     map: Option<&Arc<VisualMap>>,
+    |                 +
+
+error: this argument is passed by value, but not consumed in the function body
+   --> mufoed\src\worker.rs:766:12
+    |
+766 |     cache: HashMap<String, Checked>,
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+    |
+766 |     cache: &HashMap<String, Checked>,
+    |            +
+
+error: consider adding a `;` to the last statement for consistent formatting
+    --> mufoed\src\worker.rs:1682:17
+     |
+1682 |                 self.note("note.selection_structure", String::new(), true)
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `self.note("note.selection_structure", String::new(), true);`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#semicolon_if_nothing_returned
+
+error: could not compile `mufoed` (bin "mufoed") due to 16 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: calling `RunProperties::default()` is more clear than this expression
+   --> mufoed\src\worker\navigation.rs:511:20
+    |
+511 |             props: Default::default(),
+    |                    ^^^^^^^^^^^^^^^^^^ help: try: `RunProperties::default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#default_trait_access
+
+error: calling `RunProperties::default()` is more clear than this expression
+   --> mufoed\src\worker\navigation.rs:673:28
+    |
+673 |                     props: Default::default(),
+    |                            ^^^^^^^^^^^^^^^^^^ help: try: `RunProperties::default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#default_trait_access
+
+error: consider adding a `;` to the last statement for consistent formatting
+   --> mufoed\src\worker\navigation.rs:783:25
+    |
+783 |                         crate::canvas::show(ui, &mut tab, crate::theme::palette(false), true, &i18n)
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `crate::canvas::show(ui, &mut tab, crate::theme::palette(false), true, &i18n);`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#semicolon_if_nothing_returned
+
+error: could not compile `mufoed` (bin "mufoed" test) due to 19 previous errors

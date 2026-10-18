@@ -9516,6 +9516,40 @@ mod tests {
     }
 
     #[test]
+    fn copying_citations_includes_cached_fields_and_keeps_edit_points_protected() {
+        let mut loaded = StrictDocument::import_latex(
+            br"\begin{document}Before [\ref{missing}], \cite{one,two} after.
+            \begin{thebibliography}{2}\bibitem{one}First\bibitem{two}Second\end{thebibliography}
+            \end{document}",
+            &strict_ooxml::LatexOptions::default(),
+        ).unwrap();
+        let editor = loaded.document.edit(EditLimits::default()).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = eframe::egui::Context::default();
+        let mut worker = Worker::new(Session::Edit(editor), RenderOptions::default(), &tx, &ctx, None);
+        worker.relayout();
+        worker.handle(Request::SelectAll);
+        worker.copy(false);
+        let text = rx.try_iter().find_map(|reply| match reply {
+            Reply::Clipboard(text) => Some(text),
+            _ => None,
+        }).expect("copied text");
+        assert!(text.contains("Before [??], [1, 2] after."), "{text}");
+        let paragraph = worker.paragraph(&Address::body(0)).unwrap();
+        let pieces = nav::pieces(paragraph);
+        let mut offset = 0;
+        for piece in pieces {
+            if piece.kind == nav::PieceKind::FieldResult {
+                if piece.len() > 1 {
+                    assert!(nav::point_at(&nav::pieces(paragraph), offset + 1).is_none());
+                }
+                assert!(nav::run_at(paragraph, &piece.inline).is_none());
+            }
+            offset += piece.len();
+        }
+    }
+
+    #[test]
     fn regression_bookmark_on_empty_document() {
         with_empty_worker(|worker| {
             assert!(matches!(worker.add_bookmark("Start"), Outcome::Edited));

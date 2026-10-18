@@ -771,10 +771,12 @@ fn an_equation_array_row_spacing_is_twips() {
         (wide_pitch - narrow_pitch - 8.0).abs() < 1.0,
         "120 twips must add 8px of row pitch: {narrow_pitch} -> {wide_pitch}"
     );
-    // Without the rule the natural row pitch is one line of the math font.
+    // Automatic spacing now adds a font-relative ink clearance to the line
+    // grid; an explicit additive 120-twip skip must still add exactly 8 px.
+    let clearance = font_size_near(&narrow, ">a</text>").unwrap() * 0.3;
     assert!(
-        narrow_pitch > 14.0 && narrow_pitch < 20.0,
-        "a two-row array must be about one line per row, got {narrow_pitch}"
+        narrow_pitch - clearance > 14.0 && narrow_pitch - clearance < 20.0,
+        "row pitch includes one natural line plus clearance, got {narrow_pitch}"
     );
 }
 
@@ -1026,4 +1028,146 @@ fn ordinary_math_style_remains_independent_of_normal_text_properties() {
         assert_eq!(tag.contains("font-weight=\"bold\""), bold);
         assert_eq!(tag.contains("font-style=\"italic\""), italic);
     }
+}
+
+#[test]
+fn latex023_matrix_cells_share_row_baselines_despite_the_fraction() {
+    let svg = render_body(include_str!("fixtures/latex023-array.xml"));
+    let rho = position(&svg, ">ρ(a)</text>").unwrap().1;
+    let pressure = position(&svg, ">p(a)</text>").unwrap().1;
+    let right_hand_side = position(&svg, ">3(</text>").unwrap().1;
+    assert!(
+        (rho - right_hand_side).abs() < 0.01,
+        "scalar and tall cells need the same baseline"
+    );
+    let equals: Vec<_> = roxmltree::Document::parse(&svg)
+        .unwrap()
+        .descendants()
+        .filter(|n| n.has_tag_name("text") && n.text() == Some("="))
+        .map(|n| n.attribute("y").unwrap().parse::<f64>().unwrap())
+        .collect();
+    assert_eq!(equals.len(), 2);
+    assert!((rho - equals[0]).abs() < 0.01);
+    assert!((pressure - equals[1]).abs() < 0.01);
+    let size = font_size_near(&svg, ">ρ(a)</text>").unwrap();
+    assert!(
+        pressure - rho > size,
+        "rows must not overlap: rho {rho}, p {pressure}, em {size}"
+    );
+}
+
+#[test]
+fn latex023_aligned_equations_paint_every_scalar_atom_once() {
+    let svg = render_body(include_str!("fixtures/latex023-equations.xml"));
+    let xml = roxmltree::Document::parse(&svg).unwrap();
+    // The source has six partial derivatives: two in row 1, one in row 2,
+    // three in row 3. Cloned full-row alignment cells used to multiply them.
+    let partials = xml
+        .descendants()
+        .filter(|n| n.has_tag_name("text") && n.text() == Some("∂"))
+        .count();
+    assert_eq!(partials, 6, "alignment must not clone complete rows");
+}
+
+#[test]
+fn aligned_rows_keep_empty_leading_cells_without_repeating_text() {
+    let svg = render_body("<w:p><m:oMathPara><m:oMath><m:eqArr><m:e><m:r><m:t>L&amp;=R</m:t></m:r></m:e><m:e><m:r><m:rPr><m:aln/></m:rPr><m:t/></m:r><m:r><m:rPr><m:aln/></m:rPr><m:t/></m:r><m:f><m:num><m:r><m:t>N</m:t></m:r></m:num><m:den><m:r><m:t>D</m:t></m:r></m:den></m:f></m:e></m:eqArr></m:oMath></m:oMathPara></w:p>");
+    for marker in [">L</text>", ">=R</text>", ">N</text>", ">D</text>"] {
+        assert_eq!(svg.matches(marker).count(), 1, "{marker}");
+    }
+    assert!(position(&svg, ">N</text>").unwrap().1 > position(&svg, ">L</text>").unwrap().1);
+    assert!(position(&svg, ">=R</text>").unwrap().0 > position(&svg, ">L</text>").unwrap().0);
+}
+
+#[test]
+fn literal_ampersands_remain_text_between_alignment_cells() {
+    let svg = render_body("<w:p><m:oMathPara><m:oMath><m:eqArr><m:e><m:r><m:rPr><m:lit/></m:rPr><m:t>A&amp;B</m:t></m:r><m:r><m:rPr><m:aln/></m:rPr><m:t>C</m:t></m:r></m:e></m:eqArr></m:oMath></m:oMathPara></w:p>");
+    assert_eq!(svg.matches(">A&amp;B</text>").count(), 1);
+    assert_eq!(svg.matches(">C</text>").count(), 1);
+    assert!(position(&svg, ">C</text>").unwrap().0 > position(&svg, ">A&amp;B</text>").unwrap().0);
+}
+
+/// Independent glyph-ink measurements in page coordinates, not line-box height.
+fn glyph_ink_interval(svg: &str, marker: &str, text: &str) -> (f64, f64) {
+    let (_, baseline) = position(svg, marker).unwrap();
+    let size = font_size_near(svg, marker).unwrap();
+    let font = BuiltinFontProvider::new();
+    let (above, below) = text
+        .chars()
+        .filter_map(|ch| font.glyph_vertical_em("Cambria Math", ch, false, true))
+        .fold((0.0_f64, 0.0_f64), |a, b| (a.0.max(b.0), a.1.max(b.1)));
+    (baseline - above * size, baseline + below * size)
+}
+
+#[test]
+fn adjacent_display_paragraphs_leave_space_between_actual_fraction_ink() {
+    let fraction = |num, den| {
+        format!("<m:f><m:num><m:r><m:t>{num}</m:t></m:r></m:num><m:den><m:r><m:t>{den}</m:t></m:r></m:den></m:f>")
+    };
+    let paragraph = |formula| {
+        format!("<w:p><w:pPr><w:spacing w:before=\"240\" w:after=\"240\"/></w:pPr><m:oMathPara><m:oMath>{formula}</m:oMath></m:oMathPara></w:p>")
+    };
+    let svg = render_body(&format!(
+        "{}{}",
+        paragraph(fraction("A", "g")),
+        paragraph(fraction("B", "q"))
+    ));
+    let upper_bottom = glyph_ink_interval(&svg, ">g</text>", "g").1;
+    let lower_top = glyph_ink_interval(&svg, ">B</text>", "B").0;
+    assert!(
+        lower_top - upper_bottom >= 16.0 - 0.1,
+        "adjacent displays need a 12pt visible gap: {}",
+        lower_top - upper_bottom
+    );
+}
+
+#[test]
+fn automatic_matrix_rows_and_broken_display_lines_have_visible_clearance() {
+    let fraction = |num, den| {
+        format!("<m:f><m:num><m:r><m:t>{num}</m:t></m:r></m:num><m:den><m:r><m:t>{den}</m:t></m:r></m:den></m:f>")
+    };
+    let svg = render_body(&format!("<w:p><m:oMathPara><m:oMath><m:m><m:mr><m:e>{}</m:e></m:mr><m:mr><m:e>{}</m:e></m:mr></m:m></m:oMath></m:oMathPara></w:p>",fraction("A","g"),fraction("B","q")));
+    let gap =
+        glyph_ink_interval(&svg, ">B</text>", "B").0 - glyph_ink_interval(&svg, ">g</text>", "g").1;
+    let em = font_size_near(&svg, ">g</text>").unwrap();
+    assert!(
+        gap >= em * 0.3 - 0.1,
+        "matrix ink clearance: {gap} for em {em}"
+    );
+    let svg = render_body(&format!(
+        "<w:p><m:oMathPara><m:oMath>{}<m:r><w:br/></m:r>{}</m:oMath></m:oMathPara></w:p>",
+        fraction("A", "g"),
+        fraction("B", "q")
+    ));
+    let gap =
+        glyph_ink_interval(&svg, ">B</text>", "B").0 - glyph_ink_interval(&svg, ">g</text>", "g").1;
+    assert!(gap >= em * 0.3 - 0.1, "display line ink clearance: {gap}");
+}
+
+#[test]
+fn latex023_nested_equations_have_no_vertical_ink_clearance_candidates() {
+    let pages = common::render_body(include_str!("fixtures/latex023-clearance.xml"));
+    assert!(!pages.is_empty());
+    let warnings: Vec<_> = pages
+        .iter()
+        .flat_map(|p| &p.warnings)
+        .filter(|warning| warning.starts_with("render.math-clearance:"))
+        .collect();
+    assert!(
+        warnings.is_empty(),
+        "actual ink extends beyond nominal layout boxes: {warnings:?}"
+    );
+}
+
+#[test]
+fn explicitly_tight_formula_rows_produce_a_clearance_diagnostic() {
+    let boxed = "<m:borderBox><m:e><m:r><m:t>g</m:t></m:r></m:e></m:borderBox>";
+    let pages = common::render_body(&format!("<w:p><m:oMathPara><m:oMath><m:eqArr><m:eqArrPr><m:rSpRule m:val=\"3\"/><m:rSp m:val=\"0\"/></m:eqArrPr><m:e>{boxed}</m:e><m:e>{boxed}</m:e></m:eqArr></m:oMath></m:oMathPara></w:p>"));
+    let warnings: Vec<_> = pages.iter().flat_map(|p| &p.warnings).collect();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.starts_with("render.math-clearance:") && w.contains("TooClose")),
+        "{warnings:?}"
+    );
 }

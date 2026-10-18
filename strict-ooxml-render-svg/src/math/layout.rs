@@ -1125,7 +1125,10 @@ pub(crate) fn layout_display(
     let inter_spacing = spacing(settings.and_then(|settings| settings.inter_space.as_deref()));
     let line_gap = settings
         .and_then(|settings| settings.intra_space.as_deref())
-        .map_or(2.0, |value| spacing(Some(value)));
+        .map_or(
+            ctx.size_px(run.size_pt) * MIN_VERTICAL_CLEARANCE_EM,
+            |value| spacing(Some(value)),
+        );
     // Equation boundaries preserve separate OMML objects, not implicit breaks.
     // WPS puts adjacent equations on a common baseline unless w:br intervenes.
     let frame = base_frame(ctx, &run, &budget, true);
@@ -1176,7 +1179,7 @@ pub(crate) fn layout_display(
                         (frame.row_pitch() - frame.row_ascent()).max(0.0),
                     ));
                 }
-                boxed.stack_line(std::mem::take(&mut line), line_gap);
+                stack_checked_math_line(&frame, &mut boxed, std::mem::take(&mut line), line_gap);
             }
             trailing_break = wrapped_index > 0 && next.is_empty();
             line.append_gap(next, if line.is_empty() { 0.0 } else { gap });
@@ -1190,7 +1193,7 @@ pub(crate) fn layout_display(
         ));
     }
     if !line.is_empty() {
-        boxed.stack_line(line, line_gap);
+        stack_checked_math_line(&frame, &mut boxed, line, line_gap);
     }
     // `m:oMathParaPr/m:jc` places the display formula in the text column.
     // Without one, the document's `m:mathPr/m:defJc` decides, and without that
@@ -1511,6 +1514,7 @@ fn fraction_part_placements(
 }
 
 /// Lays out `m:f`.
+#[allow(clippy::too_many_lines)] // Fraction variants and their geometric checks.
 fn layout_fraction(frame: &Frame<'_, '_>, fraction: &Fraction) -> MathBox {
     // Inline fractions use script-sized parts; a line-height cap cannot
     // substitute for actually drawing the compact mathematical style.
@@ -1537,6 +1541,8 @@ fn layout_fraction(frame: &Frame<'_, '_>, fraction: &Fraction) -> MathBox {
     };
     let mut numerator = layout_argument(&argument_frame, &fraction.numerator);
     let mut denominator = layout_argument(&argument_frame, &fraction.denominator);
+    fit_math_ink(frame, &mut numerator);
+    fit_math_ink(frame, &mut denominator);
     if let Some(control) = fraction.control.as_deref() {
         apply_control(frame, &mut numerator, control);
         apply_control(frame, &mut denominator, control);
@@ -1578,6 +1584,36 @@ fn layout_fraction(frame: &Frame<'_, '_>, fraction: &Fraction) -> MathBox {
             if let Some(rule) = frame.rule(0.0, 0.0, width) {
                 out.items.push(rule);
             }
+        }
+    }
+    if let (Some(upper), Some(lower)) = (
+        ink_bounds(frame, &numerator.items),
+        ink_bounds(frame, &denominator.items),
+    ) {
+        let minimum = FRACTION_RULE_CLEARANCE * frame.em() * shrink;
+        if bar_type == "bar" {
+            audit_vertical_clearance(
+                frame,
+                "fraction-numerator",
+                upper[3] + numerator_dy,
+                -thickness / 2.0,
+                minimum,
+            );
+            audit_vertical_clearance(
+                frame,
+                "fraction-denominator",
+                thickness / 2.0,
+                lower[1] + denominator_dy,
+                minimum,
+            );
+        } else if bar_type == "noBar" {
+            audit_vertical_clearance(
+                frame,
+                "fraction-parts",
+                upper[3] + numerator_dy,
+                lower[1] + denominator_dy,
+                minimum,
+            );
         }
     }
     let numerator_x = (width - numerator.size.width) / 2.0;
@@ -2163,6 +2199,177 @@ fn layout_limit(frame: &Frame<'_, '_>, limit: &MathLimit) -> MathBox {
     out
 }
 
+/// Default minimum between distinct mathematical rows/lines, in em. Explicit
+/// exact row spacing remains honoured and is audited instead of overridden.
+const MIN_VERTICAL_CLEARANCE_EM: f64 = 0.3;
+
+fn automatic_row_gap(frame: &Frame<'_, '_>, rule: Option<&str>) -> f64 {
+    if matches!(rule, Some("3")) {
+        0.0
+    } else {
+        frame.em() * MIN_VERTICAL_CLEARANCE_EM
+    }
+}
+
+fn audit_vertical_clearance(
+    frame: &Frame<'_, '_>,
+    role: &str,
+    upper_bottom: f64,
+    lower_top: f64,
+    minimum: f64,
+) {
+    if let Some(issue) = super::clearance::classify(upper_bottom, lower_top, minimum) {
+        frame.ctx.warn(format!("render.math-clearance: {role}: {issue:?}, gap={:.3}px, minimum={minimum:.3}px, upper_bottom={upper_bottom:.3}, lower_top={lower_top:.3}", lower_top - upper_bottom));
+    }
+}
+
+/// Paint bounds use actual glyph vertical extents, including already-positioned
+/// scripts. They are independent of the nominal line metrics used for layout.
+#[allow(clippy::many_single_char_names)] // Standard affine matrix coefficients.
+#[allow(clippy::too_many_lines)] // Exhaustive paint primitive bounds.
+fn ink_bounds(frame: &Frame<'_, '_>, items: &[Item]) -> Option<[f64; 4]> {
+    let mut result: Option<[f64; 4]> = None;
+    for item in items {
+        let rect = match item {
+            Item::Text(text) => {
+                if text.text.trim().is_empty() {
+                    continue;
+                }
+                let actual = Frame {
+                    nominal_text: false,
+                    size_px: text.size_px,
+                    ..*frame
+                };
+                let size = actual.text_size(&text.text, &text.run);
+                [
+                    text.x,
+                    text.baseline - size.height,
+                    text.x + text.width,
+                    text.baseline + size.depth,
+                ]
+            }
+            Item::Line(line) => {
+                let pad = line.width / 2.0;
+                [
+                    line.x1.min(line.x2) - pad,
+                    line.y1.min(line.y2) - pad,
+                    line.x1.max(line.x2) + pad,
+                    line.y1.max(line.y2) + pad,
+                ]
+            }
+            Item::Path(path) => {
+                let pad = if path.stroke.is_some() {
+                    path.stroke_w / 2.0
+                } else {
+                    0.0
+                };
+                [
+                    path.x - pad,
+                    path.y - pad,
+                    path.x + path.w + pad,
+                    path.y + path.h + pad,
+                ]
+            }
+            Item::Rect(rect) => {
+                let pad = if rect.stroke.is_some() {
+                    rect.stroke_w / 2.0
+                } else {
+                    0.0
+                };
+                [
+                    rect.x - pad,
+                    rect.y - pad,
+                    rect.x + rect.w + pad,
+                    rect.y + rect.h + pad,
+                ]
+            }
+            Item::Image(image) => [image.x, image.y, image.x + image.w, image.y + image.h],
+            Item::Group(group) => {
+                let Some(mut bounds) = ink_bounds(frame, &group.items) else {
+                    continue;
+                };
+                if let Some([x, y, w, h]) = group.clip {
+                    bounds = [
+                        bounds[0].max(x),
+                        bounds[1].max(y),
+                        bounds[2].min(x + w),
+                        bounds[3].min(y + h),
+                    ];
+                    if bounds[0] > bounds[2] || bounds[1] > bounds[3] {
+                        continue;
+                    }
+                }
+                let [a, b, c, d, e, f] = group.matrix;
+                let points = [
+                    (bounds[0], bounds[1]),
+                    (bounds[0], bounds[3]),
+                    (bounds[2], bounds[1]),
+                    (bounds[2], bounds[3]),
+                ];
+                let mut rect = [
+                    f64::INFINITY,
+                    f64::INFINITY,
+                    f64::NEG_INFINITY,
+                    f64::NEG_INFINITY,
+                ];
+                for (x, y) in points {
+                    let (x, y) = (a * x + c * y + e, b * x + d * y + f);
+                    rect = [
+                        rect[0].min(x),
+                        rect[1].min(y),
+                        rect[2].max(x),
+                        rect[3].max(y),
+                    ];
+                }
+                rect
+            }
+        };
+        result = Some(result.map_or(rect, |old| {
+            [
+                old[0].min(rect[0]),
+                old[1].min(rect[1]),
+                old[2].max(rect[2]),
+                old[3].max(rect[3]),
+            ]
+        }));
+    }
+    result
+}
+
+fn stack_checked_math_line(
+    frame: &Frame<'_, '_>,
+    boxed: &mut MathBox,
+    mut next: MathBox,
+    gap: f64,
+) {
+    fit_math_ink(frame, boxed);
+    fit_math_ink(frame, &mut next);
+    if !boxed.is_empty() {
+        if let (Some(upper), Some(lower)) = (
+            ink_bounds(frame, &boxed.items),
+            ink_bounds(frame, &next.items),
+        ) {
+            let dy = boxed.size.depth + gap + next.size.height;
+            audit_vertical_clearance(
+                frame,
+                "display-lines",
+                upper[3],
+                lower[1] + dy,
+                frame.em() * MIN_VERTICAL_CLEARANCE_EM,
+            );
+        }
+    }
+    boxed.stack_line(next, gap);
+}
+
+/// Reserve actual glyph/rule extents as well as nominal line metrics.
+fn fit_math_ink(frame: &Frame<'_, '_>, boxed: &mut MathBox) {
+    if let Some(ink) = ink_bounds(frame, &boxed.items) {
+        boxed.size.height = boxed.size.height.max(-ink[1]);
+        boxed.size.depth = boxed.size.depth.max(ink[3]);
+    }
+}
+
 /// A grid of laid-out cells shared by `m:m` and `m:eqArr`.
 struct Grid {
     rows: Vec<Vec<MathBox>>,
@@ -2178,6 +2385,20 @@ struct Grid {
 }
 
 impl Grid {
+    fn fit_ink(&mut self, frame: &Frame<'_, '_>) {
+        for (index, row) in self.rows.iter_mut().enumerate() {
+            for cell in row {
+                fit_math_ink(frame, cell);
+                if let Some(height) = self.row_heights.get_mut(index) {
+                    *height = height.max(cell.size.height);
+                }
+                if let Some(depth) = self.row_depths.get_mut(index) {
+                    *depth = depth.max(cell.size.depth);
+                }
+            }
+        }
+    }
+
     /// Computes the grid metrics from already laid-out cells.
     fn new(
         rows: Vec<Vec<MathBox>>,
@@ -2248,15 +2469,47 @@ impl Grid {
         MathAlignment::Center
     }
 
+    fn audit_clearance(&self, frame: &Frame<'_, '_>, gap: f64) {
+        let mut baseline = 0.0;
+        let mut previous_bottom = None;
+        for (index, row) in self.rows.iter().enumerate() {
+            let mut bounds: Option<(f64, f64)> = None;
+            for cell in row {
+                if let Some(ink) = ink_bounds(frame, &cell.items) {
+                    let extents = (ink[1] + baseline, ink[3] + baseline);
+                    bounds = Some(
+                        bounds.map_or(extents, |old| (old.0.min(extents.0), old.1.max(extents.1))),
+                    );
+                }
+            }
+            if let Some((top, bottom)) = bounds {
+                if let Some(previous) = previous_bottom {
+                    audit_vertical_clearance(
+                        frame,
+                        &format!("grid-row-{}", index + 1),
+                        previous,
+                        top,
+                        frame.em() * MIN_VERTICAL_CLEARANCE_EM,
+                    );
+                }
+                previous_bottom = Some(bottom);
+            }
+            baseline += (self.row_pitch + gap).max(
+                self.row_depths.get(index).copied().unwrap_or(0.0)
+                    + self.row_heights.get(index + 1).copied().unwrap_or(0.0)
+                    + gap,
+            );
+        }
+    }
+
     /// Places every cell and returns the laid-out grid.
-    fn place(&self, axis: f64, display: bool) -> MathBox {
+    fn place(&self, axis: f64, minimum_gap: f64) -> MathBox {
         let mut out = MathBox::empty();
         let mut top = 0.0f64;
         let mut last_baseline = 0.0;
         let mut widest: f64 = 0.0;
         for (row_index, row) in self.rows.iter().enumerate() {
             last_baseline = top;
-            let row_height = self.row_heights.get(row_index).copied().unwrap_or(0.0);
             let row_depth = self.row_depths.get(row_index).copied().unwrap_or(0.0);
             let mut x = 0.0f64;
             for (column_index, cell) in row.iter().enumerate() {
@@ -2266,24 +2519,24 @@ impl Grid {
                     MathAlignment::Right => column - cell.size.width,
                     _ => 0.0,
                 };
-                // Inline cells share a baseline. Display grids keep their
-                // existing nominal row placement until that layout is revised.
-                let dy = if display {
-                    top + cell.size.height - row_height
-                } else {
-                    top
-                };
-                out.place(cell.clone(), x + align, dy);
+                // Every cell in a row shares the same baseline. A fraction's
+                // taller ascent must not move its neighbouring scalar cells.
+                out.place(cell.clone(), x + align, top);
                 x += column + self.column_gap;
             }
             widest = widest.max(x - self.column_gap);
-            // Rows advance by a whole line of the math font, or by their own
-            // extent when a cell is taller than one line.
-            top += row_height.max(self.row_pitch).max(row_height + row_depth);
+            // Baseline distance must clear the previous descent AND the next
+            // ascent, which may differ greatly (fractions, roots, limits).
+            let next_height = self.row_heights.get(row_index + 1).copied().unwrap_or(0.0);
+            top += (self.row_pitch + minimum_gap).max(row_depth + next_height + minimum_gap);
         }
         let first_baseline = self.row_heights.first().copied().unwrap_or(0.0);
         out.size.width = widest.max(out.size.width);
         out.size.height = out.size.height.max(first_baseline);
+        out.size.depth = out
+            .size
+            .depth
+            .max(last_baseline + self.row_depths.last().copied().unwrap_or(0.0));
         // Display grids are centred on the math axis as inline ones are (WPS:
         // `strict-stage5c` page 2); a baseline on the first row made a
         // surrounding `{` symmetric about the axis twice as tall as the rows.
@@ -2378,7 +2631,10 @@ fn layout_matrix(frame: &Frame<'_, '_>, matrix: &Matrix) -> MathBox {
     for width in &mut grid.column_widths {
         *width = width.max(minimum);
     }
-    let mut out = grid.place(frame.axis(), frame.display);
+    grid.fit_ink(frame);
+    let gap = automatic_row_gap(frame, matrix.row_spacing_rule.as_deref());
+    grid.audit_clearance(frame, gap);
+    let mut out = grid.place(frame.axis(), gap);
     if let Some(control) = matrix.control.as_deref() {
         apply_control(frame, &mut out, control);
     }
@@ -2394,52 +2650,82 @@ fn layout_equation_array(frame: &Frame<'_, '_>, array: &EquationArray) -> MathBo
     };
     let frame = &array_frame;
     let row_pitch = grid_row_pitch(frame, array.row_spacing_rule.as_deref(), array.row_spacing);
+    // Split the semantic row into cells BEFORE layout. Cloning the complete
+    // painted row for each alignment interval relies on clipping surviving
+    // every later layout transform and also duplicates searchable SVG text.
     let rows: Vec<Vec<MathBox>> = array
         .rows
         .iter()
         .map(|row| {
-            let mut boxed = layout_argument(frame, row);
-            if boxed.alignment_points.is_empty() {
-                return vec![boxed];
+            let mut cells: Vec<Vec<MathNode>> = Vec::new();
+            let mut current = Vec::new();
+            let mut limited = false;
+            for node in super::visible_nodes(&row.nodes) {
+                if let MathNode::Run(run) = node {
+                    if run.properties.alignment_point == Some(true) {
+                        if cells.len() < 128 {
+                            cells.push(std::mem::take(&mut current));
+                        } else {
+                            limited = true;
+                        }
+                    }
+                    let literal = run.properties.literal_value.unwrap_or(
+                        run.properties.literal
+                            || row.properties.literal.unwrap_or(frame.argument_literal),
+                    );
+                    let mut pieces = run.text.split('&').peekable();
+                    while let Some(piece) = pieces.next() {
+                        // Do not clone the complete text for every split: a long
+                        // run with many alignment markers must remain linear.
+                        let mut part = MathRun {
+                            field_char: run.field_char,
+                            properties: run.properties.clone(),
+                            run_properties: run.run_properties.clone(),
+                            text: if literal {
+                                run.text.clone()
+                            } else {
+                                piece.to_owned()
+                            },
+                            location: run.location.clone(),
+                        };
+                        part.properties.alignment_point = None;
+                        if !part.text.is_empty() {
+                            current.push(MathNode::Run(part));
+                        }
+                        if literal {
+                            break;
+                        }
+                        if pieces.peek().is_some() {
+                            if cells.len() < 128 {
+                                cells.push(std::mem::take(&mut current));
+                            } else {
+                                limited = true;
+                            }
+                        }
+                    }
+                } else {
+                    current.push(node.clone());
+                }
             }
-            boxed.alignment_points.sort_by(f64::total_cmp);
-            boxed
-                .alignment_points
-                .retain(|point| point.is_finite() && *point >= 0.0 && *point <= boxed.size.width);
-            if boxed.alignment_points.len() > 128 {
+            cells.push(current);
+            if limited {
                 frame
                     .ctx
                     .warn("render.math-alignment: alignment point limit exceeded".to_owned());
-                boxed.alignment_points.truncate(128);
             }
-            let mut boundaries = vec![0.0];
-            boundaries.extend(&boxed.alignment_points);
-            boundaries.push(boxed.size.width);
-            boundaries
-                .windows(2)
-                .filter_map(|pair| {
-                    let &[start, end] = pair else {
-                        return None;
+            let cell_frame = Frame {
+                equation_array: false,
+                ..*frame
+            };
+            cells
+                .into_iter()
+                .map(|nodes| {
+                    let argument = MathArgument {
+                        nodes,
+                        properties: row.properties.clone(),
+                        location: row.location.clone(),
                     };
-                    let width = end - start;
-                    let mut items = crate::paint::graphics::transform_items(
-                        boxed.items.clone(),
-                        [1.0, 0.0, 0.0, 1.0, -start, 0.0],
-                    );
-                    if let Some(Item::Group(group)) = items.first_mut() {
-                        group.clip = Some([
-                            start,
-                            -boxed.size.height,
-                            width,
-                            boxed.size.height + boxed.size.depth,
-                        ]);
-                    }
-                    Some(MathBox {
-                        inline_fraction: boxed.inline_fraction,
-                        alignment_points: Vec::new(),
-                        size: Size::new(width, boxed.size.height, boxed.size.depth),
-                        items,
-                    })
+                    layout_argument(&cell_frame, &argument)
                 })
                 .collect()
         })
@@ -2484,7 +2770,10 @@ fn layout_equation_array(frame: &Frame<'_, '_>, array: &EquationArray) -> MathBo
             *width += extra / spacers as f64;
         }
     }
-    let mut out = grid.place(frame.axis(), frame.display);
+    grid.fit_ink(frame);
+    let gap = automatic_row_gap(frame, array.row_spacing_rule.as_deref());
+    grid.audit_clearance(frame, gap);
+    let mut out = grid.place(frame.axis(), gap);
     if extra > 0.0 && array.object_distance != Some(true) {
         out = out.shifted(extra / 2.0, 0.0);
     }
@@ -3024,6 +3313,44 @@ mod tests {
             panic!("expected a rectangle");
         };
         assert!(rect.x.is_finite() && rect.y.is_finite());
+    }
+
+    #[test]
+    fn grid_rows_clear_the_previous_descent_and_next_ascent() {
+        let cell = |height, depth| {
+            let mut boxed = MathBox::blank(Size::new(10.0, height, depth));
+            boxed.items.push(Item::Line(LineItem {
+                x1: 0.0,
+                y1: 0.0,
+                x2: 10.0,
+                y2: 0.0,
+                color: "#000000".to_owned(),
+                width: 1.0,
+                dashed: false,
+            }));
+            boxed
+        };
+        // A deep first row followed by a tall second row. Using the first
+        // row's height to choose the next baseline makes these boxes overlap.
+        let grid = super::Grid::new(
+            vec![vec![cell(15.0, 30.0)], vec![cell(40.0, 1.0)]],
+            1,
+            0.0,
+            20.0,
+            0.0,
+            None,
+            Vec::new(),
+        );
+        let placed = grid.place(0.0, 3.0);
+        let baselines: Vec<_> = placed
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Line(line) => Some(line.y1),
+                _ => None,
+            })
+            .collect();
+        assert!(baselines[0] + 30.0 + 3.0 <= baselines[1] - 40.0);
     }
 
     #[test]

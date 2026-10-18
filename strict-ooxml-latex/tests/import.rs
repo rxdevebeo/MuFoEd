@@ -212,6 +212,50 @@ fn page_footer_and_twocolumn_are_applied() {
 }
 
 #[test]
+fn page_number_footer_keeps_its_edge_distance_after_docx_roundtrip() {
+    use std::io::Cursor;
+    use strict_ooxml_core::opc::{OpenOptions, Package};
+    use strict_ooxml_wml::{parse_document, ParseOptions};
+
+    for input in [
+        br"Some text.".as_slice(),
+        br"\documentclass{article}\begin{document}Some text.\end{document}".as_slice(),
+    ] {
+        let imported = import(input, &LatexOptions::default()).unwrap();
+        let written =
+            strict_ooxml_write::write_package(&imported.document, None, &Default::default())
+                .unwrap();
+        written.report.verify_no_silent_loss().unwrap();
+        let reopened =
+            Package::open_reader(Cursor::new(written.bytes), &OpenOptions::default()).unwrap();
+        let document = parse_document(&reopened, &ParseOptions::default()).unwrap();
+        for section in &document.sections {
+            let margins = section.properties.page_margins.unwrap();
+            assert_eq!(
+                margins.footer,
+                Some(Twips(720)),
+                "footer must stay half an inch above the edge"
+            );
+            assert_eq!(
+                margins.bottom,
+                Some(Twips(1440)),
+                "body bottom margin stays one inch"
+            );
+            assert_eq!(section.properties.footers.len(), 1);
+        }
+        assert_eq!(
+            imported.document.sections[0]
+                .properties
+                .page_margins
+                .unwrap()
+                .footer,
+            Some(Twips(720))
+        );
+        assert_eq!(document.headers_footers.len(), 1);
+    }
+}
+
+#[test]
 fn styles_table_carries_headings() {
     let imported = import(b"\\section{S}", &LatexOptions::default()).unwrap();
     assert!(imported
@@ -791,4 +835,52 @@ fn a_multibyte_label_does_not_panic() {
         .feature_counts
         .keys()
         .any(|feature| feature.starts_with("label:") || feature.starts_with("cross-reference:")));
+}
+
+#[test]
+fn display_math_has_vertical_space_next_to_text_and_other_displays_after_roundtrip() {
+    use std::io::Cursor;
+    use strict_ooxml_core::opc::{OpenOptions, Package};
+    use strict_ooxml_wml::{parse_document, ParseOptions};
+    let imported = import(
+        br"Before $inline$.\[a\]\[b\]$$c$$\begin{equation}d\end{equation}After.",
+        &LatexOptions::default(),
+    )
+    .unwrap();
+    let written =
+        strict_ooxml_write::write_package(&imported.document, None, &Default::default()).unwrap();
+    written.report.verify_no_silent_loss().unwrap();
+    let reopened =
+        Package::open_reader(Cursor::new(written.bytes), &OpenOptions::default()).unwrap();
+    let doc = parse_document(&reopened, &ParseOptions::default()).unwrap();
+    let mut display_count = 0;
+    for paragraph in doc.body.blocks.iter().filter_map(Block::as_paragraph) {
+        if paragraph
+            .inlines
+            .iter()
+            .any(|i| matches!(i, Inline::MathParagraph(_)))
+        {
+            display_count += 1;
+            let spacing = paragraph
+                .props
+                .spacing
+                .as_ref()
+                .expect("explicit display spacing");
+            assert_eq!(spacing.before, Some(Twips(240)));
+            assert_eq!(spacing.after, Some(Twips(240)));
+        } else {
+            assert!(
+                paragraph
+                    .props
+                    .spacing
+                    .as_ref()
+                    .is_none_or(|s| s.before.is_none() && s.after.is_none()),
+                "prose and inline math must keep their usual spacing"
+            );
+        }
+    }
+    assert_eq!(
+        display_count, 4,
+        "adjacent formulas stay distinct paragraphs"
+    );
 }

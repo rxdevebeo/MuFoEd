@@ -30,6 +30,14 @@ overflow examples are capped at 200 per case. Main-document XML statistics
 exclude footnote/header parts. No external TeX engine, shell escape, corpus
 scripts, network resource fetching or Word automation is used.
 
+`math_clearance_candidates` separately exports renderer warnings prefixed
+`render.math-clearance:`. These measure painted-ink bounds between semantic
+neighbours: equation/matrix rows, display lines and fraction parts. A candidate
+is an overlap, insufficient clearance or non-finite geometry. Conservative
+glyph/vector rectangles are used; this is not a pixel-level collision oracle
+and does not test every pair of objects on a page. Import regressions also
+check clearance between distinct display paragraphs after DOCX roundtrip.
+
 The nine audited defects now have active regression tests (no `ignore`):
 
 ```powershell
@@ -42,3 +50,9 @@ cargo +1.92.0 test -p strict-ooxml-latex --offline --test cc0_regressions
 The initial nine failures remain recorded in the dated audit logs; the current
 regressions and additional controls pass. See the dated report and FIXES.md for the baseline,
 confirmed defects, retained evidence and limits of visual verification.
+
+Rasterize any saved page using the same bundled font programs:
+
+```powershell
+target/latex-audit-build/release/latex-audit.exe --raster INPUT.svg OUTPUT.png
+```

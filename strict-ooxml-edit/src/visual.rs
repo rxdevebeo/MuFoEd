@@ -640,7 +640,10 @@ fn text_span(
     provider: &dyn strict_ooxml_render_svg::FontProvider,
 ) -> Option<Span> {
     let family = chosen_family(&text.run, &text.text);
-    let metrics = provider.metrics(&family, text.run.bold, text.run.italic);
+    let metrics = text.run.font_programs.for_resource(&family).map_or_else(
+        || provider.metrics(&family, text.run.bold, text.run.italic),
+        |program| program.metrics,
+    );
     let rect = VisualRect {
         page,
         x: text.x,
@@ -685,6 +688,13 @@ fn text_span(
             .and_then(find)
     })?;
     let end = start + len;
+    let positions = fragment_positions(text, provider);
+    let position_at = |byte: usize| {
+        positions
+            .iter()
+            .find(|(at, _)| *at == byte)
+            .map(|(_, x)| *x)
+    };
     // Spaces the line starts with are laid out as an advance before the
     // item, not drawn in it; their carets stand in that advance.
     let skipped = rendered
@@ -700,16 +710,13 @@ fn text_span(
             stops.push((scalar, text.x - measure(gap, text, provider)));
         }
         if bytes >= start && bytes <= end {
-            let prefix = rendered.get(start..bytes)?;
-            let width = measure(prefix, text, provider);
-            stops.push((scalar, text.x + width));
+            stops.push((scalar, position_at(bytes - start)?));
         }
         scalar += grapheme.chars().count();
         bytes += shown(grapheme, &text.run).len();
     }
     if bytes >= start && bytes <= end {
-        let prefix = rendered.get(start..bytes)?;
-        stops.push((scalar, text.x + measure(prefix, text, provider)));
+        stops.push((scalar, position_at(bytes - start)?));
     }
     node.cursor = end;
     Some(Span {
@@ -743,6 +750,100 @@ pub fn scalar_to_utf16(text: &str, offset: usize) -> Result<usize, EditError> {
     }
     Ok(text.chars().take(offset).map(char::len_utf16).sum())
 }
+/// Origins from the whole painted fragment, not independently re-shaped
+/// prefixes. This keeps font programs, kerning, ligatures and CJK spacing on
+/// the same coordinates as SVG paint. Source byte boundaries remain intact
+/// when a legacy symbol face maps characters to their display equivalents.
+fn fragment_positions(
+    item: &TextItem,
+    font: &dyn strict_ooxml_render_svg::FontProvider,
+) -> Vec<(usize, f64)> {
+    use strict_ooxml_render_svg::{font, style, TextAdvanceKind};
+    let shown = font::present_text(&item.run.family, &item.text);
+    let family = chosen_family(&item.run, &item.text);
+    let xs = match item.advance {
+        TextAdvanceKind::Metric => {
+            let chars: Vec<_> = shown.chars().collect();
+            let mut cursor = item.x;
+            let mut previous = None;
+            chars
+                .iter()
+                .enumerate()
+                .map(|(index, &ch)| {
+                    let x = cursor;
+                    let next = chars.get(index + 1).copied().or(item.following_non_space);
+                    let factor = style::compressed_char_factor(
+                        previous,
+                        ch,
+                        next,
+                        item.compress_punctuation,
+                        item.plain_space_factor,
+                    );
+                    let ordinary = font::embedded::run_advance_em(&item.run, &family, ch, font);
+                    cursor += style::space_advance_em(&item.run, &family, ch, ordinary)
+                        * item.size_px
+                        * factor;
+                    if !ch.is_whitespace() {
+                        cursor += style::spacing_px(&item.run, item.size_px);
+                    }
+                    if !ch.is_whitespace() || factor > 0.0 {
+                        previous = Some(ch);
+                    }
+                    x
+                })
+                .collect::<Vec<_>>()
+        }
+        TextAdvanceKind::Shaped => {
+            let shaped = font::shape_run(&shown, &family, &item.run, font);
+            let mut xs = font::unicode_x_positions_px(&shown, &shaped, item.x, item.size_px);
+            let deltas = font::shaped_cluster_offsets_px(item, &shown, &shaped);
+            let mut cluster = 0;
+            for (scalar, (byte, _)) in shown.char_indices().enumerate() {
+                while shaped
+                    .clusters
+                    .get(cluster)
+                    .is_some_and(|c| c.byte_end <= byte)
+                {
+                    cluster += 1;
+                }
+                if let (Some(x), Some(delta)) = (xs.get_mut(scalar), deltas.get(cluster)) {
+                    *x += delta;
+                }
+            }
+            xs
+        }
+    };
+    // The map's scalar intervals currently use ascending logical widths.
+    // Preserve that convention for RTL fragments rather than treating their
+    // decreasing visual glyph origins as negative-width selections.
+    if xs
+        .windows(2)
+        .any(|pair| matches!(pair, [a, b] if *a > *b + 1e-7))
+    {
+        let mut positions: Vec<_> = item
+            .text
+            .char_indices()
+            .map(|(byte, _)| {
+                (
+                    byte,
+                    item.x + measure(&item.text[..byte], item, font) * item.run.char_scale,
+                )
+            })
+            .collect();
+        positions.push((item.text.len(), item.x + item.width));
+        return positions;
+    }
+    let mut positions: Vec<_> = item
+        .text
+        .char_indices()
+        .zip(xs)
+        .map(|((byte, _), x)| (byte, item.x + (x - item.x) * item.run.char_scale))
+        .collect();
+    // The placed width includes justification and the trailing advance.
+    positions.push((item.text.len(), item.x + item.width));
+    positions
+}
+
 fn measure(text: &str, item: &TextItem, font: &dyn strict_ooxml_render_svg::FontProvider) -> f64 {
     if text.is_empty() {
         return 0.0;
@@ -753,19 +854,17 @@ fn measure(text: &str, item: &TextItem, font: &dyn strict_ooxml_render_svg::Font
         strict_ooxml_render_svg::TextAdvanceKind::Metric => {
             shown
                 .chars()
-                .map(|ch| font.advance_em(&family, ch, item.run.bold, item.run.italic))
+                .map(|ch| {
+                    strict_ooxml_render_svg::font::embedded::run_advance_em(
+                        &item.run, &family, ch, font,
+                    )
+                })
                 .sum::<f64>()
                 * item.size_px
         }
         strict_ooxml_render_svg::TextAdvanceKind::Shaped => {
-            strict_ooxml_render_svg::font::shape_text(
-                &shown,
-                &family,
-                item.run.bold,
-                item.run.italic,
-                font,
-            )
-            .total_advance_em
+            strict_ooxml_render_svg::font::shape_run(&shown, &family, &item.run, font)
+                .total_advance_em
                 * item.size_px
         }
     }

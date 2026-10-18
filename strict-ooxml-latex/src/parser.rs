@@ -48,6 +48,7 @@ enum InlineEnd {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Stop {
     Group,
+    BodyGroup,
     Block,
     Cell,
 }
@@ -1425,6 +1426,10 @@ impl<'a> Parser<'a> {
             TokenKind::ControlWord(word) => {
                 let span = self.span_here();
                 match word.as_str() {
+                    word if is_graphic_configuration(word) => {
+                        self.next_token()?;
+                        self.skip_graphic_configuration(word, span)?;
+                    }
                     "begingroup" => {
                         self.next_token()?;
                         self.enter_local_scope(&self.block_format.clone(), true)?;
@@ -1572,11 +1577,11 @@ impl<'a> Parser<'a> {
     fn parse_inlines(&mut self, fmt: &mut Format, stop: Stop) -> Result<InlineEnd, LatexError> {
         self.enter_nesting()?;
         let scope_depth = self.local_scopes.len();
-        if stop == Stop::Group {
+        if matches!(stop, Stop::Group | Stop::BodyGroup) {
             self.enter_local_scope(fmt, false)?;
         }
         let result = self.parse_inlines_inner(fmt, stop);
-        if stop == Stop::Group {
+        if matches!(stop, Stop::Group | Stop::BodyGroup) {
             self.close_local_scopes(scope_depth, fmt)?;
         }
         self.leave_nesting();
@@ -1594,12 +1599,16 @@ impl<'a> Parser<'a> {
                 return Ok(InlineEnd::Eof);
             };
             match &kind {
-                TokenKind::RBrace if stop == Stop::Group => {
+                TokenKind::RBrace if matches!(stop, Stop::Group | Stop::BodyGroup) => {
                     self.next_token()?;
                     return Ok(InlineEnd::Group);
                 }
                 TokenKind::ParBreak => {
                     self.next_token()?;
+                    if stop == Stop::BodyGroup {
+                        self.flush_paragraph()?;
+                        continue;
+                    }
                     return Ok(if stop == Stop::Cell {
                         InlineEnd::Cell
                     } else {
@@ -1608,7 +1617,24 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Ampersand if stop == Stop::Cell => return Ok(InlineEnd::Cell),
                 TokenKind::ControlSymbol('\\') if stop == Stop::Cell => return Ok(InlineEnd::Row),
-                TokenKind::ControlWord(word) if stop != Stop::Group && is_block_starter(word) => {
+                TokenKind::ControlWord(word)
+                    if stop == Stop::BodyGroup
+                        && word.strip_prefix("__native:").unwrap_or(word) == "begin" =>
+                {
+                    self.flush_paragraph()?;
+                    self.next_token()?;
+                    self.skip_optional_position()?;
+                    let span = self.span_here();
+                    let env = self.consume_braced_raw()?;
+                    let saved = std::mem::replace(&mut self.block_format, fmt.clone());
+                    let result = self.handle_environment(&env, span);
+                    self.block_format = saved;
+                    result?;
+                    continue;
+                }
+                TokenKind::ControlWord(word)
+                    if matches!(stop, Stop::Block | Stop::Cell) && is_block_starter(word) =>
+                {
                     return Ok(InlineEnd::Block);
                 }
                 _ => {}
@@ -1640,7 +1666,12 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::LBrace => {
                     let mut sub = fmt.clone();
-                    self.parse_inlines(&mut sub, Stop::Group)?;
+                    let nested_stop = if stop == Stop::Group {
+                        Stop::Group
+                    } else {
+                        Stop::BodyGroup
+                    };
+                    self.parse_inlines(&mut sub, nested_stop)?;
                 }
                 TokenKind::RBrace => self.push_text(fmt, "}")?,
                 TokenKind::LBracket => self.push_text(fmt, "[")?,
@@ -1830,7 +1861,7 @@ impl<'a> Parser<'a> {
         if display {
             self.flush_paragraph()?;
             let paragraph = Paragraph {
-                props: ParagraphProperties::default(),
+                props: display_paragraph_properties(),
                 inlines: marks
                     .into_iter()
                     .chain([Inline::MathParagraph(display_paragraph(expression))])
@@ -1900,6 +1931,16 @@ impl<'a> Parser<'a> {
     ) -> Result<(), LatexError> {
         let word = word.strip_prefix("__native:").unwrap_or(word);
         match word {
+            word if is_graphic_configuration(word) => {
+                self.skip_graphic_configuration(word, span)?;
+            }
+            "ifthenelse" => {
+                // Conditions from package ifthen require its evaluator. Never
+                // execute both branches as prose: they may contain unmatched
+                // begin/end templates or local/global assignments.
+                self.loss(span, "conditional:requires-tex")?;
+                self.select_argument(3, None, fmt)?;
+            }
             "begingroup" => {
                 self.enter_local_scope(fmt, true)?;
                 self.skip_control_space()?;
@@ -2755,6 +2796,30 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// Graphics declarations are configuration, never document prose. Consume
+    /// without expansion so style bodies cannot execute nested commands.
+    fn skip_graphic_configuration(&mut self, word: &str, span: LatexSpan) -> Result<(), LatexError> {
+        self.loss(span, &format!("graphic:configuration:{word}"))?;
+        let expanding = std::mem::replace(&mut self.expanding, false);
+        let result = (|| {
+            self.skip_spaces()?;
+            self.skip_balanced()?;
+            if word == "tikzstyle" {
+                self.skip_spaces()?;
+                if matches!(self.peek_kind(), Some(TokenKind::Text(s)) if s.starts_with('=')) {
+                    self.macro_argument()?;
+                }
+                self.skip_spaces()?;
+                if matches!(self.peek_kind(), Some(TokenKind::LBracket)) {
+                    self.skip_balanced()?;
+                }
+            }
+            Ok(())
+        })();
+        self.expanding = expanding;
+        result
+    }
+
     fn citation(&mut self, word: &str, fmt: &Format, span: LatexSpan) -> Result<(), LatexError> {
         let first = self.optional_bracket_text()?;
         let second = self.optional_bracket_text()?;
@@ -3602,7 +3667,7 @@ impl<'a> Parser<'a> {
         };
         let marks = self.math_label_marks(labels);
         let paragraph = Paragraph {
-            props: ParagraphProperties::default(),
+            props: display_paragraph_properties(),
             inlines: marks
                 .into_iter()
                 .chain([Inline::MathParagraph(MathParagraph {
@@ -3895,7 +3960,7 @@ impl<'a> Parser<'a> {
         if display {
             self.flush_paragraph()?;
             let paragraph = Paragraph {
-                props: ParagraphProperties::default(),
+                props: display_paragraph_properties(),
                 inlines: marks
                     .into_iter()
                     .chain([Inline::MathParagraph(display_paragraph(expression))])
@@ -3912,6 +3977,27 @@ impl<'a> Parser<'a> {
             self.inlines.push(Inline::Math(expression));
             Ok(())
         }
+    }
+}
+
+fn is_graphic_configuration(word: &str) -> bool {
+    matches!(
+        word,
+        "tikzset" | "tikzstyle" | "pgfkeys" | "pgfplotsset"
+            | "usetikzlibrary" | "usepgflibrary" | "usepgfplotslibrary"
+    )
+}
+
+/// Explicit display skips survive DOCX serialization and separate adjacent
+/// formula paragraphs as well as a formula from surrounding prose.
+fn display_paragraph_properties() -> ParagraphProperties {
+    ParagraphProperties {
+        spacing: Some(Spacing {
+            before: Some(Twips(240)),
+            after: Some(Twips(240)),
+            ..Spacing::default()
+        }),
+        ..ParagraphProperties::default()
     }
 }
 
@@ -4529,6 +4615,9 @@ fn default_section() -> Section {
                 bottom: Some(Twips(1440)),
                 left: Some(Twips(1440)),
                 right: Some(Twips(1440)),
+                // The generated PAGE footer needs an explicit edge distance:
+                // absent margins are serialized as zero in Strict w:pgMar.
+                footer: Some(Twips(720)),
                 ..PageMargins::default()
             }),
             ..SectionProperties::default()

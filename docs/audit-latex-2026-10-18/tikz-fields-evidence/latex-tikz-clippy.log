@@ -1,0 +1,23 @@
+    Checking strict-ooxml-latex v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-latex)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_latex-0f6zripfylgqn\s-hnc5sz2i3n-0lrbq9v-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_latex-2dshewnxybh3x\s-hnc5sz2kyk-154rig0-working`
+
+warning: `strict-ooxml-latex` (lib test) generated 1 warning
+warning: `strict-ooxml-latex` (lib) generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\import-04da1e2tkz1e4\s-hnc5szh484-0thspfm-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\small_commands-1v04u63gd6jck\s-hnc5szh7gh-159tt56-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\extensions-1i8ckedv6ykq1\s-hnc5szhbux-15ybs5l-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\cc0_regressions-0zgqjuj3lugu0\s-hnc5szhg8k-006u42w-working`
+
+warning: `strict-ooxml-latex` (test "cc0_regressions") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\hostile-00jvzdqb9ifcf\s-hnc5szj9cm-1ubbg4e-working`
+
+warning: `strict-ooxml-latex` (test "extensions") generated 1 warning
+warning: `strict-ooxml-latex` (test "import") generated 1 warning
+warning: `strict-ooxml-latex` (test "small_commands") generated 1 warning
+warning: `strict-ooxml-latex` (test "hostile") generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.25s

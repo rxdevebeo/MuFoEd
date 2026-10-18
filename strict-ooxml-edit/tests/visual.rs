@@ -7,6 +7,142 @@ use strict_ooxml_edit::{
 use strict_ooxml_render_svg::{place_pages, Item, RenderOptions};
 use strict_ooxml_testkit::DocxBuilder;
 use strict_ooxml_wml::{parse_document, ParseOptions};
+
+#[test]
+fn supplied_cjk_font_selection_carets_and_hits_match_fullwidth_glyphs() {
+    use std::sync::Arc;
+    use strict_ooxml_render_svg::font::{FontAsset, FontAssetLimits, FontAssets};
+    // Existing OFL witness: these six CJK glyphs each advance exactly 1 em.
+    let bytes: Arc<[u8]> = Arc::from(
+        include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/cjk.otf").as_slice(),
+    );
+    let assets = Arc::new(
+        FontAssets::new(
+            vec![FontAsset::new("Chinese Witness", false, false, bytes).fallback("zh-CN")],
+            FontAssetLimits::default(),
+        )
+        .unwrap(),
+    );
+    for scale in [100, 80] {
+        let body = format!(
+            r#"<w:p><w:r><w:rPr><w:rFonts w:ascii="Chinese Witness" w:eastAsia="Chinese Witness"/><w:sz w:val="24"/><w:lang w:eastAsia="zh-CN"/><w:spacing w:val="30"/><w:w w:val="{scale}"/></w:rPr><w:t>漢字中文测试</w:t></w:r></w:p>"#
+        );
+        let bytes = DocxBuilder::strict().body(&body).build();
+        let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+        let mut document = parse_document(&package, &ParseOptions::default()).unwrap();
+        let opts = RenderOptions::default().font_assets(assets.clone());
+        let placed = place_pages(&document, &opts, Some(&package)).unwrap();
+        let text = placed[0]
+            .items
+            .iter()
+            .flat_map(Item::leaves)
+            .find_map(|item| {
+                if let Item::Text(text) = item {
+                    Some(text)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        let origin = text.x;
+        // 30 twips character spacing = 1.5 pt = 2 px at the default 96 dpi.
+        let step = (text.size_px + 2.0) * f64::from(scale) / 100.0;
+        let editor = Editor::new(&mut document, EditLimits::default()).unwrap();
+        let map = editor.visual_map(0, &opts, Some(&package)).unwrap();
+        for offset in 0..=6 {
+            let position = TextPosition {
+                paragraph: Address::body(0),
+                inline: vec![0],
+                content: 0,
+                offset,
+            };
+            let carets = map.caret(0, &position).unwrap();
+            let expected = origin + f64::from(u32::try_from(offset).unwrap()) * step;
+            assert!(
+                carets.iter().any(|r| (r.x - expected).abs() < 0.01),
+                "{offset}: {carets:?}, expected {expected}"
+            );
+            if offset < 6 {
+                let selected = map.selection(0, &position, offset + 1).unwrap();
+                let width: f64 = selected.iter().map(|r| r.width).sum();
+                assert!(
+                    (width - step).abs() < 0.01,
+                    "{offset}: width {width}, expected {step}"
+                );
+                let rect = selected[0];
+                let hit = map
+                    .hit_test(0, rect.page, expected + 0.1, rect.y + rect.height / 2.0)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(hit.offset, offset);
+            }
+        }
+    }
+}
+
+#[test]
+fn mixed_cjk_and_latin_carets_follow_the_svg_glyph_origins() {
+    use std::sync::Arc;
+    use strict_ooxml_render_svg::font::{FontAsset, FontAssetLimits, FontAssets};
+    let source = "AV漢字中文";
+    let font: Arc<[u8]> = Arc::from(
+        include_bytes!("../../strict-ooxml-render-svg/fonts/witnesses/cjk.otf").as_slice(),
+    );
+    let assets = FontAssets::new(
+        vec![FontAsset::new("Chinese Witness", false, false, font)],
+        FontAssetLimits::default(),
+    )
+    .unwrap();
+    let opts = RenderOptions::default().font_assets(Arc::new(assets));
+    let body = format!(
+        r#"<w:p><w:r><w:rPr><w:rFonts w:ascii="Chinese Witness" w:eastAsia="Chinese Witness"/><w:sz w:val="24"/><w:spacing w:val="30"/><w:w w:val="80"/><w:kern w:val="2"/></w:rPr><w:t>{source}</w:t></w:r></w:p>"#
+    );
+    let bytes = DocxBuilder::strict().body(&body).build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let mut document = parse_document(&package, &ParseOptions::default()).unwrap();
+    let pages = place_pages(&document, &opts, Some(&package)).unwrap();
+    let svg = strict_ooxml_render_svg::paint_page(&pages[0], &opts);
+    let editor = Editor::new(&mut document, EditLimits::default()).unwrap();
+    let map = editor.visual_map(0, &opts, Some(&package)).unwrap();
+    for item in pages[0].items.iter().flat_map(Item::leaves) {
+        let Item::Text(text) = item else {
+            continue;
+        };
+        if text.text.is_empty() {
+            continue;
+        }
+        let byte = source
+            .find(&text.text)
+            .expect("fragment belongs to the source");
+        let start = source[..byte].chars().count();
+        let line = svg
+            .lines()
+            .find(|line| line.contains(&format!(">{}</text>", text.text)))
+            .expect("painted fragment");
+        let xs = line
+            .split(" x=\"")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        for (index, x) in xs.split_whitespace().enumerate() {
+            let x: f64 = x.parse().unwrap();
+            let expected = text.x + (x - text.x) * text.run.char_scale;
+            let position = TextPosition {
+                paragraph: Address::body(0),
+                inline: vec![0],
+                content: 0,
+                offset: start + index,
+            };
+            let rects = map.caret(0, &position).unwrap();
+            assert!(
+                rects.iter().any(|rect| (rect.x - expected).abs() < 0.02),
+                "{position:?}: {rects:?}, SVG x={expected}"
+            );
+        }
+    }
+}
 /// A justified line widens the space after a word. That boundary is the end
 /// of one fragment and the start of the next, and both used to be drawn.
 #[test]
@@ -33,6 +169,7 @@ fn a_justified_word_boundary_is_one_caret() {
         let rects = map.caret(0, &pos).unwrap();
         let mut lines = Vec::new();
         for rect in &rects {
+            #[allow(clippy::cast_possible_truncation)] // Bounded page coordinates, quantized to tenths.
             let y = (rect.y * 10.0).round() as i64;
             assert!(
                 !lines.contains(&(rect.page, y)),

@@ -9,6 +9,7 @@
 //! The module is additive: without the `--no-math` opt-out the renderer draws
 //! formulas exactly as Word/WPS do.
 
+mod clearance;
 pub(crate) mod layout;
 pub(crate) mod mathml;
 pub(crate) mod shapes;

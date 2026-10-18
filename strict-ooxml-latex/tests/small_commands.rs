@@ -11,6 +11,47 @@ fn load(source: &str) -> LatexImported {
     import(source.as_bytes(), &LatexOptions::default()).unwrap()
 }
 
+#[test]
+fn graphics_style_declarations_do_not_become_prose_or_execute_commands() {
+    let doc = load(
+        r"\documentclass{article}
+\tikzstyle{old}=[draw=black, nested={a[b]}]
+\begin{document}
+\tikzset{line/.style={thick, decorate, draw=black,}, nested={\def\payload{BAD}}}
+\pgfkeys{/pgf/value={service}}
+\pgfplotsset{compat=1.18}\usetikzlibrary{decorations.pathmorphing}
+\usepgflibrary{arrows}\usepgfplotslibrary{groupplots}
+\tikzstyle{another} = [draw=red]
+Visible\end{document}",
+    );
+    assert_eq!(prose(&doc).trim(), "Visible");
+    for word in [
+        "tikzset",
+        "tikzstyle",
+        "pgfkeys",
+        "pgfplotsset",
+        "usetikzlibrary",
+        "usepgflibrary",
+        "usepgfplotslibrary",
+    ] {
+        assert!(doc
+            .report
+            .feature_counts
+            .contains_key(&format!("graphic:configuration:{word}")));
+    }
+    let options = LatexOptions {
+        unsupported_policy: UnsupportedPolicy::Reject,
+        ..LatexOptions::default()
+    };
+    assert!(matches!(
+        import(
+            br"\begin{document}\tikzset{draw=red}Text\end{document}",
+            &options
+        ),
+        Err(LatexError::UnsupportedRejected { .. })
+    ));
+}
+
 fn runs(doc: &LatexImported) -> Vec<&Run> {
     doc.document
         .body
@@ -291,4 +332,49 @@ fn environment_font_switches_do_not_escape_their_scope() {
         .filter(|r| run_text(r).contains('D'))
         .all(|r| r.props.italic != TriState::On));
     assert_eq!(doc.report.loss_count, 0);
+}
+
+#[test]
+fn block_math_inside_small_groups_stays_math_without_environment_names_in_text() {
+    let doc = load(
+        r"\def\bea{\begin{eqnarray}}\def\eea{\end{eqnarray}}Before{\small\bea Z_0&=&\sum_W\frac{x_W}{y_W}\\Z_1&=&\prod_i x_i\eea}After",
+    );
+    assert_eq!(prose(&doc), "BeforeAfter");
+    let math = formula(&doc);
+    let MathNode::EquationArray(array) = &math.nodes[0] else {
+        panic!("real equation array required");
+    };
+    assert_eq!(array.rows.len(), 2);
+    assert!(math.text().contains('Z'));
+    assert!(!math.text().contains("eqnarray"));
+    assert_eq!(doc.report.loss_count, 0);
+}
+
+#[test]
+fn body_groups_allow_paragraphs_and_nested_block_environments_without_leaking_style() {
+    let doc = load("A{\\itshape B\n\nC{\\small\\begin{equation}x=1\\end{equation}}D}E");
+    assert_eq!(prose(&doc).replace(' ', ""), "ABCDE");
+    assert!(runs(&doc)
+        .iter()
+        .filter(|r| run_text(r).contains('D'))
+        .all(|r| r.props.italic == TriState::On));
+    assert!(runs(&doc)
+        .iter()
+        .filter(|r| run_text(r).contains('E'))
+        .all(|r| r.props.italic != TriState::On));
+    assert_eq!(doc.report.loss_count, 0);
+}
+
+#[test]
+fn unsupported_ifthenelse_never_executes_both_environment_branches() {
+    let source = format!(
+        r"\def\reset{{\ifthenelse{{\unknowncondition}}{{}}{{\begin{{multicols}}{{2}}}}}}A{}B",
+        r"\reset{}".repeat(40)
+    );
+    let doc = load(&source);
+    assert_eq!(prose(&doc), "AB");
+    assert!(doc
+        .report
+        .feature_counts
+        .contains_key("conditional:requires-tex"));
 }

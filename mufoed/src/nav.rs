@@ -16,6 +16,8 @@ use unicode_segmentation::UnicodeSegmentation;
 pub(crate) enum PieceKind {
     /// A text node of a run.
     Text,
+    /// Cached visible field text: copyable, but not an editable kernel point.
+    FieldResult,
     /// A tab, a break or another one-character item inside a run.
     RunAtom,
     /// A tab or a break between runs (`Inline::Tab`, `Inline::Break`),
@@ -107,6 +109,16 @@ fn walk_pieces(inlines: &[Inline], path: &mut Vec<usize>, out: &mut Vec<Piece>) 
                 });
             }
             Inline::Hyperlink(link) => walk_pieces(&link.inlines, path, out),
+            Inline::Field(field) => {
+                let mut cached = Vec::new();
+                walk_pieces(&field.inlines, path, &mut cached);
+                out.push(Piece {
+                    kind: PieceKind::FieldResult,
+                    inline: path.clone(),
+                    content: 0,
+                    text: cached.into_iter().map(|piece| piece.text).collect(),
+                });
+            }
             Inline::SdtInline(sdt) => walk_pieces(&sdt.inlines, path, out),
             Inline::Directional(wrapper) => walk_pieces(&wrapper.inlines, path, out),
             _ => {}
