@@ -195,13 +195,26 @@ fn an_rtl_lists_first_line_stays_on_the_sheet() {
     let pages = build(body, &numbering);
     let page = &pages[0];
     assert!(page.svg.contains("Item"), "the text renders");
-    let rightmost = texts(&page.svg)
+    let rendered = texts(&page.svg);
+    let rightmost = rendered
         .iter()
         .map(|(_, x)| *x)
         .fold(f64::NEG_INFINITY, f64::max);
     assert!(
         rightmost <= page.width_px + 0.5,
         "the first line is on the sheet: rightmost {rightmost} of {}",
+        page.width_px
+    );
+    // The number is in the hanging gap on the start (right) side, not stranded
+    // on the left as it was when it used the LTR anchor.
+    let marker_x = rendered
+        .iter()
+        .find(|(text, _)| text == "1.")
+        .map(|(_, x)| *x)
+        .expect("marker");
+    assert!(
+        marker_x > page.width_px / 2.0,
+        "the number sits on the right: {marker_x} of {}",
         page.width_px
     );
 }

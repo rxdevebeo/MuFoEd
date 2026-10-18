@@ -1903,18 +1903,31 @@ fn build_lines(
                 .map_or_else(|| ctx.measure(marker_text, marker_run), |(_, width)| *width);
             let clearance = marker_clearance(ctx, marker_run, suffix.as_deref());
             // `w:lvlJc`: a right-aligned marker ends on the number position
-            // and a centred one straddles it.
+            // and a centred one straddles it. For an RTL paragraph the start is
+            // the right edge, so the number sits in the hanging gap to the right
+            // of the text — the mirror of the LTR placement; anchoring it on the
+            // left (as `first_x` does) would strand it across the line.
+            let anchor = if computed.bidi {
+                right_edge - first_offset
+            } else {
+                first_x
+            };
             let mut marker_x = match justification {
-                Some(strict_ooxml_wml::model::values::Justification::End) => first_x - width,
+                Some(strict_ooxml_wml::model::values::Justification::End) => anchor - width,
                 Some(strict_ooxml_wml::model::values::Justification::Center) => {
-                    first_x - width / 2.0
+                    anchor - width / 2.0
                 }
-                _ => first_x,
+                _ => anchor,
             };
             // The text anchor stays where the paragraph declared it. A marker
             // that would share that anchor, or that is wider than the hanging
-            // gap, moves left by the suffix clearance.
-            if marker_x + width + clearance > normal_x + 1e-6 {
+            // gap, moves away by the suffix clearance: left for LTR, right for
+            // RTL.
+            if computed.bidi {
+                if marker_x < normal_x + 1e-6 {
+                    marker_x = normal_x + clearance;
+                }
+            } else if marker_x + width + clearance > normal_x + 1e-6 {
                 marker_x = normal_x - clearance - width;
             }
             if let Some((image, width)) = picture {
