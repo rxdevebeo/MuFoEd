@@ -1412,6 +1412,19 @@ fn layout_run(frame: &Frame<'_, '_>, run: &MathRun) -> MathBox {
         .unwrap_or(properties.normal || frame.argument_normal);
     let style = effective_style(&properties);
     let mut format = frame.math_run(style);
+    // m:nor uses the ordinary text face from w:rPr. Mathematical m:sty is
+    // intentionally ignored here, but direct bold/italic are still effective
+    // and must participate in measurement as well as painting.
+    if properties.normal {
+        if let Some(direct) = run.run_properties.as_deref() {
+            if direct.bold != strict_ooxml_wml::model::TriState::Absent {
+                format.bold = direct.bold.is_on();
+            }
+            if direct.italic != strict_ooxml_wml::model::TriState::Absent {
+                format.italic = direct.italic.is_on();
+            }
+        }
+    }
     if !properties.normal {
         let family = match properties.script.unwrap_or_default() {
             MathScript::Roman => frame

@@ -1,0 +1,17 @@
+{
+  "strict-ooxml-latex/src/bibliography.rs": "b4e2566cb6441c6ef80940cdc4a4c0a2c6f8759f10f0d0e128404af46daae502",
+  "strict-ooxml-latex/src/columns.rs": "dc91e37f12eab692f8128c6fdd016a69a677e3d0572340ccb4cabd3ec4e49632",
+  "strict-ooxml-latex/src/lexer.rs": "80e6a8695a52e9cdc0590b2fa088703fe6191601a1ad0578f26da27ff04a32db",
+  "strict-ooxml-latex/src/lib.rs": "6300b6a0a2bb93694793dc7a4fab5069ce1369662aa4fc7f094fef149fd2f76d",
+  "strict-ooxml-latex/src/macros.rs": "cfeefc3a1ab8871e00e492aa3bf7d2cb9a3519098a1fede5abccd1bc8db05f1e",
+  "strict-ooxml-latex/src/math.rs": "b0ce552a00909b73ee596de4258fa6fc6d63e93d98617e0a15f589f7ed8e0a76",
+  "strict-ooxml-latex/src/media.rs": "2d6bce25b8ec026f74ad33c906fec44c622b92c146d130ac27b6ea6761a9ba40",
+  "strict-ooxml-latex/src/parser.rs": "68498832561acbd33e268c8217154fe37b553aef8884f162098cad25cceb51a9",
+  "strict-ooxml-latex/src/references.rs": "bf85ee4b7687b163544aad9f0a721d7d137ed3d8592a6203d7aed5ec8378423b",
+  "strict-ooxml-latex/src/render.rs": "625de7e17754c48a906aa9a6e325029633eef7d35d640b028e445c042ee44394",
+  "strict-ooxml-latex/src/report.rs": "6401303164cea43f1e508670314ae09ce376cae8d379da97d40145fca76f0ccd",
+  "strict-ooxml-latex/src/source.rs": "5dd01f0ffb428528570c7b198d18f31d1ec01d6f52adc8e38270dd644b49e394",
+  "strict-ooxml-latex/src/table.rs": "bcb38abad4cf6f86c2d81686e04e9256d7ab626b48afb27c4439c9acc9dd69b7",
+  "strict-ooxml-latex/tests/extensions.rs": "fde1d7c361bd3016f35d688a91fdee0ca83fab8c6fc6d778ebfc75a1f4a3b707",
+  "strict-ooxml-latex/tests/cc0_regressions.rs": "34edb79cd1b0f972fc7057436d1dfbd512091c0464d2bb5c5e30caffa5aac834"
+}

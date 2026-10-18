@@ -8,10 +8,12 @@
 use std::sync::Arc;
 
 use strict_ooxml_core::error::SourceLocation;
+use strict_ooxml_wml::model::math::MathVerticalAlign;
 use strict_ooxml_wml::model::{
     Accent, ArgumentProperties, Bar, Delimiter, EquationArray, Fraction, LimitLocation,
-    MathArgument, MathExpression, MathLimit, MathNode, MathPosition, MathRun, MathRunProperties,
-    MathStyle, Matrix, NaryOperator, Radical, SubSuperscript, Subscript, Superscript,
+    MathAlignment, MathArgument, MathExpression, MathLimit, MathNode, MathPosition, MathRun,
+    MathRunProperties, MathStyle, Matrix, MatrixColumn, NaryOperator, Radical, RunProperties,
+    SubSuperscript, Subscript, Superscript, TriState,
 };
 
 use crate::lexer::{Token, TokenKind};
@@ -32,6 +34,9 @@ pub(crate) struct MathContext<'a> {
     pub depth: usize,
     /// Maximum [`depth`](Self::depth).
     pub max_depth: usize,
+    pub max_columns: usize,
+    /// Equation metadata transferred to the containing WML paragraph.
+    pub labels: Vec<String>,
 }
 
 impl MathContext<'_> {
@@ -62,6 +67,87 @@ fn argument(nodes: Vec<MathNode>) -> MathArgument {
         nodes,
         location: SourceLocation::default(),
     }
+}
+
+/// Rejoin compatible scalar atoms after script binding, keeping text compact
+/// without treating a whole lexer text run as one TeX argument.
+fn append_nodes(out: &mut Vec<MathNode>, incoming: Vec<MathNode>) {
+    for node in incoming {
+        if let (Some(MathNode::Run(left)), MathNode::Run(right)) = (out.last_mut(), &node) {
+            if !left.text.is_empty()
+                && !right.text.is_empty()
+                && left.properties == right.properties
+                && left.run_properties == right.run_properties
+                && left.field_char == right.field_char
+            {
+                left.text.push_str(&right.text);
+                continue;
+            }
+        }
+        out.push(node);
+    }
+}
+
+/// In math mode ensuremath is TeX's identity on its argument, not a
+/// nested mathematical group. Flatten it iteratively before descent so chains
+/// of valid automatic-math macros do not consume the structural nesting budget.
+fn math_mode_tokens(tokens: &[Token]) -> Vec<Token> {
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut groups = Vec::new();
+    let mut identity = false;
+    let mut text_pending = false;
+    let mut text_depth = 0usize;
+    for token in tokens {
+        if text_depth > 0 {
+            match token.kind {
+                TokenKind::LBrace => text_depth += 1,
+                TokenKind::RBrace => text_depth -= 1,
+                _ => {}
+            }
+            out.push(token.clone());
+            continue;
+        }
+        if text_pending {
+            if matches!(token.kind, TokenKind::Space) {
+                out.push(token.clone());
+                continue;
+            }
+            text_pending = false;
+            if matches!(token.kind, TokenKind::LBrace) {
+                text_depth = 1;
+                out.push(token.clone());
+                continue;
+            }
+        }
+        if matches!(&token.kind, TokenKind::ControlWord(w) if matches!(w.strip_prefix("__native:").unwrap_or(w), "text" | "textrm" | "textnormal" | "mbox" | "operatorname" | "textbf" | "textit" | "textup" | "emph"))
+        {
+            text_pending = true;
+        }
+        if matches!(&token.kind, TokenKind::ControlWord(w) if w.strip_prefix("__native:").unwrap_or(w) == "ensuremath")
+        {
+            identity = true;
+            continue;
+        }
+        match token.kind {
+            TokenKind::Space if identity => continue,
+            TokenKind::LBrace => {
+                groups.push(identity);
+                if identity {
+                    identity = false;
+                    continue;
+                }
+            }
+            TokenKind::RBrace => {
+                if groups.pop() == Some(true) {
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        identity = false;
+        out.push(token.clone());
+    }
+    out
 }
 
 fn normal_run(text: &str) -> MathNode {
@@ -96,7 +182,8 @@ pub(crate) fn translate(
     tokens: &[Token],
     ctx: &mut MathContext<'_>,
 ) -> Result<MathExpression, LatexError> {
-    let nodes = translate_nodes(tokens, ctx)?;
+    let tokens = math_mode_tokens(tokens);
+    let nodes = translate_nodes(&tokens, ctx)?;
     Ok(MathExpression {
         nodes,
         location: SourceLocation::default(),
@@ -109,8 +196,87 @@ pub(crate) fn translate_environment(
     tokens: &[Token],
     ctx: &mut MathContext<'_>,
 ) -> Result<MathExpression, LatexError> {
+    let normalized = math_mode_tokens(tokens);
+    let tokens = normalized.as_slice();
     let bare = name.trim_end_matches('*');
-    let rows = split_top_level(tokens, &TokenKind::ControlSymbol('\\'));
+    let mut body = tokens;
+    let mut columns = Vec::new();
+    let mut base_justification = None;
+    if bare == "array" {
+        while matches!(
+            body.first().map(|t| &t.kind),
+            Some(TokenKind::Space | TokenKind::ParBreak)
+        ) {
+            body = &body[1..];
+        }
+        if let Some(end) = bracket_end(body, 0) {
+            let position: String = body[1..end - 1].iter().map(|t| t.kind.raw()).collect();
+            base_justification = match position.trim() {
+                "t" => Some(MathVerticalAlign::Top),
+                "b" => Some(MathVerticalAlign::Bottom),
+                "c" => Some(MathVerticalAlign::Center),
+                _ => {
+                    ctx.loss(span(&body[0]), "math.array:position")?;
+                    None
+                }
+            };
+            body = &body[end..];
+            while matches!(
+                body.first().map(|t| &t.kind),
+                Some(TokenKind::Space | TokenKind::ParBreak)
+            ) {
+                body = &body[1..];
+            }
+        }
+        // The column declaration is syntax, never a mathematical first cell.
+        if let Some(end) = braced_end(body, 0) {
+            let declaration: String = body[1..end - 1].iter().map(|t| t.kind.raw()).collect();
+            let mut unsupported = false;
+            for ch in declaration.chars().filter(|c| !c.is_whitespace()) {
+                let alignment = match ch {
+                    'l' => Some(MathAlignment::Left),
+                    'c' => Some(MathAlignment::Center),
+                    'r' => Some(MathAlignment::Right),
+                    _ => None,
+                };
+                if let Some(alignment) = alignment {
+                    columns.push(MatrixColumn {
+                        justification: Some(alignment),
+                        count: Some(1),
+                    });
+                    if columns.len() > ctx.max_columns {
+                        return Err(LatexError::LimitExceeded {
+                            limit: "table_columns",
+                            observed: columns.len(),
+                        });
+                    }
+                } else {
+                    unsupported = true;
+                }
+            }
+            if unsupported {
+                columns.clear();
+                ctx.loss(span(&body[0]), "math.array:column-preamble")?;
+            }
+            body = &body[end..];
+        } else {
+            ctx.loss(
+                body.first().map_or(LatexSpan::new(0, 0), span),
+                "math.array:missing-preamble",
+            )?;
+        }
+    }
+    let mut rows = split_top_level(body, &TokenKind::ControlSymbol('\\'));
+    for row in rows.iter_mut().skip(1) {
+        let start = row
+            .iter()
+            .position(|t| !matches!(t.kind, TokenKind::Space | TokenKind::ParBreak))
+            .unwrap_or(row.len());
+        if let Some(end) = bracket_end(row, start) {
+            ctx.loss(span(&row[start]), "math.spacing:row-gap")?;
+            row.drain(..end);
+        }
+    }
     match bare {
         "equation" | "displaymath" | "math" => translate(tokens, ctx),
         "align" | "alignat" | "aligned" | "alignedat" | "gather" | "gathered" | "multline"
@@ -155,14 +321,14 @@ pub(crate) fn translate_environment(
                 grid.push(row_nodes);
             }
             let matrix = MathNode::Matrix(Box::new(Matrix {
-                base_justification: None,
+                base_justification,
                 hide_placeholders: false,
                 column_group_rule: None,
                 column_spacing: None,
                 column_group_spacing: None,
                 row_spacing_rule: None,
                 row_spacing: None,
-                columns: Vec::new(),
+                columns,
                 control: None,
                 rows: grid,
                 location: SourceLocation::default(),
@@ -208,6 +374,7 @@ fn translate_nodes(
     let mut parser = MathParser {
         tokens,
         pos: 0,
+        text_offset: 0,
         ctx,
         style: None,
         normal: false,
@@ -215,11 +382,67 @@ fn translate_nodes(
     parser.parse_sequence()
 }
 
-/// Splits a token slice at top-level occurrences of `separator` (brace depth 0).
-fn split_top_level(tokens: &[Token], separator: &TokenKind) -> Vec<Vec<Token>> {
+/// End (exclusive) of a curly group. Square brackets inside it are literals.
+fn braced_end(tokens: &[Token], start: usize) -> Option<usize> {
+    if !matches!(tokens.get(start)?.kind, TokenKind::LBrace) {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate().skip(start) {
+        match token.kind {
+            TokenKind::LBrace => depth += 1,
+            TokenKind::RBrace => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(index + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn bracket_end(tokens: &[Token], start: usize) -> Option<usize> {
+    if !matches!(tokens.get(start)?.kind, TokenKind::LBracket) {
+        return None;
+    }
+    let mut braces = 0usize;
+    let mut brackets = 0usize;
+    for (index, token) in tokens.iter().enumerate().skip(start) {
+        match token.kind {
+            TokenKind::LBrace => braces += 1,
+            TokenKind::RBrace => braces = braces.saturating_sub(1),
+            TokenKind::LBracket if braces == 0 => brackets += 1,
+            TokenKind::RBracket if braces == 0 => {
+                brackets -= 1;
+                if brackets == 0 {
+                    return Some(index + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Separators in nested environments belong to those environments, even when
+/// their cells are not enclosed in curly groups.
+pub(crate) fn split_top_level(tokens: &[Token], separator: &TokenKind) -> Vec<Vec<Token>> {
     let mut rows: Vec<Vec<Token>> = vec![Vec::new()];
     let mut depth = 0usize;
+    let mut environments = 0usize;
     for token in tokens {
+        if depth == 0 {
+            if let TokenKind::ControlWord(word) = &token.kind {
+                if word == "begin" {
+                    environments += 1;
+                }
+                if word == "end" {
+                    environments = environments.saturating_sub(1);
+                }
+            }
+        }
         match &token.kind {
             TokenKind::LBrace => {
                 depth += 1;
@@ -233,7 +456,7 @@ fn split_top_level(tokens: &[Token], separator: &TokenKind) -> Vec<Vec<Token>> {
                     current.push(token.clone());
                 }
             }
-            kind if depth == 0 && kind == separator => rows.push(Vec::new()),
+            kind if depth == 0 && environments == 0 && kind == separator => rows.push(Vec::new()),
             _ => {
                 if let Some(current) = rows.last_mut() {
                     current.push(token.clone());
@@ -244,9 +467,36 @@ fn split_top_level(tokens: &[Token], separator: &TokenKind) -> Vec<Vec<Token>> {
     rows
 }
 
+/// Compose text font switches without discarding an inherited bold/italic face.
+fn text_style(current: MathStyle, command: &str) -> MathStyle {
+    let mut bold = matches!(current, MathStyle::Bold | MathStyle::BoldItalic);
+    let mut italic = matches!(current, MathStyle::Italic | MathStyle::BoldItalic);
+    match command {
+        "textbf" | "bfseries" => bold = true,
+        "textit" | "itshape" => italic = true,
+        "textup" | "upshape" => italic = false,
+        "mdseries" => bold = false,
+        "emph" | "em" => italic = !italic,
+        "textnormal" | "normalfont" => {
+            bold = false;
+            italic = false;
+        }
+        _ => {}
+    }
+    match (bold, italic) {
+        (true, true) => MathStyle::BoldItalic,
+        (true, false) => MathStyle::Bold,
+        (false, true) => MathStyle::Italic,
+        (false, false) => MathStyle::Plain,
+    }
+}
+
 struct MathParser<'t, 'a, 'm> {
     tokens: &'t [Token],
     pos: usize,
+    /// Byte offset into a lexical text run. TeX math consumes scalar atoms,
+    /// while the document lexer intentionally batches ordinary prose.
+    text_offset: usize,
     ctx: &'m mut MathContext<'a>,
     style: Option<MathStyle>,
     normal: bool,
@@ -258,11 +508,52 @@ impl MathParser<'_, '_, '_> {
     }
 
     fn advance(&mut self) -> Option<Token> {
-        let token = self.tokens.get(self.pos).cloned();
+        let mut token = self.tokens.get(self.pos).cloned();
         if token.is_some() {
+            if self.text_offset > 0 {
+                if let Some(Token {
+                    kind: TokenKind::Text(text),
+                    start,
+                    ..
+                }) = &mut token
+                {
+                    *text = text[self.text_offset..].to_owned();
+                    *start += self.text_offset;
+                }
+            }
             self.pos += 1;
+            self.text_offset = 0;
         }
         token
+    }
+
+    fn advance_atom(&mut self) -> Option<Token> {
+        if let Some(Token {
+            kind: TokenKind::Text(text),
+            start,
+            ..
+        }) = self.tokens.get(self.pos)
+        {
+            let ch = text[self.text_offset..].chars().next()?;
+            let start = *start + self.text_offset;
+            self.text_offset += ch.len_utf8();
+            if self.text_offset == text.len() {
+                self.pos += 1;
+                self.text_offset = 0;
+            }
+            return Some(Token {
+                kind: TokenKind::Text(ch.to_string()),
+                start,
+                end: start + ch.len_utf8(),
+            });
+        }
+        self.advance()
+    }
+
+    fn skip_spaces(&mut self) {
+        while matches!(self.peek(), Some(TokenKind::Space | TokenKind::ParBreak)) {
+            self.advance();
+        }
     }
 
     fn is_stop(&self) -> bool {
@@ -289,7 +580,7 @@ impl MathParser<'_, '_, '_> {
                 }
             }
             let atom = self.parse_atom()?;
-            nodes.extend(self.apply_scripts(atom)?);
+            append_nodes(&mut nodes, self.apply_scripts(atom)?);
         }
         Ok(nodes)
     }
@@ -334,6 +625,7 @@ impl MathParser<'_, '_, '_> {
     fn apply_scripts(&mut self, base: Vec<MathNode>) -> Result<Vec<MathNode>, LatexError> {
         let mut limit_location = None;
         loop {
+            self.skip_spaces();
             match self.peek() {
                 Some(TokenKind::ControlWord(word)) if word == "limits" => {
                     self.advance();
@@ -349,6 +641,7 @@ impl MathParser<'_, '_, '_> {
         let mut sub = None;
         let mut sup = None;
         loop {
+            self.skip_spaces();
             match self.peek() {
                 Some(TokenKind::Sub) => {
                     self.advance();
@@ -407,6 +700,7 @@ impl MathParser<'_, '_, '_> {
 
     /// Parses one script argument: a braced group or a single atom.
     fn parse_argument(&mut self) -> Result<MathArgument, LatexError> {
+        self.skip_spaces();
         if matches!(self.peek(), Some(TokenKind::LBrace)) {
             self.advance();
             let nodes = self.parse_sequence()?;
@@ -432,7 +726,24 @@ impl MathParser<'_, '_, '_> {
         MathNode::Run(MathRun {
             field_char: None,
             properties,
-            run_properties: None,
+            // m:nor selects ordinary text: its face comes from w:rPr,
+            // whereas m:sty applies to mathematical characters.
+            run_properties: self.normal.then(|| {
+                let style = self.style.unwrap_or(MathStyle::Plain);
+                Box::new(RunProperties {
+                    bold: if matches!(style, MathStyle::Bold | MathStyle::BoldItalic) {
+                        TriState::On
+                    } else {
+                        TriState::Off
+                    },
+                    italic: if matches!(style, MathStyle::Italic | MathStyle::BoldItalic) {
+                        TriState::On
+                    } else {
+                        TriState::Off
+                    },
+                    ..RunProperties::default()
+                })
+            }),
             text: text.to_owned(),
             location: SourceLocation::default(),
         })
@@ -452,7 +763,7 @@ impl MathParser<'_, '_, '_> {
     }
 
     fn parse_atom_inner(&mut self) -> Result<Vec<MathNode>, LatexError> {
-        let Some(token) = self.advance() else {
+        let Some(token) = self.advance_atom() else {
             return Ok(Vec::new());
         };
         let token_span = span(&token);
@@ -505,12 +816,75 @@ impl MathParser<'_, '_, '_> {
     }
 
     fn control_word(&mut self, word: &str, span: LatexSpan) -> Result<Vec<MathNode>, LatexError> {
+        let word = word.strip_prefix("__native:").unwrap_or(word);
         match word {
+            "texorpdfstring" => {
+                let first = self.parse_argument()?.nodes;
+                self.skip_spaces();
+                self.raw_group();
+                self.ctx.info(span, "math:pdf-string-alternate");
+                Ok(first)
+            }
+            "@firstofone" | "@firstoftwo" | "@secondoftwo" | "@gobble" | "@gobbletwo"
+            | "bibinfo" | "bibfield" => {
+                let count = if matches!(word, "@firstofone" | "@gobble") {
+                    1
+                } else {
+                    2
+                };
+                let selected = match word {
+                    "@gobble" | "@gobbletwo" => None,
+                    "@secondoftwo" | "bibinfo" | "bibfield" => Some(1),
+                    _ => Some(0),
+                };
+                let mut chosen = Vec::new();
+                for index in 0..count {
+                    self.skip_spaces();
+                    if selected == Some(index) {
+                        chosen = self.parse_argument()?.nodes;
+                    } else if matches!(self.peek(), Some(TokenKind::LBrace)) {
+                        self.raw_group();
+                    } else {
+                        self.advance_atom();
+                    }
+                }
+                Ok(chosen)
+            }
+            "xspace" | "protect" => Ok(Vec::new()),
+            "textunderscore" => Ok(vec![normal_run("_")]),
             "frac" | "dfrac" | "tfrac" | "cfrac" => self.fraction().map(|node| vec![node]),
             "sqrt" => self.radical().map(|node| vec![node]),
             "left" => self.delimiters().map(|node| vec![node]),
             "begin" => self.math_environment(),
+            "label" => {
+                self.skip_spaces();
+                let key = self.raw_group();
+                if !key.is_empty() {
+                    self.ctx.info(span, &format!("label:{key}"));
+                    self.ctx.labels.push(key);
+                }
+                Ok(Vec::new())
+            }
+            "nonumber" | "notag" => {
+                self.ctx.info(span, &format!("math.numbering:{word}"));
+                Ok(Vec::new())
+            }
+            "hspace" | "hspace*" | "vspace" | "vspace*" | "kern" | "mkern" | "mskip" => {
+                // Unsupported spacing is still a loss, but its dimension is
+                // metadata, not mathematical content.
+                self.ctx.loss(span, &format!("math.spacing:{word}"))?;
+                self.skip_spaces();
+                if matches!(self.peek(), Some(TokenKind::LBrace)) {
+                    let _ = self.raw_group();
+                } else {
+                    self.skip_dimension();
+                }
+                Ok(Vec::new())
+            }
             "text" | "textrm" | "textnormal" | "mbox" | "operatorname" => self.text_argument(),
+            "textbf" | "textit" | "textup" | "emph" => {
+                self.text_argument_styled(text_style(MathStyle::Plain, word))
+            }
             "mathrm" | "mathbf" | "mathit" | "mathsf" | "mathtt" => {
                 let style = match word {
                     "mathbf" => MathStyle::Bold,
@@ -590,14 +964,85 @@ impl MathParser<'_, '_, '_> {
         })))
     }
 
-    fn radical(&mut self) -> Result<MathNode, LatexError> {
-        let degree = if matches!(self.peek(), Some(TokenKind::LBracket)) {
-            self.advance();
-            let nodes = self.parse_sequence()?;
-            if matches!(self.peek(), Some(TokenKind::RBracket)) {
-                self.advance();
+    fn skip_dimension(&mut self) {
+        // TeX dimensions without braces: optional sign, decimal magnitude,
+        // then a unit. Leave adjacent following mathematical atoms intact.
+        while matches!(self.peek(), Some(TokenKind::Text(_))) {
+            let Some(Token {
+                kind: TokenKind::Text(text),
+                ..
+            }) = self.tokens.get(self.pos)
+            else {
+                break;
+            };
+            let rest = &text[self.text_offset..];
+            let length = rest
+                .char_indices()
+                .take_while(|(_, c)| c.is_ascii_digit() || matches!(c, '+' | '-' | '.'))
+                .map(|(i, c)| i + c.len_utf8())
+                .last()
+                .unwrap_or(0);
+            if length == 0 {
+                break;
             }
-            argument(nodes)
+            for _ in 0..rest[..length].chars().count() {
+                self.advance_atom();
+            }
+        }
+        self.skip_spaces();
+        if let Some(Token {
+            kind: TokenKind::Text(text),
+            ..
+        }) = self.tokens.get(self.pos)
+        {
+            let rest = &text[self.text_offset..];
+            for unit in [
+                "pt", "pc", "in", "bp", "cm", "mm", "dd", "cc", "sp", "em", "ex", "mu",
+            ] {
+                if rest.starts_with(unit) {
+                    self.advance_atom();
+                    self.advance_atom();
+                    break;
+                }
+            }
+        }
+    }
+
+    fn radical(&mut self) -> Result<MathNode, LatexError> {
+        self.skip_spaces();
+        let degree = if matches!(self.peek(), Some(TokenKind::LBracket)) {
+            let open = self.advance().expect("opening bracket");
+            let mut brackets = 1usize;
+            let mut braces = 0usize;
+            let mut tokens = Vec::new();
+            while let Some(token) = self.advance() {
+                match token.kind {
+                    TokenKind::LBrace => braces += 1,
+                    TokenKind::RBrace => braces = braces.saturating_sub(1),
+                    TokenKind::LBracket if braces == 0 => brackets += 1,
+                    TokenKind::RBracket if braces == 0 => {
+                        brackets -= 1;
+                        if brackets == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                tokens.push(token);
+            }
+            if brackets != 0 {
+                self.ctx
+                    .loss(span(&open), "math.radical:unterminated-degree")?;
+            }
+            let mut degree = MathParser {
+                tokens: &tokens,
+                pos: 0,
+                text_offset: 0,
+                ctx: self.ctx,
+                style: self.style,
+                normal: self.normal,
+            };
+            argument(degree.parse_sequence()?)
         } else {
             argument(Vec::new())
         };
@@ -623,7 +1068,7 @@ impl MathParser<'_, '_, '_> {
                 continue;
             }
             let atom = self.parse_atom()?;
-            nodes.extend(self.apply_scripts(atom)?);
+            append_nodes(&mut nodes, self.apply_scripts(atom)?);
         }
         let end = if matches!(self.peek(), Some(TokenKind::ControlWord(word)) if word == "right") {
             self.advance();
@@ -644,7 +1089,7 @@ impl MathParser<'_, '_, '_> {
     }
 
     fn delimiter(&mut self) -> Option<char> {
-        let token = self.advance()?;
+        let token = self.advance_atom()?;
         match token.kind {
             TokenKind::Text(text) => text.chars().next().filter(|c| *c != '.'),
             TokenKind::LBrace => Some('{'),
@@ -687,35 +1132,132 @@ impl MathParser<'_, '_, '_> {
 
     /// Renders `\text{...}`, translating any nested `$...$` back to math.
     fn text_argument(&mut self) -> Result<Vec<MathNode>, LatexError> {
-        let tokens = self.read_group_tokens();
-        let mut nodes = Vec::new();
-        let mut current = String::new();
-        let mut index = 0;
-        let mut in_math = false;
-        while index < tokens.len() {
-            if matches!(tokens[index].kind, TokenKind::MathShift) {
-                if !current.is_empty() {
-                    nodes.push(normal_run(&current));
-                    current.clear();
-                }
-                in_math = !in_math;
-                index += 1;
-                continue;
-            }
-            if in_math {
-                let start = index;
-                while index < tokens.len() && !matches!(tokens[index].kind, TokenKind::MathShift) {
-                    index += 1;
-                }
-                let expression = translate(&tokens[start..index], self.ctx)?;
-                nodes.extend(expression.nodes);
-                continue;
-            }
-            current.push_str(&tokens[index].kind.raw());
-            index += 1;
+        self.text_argument_styled(MathStyle::Plain)
+    }
+
+    fn text_argument_styled(&mut self, style: MathStyle) -> Result<Vec<MathNode>, LatexError> {
+        self.skip_spaces();
+        let tokens = if matches!(self.peek(), Some(TokenKind::LBrace)) {
+            self.read_group_tokens()
+        } else {
+            self.advance_atom().into_iter().collect()
+        };
+        if self.ctx.depth >= self.ctx.max_depth {
+            return Err(LatexError::LimitExceeded {
+                limit: "nesting",
+                observed: self.ctx.depth + 1,
+            });
         }
-        if !current.is_empty() {
-            nodes.push(normal_run(&current));
+        self.ctx.depth += 1;
+        let result = MathParser {
+            tokens: &tokens,
+            pos: 0,
+            text_offset: 0,
+            ctx: self.ctx,
+            normal: true,
+            style: Some(style),
+        }
+        .text_sequence();
+        self.ctx.depth -= 1;
+        result
+    }
+
+    /// Text mode has its own grouping, whitespace and escapes. Never append a
+    /// control word's raw spelling to an OMML run.
+    fn text_sequence(&mut self) -> Result<Vec<MathNode>, LatexError> {
+        let mut nodes = Vec::new();
+        let mut styles = Vec::new();
+        while let Some(token) = self.advance() {
+            let token_span = span(&token);
+            let incoming = match token.kind {
+                TokenKind::LBrace => {
+                    if styles.len() + self.ctx.depth >= self.ctx.max_depth {
+                        return Err(LatexError::LimitExceeded {
+                            limit: "nesting",
+                            observed: styles.len() + self.ctx.depth + 1,
+                        });
+                    }
+                    styles.push(self.style);
+                    Vec::new()
+                }
+                TokenKind::RBrace => {
+                    if let Some(style) = styles.pop() {
+                        self.style = style;
+                    } else {
+                        self.ctx.loss(token_span, "math.text:unmatched-group")?;
+                    }
+                    Vec::new()
+                }
+                TokenKind::MathShift => {
+                    let start = self.pos;
+                    while !matches!(self.peek(), None | Some(TokenKind::MathShift)) {
+                        self.advance();
+                    }
+                    let end = self.pos;
+                    if self.advance().is_none() {
+                        self.ctx.loss(token_span, "math.text:unterminated-math")?;
+                    }
+                    translate(&self.tokens[start..end], self.ctx)?.nodes
+                }
+                TokenKind::ControlWord(word) => {
+                    let word = word.strip_prefix("__native:").unwrap_or(&word);
+                    while matches!(self.peek(), Some(TokenKind::Space)) {
+                        self.advance();
+                    }
+                    match word {
+                        "textbf" | "textit" | "textup" | "textnormal" | "textrm" | "text"
+                        | "mbox" | "emph" => {
+                            let style = text_style(self.style.unwrap_or(MathStyle::Plain), word);
+                            self.text_argument_styled(style)?
+                        }
+                        "bfseries" | "itshape" | "upshape" | "mdseries" | "normalfont" | "em" => {
+                            self.style =
+                                Some(text_style(self.style.unwrap_or(MathStyle::Plain), word));
+                            Vec::new()
+                        }
+                        "ensuremath" => {
+                            self.skip_spaces();
+                            let tokens = if matches!(self.peek(), Some(TokenKind::LBrace)) {
+                                self.read_group_tokens()
+                            } else {
+                                self.advance_atom().into_iter().collect()
+                            };
+                            translate(&tokens, self.ctx)?.nodes
+                        }
+                        "protect" | "relax" => Vec::new(),
+                        _ => {
+                            if let Some(text) = crate::parser::text_symbol(word) {
+                                vec![self.styled_run(text)]
+                            } else {
+                                self.ctx
+                                    .loss(token_span, &format!("math.text.command:{word}"))?;
+                                Vec::new()
+                            }
+                        }
+                    }
+                }
+                TokenKind::ControlSymbol(c) => {
+                    let text = match c {
+                        '{' | '}' | '%' | '$' | '#' | '&' | '_' | ' ' => Some(c.to_string()),
+                        _ => None,
+                    };
+                    if let Some(text) = text {
+                        vec![self.styled_run(&text)]
+                    } else {
+                        self.ctx
+                            .loss(token_span, &format!("math.text.symbol:{c}"))?;
+                        Vec::new()
+                    }
+                }
+                TokenKind::Space | TokenKind::ParBreak => vec![self.styled_run(" ")],
+                TokenKind::Tilde => vec![self.styled_run("\u{00A0}")],
+                kind => vec![self.styled_run(&kind.raw())],
+            };
+            append_nodes(&mut nodes, incoming);
+        }
+        if !styles.is_empty() {
+            self.ctx
+                .loss(LatexSpan::new(0, 0), "math.text:unterminated-group")?;
         }
         Ok(nodes)
     }
@@ -913,19 +1455,43 @@ impl MathParser<'_, '_, '_> {
 
     fn math_environment(&mut self) -> Result<Vec<MathNode>, LatexError> {
         let name = self.raw_group();
-        let stop = TokenKind::ControlWord("end".to_owned());
+        let mut environments = vec![name.clone()];
         let mut captured = Vec::new();
-        while let Some(kind) = self.peek() {
-            if *kind == stop {
-                break;
+        while let Some(token) = self.advance() {
+            if let TokenKind::ControlWord(word) = &token.kind {
+                if word == "begin" || word == "end" {
+                    self.skip_spaces();
+                    let start = self.pos;
+                    let nested = self.raw_group();
+                    if word == "begin" {
+                        if environments.len() + self.ctx.depth >= self.ctx.max_depth {
+                            return Err(LatexError::LimitExceeded {
+                                limit: "nesting",
+                                observed: environments.len() + self.ctx.depth + 1,
+                            });
+                        }
+                        environments.push(nested);
+                    } else if environments.last() == Some(&nested) {
+                        environments.pop();
+                        if environments.is_empty() {
+                            break;
+                        }
+                    } else {
+                        self.ctx
+                            .loss(span(&token), "math.environment:mismatched-end")?;
+                    }
+                    captured.push(token);
+                    captured.extend_from_slice(&self.tokens[start..self.pos]);
+                    continue;
+                }
             }
-            if let Some(token) = self.advance() {
-                captured.push(token);
-            }
+            captured.push(token);
         }
-        if matches!(self.peek(), Some(kind) if *kind == stop) {
-            self.advance();
-            let _ = self.raw_group();
+        if !environments.is_empty() {
+            self.ctx.loss(
+                captured.first().map_or(LatexSpan::new(0, 0), span),
+                "math.environment:unterminated",
+            )?;
         }
         let expression = translate_environment(&name, &captured, self.ctx)?;
         Ok(expression.nodes)
@@ -1107,6 +1673,9 @@ pub(crate) mod math_symbols {
             "vee" | "lor" => "\u{2228}",
             "neg" | "lnot" => "\u{00AC}",
             "to" | "rightarrow" => "\u{2192}",
+            "longrightarrow" => "\u{27F6}",
+            "longleftarrow" => "\u{27F5}",
+            "longleftrightarrow" => "\u{27F7}",
             "gets" | "leftarrow" => "\u{2190}",
             "leftrightarrow" => "\u{2194}",
             "Rightarrow" | "implies" => "\u{21D2}",
@@ -1123,6 +1692,8 @@ pub(crate) mod math_symbols {
             "angle" => "\u{2220}",
             "perp" => "\u{22A5}",
             "parallel" => "\u{2225}",
+            "mid" => "\u{2223}",
+            "top" => "\u{22A4}",
             "vdash" => "\u{22A2}",
             "dashv" => "\u{22A3}",
             "models" => "\u{22A8}",

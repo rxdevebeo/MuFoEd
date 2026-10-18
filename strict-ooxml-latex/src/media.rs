@@ -148,6 +148,36 @@ fn png_size(bytes: &[u8]) -> Option<(i64, i64)> {
     Some((i64::from(width), i64::from(height)))
 }
 
+/// Poppler records the effective raster density after scaling in pHYs. Keep
+/// the original physical page/figure size even when the pixel count is capped.
+pub(crate) fn rendered_png_extent(bytes: &[u8]) -> Option<(i64, i64)> {
+    if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return None;
+    }
+    let (width, height) = png_size(bytes)?;
+    let mut pos = 8usize;
+    while let Some(header) = bytes.get(pos..pos.checked_add(8)?) {
+        let length = u32::from_be_bytes(header[..4].try_into().ok()?) as usize;
+        if &header[4..8] == b"IDAT" {
+            break;
+        }
+        let data = bytes.get(pos + 8..pos.checked_add(8)?.checked_add(length)?)?;
+        if &header[4..8] == b"pHYs" && data.len() == 9 && data[8] == 1 {
+            let x = u32::from_be_bytes(data[..4].try_into().ok()?);
+            let y = u32::from_be_bytes(data[4..8].try_into().ok()?);
+            if x == 0 || y == 0 {
+                return None;
+            }
+            return Some((
+                width.checked_mul(36_000_000)? / i64::from(x),
+                height.checked_mul(36_000_000)? / i64::from(y),
+            ));
+        }
+        pos = pos.checked_add(length)?.checked_add(12)?;
+    }
+    None
+}
+
 fn gif_size(bytes: &[u8]) -> Option<(i64, i64)> {
     let header = bytes.get(6..10)?;
     let width = u16::from_le_bytes(header.get(0..2)?.try_into().ok()?);

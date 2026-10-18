@@ -7,6 +7,17 @@
 //! [`SourceProvider`]; every construct it cannot express is a named diagnostic
 //! in the [`LatexReport`], never a silent drop.
 //!
+//! Token substitution supports ordinary parameter macros, local `.sty` files,
+//! aliases, boolean branches and custom environments. It is bounded by the same
+//! token and nesting budgets as parsing; it does not execute arbitrary TeX.
+//! Section/equation references receive cached values, `.aux` can supply prior
+//! page values, and `.bbl` or a normalized `.bib` bibliography can be imported.
+//!
+//! Opaque TikZ/chemfig and PDF images can be converted through [`RenderingSource`]
+//! and [`GraphicRenderer`]. [`TectonicRenderer`] is an explicit opt-in adapter;
+//! default providers never start applications or fetch packages. Rasterization
+//! is always reported as a loss of editability. See the crate README for bounds.
+//!
 //! ```
 //! use strict_ooxml_latex::{import, LatexOptions};
 //! let imported = import(b"\\section{Intro}\nHello \\textbf{world}.", &LatexOptions::default()).unwrap();
@@ -40,10 +51,15 @@
     clippy::unused_self
 )]
 
+mod bibliography;
+mod columns;
 mod lexer;
+mod macros;
 mod math;
 mod media;
 mod parser;
+mod references;
+mod render;
 mod report;
 mod source;
 mod table;
@@ -53,6 +69,9 @@ use std::path::Path;
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_wml::model::Document;
 
+pub use render::{
+    GraphicKind, GraphicRenderer, RenderRequest, RenderedGraphic, RenderingSource, TectonicRenderer,
+};
 pub use report::{LatexFeatureCount, LatexIssue, LatexReport, LatexSpan, Severity};
 pub use source::{FsSource, MemorySource, SourceProvider};
 

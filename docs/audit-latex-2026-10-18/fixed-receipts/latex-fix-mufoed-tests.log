@@ -1,0 +1,134 @@
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_edit-286lgft5o0ts4\s-hnbmu96r1x-1q3bvj4-working`
+
+   Compiling strict-ooxml-latex v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-latex)
+warning: `strict-ooxml-edit` (lib) generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_latex-359ef7uwy5ztk\s-hnbuy3wd5o-11z1zly-working`
+
+   Compiling strict-ooxml v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml-0vgr7a68ud5my\s-hnbuy4m9ht-0o07dh1-working`
+
+   Compiling diagram-editor v0.1.0 (D:\projects\StrictLib-mufoed\diagram-editor)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\diagram_editor-0dej2d5nl1sce\s-hnbuy583ul-07jf1dh-working`
+
+warning: `strict-ooxml-latex` (lib) generated 1 warning
+warning: `strict-ooxml` (lib) generated 1 warning
+warning: `diagram-editor` (lib) generated 1 warning
+   Compiling mufoed v0.1.0 (D:\projects\StrictLib-mufoed\mufoed)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\mufoed-2slvvrov4jls8\s-hnbuy7ffah-0vu3ek4-working`
+
+warning: `mufoed` (bin "mufoed" test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 18.22s
+     Running unittests src\main.rs (target\debug\deps\mufoed-8c624e1b6cbe9a45.exe)
+
+running 108 tests
+test ai::tests::a_live_picture_translation ... ignored, needs Ollama and a picture
+test ai::tests::a_live_translation ... ignored, needs Ollama
+test ai::tests::text_and_vision_models_are_told_apart ... ok
+test ai::tests::thinking_is_left_out_and_kinds_are_read ... ok
+test app::tests::civil_dates_match_known_days ... ok
+test app::settings_ui::tests::a_personal_word_is_one_token ... ok
+test app::tests::zoom_steps_walk_both_ways ... ok
+test ai::tests::the_model_is_chosen_for_text ... ok
+test ai::tests::boxes_are_read_in_thousandths ... ok
+test ai::cleanup_tests::cleanup_accepts_only_bounded_integer_decisions ... ok
+test nav::tests::grapheme_boundaries_step_over_combining_marks ... ok
+test clipboard::tests::cf_html_uses_byte_offsets_and_rejects_invalid_boundaries ... ok
+test print::tests::a_page_prints_to_the_pdf_printer ... ignored, needs the Microsoft Print to PDF printer
+test app::tests::extensions_are_added_once ... ok
+test nav::tests::a_word_is_found_from_inside_or_at_its_edges ... ok
+test raster::live::a_drawn_formula_comes_back_as_an_equation ... ignored, needs a local Ollama vision model
+test spell::real::real_dictionaries ... ignored, needs dictionaries in MUFOED_DICTS
+test formula::tests::chemistry_becomes_latex ... ok
+test formats::tests::html_file_encodings_are_decoded_before_import ... ok
+test print::tests::ranges_read_as_word_reads_them ... ok
+test spell::tests::an_unknown_dictionary_is_not_removed ... ok
+test settings::tests::an_older_file_still_remembers_the_window ... ok
+test spell::tests::words_skip_capitals_digits_and_single_letters ... ok
+test spell::tests::a_script_without_a_dictionary_is_unknown ... ok
+test spell::tests::stems_and_suffixes_are_known ... ok
+test formula::tests::latex_goes_in_and_comes_back ... ok
+test spell::tests::suggestions_are_one_edit_away ... ok
+test ai::cleanup_tests::cleanup_sends_real_boundary_context_to_the_model_and_never_rewrites_text ... ok
+test worker::navigation::tests::quoted_fields_and_internal_anchors ... ok
+test spell::tests::a_personal_word_can_be_taken_back ... ok
+test i18n::tests::nested_keys_flatten_and_missing_keys_fall_back ... ok
+test i18n::tests::both_builtin_languages_parse_and_share_keys ... ok
+test formats::tests::a_new_document_opens_with_heading_styles ... ok
+test theme::tests::focus_ring_marks_text_input_in_both_themes_without_restyling_buttons ... ok
+test tab::tests::clicking_comment_text_requests_the_card_and_focus_reply_selects_it ... ok
+test tab::tests::navigation_aligns_a_caret_near_the_last_page_bottom_to_the_view_top ... ok
+test formats::tests::a_latex_file_opens_as_an_imported_document ... ok
+test cleanup::tests::imported_paragraph_source_offsets_do_not_block_a_valid_join ... ok
+test ribbon::tests::big_labels_break_between_words ... ok
+test worker::scheme::tests::scheme_draft_cancel_and_stale_apply_do_not_mutate_document ... ok
+test formats::tests::kinds_are_told_apart_by_their_first_bytes ... ok
+test worker::tests::an_edit_refusal_names_the_reason ... ok
+test ribbon::tests::bookmark_dropdown_picks_the_clicked_name ... ok
+test canvas::tests::asynchronous_context_menu_keeps_readable_width_after_loading ... ok
+test cleanup::tests::first_line_indent_is_a_property_and_ai_cannot_join_across_structure ... ok
+test cleanup::tests::snapshot_excludes_objects_and_page_break_paragraphs ... ok
+test cleanup::tests::blank_cleanup_keeps_one_paragraph_and_does_not_cross_protected_blocks ... ok
+test worker::tests::cleanup_preserves_formatting_and_is_one_undo_with_stale_plan_rejection ... ok
+test cleanup::tests::cleanup_keeps_run_formatting_nonbreaking_spaces_and_disabled_indents ... ok
+test worker::navigation::tests::simple_and_complex_link_fields_have_only_their_result_clickable ... ok
+test worker::tests::caret_size_follows_paragraph_and_character_styles_during_navigation ... ok
+test worker::scheme::tests::scheme_selection_replacement_is_one_undo ... ok
+test worker::tests::cleanup_joins_keep_both_runs_and_save_as_standard_docx ... ok
+test worker::tests::half_points_round_and_clamp ... ok
+test worker::navigation::tests::contents_entries_and_bookmark_links_go_to_the_start ... ok
+test worker::scheme::tests::rotated_scheme_frame_contains_all_primitives_and_reopens ... ok
+test worker::tests::context_click_preserves_selection_and_classifies_the_clicked_object ... ok
+test worker::tests::formula_recognition_rejects_changed_documents ... ok
+test worker::navigation::tests::note_numbers_navigate_in_both_directions_and_keep_undo_history ... ok
+test worker::tests::multiline_paste_replaces_a_selection_with_one_undo ... ok
+test worker::tests::html_clipboard_tables_and_lists_paste_in_a_cell ... ok
+test worker::tests::page_numbers_on_files ... ignored, probe over files named in MUFOED_PROBE_FILES
+test worker::scheme::tests::scheme_padding_hit_context_resize_and_edit_keep_placement ... ok
+test worker::tests::paragraph_dialog_patch_is_one_undo_and_preserves_untouched_fields ... ok
+test worker::scheme::tests::scheme_insert_edit_undo_redo_and_reopen_docx ... ok
+test worker::tests::html_and_rtf_files_keep_images_and_replace_selection_in_one_undo ... ok
+test worker::tests::ole_preview_selects_resizes_wraps_moves_and_roundtrips_as_a_picture ... ok
+test worker::tests::enter_splits_beside_tabs ... ok
+test worker::tests::a_formula_is_inserted_found_and_replaced ... ok
+test worker::tests::regression_bookmark_on_empty_document ... ok
+test worker::tests::a_word_erased_key_by_key_and_retyped_comes_out_right ... ok
+test worker::tests::a_tab_inside_a_run_of_a_loaded_document_is_removable ... ok
+test worker::tests::columns_reach_the_ruler ... ok
+test worker::tests::comments_are_added_edited_and_deleted ... ok
+test worker::tests::a_picture_is_inserted_selected_resized_and_deleted ... ok
+test worker::tests::regression_comments_survive_save_and_navigation_goes_to_top ... ok
+test worker::tests::misspelt_words_are_marked_and_replaced ... ok
+test worker::navigation::tests::links_wrap_and_survive_docx_roundtrip_without_modifying_content ... ok
+test worker::tests::ai_results_change_the_text_and_the_styles ... ok
+test tab::tests::leaving_a_comment_commits_the_draft_and_releases_editing ... ok
+test worker::tests::regression_formula_on_empty_document ... ok
+test worker::tests::notes_bookmarks_and_contents ... ok
+test worker::tests::regression_insert_document ... ok
+test worker::tests::pictures_charts_and_formulas_move_in_one_transaction ... ok
+test worker::tests::pictures_take_carets_copies_edits_and_wrapping ... ok
+test worker::tests::rows_and_columns_are_selected_copied_and_cleared ... ok
+test worker::tests::word_jumps_skip_spaces_and_punctuation ... ok
+test worker::tests::a_new_document_is_typed_formatted_undone_and_saved ... ok
+test worker::tests::tab_walks_the_cells_and_adds_a_row_after_the_last ... ok
+test worker::tests::scripts_indents_and_underline_styles ... ok
+test worker::tests::headers_footers_and_page_numbers ... ok
+test app::scheme_ui::tests::modal_buttons_fit_small_window_and_apply_or_cancel ... ok
+test worker::tests::rich_clipboard_replaces_selection_with_images_and_one_undo ... ok
+test worker::tests::tab_inserts_a_tab_that_backspace_removes ... ok
+test worker::tests::file_import_over_the_history_limit_is_one_undo_and_redo ... ok
+test worker::tests::the_caret_enters_a_header_only_on_purpose ... ok
+test worker::tests::the_caret_leaves_a_table_downwards ... ok
+test worker::navigation::tests::canvas_shows_a_hand_and_dispatches_a_link_at_each_zoom ... ok
+test worker::tests::regression_insert_plain_text_and_document_with_picture ... ok
+test tab::tests::chart_mouse_selection_resize_and_caret_work_with_rulers ... ok
+test worker::tests::display_formula_from_article_selects_edits_resizes_moves_and_undoes ... ok
+test worker::tests::the_caret_map_survives_inserted_tables ... ok
+test worker::tests::regression_chart_on_empty_document ... ok
+test formula::preview_tests::the_preview_is_cropped_to_the_formula ... ok
+test worker::tests::regression_system_fonts_follow_font_changes ... ok
+test worker::tests::ole_formula_recognition_waits_for_confirmation_and_replaces_with_one_undo ... ok
+test tab::scheme_tests::empty_document_scheme_apply_mouse_selection_and_caret ... ok
+test stack::tests::a_sleeping_thread_stack_names_its_frames ... ok
+
+test result: ok. 102 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 1.50s
+

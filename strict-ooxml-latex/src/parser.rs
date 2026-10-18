@@ -118,6 +118,18 @@ struct Frame {
     pos: usize,
 }
 
+/// Restorable local assignments. Definitions marked global are propagated by
+/// `Macros` into its saved scopes and therefore survive restoration.
+struct LocalScope {
+    explicit: bool,
+    format: Format,
+    alignment: Option<Justification>,
+    colors: BTreeMap<String, String>,
+    graphics_paths: Vec<String>,
+    column_types: BTreeMap<String, crate::macros::Definition>,
+    environments: BTreeMap<String, (crate::macros::Definition, Vec<Token>)>,
+}
+
 impl Frame {
     fn done(&self) -> bool {
         self.pos >= self.tokens.len()
@@ -132,6 +144,8 @@ struct Parser<'a> {
     file_names: Vec<String>,
     blocks: Vec<Block>,
     inlines: Vec<Inline>,
+    block_format: Format,
+    local_scopes: Vec<LocalScope>,
     alignment: Option<Justification>,
     pending_indent: Option<Indentation>,
     pending_outline: Option<u8>,
@@ -170,21 +184,51 @@ struct Parser<'a> {
     text_scalars: usize,
     node_count: usize,
     included_files: usize,
+    macros: crate::macros::Macros,
+    expanding: bool,
+    expanded_tokens: usize,
+    labels: BTreeMap<String, crate::references::Value>,
+    reference_context: crate::references::Value,
+    reference_requests: Vec<(String, String, LatexSpan, String)>,
+    equation_counter: usize,
+    figure_counter: usize,
+    table_counter: usize,
+    float_kind: Option<&'static str>,
+    bibliography_counter: usize,
+    bibliography_loaded: bool,
+    loaded_packages: std::collections::BTreeSet<String>,
+    document_class: String,
+    render_preamble: String,
+    column_types: BTreeMap<String, crate::macros::Definition>,
+    environments: BTreeMap<String, (crate::macros::Definition, Vec<Token>)>,
+    affiliations: Vec<Vec<Inline>>,
+    frontmatter_title_emitted: bool,
+    affiliation_numbers: BTreeMap<String, usize>,
+    addressed_affiliations: std::collections::BTreeSet<String>,
+    frontmatter_contacts: Vec<Vec<Inline>>,
+    frontmatter_note_ids: BTreeMap<String, i32>,
 }
 
 fn starts_with_document_class(tokens: &[Token]) -> bool {
-    tokens.iter().find_map(|token| match &token.kind {
-        TokenKind::Space | TokenKind::ParBreak => None,
-        TokenKind::ControlWord(word) => {
-            Some(matches!(word.as_str(), "documentclass" | "documentstyle"))
+    let mut depth = 0usize;
+    for token in tokens {
+        match &token.kind {
+            TokenKind::LBrace => depth += 1,
+            TokenKind::RBrace => depth = depth.saturating_sub(1),
+            TokenKind::ControlWord(word)
+                if depth == 0 && matches!(word.as_str(), "documentclass" | "documentstyle") =>
+            {
+                return true
+            }
+            _ => {}
         }
-        _ => Some(false),
-    }) == Some(true)
+    }
+    false
 }
 
 fn is_block_starter(word: &str) -> bool {
     matches!(
-        word,
+        word.strip_prefix("__native:").unwrap_or(word),
         "section"
             | "subsection"
             | "subsubsection"
@@ -219,6 +263,10 @@ fn is_block_starter(word: &str) -> bool {
             | "newcommand"
             | "renewcommand"
             | "providecommand"
+            | "address"
+            | "affiliation"
+            | "endinput"
+            | "newcolumntype"
     )
 }
 
@@ -231,6 +279,23 @@ fn heading_level(word: &str) -> Option<u8> {
         "subparagraph" => Some(4),
         _ => None,
     }
+}
+
+fn is_definition(word: &str) -> bool {
+    matches!(
+        word.trim_end_matches('*'),
+        "def"
+            | "gdef"
+            | "edef"
+            | "xdef"
+            | "newcommand"
+            | "renewcommand"
+            | "providecommand"
+            | "DeclareRobustCommand"
+            | "DeclareMathOperator"
+            | "newenvironment"
+            | "renewenvironment"
+    )
 }
 
 fn heading_size(level: u8) -> i32 {
@@ -253,6 +318,7 @@ impl<'a> Parser<'a> {
         let text = decode(bytes, entry)?;
         let tokens = lex(&text);
         let in_document = !starts_with_document_class(&tokens);
+        let render_preamble = graphic_preamble(&tokens);
         Ok(Self {
             options,
             builder: ReportBuilder::new(options.limits.issues),
@@ -266,6 +332,8 @@ impl<'a> Parser<'a> {
             file_names: vec![entry.to_owned()],
             blocks: Vec::new(),
             inlines: Vec::new(),
+            block_format: Format::default(),
+            local_scopes: Vec::new(),
             alignment: None,
             pending_indent: None,
             pending_outline: None,
@@ -304,6 +372,29 @@ impl<'a> Parser<'a> {
             text_scalars: 0,
             node_count: 0,
             included_files: 0,
+            macros: crate::macros::Macros::default(),
+            expanding: true,
+            expanded_tokens: 0,
+            labels: BTreeMap::new(),
+            reference_context: Default::default(),
+            reference_requests: Vec::new(),
+            equation_counter: 0,
+            figure_counter: 0,
+            table_counter: 0,
+            float_kind: None,
+            bibliography_counter: 0,
+            bibliography_loaded: false,
+            loaded_packages: Default::default(),
+            document_class: String::new(),
+            render_preamble,
+            column_types: BTreeMap::new(),
+            environments: BTreeMap::new(),
+            affiliations: Vec::new(),
+            frontmatter_title_emitted: false,
+            affiliation_numbers: BTreeMap::new(),
+            addressed_affiliations: Default::default(),
+            frontmatter_contacts: Vec::new(),
+            frontmatter_note_ids: BTreeMap::new(),
         })
     }
 
@@ -331,7 +422,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn next_token(&mut self) -> Result<Option<Token>, LatexError> {
+    fn raw_token(&mut self) -> Result<Option<Token>, LatexError> {
         loop {
             let popped = match self.frames.last() {
                 Some(frame) => frame.done(),
@@ -358,6 +449,271 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn next_token(&mut self) -> Result<Option<Token>, LatexError> {
+        if self.expanding {
+            self.expand_head()?;
+        }
+        self.raw_token()
+    }
+
+    fn expand_head(&mut self) -> Result<(), LatexError> {
+        loop {
+            while self.frames.last().is_some_and(Frame::done) {
+                self.frames.pop();
+            }
+            let name = match self.peek_kind() {
+                Some(TokenKind::ControlWord(name)) => name.clone(),
+                Some(TokenKind::ControlSymbol(symbol)) => symbol.to_string(),
+                _ => return Ok(()),
+            };
+            if name == "iftrue"
+                || name == "iffalse"
+                || self.macros.booleans.contains_key(&name)
+                || primitive_conditional(&name)
+            {
+                let choice = if name == "iftrue" {
+                    Some(true)
+                } else if name == "iffalse" {
+                    Some(false)
+                } else {
+                    self.macros.booleans.get(&name).copied()
+                };
+                let origin = self.raw_token()?.expect("conditional");
+                self.conditional_branch(choice, LatexSpan::new(origin.start, origin.end))?;
+                continue;
+            }
+            if let Some((key, value)) = self.macros.booleans.keys().find_map(|key| {
+                let base = key.strip_prefix("if")?;
+                if name == format!("{base}true") {
+                    Some((key.clone(), true))
+                } else if name == format!("{base}false") {
+                    Some((key.clone(), false))
+                } else {
+                    None
+                }
+            }) {
+                self.raw_token()?;
+                self.macros.booleans.insert(key, value);
+                continue;
+            }
+            let Some(definition) = self.macros.definitions.get(&name).cloned() else {
+                return Ok(());
+            };
+            if self.frames.len() > self.options.limits.nesting + self.options.limits.depth {
+                return Err(LatexError::LimitExceeded {
+                    limit: "macro_expansion_depth",
+                    observed: self.frames.len(),
+                });
+            }
+            let origin = self.raw_token()?.expect("peeked macro");
+            let old = self.expanding;
+            self.expanding = false;
+            let result = (|| {
+                let mut args = Vec::new();
+                if let Some(default) = &definition.default {
+                    let argument = self.optional_bracket_text()?;
+                    args.push(
+                        argument.map_or_else(|| default.clone(), |s| crate::macros::tokens(&s)),
+                    );
+                }
+                while args.len() < definition.args {
+                    args.push(self.macro_argument()?);
+                }
+                crate::macros::substitute(
+                    &definition.body,
+                    &args,
+                    self.options
+                        .limits
+                        .tokens
+                        .saturating_sub(self.expanded_tokens),
+                )
+            })();
+            self.expanding = old;
+            let tokens = result?;
+            self.expanded_tokens = self
+                .expanded_tokens
+                .saturating_add(tokens.len())
+                .saturating_add(1);
+            if self.expanded_tokens > self.options.limits.tokens {
+                return Err(LatexError::LimitExceeded {
+                    limit: "macro_expansion_tokens",
+                    observed: self.expanded_tokens,
+                });
+            }
+            self.info(
+                LatexSpan::new(origin.start, origin.end),
+                &format!("macro:expanded:{name}"),
+            );
+            let file_id = self.frames.last().map_or(0, |f| f.file_id);
+            self.frames.push(Frame {
+                file_id,
+                include_name: None,
+                tokens,
+                pos: 0,
+            });
+        }
+    }
+
+    fn conditional_branch(
+        &mut self,
+        choice: Option<bool>,
+        span: LatexSpan,
+    ) -> Result<(), LatexError> {
+        if choice.is_none() {
+            self.loss(span, "conditional:requires-tex")?;
+        }
+        let mut selected = Vec::new();
+        let mut first = true;
+        let mut depth = 0usize;
+        let mut closed = false;
+        let mut declaration = false;
+        while let Some(token) = self.raw_token()? {
+            if let TokenKind::ControlWord(word) = &token.kind {
+                if declaration {
+                    declaration = false;
+                } else if word == "newif" {
+                    declaration = true;
+                } else if word == "iftrue"
+                    || word == "iffalse"
+                    || primitive_conditional(word)
+                    || self.macros.booleans.contains_key(word)
+                {
+                    depth += 1;
+                } else if word == "fi" {
+                    if depth == 0 {
+                        closed = true;
+                        break;
+                    }
+                    depth -= 1;
+                } else if word == "else" && depth == 0 {
+                    first = false;
+                    continue;
+                }
+            }
+            if choice == Some(first) {
+                selected.push(token);
+            }
+        }
+        if !closed {
+            self.loss(span, "conditional:unterminated")?;
+        }
+        let file_id = self.frames.last().map_or(0, |f| f.file_id);
+        self.frames.push(Frame {
+            file_id,
+            include_name: None,
+            tokens: selected,
+            pos: 0,
+        });
+        Ok(())
+    }
+
+    fn new_if(&mut self, span: LatexSpan) -> Result<(), LatexError> {
+        self.skip_spaces()?;
+        if let Some(Token {
+            kind: TokenKind::ControlWord(name),
+            ..
+        }) = self.raw_token()?
+        {
+            if name.starts_with("if") {
+                self.macros.booleans.insert(name, false);
+                return Ok(());
+            }
+        }
+        self.loss(span, "conditional:invalid-definition")
+    }
+
+    fn let_binding(&mut self, span: LatexSpan) -> Result<(), LatexError> {
+        let old = self.expanding;
+        self.expanding = false;
+        let result = (|| {
+            self.skip_spaces()?;
+            let Some(Token {
+                kind: TokenKind::ControlWord(name),
+                ..
+            }) = self.raw_token()?
+            else {
+                return self.loss(span, "macro:let-name");
+            };
+            self.skip_spaces()?;
+            if matches!(self.peek_kind(), Some(TokenKind::Text(s)) if s.starts_with('=')) {
+                self.macro_argument()?;
+            }
+            self.skip_spaces()?;
+            let Some(token) = self.raw_token()? else {
+                return self.loss(span, "macro:let-value");
+            };
+            let def = if let TokenKind::ControlWord(target) = &token.kind {
+                self.macros.definitions.get(target).map_or_else(
+                    || crate::macros::Definition {
+                        args: 0,
+                        default: None,
+                        body: vec![Token {
+                            kind: TokenKind::ControlWord(format!("__native:{target}")),
+                            ..token.clone()
+                        }],
+                    },
+                    |d| (**d).clone(),
+                )
+            } else {
+                crate::macros::Definition {
+                    args: 0,
+                    default: None,
+                    body: vec![token],
+                }
+            };
+            self.macros.define(name, def, false);
+            Ok(())
+        })();
+        self.expanding = old;
+        result
+    }
+
+    fn macro_argument(&mut self) -> Result<Vec<Token>, LatexError> {
+        self.skip_spaces()?;
+        if matches!(self.peek_kind(), Some(TokenKind::LBrace)) {
+            self.raw_token()?;
+            let mut depth = 1;
+            let mut tokens = Vec::new();
+            while let Some(token) = self.raw_token()? {
+                match token.kind {
+                    TokenKind::LBrace => depth += 1,
+                    TokenKind::RBrace => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Ok(tokens);
+                        }
+                    }
+                    _ => {}
+                }
+                tokens.push(token);
+            }
+            self.loss(self.span_here(), "macro:unterminated-argument")?;
+            return Ok(tokens);
+        }
+        let Some(mut token) = self.raw_token()? else {
+            self.loss(self.span_here(), "macro:missing-argument")?;
+            return Ok(Vec::new());
+        };
+        if let TokenKind::Text(text) = &mut token.kind {
+            if let Some(first) = text.chars().next() {
+                let remainder = text[first.len_utf8()..].to_owned();
+                *text = first.to_string();
+                if !remainder.is_empty() {
+                    let file_id = self.frames.last().map_or(0, |f| f.file_id);
+                    self.frames.push(Frame {
+                        file_id,
+                        include_name: None,
+                        tokens: vec![Token {
+                            kind: TokenKind::Text(remainder),
+                            ..token.clone()
+                        }],
+                        pos: 0,
+                    });
+                }
+            }
+        }
+        Ok(vec![token])
+    }
     fn loss(&mut self, span: LatexSpan, feature: &str) -> Result<(), LatexError> {
         let file = self.current_file().to_owned();
         self.builder.record(&file, span, Severity::Loss, feature);
@@ -382,12 +738,47 @@ impl<'a> Parser<'a> {
             reject: self.options.unsupported_policy == UnsupportedPolicy::Reject,
             depth: 0,
             max_depth: self.options.limits.nesting,
+            max_columns: self.options.limits.table_columns,
+            labels: Vec::new(),
         }
     }
 
     fn run(&mut self) -> Result<(), LatexError> {
+        self.read_aux()?;
         self.parse_blocks(None)?;
         self.flush_paragraph()?;
+        let mut fmt = self.block_format.clone();
+        self.close_local_scopes(0, &mut fmt)?;
+        for (name, kind, span, file) in self.reference_requests.clone() {
+            let resolved = self.labels.get(&name).is_some_and(|v| match kind.as_str() {
+                "pageref" => !v.page.is_empty(),
+                "nameref" => !v.title.is_empty(),
+                _ => !v.number.is_empty(),
+            });
+            if !resolved {
+                self.builder.record(
+                    &file,
+                    span,
+                    Severity::Loss,
+                    &format!("reference:unresolved:{kind}:{name}"),
+                );
+                if self.options.unsupported_policy == UnsupportedPolicy::Reject {
+                    return Err(LatexError::UnsupportedRejected {
+                        feature: "reference:unresolved".to_owned(),
+                    });
+                }
+            }
+        }
+        crate::references::resolve(&mut self.blocks, &self.labels);
+        for table in [&mut self.footnotes, &mut self.endnotes] {
+            let ids: Vec<_> = table.iter().map(|n| n.id).collect();
+            for id in ids {
+                if let Some(mut note) = table.remove(id) {
+                    crate::references::resolve(&mut note.blocks, &self.labels);
+                    table.insert(note);
+                }
+            }
+        }
         Ok(())
     }
 
@@ -543,26 +934,37 @@ impl<'a> Parser<'a> {
     }
 
     fn skip_balanced(&mut self) -> Result<(), LatexError> {
-        let opens = match self.peek_kind() {
-            Some(TokenKind::LBracket | TokenKind::LBrace) => true,
+        let bracket = match self.peek_kind() {
+            Some(TokenKind::LBracket) => true,
+            Some(TokenKind::LBrace) => false,
             _ => return Ok(()),
         };
-        if !opens {
-            return Ok(());
-        }
+        let span = self.span_here();
         self.next_token()?;
-        let mut depth = 1usize;
-        while depth > 0 {
+        let mut braces = usize::from(!bracket);
+        let mut brackets = usize::from(bracket);
+        while braces > 0 || brackets > 0 {
             match self.next_token()? {
-                None => break,
+                None => {
+                    self.loss(span, "group:unterminated")?;
+                    break;
+                }
                 Some(Token {
-                    kind: TokenKind::LBracket | TokenKind::LBrace,
+                    kind: TokenKind::LBrace,
                     ..
-                }) => depth += 1,
+                }) => braces += 1,
                 Some(Token {
-                    kind: TokenKind::RBracket | TokenKind::RBrace,
+                    kind: TokenKind::RBrace,
                     ..
-                }) => depth -= 1,
+                }) => braces = braces.saturating_sub(1),
+                Some(Token {
+                    kind: TokenKind::LBracket,
+                    ..
+                }) if bracket && braces == 0 => brackets += 1,
+                Some(Token {
+                    kind: TokenKind::RBracket,
+                    ..
+                }) if bracket && braces == 0 => brackets -= 1,
                 Some(_) => {}
             }
         }
@@ -578,6 +980,126 @@ impl<'a> Parser<'a> {
                 _ => return Ok(()),
             }
         }
+    }
+
+    /// Interpret a bounded substitution definition; unsupported TeX primitives
+    /// remain explicit losses rather than executing code or printing its body.
+    fn skip_definition(&mut self, word: &str, span: LatexSpan) -> Result<(), LatexError> {
+        let old = self.expanding;
+        self.expanding = false;
+        let result = self.read_definition(word.trim_end_matches('*'), span);
+        self.expanding = old;
+        result
+    }
+
+    fn read_definition(&mut self, word: &str, span: LatexSpan) -> Result<(), LatexError> {
+        self.skip_spaces()?;
+        let name = if matches!(self.peek_kind(), Some(TokenKind::LBrace)) {
+            self.consume_braced_raw()?
+        } else {
+            self.raw_token()?.map_or_else(String::new, |t| t.kind.raw())
+        };
+        let name = name.trim_start_matches('\\').to_owned();
+        if name.is_empty() {
+            self.loss(span, "macro:missing-name")?;
+            return Ok(());
+        }
+        let mut args = 0;
+        let mut default = None;
+        let mut supported = true;
+        if matches!(word, "def" | "gdef" | "edef" | "xdef") {
+            let mut signature = String::new();
+            while !matches!(self.peek_kind(), Some(TokenKind::LBrace) | None) {
+                let token = self.raw_token()?.expect("peeked signature");
+                if matches!(&token.kind, TokenKind::ControlWord(w) if w == "begin" || w == "end") {
+                    self.loss(span, "macro:missing-replacement")?;
+                    return Ok(());
+                }
+                signature.push_str(&token.kind.raw());
+            }
+            let signature = signature.trim();
+            for n in 1..=9 {
+                if signature
+                    == (1..=n)
+                        .flat_map(|i| ['#', char::from(b'0' + i as u8)])
+                        .collect::<String>()
+                {
+                    args = n;
+                }
+            }
+            supported = signature.is_empty() || args > 0;
+            // edef/xdef require expansion at definition time, which is not a
+            // synonym for ordinary substitution.
+            supported &= !matches!(word, "edef" | "xdef");
+        } else if let Some(count) = self.optional_bracket_text()? {
+            args = count.trim().parse().unwrap_or(10);
+            default = self
+                .optional_bracket_text()?
+                .map(|s| crate::macros::tokens(&s));
+            supported &= args <= 9 && (args > 0 || default.is_none());
+        }
+        self.skip_spaces()?;
+        if !matches!(self.peek_kind(), Some(TokenKind::LBrace)) {
+            self.loss(span, "macro:missing-replacement")?;
+            return Ok(());
+        }
+        let body = self.macro_argument()?;
+        if matches!(word, "newenvironment" | "renewenvironment") {
+            let ending = self.macro_argument()?;
+            if !supported {
+                return self.loss(span, "macro:unsupported-environment-definition");
+            }
+            self.environments.insert(
+                name,
+                (
+                    crate::macros::Definition {
+                        args,
+                        default,
+                        body,
+                    },
+                    ending,
+                ),
+            );
+            self.info(span, "macro:environment-defined");
+            return Ok(());
+        }
+        if body
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::ControlWord(w) if w == &name))
+        {
+            self.loss(span, "macro:recursive-definition")?;
+            return Ok(());
+        }
+        if body.iter().any(|t| matches!(&t.kind, TokenKind::ControlWord(w) if primitive_conditional(w) || matches!(w.as_str(), "expandafter" | "csname" | "endcsname" | "futurelet" | "afterassignment" | "aftergroup" | "the" | "numexpr" | "dimexpr" | "romannumeral" | "catcode" | "global" | "advance" | "multiply" | "divide" | "@ifnextchar" | "@ifstar" | "@ifundefined"))) {
+            self.loss(span, "macro:requires-tex-definition")?;
+            return Ok(());
+        }
+        if !supported {
+            self.loss(span, "macro:unsupported-definition")?;
+            return Ok(());
+        }
+        if word == "providecommand" && self.macros.definitions.contains_key(&name) {
+            return Ok(());
+        }
+        let body = if word == "DeclareMathOperator" {
+            let mut tokens = crate::macros::tokens(r"\operatorname{");
+            tokens.extend(body);
+            tokens.extend(crate::macros::tokens("}"));
+            tokens
+        } else {
+            body
+        };
+        self.macros.define(
+            name,
+            crate::macros::Definition {
+                args,
+                default,
+                body,
+            },
+            word == "gdef",
+        );
+        self.info(span, "macro:defined");
+        Ok(())
     }
 
     /// Returns the raw source of a `{...}` group, or an empty string.
@@ -694,8 +1216,14 @@ impl<'a> Parser<'a> {
                 pos: 0,
             }],
         );
+        let scope_depth = self.local_scopes.len();
+        let mut fmt = self.block_format.clone();
+        self.enter_local_scope(&fmt, false)?;
         let result = f(self);
+        let cleanup = self.close_local_scopes(scope_depth, &mut fmt);
+        self.block_format = fmt;
         self.frames = saved;
+        cleanup?;
         result
     }
 
@@ -737,6 +1265,7 @@ impl<'a> Parser<'a> {
 
     fn parse_blocks_inner(&mut self, stop_env: Option<&str>) -> Result<(), LatexError> {
         loop {
+            self.expand_head()?;
             if !self.in_document {
                 self.preamble_step()?;
                 continue;
@@ -751,6 +1280,7 @@ impl<'a> Parser<'a> {
                 self.parse_paragraph(Stop::Block)?;
                 continue;
             };
+            let word = word.strip_prefix("__native:").unwrap_or(&word).to_owned();
             let span = self.span_here();
             match word.as_str() {
                 "end" => {
@@ -794,9 +1324,43 @@ impl<'a> Parser<'a> {
                     self.next_token()?;
                     self.alignment = Some(Justification::End);
                 }
+                "bibliography" => {
+                    self.next_token()?;
+                    self.bibliography(span)?;
+                }
+                "bibliographystyle" => {
+                    self.next_token()?;
+                    self.consume_braced_raw()?;
+                    self.info(span, "bibliography:style-declaration");
+                }
                 "maketitle" => {
                     self.next_token()?;
                     self.maketitle()?;
+                }
+
+                "newcolumntype" => {
+                    self.next_token()?;
+                    self.define_column_type(span)?;
+                }
+                "documentclass" | "documentstyle" => {
+                    self.next_token()?;
+                    self.optional_bracket_text()?;
+                    self.document_class = self.consume_braced_raw()?;
+                    self.info(span, &format!("document-class:{}", self.document_class));
+                }
+                "usepackage" | "RequirePackage" => {
+                    self.next_token()?;
+                    self.load_packages(span)?;
+                }
+                "endinput" => {
+                    self.raw_token()?;
+                    if let Some(frame) = self.frames.last_mut() {
+                        frame.pos = frame.tokens.len();
+                    }
+                }
+                "address" | "affiliation" => {
+                    self.next_token()?;
+                    self.read_address()?;
                 }
                 "title" => {
                     self.next_token()?;
@@ -804,7 +1368,7 @@ impl<'a> Parser<'a> {
                 }
                 "author" => {
                     self.next_token()?;
-                    self.author = self.capture_group_inlines()?;
+                    self.read_author(span)?;
                 }
                 "date" => {
                     self.next_token()?;
@@ -838,6 +1402,10 @@ impl<'a> Parser<'a> {
                     self.skip_args()?;
                     self.info(span, &format!("layout:{word}"));
                 }
+                _ if is_definition(&word) => {
+                    self.next_token()?;
+                    self.skip_definition(&word, span)?;
+                }
                 _ if is_block_starter(&word) => {
                     self.next_token()?;
                     self.skip_args()?;
@@ -857,6 +1425,35 @@ impl<'a> Parser<'a> {
             TokenKind::ControlWord(word) => {
                 let span = self.span_here();
                 match word.as_str() {
+                    "begingroup" => {
+                        self.next_token()?;
+                        self.enter_local_scope(&self.block_format.clone(), true)?;
+                    }
+                    "endgroup" => {
+                        self.next_token()?;
+                        let mut fmt = self.block_format.clone();
+                        if self.local_scopes.last().is_some_and(|s| s.explicit) {
+                            self.leave_local_scope(&mut fmt);
+                            self.block_format = fmt;
+                        } else {
+                            self.loss(span, "group:unmatched-endgroup")?;
+                        }
+                    }
+                    "input" | "include" => {
+                        self.next_token()?;
+                        self.include(false, span)?;
+                    }
+                    "let" => {
+                        self.raw_token()?;
+                        self.let_binding(span)?;
+                    }
+                    "newif" => {
+                        self.raw_token()?;
+                        self.new_if(span)?;
+                    }
+                    "makeatletter" | "makeatother" | "relax" => {
+                        self.raw_token()?;
+                    }
                     "begin" => {
                         self.next_token()?;
                         self.skip_optional_position()?;
@@ -868,23 +1465,78 @@ impl<'a> Parser<'a> {
                             self.skip_args()?;
                         }
                     }
+
+                    "newcolumntype" => {
+                        self.next_token()?;
+                        self.define_column_type(span)?;
+                    }
+                    "documentclass" | "documentstyle" => {
+                        self.next_token()?;
+                        self.optional_bracket_text()?;
+                        self.document_class = self.consume_braced_raw()?;
+                        self.info(span, &format!("document-class:{}", self.document_class));
+                    }
+                    "usepackage" | "RequirePackage" => {
+                        self.next_token()?;
+                        self.load_packages(span)?;
+                    }
+                    "endinput" => {
+                        self.raw_token()?;
+                        if let Some(frame) = self.frames.last_mut() {
+                            frame.pos = frame.tokens.len();
+                        }
+                    }
+                    "address" | "affiliation" => {
+                        self.next_token()?;
+                        self.read_address()?;
+                    }
                     "title" => {
                         self.next_token()?;
                         self.title = self.capture_group_inlines()?;
                     }
                     "author" => {
                         self.next_token()?;
-                        self.author = self.capture_group_inlines()?;
+                        self.read_author(span)?;
                     }
                     "date" => {
                         self.next_token()?;
                         self.date = self.capture_group_inlines()?;
                     }
+                    _ if is_definition(&word) => {
+                        self.next_token()?;
+                        self.skip_definition(&word, span)?;
+                    }
                     _ => {
                         self.next_token()?;
                         self.skip_args()?;
-                        self.info(span, &format!("preamble:{word}"));
+                        if matches!(
+                            word.as_str(),
+                            "ProvidesPackage"
+                                | "ProvidesClass"
+                                | "NeedsTeXFormat"
+                                | "PassOptionsToPackage"
+                                | "PassOptionsToClass"
+                        ) {
+                            self.info(span, &format!("preamble:{word}"));
+                        } else {
+                            self.loss(span, &format!("preamble:unsupported:{word}"))?;
+                        }
                     }
+                }
+            }
+            TokenKind::LBrace => {
+                self.next_token()?;
+                self.enter_local_scope(&self.block_format.clone(), false)?;
+            }
+            TokenKind::RBrace => {
+                let span = self.span_here();
+                self.next_token()?;
+                if self.local_scopes.last().is_some_and(|s| !s.explicit) {
+                    let mut fmt = self.block_format.clone();
+                    self.leave_local_scope(&mut fmt);
+                    self.block_format = fmt;
+                } else {
+                    self.loss(span, "group:unmatched-brace")?;
                 }
             }
             _ => {
@@ -900,8 +1552,9 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_paragraph(&mut self, stop: Stop) -> Result<(), LatexError> {
-        let mut fmt = Format::default();
+        let mut fmt = self.block_format.clone();
         self.parse_inlines(&mut fmt, stop)?;
+        self.block_format = fmt;
         self.flush_paragraph()
     }
 
@@ -918,7 +1571,14 @@ impl<'a> Parser<'a> {
 
     fn parse_inlines(&mut self, fmt: &mut Format, stop: Stop) -> Result<InlineEnd, LatexError> {
         self.enter_nesting()?;
+        let scope_depth = self.local_scopes.len();
+        if stop == Stop::Group {
+            self.enter_local_scope(fmt, false)?;
+        }
         let result = self.parse_inlines_inner(fmt, stop);
+        if stop == Stop::Group {
+            self.close_local_scopes(scope_depth, fmt)?;
+        }
         self.leave_nesting();
         result
     }
@@ -929,6 +1589,7 @@ impl<'a> Parser<'a> {
         stop: Stop,
     ) -> Result<InlineEnd, LatexError> {
         loop {
+            self.expand_head()?;
             let Some(kind) = self.peek_kind().cloned() else {
                 return Ok(InlineEnd::Eof);
             };
@@ -993,6 +1654,57 @@ impl<'a> Parser<'a> {
     }
 
     // ----- inline commands ----------------------------------------------
+
+    /// A control word's lexical separator is not a visible space. Keep a real
+    /// paragraph break; unlike argument scanning it must not be swallowed.
+    fn skip_control_space(&mut self) -> Result<(), LatexError> {
+        while matches!(self.peek_kind(), Some(TokenKind::Space)) {
+            self.next_token()?;
+        }
+        Ok(())
+    }
+
+    fn enter_local_scope(&mut self, fmt: &Format, explicit: bool) -> Result<(), LatexError> {
+        if self.local_scopes.len() >= self.options.limits.nesting {
+            return Err(LatexError::LimitExceeded {
+                limit: "nesting",
+                observed: self.local_scopes.len() + 1,
+            });
+        }
+        self.local_scopes.push(LocalScope {
+            explicit,
+            format: fmt.clone(),
+            alignment: self.alignment,
+            colors: self.defined_colors.clone(),
+            graphics_paths: self.graphics_paths.clone(),
+            column_types: self.column_types.clone(),
+            environments: self.environments.clone(),
+        });
+        self.macros.enter();
+        Ok(())
+    }
+
+    fn leave_local_scope(&mut self, fmt: &mut Format) {
+        if let Some(saved) = self.local_scopes.pop() {
+            *fmt = saved.format;
+            self.alignment = saved.alignment;
+            self.defined_colors = saved.colors;
+            self.graphics_paths = saved.graphics_paths;
+            self.column_types = saved.column_types;
+            self.environments = saved.environments;
+            self.macros.leave();
+        }
+    }
+
+    fn close_local_scopes(&mut self, depth: usize, fmt: &mut Format) -> Result<(), LatexError> {
+        while self.local_scopes.len() > depth {
+            if self.local_scopes.last().is_some_and(|s| s.explicit) {
+                self.loss(self.span_here(), "group:unterminated-begingroup")?;
+            }
+            self.leave_local_scope(fmt);
+        }
+        Ok(())
+    }
 
     fn control_symbol(
         &mut self,
@@ -1106,15 +1818,23 @@ impl<'a> Parser<'a> {
         if !closed {
             self.loss(self.span_here(), "math:unterminated")?;
         }
-        let expression = {
+        if self.render_math_graphic(&tokens, display, None)? {
+            return Ok(());
+        }
+        let (expression, labels) = {
             let mut ctx = self.math_context();
-            crate::math::translate(&tokens, &mut ctx)?
+            let expression = crate::math::translate(&tokens, &mut ctx)?;
+            (expression, ctx.labels)
         };
+        let marks = self.math_label_marks(labels);
         if display {
             self.flush_paragraph()?;
             let paragraph = Paragraph {
                 props: ParagraphProperties::default(),
-                inlines: vec![Inline::MathParagraph(display_paragraph(expression))],
+                inlines: marks
+                    .into_iter()
+                    .chain([Inline::MathParagraph(display_paragraph(expression))])
+                    .collect(),
                 rsids: Default::default(),
                 revision: None,
                 para_id: None,
@@ -1123,6 +1843,7 @@ impl<'a> Parser<'a> {
             };
             self.push_block(Block::Paragraph(paragraph))
         } else {
+            self.inlines.extend(marks);
             self.inlines.push(Inline::Math(expression));
             Ok(())
         }
@@ -1147,18 +1868,87 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    fn select_argument(
+        &mut self,
+        count: usize,
+        selected: Option<usize>,
+        fmt: &Format,
+    ) -> Result<(), LatexError> {
+        let old = self.expanding;
+        self.expanding = false;
+        let result = (|| {
+            let mut chosen = Vec::new();
+            for index in 0..count {
+                let argument = self.macro_argument()?;
+                if selected == Some(index) {
+                    chosen = argument;
+                }
+            }
+            Ok::<_, LatexError>(chosen)
+        })();
+        self.expanding = old;
+        let chosen = self.parse_tokens_as_inlines(result?, fmt)?;
+        self.inlines.extend(chosen);
+        Ok(())
+    }
+
     fn control_word(
         &mut self,
         word: &str,
         fmt: &mut Format,
         span: LatexSpan,
     ) -> Result<(), LatexError> {
+        let word = word.strip_prefix("__native:").unwrap_or(word);
         match word {
+            "begingroup" => {
+                self.enter_local_scope(fmt, true)?;
+                self.skip_control_space()?;
+            }
+            "endgroup" => {
+                if self.local_scopes.last().is_some_and(|s| s.explicit) {
+                    self.leave_local_scope(fmt);
+                } else {
+                    self.loss(span, "group:unmatched-endgroup")?;
+                }
+                self.skip_control_space()?;
+            }
+            "@firstofone" => self.select_argument(1, Some(0), fmt)?,
+            "@firstoftwo" => self.select_argument(2, Some(0), fmt)?,
+            "@secondoftwo" | "bibinfo" | "bibfield" | "href@noop" => {
+                self.select_argument(2, Some(1), fmt)?;
+            }
+            "@gobble" => self.select_argument(1, None, fmt)?,
+            "@gobbletwo" | "bibAnnoteFile" => self.select_argument(2, None, fmt)?,
+            "bibnamefont" | "bibfnamefont" | "bibfont" => self.apply_argument(fmt, span, |_| {})?,
+            "makeatletter" | "makeatother" => {}
+            "let" => self.let_binding(span)?,
+            "newif" => self.new_if(span)?,
+            word if is_definition(word) => self.skip_definition(word, span)?,
+            "setlength" | "addtolength" | "setcounter" | "addtocounter" => {
+                self.loss(span, &format!("layout:{word}"))?;
+                for _ in 0..2 {
+                    self.skip_spaces()?;
+                    if matches!(self.peek_kind(), Some(TokenKind::LBrace)) {
+                        self.skip_balanced()?;
+                    } else {
+                        self.loss(span, "layout:missing-argument")?;
+                        break;
+                    }
+                }
+            }
             "textbf" | "bf" => self.apply_argument(fmt, span, |f| f.bold = true)?,
             "textit" | "it" | "textsl" | "sl" => {
                 self.apply_argument(fmt, span, |f| f.italic = true)?;
             }
             "emph" => self.apply_argument(fmt, span, |f| f.italic = !f.italic)?,
+            "em" => {
+                fmt.italic = !fmt.italic;
+                self.skip_control_space()?;
+            }
+            "textunderscore" => {
+                self.push_text(fmt, "_")?;
+                self.skip_control_space()?;
+            }
             "texttt" | "tt" => self.apply_argument(fmt, span, |f| f.mono = true)?,
             "textsf" | "sf" => self.apply_argument(fmt, span, |f| f.sans = true)?,
             "textrm" | "rm" | "textup" => {
@@ -1242,20 +2032,81 @@ impl<'a> Parser<'a> {
             }
             "hypertarget" => self.hypertarget(fmt)?,
             "cite" | "citep" | "citet" | "citealp" | "citeauthor" | "Citep" | "Citet" => {
-                self.optional_bracket_text()?;
-                let key = self.consume_braced_raw()?;
-                self.info(span, &format!("citation:{key}"));
-                self.push_text(fmt, "[")?;
-                self.push_text(fmt, &key)?;
-                self.push_text(fmt, "]")?;
+                self.citation(word, fmt, span)?;
+            }
+            "bibitem" => self.bibitem(fmt, span)?,
+            "newblock" => self.push_space(fmt)?,
+            "corref" | "tnoteref" | "fnref" => {
+                let keys = self.consume_braced_raw()?;
+                for key in keys.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+                    let id = self.frontmatter_note_id(key);
+                    self.inlines.push(note_reference(fmt, false, id));
+                }
+            }
+            "cortext" | "tnotetext" | "fntext" => {
+                let key = self
+                    .optional_bracket_text()?
+                    .unwrap_or_else(|| format!("note-{}", self.footnote_counter + 1));
+                let content = self.capture_group_inlines()?;
+                let id = self.frontmatter_note_id(&key);
+                self.store_note_with_id(false, id, content);
+                self.info(span, "frontmatter:note-number-normalized");
+            }
+            "ead" => self.frontmatter_contact(fmt)?,
+            "sep" => self.push_text(fmt, "; ")?,
+            "protect" => {}
+            "unskip" => {
+                if let Some(Inline::Run(run)) = self.inlines.last_mut() {
+                    if let Some(RunContent::Text(t)) = run.content.last_mut() {
+                        t.text.truncate(t.text.trim_end().len());
+                    }
+                }
             }
             "footnote" => self.footnote(fmt)?,
             "footnotemark" => self.footnotemark(fmt)?,
             "footnotetext" => self.footnotetext()?,
             "endnote" => self.endnote(fmt)?,
             "includegraphics" => self.includegraphics(fmt, span)?,
+            "tikz" | "chemfig" => {
+                let options = if word == "tikz" {
+                    self.optional_bracket_text()?
+                        .map_or_else(String::new, |s| format!("[{s}]"))
+                } else {
+                    String::new()
+                };
+                let old = self.expanding;
+                self.expanding = false;
+                let body = self.macro_argument();
+                self.expanding = old;
+                let source = raw_tokens(&body?);
+                let tex = format!("\\{word}{options}{{{source}}}");
+                self.render_opaque(
+                    if word == "tikz" {
+                        crate::GraphicKind::Tikz
+                    } else {
+                        crate::GraphicKind::Chemfig
+                    },
+                    &tex,
+                    span,
+                )?;
+            }
             "graphicspath" => self.graphicspath(span)?,
             "ensuremath" => self.ensuremath(fmt)?,
+            "texorpdfstring" => {
+                self.apply_argument(fmt, span, |_| {})?;
+                let old = self.expanding;
+                self.expanding = false;
+                let skipped = self.macro_argument();
+                self.expanding = old;
+                skipped?;
+                self.info(span, "hyperref:pdf-string-alternate");
+            }
+            "xspace" => {
+                if matches!(self.peek_kind(), Some(TokenKind::Text(t)) if t.starts_with(char::is_alphanumeric))
+                {
+                    self.push_space(fmt)?;
+                }
+            }
             "hspace" | "vspace" | "hskip" | "vskip" | "kern" | "mkern" | "mskip" | "vphantom"
             | "hphantom" | "phantom" => {
                 self.info(span, &format!("spacing:{word}"));
@@ -1422,10 +2273,16 @@ impl<'a> Parser<'a> {
             }
             tokens.push(token);
         }
-        let expression = {
+        if self.render_math_graphic(&tokens, false, None)? {
+            return Ok(());
+        }
+        let (expression, labels) = {
             let mut ctx = self.math_context();
-            crate::math::translate(&tokens, &mut ctx)?
+            let expression = crate::math::translate(&tokens, &mut ctx)?;
+            (expression, ctx.labels)
         };
+        let marks = self.math_label_marks(labels);
+        self.inlines.extend(marks);
         self.inlines.push(Inline::Math(expression));
         Ok(())
     }
@@ -1446,6 +2303,17 @@ impl<'a> Parser<'a> {
         let Some(text) = self.optional_bracket_text()? else {
             return Ok(crate::media::ImageOptions::default());
         };
+        for option in text.split(',') {
+            let key = option.split('=').next().unwrap_or("").trim();
+            if !key.is_empty()
+                && !matches!(
+                    key,
+                    "width" | "height" | "scale" | "angle" | "trim" | "clip" | "keepaspectratio"
+                )
+            {
+                self.loss(self.span_here(), &format!("image:unsupported-option:{key}"))?;
+            }
+        }
         Ok(parse_image_options(&text))
     }
 
@@ -1522,10 +2390,117 @@ impl<'a> Parser<'a> {
             self.loss(span, &format!("image:not-found:{path}"))?;
             return Ok(());
         };
+        if bytes.len() > self.options.limits.input_bytes {
+            return Err(LatexError::LimitExceeded {
+                limit: "input_bytes",
+                observed: bytes.len(),
+            });
+        }
+        if media::sniff(&name, &bytes).is_none() {
+            let request = crate::RenderRequest {
+                kind: crate::GraphicKind::Image,
+                name: &name,
+                tex: "",
+                preamble: &self.render_preamble,
+                bytes: &bytes,
+                max_output_bytes: self.options.limits.media_part_bytes,
+            };
+            let rendered = self.provider.render_graphic(&request);
+            if let Some(image) = self.conversion_result(rendered, span)? {
+                self.loss(span, "image:rasterized")?;
+                let options = rendered_image_options(&image.bytes, options);
+                return self.embed_image(&image.name, image.bytes, span, options);
+            }
+            self.loss(span, &format!("image:unsupported-container:{name}"))?;
+            return Ok(());
+        }
+        self.embed_image(&name, bytes, span, options)
+    }
+
+    fn conversion_result(
+        &mut self,
+        result: Result<Option<crate::RenderedGraphic>, LatexError>,
+        span: LatexSpan,
+    ) -> Result<Option<crate::RenderedGraphic>, LatexError> {
+        match result {
+            Ok(image) => Ok(image),
+            Err(e @ LatexError::LimitExceeded { .. }) => Err(e),
+            Err(_) => {
+                self.loss(span, "graphic:conversion-failed")?;
+                Ok(None)
+            }
+        }
+    }
+
+    fn render_math_graphic(
+        &mut self,
+        tokens: &[Token],
+        display: bool,
+        env: Option<&str>,
+    ) -> Result<bool, LatexError> {
+        let kind = if tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::ControlWord(w) if w == "chemfig"))
+        {
+            crate::GraphicKind::Chemfig
+        } else if tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::ControlWord(w) if w == "tikz"))
+        {
+            crate::GraphicKind::Tikz
+        } else {
+            return Ok(false);
+        };
+        let source = raw_tokens(tokens);
+        let tex = env.map_or_else(
+            || format!("${source}$"),
+            |env| format!("\\begin{{{env}}}{source}\\end{{{env}}}"),
+        );
+        if display {
+            self.flush_paragraph()?;
+        }
+        self.render_opaque(kind, &tex, self.span_here())?;
+        if display {
+            self.flush_paragraph()?;
+        }
+        Ok(true)
+    }
+
+    fn render_opaque(
+        &mut self,
+        kind: crate::GraphicKind,
+        tex: &str,
+        span: LatexSpan,
+    ) -> Result<(), LatexError> {
+        let request = crate::RenderRequest {
+            kind,
+            name: self.current_file(),
+            tex,
+            preamble: &self.render_preamble,
+            bytes: &[],
+            max_output_bytes: self.options.limits.media_part_bytes,
+        };
+        let rendered = self.provider.render_graphic(&request);
+        let Some(image) = self.conversion_result(rendered, span)? else {
+            self.loss(span, &format!("graphic:renderer-unavailable:{kind:?}"))?;
+            return Ok(());
+        };
+        self.loss(span, "graphic:rasterized")?;
+        let options = rendered_image_options(&image.bytes, crate::media::ImageOptions::default());
+        self.embed_image(&image.name, image.bytes, span, options)
+    }
+
+    fn embed_image(
+        &mut self,
+        name: &str,
+        bytes: Vec<u8>,
+        span: LatexSpan,
+        options: crate::media::ImageOptions,
+    ) -> Result<(), LatexError> {
         let index = self.image_counter + 1;
         let built = match media::build(
             index,
-            &name,
+            name,
             bytes,
             self.media_bytes,
             self.options.limits.media_part_bytes,
@@ -1734,27 +2709,216 @@ impl<'a> Parser<'a> {
         if key.is_empty() {
             return Ok(());
         }
-        self.bookmark_counter += 1;
-        let id = self.bookmark_counter.to_string();
-        let name = bookmark_name(&key);
-        self.inlines
-            .push(Inline::BookmarkStart(Bookmark::new(id.clone(), name)));
-        self.inlines.push(Inline::BookmarkEnd(
-            strict_ooxml_wml::model::BookmarkId::new(id),
-        ));
+        let marks = self.math_label_marks(vec![key.clone()]);
+        self.inlines.extend(marks);
         self.info(span, &format!("label:{key}"));
         Ok(())
     }
 
-    /// `\ref{key}` and friends: a `REF`/`PAGEREF` field.
+    /// Zero-width bookmark pairs in the paragraph containing a formula.
+    fn math_label_marks(&mut self, labels: Vec<String>) -> Vec<Inline> {
+        let mut marks = Vec::new();
+        for key in labels {
+            self.labels
+                .entry(bookmark_name(&key))
+                .or_insert_with(|| self.reference_context.clone());
+            self.bookmark_counter += 1;
+            let id = self.bookmark_counter.to_string();
+            marks.push(Inline::BookmarkStart(Bookmark::new(
+                id.clone(),
+                bookmark_name(&key),
+            )));
+            marks.push(Inline::BookmarkEnd(
+                strict_ooxml_wml::model::BookmarkId::new(id),
+            ));
+        }
+        marks
+    }
+
+    fn read_aux(&mut self) -> Result<(), LatexError> {
+        let name = std::path::Path::new(&self.file_names[0])
+            .with_extension("aux")
+            .to_string_lossy()
+            .into_owned();
+        if let Ok(bytes) = self.provider.read(&name) {
+            if bytes.len() > self.options.limits.input_bytes {
+                return Err(LatexError::LimitExceeded {
+                    limit: "input_bytes",
+                    observed: bytes.len(),
+                });
+            }
+            let text = decode(&bytes, &name)?;
+            for (key, value) in crate::references::aux(&text) {
+                self.labels.insert(bookmark_name(&key), value);
+            }
+        }
+        Ok(())
+    }
+
+    fn citation(&mut self, word: &str, fmt: &Format, span: LatexSpan) -> Result<(), LatexError> {
+        let first = self.optional_bracket_text()?;
+        let second = self.optional_bracket_text()?;
+        let keys = self.consume_braced_raw()?;
+        if !matches!(word, "cite" | "citep" | "Citep" | "citealp") {
+            self.loss(span, "citation:author-style")?;
+        }
+        self.push_text(fmt, "[")?;
+        if second.is_some() {
+            if let Some(pre) = &first {
+                self.push_text(fmt, pre)?;
+                self.push_text(fmt, " ")?;
+            }
+        }
+        for (i, key) in keys
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .enumerate()
+        {
+            if i > 0 {
+                self.push_text(fmt, ", ")?;
+            }
+            let tokens = crate::macros::tokens(&format!("{{__bib_{key}}}"));
+            let file_id = self.frames.last().map_or(0, |f| f.file_id);
+            self.frames.push(Frame {
+                file_id,
+                include_name: None,
+                tokens,
+                pos: 0,
+            });
+            self.reference("ref", span)?;
+        }
+        if let Some(post) = second.or(first) {
+            self.push_text(fmt, ", ")?;
+            self.push_text(fmt, &post)?;
+        }
+        self.push_text(fmt, "]")
+    }
+
+    fn bibitem(&mut self, fmt: &Format, span: LatexSpan) -> Result<(), LatexError> {
+        self.flush_paragraph()?;
+        let label = self.optional_bracket_text()?;
+        let key = self.consume_braced_raw()?;
+        self.bibliography_counter += 1;
+        let label = if let Some(label) = label {
+            let rendered = self.parse_tokens_as_inlines(crate::macros::tokens(&label), fmt)?;
+            let plain = plain_inlines(&rendered);
+            if let Some((author, rest)) = plain.split_once('(') {
+                if let Some((year, _long_authors)) = rest.split_once(')') {
+                    self.info(span, "bibliography:natbib-label");
+                    format!("{}, {}", author.trim(), year.trim())
+                } else {
+                    plain
+                }
+            } else {
+                plain
+            }
+        } else {
+            self.bibliography_counter.to_string()
+        };
+        let old = std::mem::replace(
+            &mut self.reference_context,
+            crate::references::Value {
+                number: label.clone(),
+                ..Default::default()
+            },
+        );
+        let marks = self.math_label_marks(vec![format!("__bib_{key}")]);
+        self.reference_context = old;
+        self.inlines.extend(marks);
+        self.push_text(fmt, &format!("[{label}] "))?;
+        self.info(span, "bibliography:item");
+        Ok(())
+    }
+
+    fn bibliography(&mut self, span: LatexSpan) -> Result<(), LatexError> {
+        let names = self.consume_braced_raw()?;
+        if self.bibliography_loaded {
+            return Ok(());
+        }
+        let main = std::path::Path::new(&self.file_names[0])
+            .with_extension("bbl")
+            .to_string_lossy()
+            .into_owned();
+        let candidates =
+            std::iter::once(main).chain(names.split(',').map(|s| format!("{}.bbl", s.trim())));
+        for name in candidates {
+            if let Ok(bytes) = self.provider.read(&name) {
+                if bytes.len() > self.options.limits.input_bytes {
+                    return Err(LatexError::LimitExceeded {
+                        limit: "input_bytes",
+                        observed: bytes.len(),
+                    });
+                }
+                let text = decode(&bytes, &name)?;
+                let file_id = self.file_names.len();
+                self.file_names.push(name.clone());
+                self.frames.push(Frame {
+                    file_id,
+                    include_name: Some(name),
+                    tokens: lex(&text),
+                    pos: 0,
+                });
+                self.bibliography_loaded = true;
+                return Ok(());
+            }
+        }
+        let mut items = Vec::new();
+        for name in names.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            let path = if std::path::Path::new(name)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("bib"))
+            {
+                name.to_owned()
+            } else {
+                format!("{name}.bib")
+            };
+            if let Ok(bytes) = self.provider.read(&path) {
+                if bytes.len() > self.options.limits.input_bytes {
+                    return Err(LatexError::LimitExceeded {
+                        limit: "input_bytes",
+                        observed: bytes.len(),
+                    });
+                }
+                let parsed = crate::bibliography::read(&decode(&bytes, &path)?);
+                for feature in parsed.unsupported {
+                    self.loss(span, &format!("bibliography:{feature}"))?;
+                }
+                items.extend(parsed.items);
+            } else {
+                self.loss(span, &format!("bibliography:missing-source:{path}"))?;
+            }
+        }
+        if items.is_empty() {
+            return self.loss(span, "bibliography:missing-bbl");
+        }
+        self.loss(span, "bibliography:normalized-style")?;
+        let tokens = lex(&crate::bibliography::normalized(&items));
+        let file_id = self.frames.last().map_or(0, |f| f.file_id);
+        self.frames.push(Frame {
+            file_id,
+            include_name: None,
+            tokens,
+            pos: 0,
+        });
+        self.bibliography_loaded = true;
+        Ok(())
+    }
+
     fn reference(&mut self, word: &str, span: LatexSpan) -> Result<(), LatexError> {
         let key = self.consume_braced_raw()?;
         let name = bookmark_name(&key);
+        self.reference_requests.push((
+            name.clone(),
+            word.to_owned(),
+            span,
+            self.current_file().to_owned(),
+        ));
         let (instruction, cached) = match word {
-            "pageref" => (format!(" PAGEREF {name} \\h "), key.clone()),
-            "nameref" => (format!(" REF {name} \\n \\h "), key.clone()),
-            "eqref" => (format!(" REF {name} \\h "), format!("({key})")),
-            _ => (format!(" REF {name} \\h "), key.clone()),
+            "pageref" => (format!(" PAGEREF {name} \\h "), "??".to_owned()),
+            "nameref" => (format!(" REF {name} \\n \\h "), "??".to_owned()),
+            "eqref" => (format!(" REF {name} \\h "), "(??)".to_owned()),
+            _ => (format!(" REF {name} \\h "), "??".to_owned()),
         };
         self.info(span, &format!("cross-reference:{key}"));
         self.inlines
@@ -1807,6 +2971,10 @@ impl<'a> Parser<'a> {
         let mut inlines = Vec::new();
         if numbered {
             let number = self.bump_section(usize::from(level));
+            self.reference_context = crate::references::Value {
+                number: number.clone(),
+                ..Default::default()
+            };
             inlines.push(Inline::Run(Run {
                 props: RunProperties::default(),
                 content: vec![RunContent::Text(TextNode {
@@ -1821,6 +2989,7 @@ impl<'a> Parser<'a> {
             self.next_token()?;
             let mut fmt = fmt;
             let (title, _) = self.parse_inlines_isolated(&mut fmt, Stop::Group)?;
+            self.reference_context.title = plain_inlines(&title);
             inlines.extend(title);
         }
         let props = ParagraphProperties {
@@ -1880,6 +3049,24 @@ impl<'a> Parser<'a> {
     fn caption(&mut self, span: LatexSpan) -> Result<(), LatexError> {
         self.flush_paragraph()?;
         self.optional_bracket_text()?;
+        let number = match self.float_kind {
+            Some("figure") => {
+                self.figure_counter += 1;
+                self.figure_counter.to_string()
+            }
+            Some("table") => {
+                self.table_counter += 1;
+                self.table_counter.to_string()
+            }
+            _ => {
+                self.loss(span, "reference:unsupported-caption-counter")?;
+                String::new()
+            }
+        };
+        self.reference_context = crate::references::Value {
+            number,
+            ..Default::default()
+        };
         let mut fmt = Format {
             italic: true,
             ..Format::default()
@@ -1894,6 +3081,7 @@ impl<'a> Parser<'a> {
             alignment: Some(Justification::Center),
             ..ParagraphProperties::default()
         };
+        self.reference_context.title = plain_inlines(&inlines);
         self.info(span, "float:caption");
         self.push_paragraph(props, inlines)
     }
@@ -2014,9 +3202,280 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    fn read_author(&mut self, span: LatexSpan) -> Result<(), LatexError> {
+        let affiliations = self.optional_bracket_text()?;
+        let content = self.capture_group_inlines()?;
+        if !self.author.is_empty() {
+            let separator =
+                self.parse_tokens_as_inlines(crate::macros::tokens(", "), &Format::default())?;
+            self.author.extend(separator);
+        }
+        self.author.extend(content);
+        if let Some(keys) = affiliations {
+            let numbers = self.affiliation_indices(&keys);
+            let marker = self.parse_tokens_as_inlines(
+                crate::macros::tokens(&numbers),
+                &Format {
+                    vert: Some(VertAlign::Superscript),
+                    ..Format::default()
+                },
+            )?;
+            self.author.extend(marker);
+        }
+        let _ = span;
+        Ok(())
+    }
+
+    fn frontmatter_note_id(&mut self, key: &str) -> i32 {
+        if let Some(id) = self.frontmatter_note_ids.get(key) {
+            return *id;
+        }
+        self.footnote_counter += 1;
+        let id = self.footnote_counter;
+        self.frontmatter_note_ids.insert(key.to_owned(), id);
+        id
+    }
+
+    fn frontmatter_contact(&mut self, fmt: &Format) -> Result<(), LatexError> {
+        let kind = self.optional_bracket_text()?;
+        let address = self.consume_braced_raw()?;
+        let saved = std::mem::take(&mut self.inlines);
+        self.push_text(fmt, &address)?;
+        let content = std::mem::replace(&mut self.inlines, saved);
+        self.frontmatter_contacts
+            .push(vec![Inline::Hyperlink(Hyperlink {
+                rel_id: None,
+                target: Some(Arc::from(if kind.as_deref() == Some("url") {
+                    address
+                } else {
+                    format!("mailto:{address}")
+                })),
+                anchor: None,
+                tooltip: None,
+                history: false,
+                tgt_frame: None,
+                inlines: content,
+                location: SourceLocation::default(),
+            })]);
+        Ok(())
+    }
+
+    fn affiliation_indices(&mut self, keys: &str) -> String {
+        keys.split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|key| {
+                let next = self.affiliation_numbers.len() + 1;
+                self.affiliation_numbers
+                    .entry(key.to_owned())
+                    .or_insert(next)
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    fn read_address(&mut self) -> Result<(), LatexError> {
+        let keys = self.optional_bracket_text()?;
+        let mut content = Vec::new();
+        if let Some(keys) = keys {
+            let numbers = self.affiliation_indices(&keys);
+            for key in keys.split(',').map(str::trim) {
+                self.addressed_affiliations.insert(key.to_owned());
+            }
+            content = self.parse_tokens_as_inlines(
+                crate::macros::tokens(&format!("{numbers} ")),
+                &Format::default(),
+            )?;
+        }
+        content.extend(self.capture_group_inlines()?);
+        self.affiliations.push(content);
+        Ok(())
+    }
+
+    fn emit_frontmatter(&mut self) -> Result<(), LatexError> {
+        if !self.frontmatter_title_emitted {
+            if self
+                .affiliation_numbers
+                .keys()
+                .any(|k| !self.addressed_affiliations.contains(k))
+            {
+                self.loss(self.span_here(), "frontmatter:missing-affiliation")?;
+            }
+            self.maketitle()?;
+            self.frontmatter_title_emitted = true;
+            let affiliations = std::mem::take(&mut self.affiliations);
+            for content in affiliations {
+                self.push_paragraph(ParagraphProperties::default(), content)?;
+            }
+            for content in std::mem::take(&mut self.frontmatter_contacts) {
+                self.push_paragraph(ParagraphProperties::default(), content)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn load_packages(&mut self, span: LatexSpan) -> Result<(), LatexError> {
+        let options = self.optional_bracket_text()?;
+        let names = self.consume_braced_raw()?;
+        if options.as_deref().is_some_and(|s| !s.is_empty()) {
+            self.loss(span, "package:options")?;
+        }
+        let mut frames = Vec::new();
+        let (first, remaining) = names.split_once(',').unwrap_or((&names, ""));
+        if !remaining.trim().is_empty() {
+            let file_id = self.frames.last().map_or(0, |f| f.file_id);
+            let tokens = vec![
+                Token {
+                    kind: TokenKind::ControlWord("RequirePackage".into()),
+                    start: span.start,
+                    end: span.end,
+                },
+                Token {
+                    kind: TokenKind::LBrace,
+                    start: span.start,
+                    end: span.end,
+                },
+                Token {
+                    kind: TokenKind::Text(remaining.to_owned()),
+                    start: span.start,
+                    end: span.end,
+                },
+                Token {
+                    kind: TokenKind::RBrace,
+                    start: span.start,
+                    end: span.end,
+                },
+            ];
+            self.frames.push(Frame {
+                file_id,
+                include_name: None,
+                tokens,
+                pos: 0,
+            });
+        }
+        for name in std::iter::once(first.trim()).filter(|s| !s.is_empty()) {
+            if !self.loaded_packages.insert(name.to_owned()) {
+                continue;
+            }
+            if self.loaded_packages.len() > self.options.limits.include_files {
+                return Err(LatexError::LimitExceeded {
+                    limit: "package_files",
+                    observed: self.loaded_packages.len(),
+                });
+            }
+            let path = format!("{name}.sty");
+            if let Ok(bytes) = self.provider.read(&path) {
+                if bytes.len() > self.options.limits.input_bytes {
+                    return Err(LatexError::LimitExceeded {
+                        limit: "input_bytes",
+                        observed: bytes.len(),
+                    });
+                }
+                let text = decode(&bytes, &path)?;
+                let tokens = crate::lexer::lex_with_at_letter(&text, true);
+                if tokens.iter().any(|t| matches!(&t.kind, TokenKind::ControlWord(w) if primitive_conditional(w) || matches!(w.as_str(), "expandafter" | "csname" | "endcsname" | "futurelet" | "afterassignment" | "aftergroup" | "catcode" | "numexpr" | "dimexpr"))) {
+                    self.loss(span, &format!("package:requires-tex:{name}"))?;
+                    continue;
+                }
+                let file_id = self.file_names.len();
+                self.file_names.push(path.clone());
+                frames.push(Frame {
+                    file_id,
+                    include_name: Some(path),
+                    tokens,
+                    pos: 0,
+                });
+                self.included_files += 1;
+                self.info(span, &format!("package:local:{name}"));
+            } else if matches!(
+                name,
+                "amsmath"
+                    | "amssymb"
+                    | "amsfonts"
+                    | "mathtools"
+                    | "graphicx"
+                    | "graphics"
+                    | "color"
+                    | "xcolor"
+                    | "hyperref"
+                    | "url"
+                    | "array"
+                    | "booktabs"
+                    | "multirow"
+                    | "longtable"
+                    | "tabularx"
+                    | "enumerate"
+                    | "enumitem"
+                    | "textcomp"
+                    | "fontenc"
+                    | "inputenc"
+            ) {
+                self.info(span, &format!("package:builtin-subset:{name}"));
+            } else {
+                self.loss(span, &format!("package:unavailable:{name}"))?;
+            }
+        }
+        self.frames.extend(frames.into_iter().rev());
+        Ok(())
+    }
+
     fn handle_environment(&mut self, env: &str, span: LatexSpan) -> Result<(), LatexError> {
+        let depth = self.local_scopes.len();
+        let mut fmt = self.block_format.clone();
+        self.enter_local_scope(&fmt, false)?;
+        let result = self.handle_environment_inner(env, span);
+        let cleanup = self.close_local_scopes(depth, &mut fmt);
+        self.block_format = fmt;
+        cleanup?;
+        result
+    }
+
+    fn handle_environment_inner(&mut self, env: &str, span: LatexSpan) -> Result<(), LatexError> {
+        if let Some((definition, ending)) = self.environments.get(env).cloned() {
+            let old = self.expanding;
+            self.expanding = false;
+            let result = (|| {
+                let mut args = Vec::new();
+                if let Some(default) = &definition.default {
+                    args.push(
+                        self.optional_bracket_text()?
+                            .map_or_else(|| default.clone(), |s| crate::macros::tokens(&s)),
+                    );
+                }
+                while args.len() < definition.args {
+                    args.push(self.macro_argument()?);
+                }
+                let mut tokens =
+                    crate::macros::substitute(&definition.body, &args, self.options.limits.tokens)?;
+                tokens.extend(self.collect_environment_body(env)?);
+                tokens.extend(crate::macros::substitute(
+                    &ending,
+                    &args,
+                    self.options.limits.tokens,
+                )?);
+                Ok::<_, LatexError>(tokens)
+            })();
+            self.expanding = old;
+            self.macros.enter();
+            let result = self.parse_tokens_as_blocks(result?);
+            self.macros.leave();
+            for block in result? {
+                self.push_block(block)?;
+            }
+            return Ok(());
+        }
         let bare = env.trim_end_matches('*');
         match bare {
+            "tikzpicture" | "tikzcd" => {
+                let old = self.expanding;
+                self.expanding = false;
+                let body = self.collect_environment_body(env);
+                self.expanding = old;
+                let source = raw_tokens(&body?);
+                let tex = format!("\\begin{{{env}}}{source}\\end{{{env}}}");
+                self.render_opaque(crate::GraphicKind::Tikz, &tex, span)?;
+            }
             "document" => {
                 self.in_document = true;
                 self.parse_blocks(Some(env))?;
@@ -2024,8 +3483,19 @@ impl<'a> Parser<'a> {
             "itemize" | "enumerate" | "description" => self.parse_list(env)?,
             "tabular" | "tabularx" | "longtable" | "array" => self.parse_table(env, span)?,
             "figure" | "table" | "wrapfigure" | "subfigure" | "figurebox" => {
+                self.skip_optional_position()?;
                 self.info(span, &format!("float:{env}"));
-                self.parse_blocks(Some(env))?;
+                let saved = self.float_kind;
+                self.float_kind = Some(if bare == "table" {
+                    "table"
+                } else if bare == "subfigure" {
+                    "subfigure"
+                } else {
+                    "figure"
+                });
+                let result = self.parse_blocks(Some(env));
+                self.float_kind = saved;
+                result?;
             }
             "center" => {
                 let saved = self.alignment;
@@ -2050,7 +3520,22 @@ impl<'a> Parser<'a> {
             }
             "equation" | "displaymath" | "math" | "align" | "alignat" | "gather" | "multline"
             | "eqnarray" | "split" => self.display_math(env)?,
-            "quote" | "quotation" | "verse" | "abstract" | "thebibliography" => {
+            "frontmatter" if self.document_class == "elsarticle" => {
+                self.parse_blocks(Some(env))?;
+                self.emit_frontmatter()?;
+            }
+            "abstract" if self.document_class == "elsarticle" => {
+                self.emit_frontmatter()?;
+                self.parse_blocks(Some(env))?;
+            }
+            "keyword" | "highlights" if self.document_class == "elsarticle" => {
+                self.parse_blocks(Some(env))?;
+            }
+            "thebibliography" => {
+                self.consume_braced_raw()?;
+                self.parse_blocks(Some(env))?;
+            }
+            "quote" | "quotation" | "verse" | "abstract" => {
                 self.parse_blocks(Some(env))?;
             }
             "titlepage" => {
@@ -2069,20 +3554,65 @@ impl<'a> Parser<'a> {
 
     fn display_math(&mut self, env: &str) -> Result<(), LatexError> {
         let body = self.collect_environment_body(env)?;
+        if !env.ends_with('*') && !matches!(env, "math" | "displaymath" | "split") {
+            let rows = if matches!(env, "align" | "alignat" | "gather" | "eqnarray") {
+                crate::math::split_top_level(&body, &TokenKind::ControlSymbol('\\'))
+            } else {
+                vec![body.clone()]
+            };
+            for row in rows.iter().filter(|r| {
+                r.iter()
+                    .any(|t| !matches!(t.kind, TokenKind::Space | TokenKind::ParBreak))
+            }) {
+                if row.iter().any(|t| matches!(&t.kind, TokenKind::ControlWord(w) if w == "notag" || w == "nonumber")) { continue; }
+                self.equation_counter += 1;
+                self.reference_context = crate::references::Value {
+                    number: self.equation_counter.to_string(),
+                    ..Default::default()
+                };
+                // Label groups are metadata; scan only for this known command.
+                for (i, t) in row.iter().enumerate() {
+                    if matches!(&t.kind, TokenKind::ControlWord(w) if w == "label") {
+                        let tail = &row[i + 1..];
+                        let start = tail
+                            .iter()
+                            .position(|t| matches!(t.kind, TokenKind::LBrace));
+                        if let Some(start) = start {
+                            let key = tail[start + 1..]
+                                .iter()
+                                .take_while(|t| !matches!(t.kind, TokenKind::RBrace))
+                                .map(|t| t.kind.raw())
+                                .collect::<String>();
+                            self.labels
+                                .entry(bookmark_name(&key))
+                                .or_insert_with(|| self.reference_context.clone());
+                        }
+                    }
+                }
+            }
+        }
         self.flush_paragraph()?;
-        let expression = {
+        if self.render_math_graphic(&body, true, Some(env))? {
+            return Ok(());
+        }
+        let (expression, labels) = {
             let mut ctx = self.math_context();
-            translate_environment(env, &body, &mut ctx)?
+            let expression = translate_environment(env, &body, &mut ctx)?;
+            (expression, ctx.labels)
         };
+        let marks = self.math_label_marks(labels);
         let paragraph = Paragraph {
             props: ParagraphProperties::default(),
-            inlines: vec![Inline::MathParagraph(MathParagraph {
-                properties: Some(MathParagraphProperties {
-                    justification: Some(MathJustification::Center),
-                }),
-                equations: vec![expression],
-                location: SourceLocation::default(),
-            })],
+            inlines: marks
+                .into_iter()
+                .chain([Inline::MathParagraph(MathParagraph {
+                    properties: Some(MathParagraphProperties {
+                        justification: Some(MathJustification::Center),
+                    }),
+                    equations: vec![expression],
+                    location: SourceLocation::default(),
+                })])
+                .collect(),
             rsids: Default::default(),
             revision: None,
             para_id: None,
@@ -2245,9 +3775,47 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    fn define_column_type(&mut self, span: LatexSpan) -> Result<(), LatexError> {
+        let name = self.consume_braced_raw()?;
+        let args = self
+            .optional_bracket_text()?
+            .map_or(0, |s| s.trim().parse::<usize>().unwrap_or(10));
+        let old = self.expanding;
+        self.expanding = false;
+        let body = self.macro_argument();
+        self.expanding = old;
+        let body = body?;
+        if name.chars().count() != 1 || args > 9 {
+            self.loss(span, "table:invalid-column-type")?;
+        } else {
+            self.column_types.insert(
+                name,
+                crate::macros::Definition {
+                    args,
+                    default: None,
+                    body,
+                },
+            );
+        }
+        Ok(())
+    }
+
     fn parse_table(&mut self, env: &str, span: LatexSpan) -> Result<(), LatexError> {
         self.skip_optional_position()?;
-        let spec = self.consume_braced_raw()?;
+        if env.trim_end_matches('*') == "tabularx" {
+            self.consume_braced_raw()?;
+            self.loss(span, "table:tabularx-target-width")?;
+        }
+        let raw_spec = self.consume_braced_raw()?;
+        let (spec, unsupported) = crate::columns::expand(
+            &raw_spec,
+            &self.column_types,
+            self.options.limits.nesting,
+            self.options.limits.input_bytes,
+        )?;
+        for feature in unsupported {
+            self.loss(span, &format!("table:column-spec:{feature}"))?;
+        }
         let body = self.collect_environment_body(env)?;
         let max_columns = self.options.limits.table_columns;
         let max_cells = self
@@ -2292,23 +3860,46 @@ impl<'a> Parser<'a> {
         }
         let mut tokens = Vec::new();
         let mut closed = false;
+        let mut braces = 0usize;
         while let Some(token) = self.next_token()? {
-            if matches!(token.kind, TokenKind::MathShift) {
+            if braces == 0 && matches!(token.kind, TokenKind::MathShift) {
                 closed = true;
                 break;
             }
+            match token.kind {
+                TokenKind::LBrace => braces += 1,
+                TokenKind::RBrace => braces = braces.saturating_sub(1),
+                _ => {}
+            }
             tokens.push(token);
+        }
+        if closed && display {
+            if matches!(self.peek_kind(), Some(TokenKind::MathShift)) {
+                self.next_token()?;
+            } else {
+                self.loss(self.span_here(), "math:missing-display-close")?;
+            }
         }
         if !closed {
             self.loss(self.span_here(), "math:unterminated")?;
         }
-        let mut ctx = self.math_context();
-        let expression = crate::math::translate(&tokens, &mut ctx)?;
+        if self.render_math_graphic(&tokens, display, None)? {
+            return Ok(());
+        }
+        let (expression, labels) = {
+            let mut ctx = self.math_context();
+            let expression = crate::math::translate(&tokens, &mut ctx)?;
+            (expression, ctx.labels)
+        };
+        let marks = self.math_label_marks(labels);
         if display {
             self.flush_paragraph()?;
             let paragraph = Paragraph {
                 props: ParagraphProperties::default(),
-                inlines: vec![Inline::MathParagraph(display_paragraph(expression))],
+                inlines: marks
+                    .into_iter()
+                    .chain([Inline::MathParagraph(display_paragraph(expression))])
+                    .collect(),
                 rsids: Default::default(),
                 revision: None,
                 para_id: None,
@@ -2317,6 +3908,7 @@ impl<'a> Parser<'a> {
             };
             self.push_block(Block::Paragraph(paragraph))
         } else {
+            self.inlines.extend(marks);
             self.inlines.push(Inline::Math(expression));
             Ok(())
         }
@@ -2426,8 +4018,9 @@ fn extract_leading_optional(tokens: &mut Vec<Token>) -> Option<String> {
     Some(text)
 }
 
-fn text_symbol(word: &str) -> Option<&'static str> {
+pub(crate) fn text_symbol(word: &str) -> Option<&'static str> {
     Some(match word {
+        "textunderscore" => "_",
         "ldots" | "dots" | "textellipsis" => "\u{2026}",
         "textbackslash" => "\\",
         "textasciitilde" => "~",
@@ -2791,6 +4384,128 @@ fn color_from_spec(model: &str, spec: &str) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn rendered_image_options(
+    bytes: &[u8],
+    mut options: crate::media::ImageOptions,
+) -> crate::media::ImageOptions {
+    if options.width_emu.is_none() && options.height_emu.is_none() {
+        if let Some((w, h)) = media::rendered_png_extent(bytes) {
+            options.width_emu = Some(w);
+            options.height_emu = Some(h);
+        }
+    }
+    options
+}
+
+fn primitive_conditional(word: &str) -> bool {
+    matches!(
+        word,
+        "if" | "ifx"
+            | "ifnum"
+            | "ifdim"
+            | "ifcase"
+            | "ifdefined"
+            | "ifcsname"
+            | "ifmmode"
+            | "ifhmode"
+            | "ifvmode"
+            | "ifcat"
+            | "ifodd"
+            | "ifhbox"
+            | "ifvbox"
+            | "ifeof"
+            | "ifinner"
+    )
+}
+
+fn raw_tokens(tokens: &[Token]) -> String {
+    let mut out = String::new();
+    for token in tokens {
+        out.push_str(&token.kind.raw());
+        if matches!(token.kind, TokenKind::ControlWord(_)) {
+            out.push(' ');
+        }
+    }
+    out
+}
+
+fn graphic_preamble(tokens: &[Token]) -> String {
+    let mut out = Vec::new();
+    let mut pos = 0;
+    while pos < tokens.len() {
+        if matches!(&tokens[pos].kind, TokenKind::ControlWord(w) if w == "begin") {
+            let tail: Vec<_> = tokens[pos + 1..]
+                .iter()
+                .filter(|t| !matches!(t.kind, TokenKind::Space))
+                .take(3)
+                .collect();
+            if matches!(tail.as_slice(), [Token { kind: TokenKind::LBrace, .. }, Token { kind: TokenKind::Text(w), .. }, Token { kind: TokenKind::RBrace, .. }] if w == "document")
+            {
+                break;
+            }
+        }
+        if matches!(&tokens[pos].kind, TokenKind::ControlWord(w) if w == "documentclass" || w == "documentstyle")
+        {
+            pos += 1;
+            while pos < tokens.len() {
+                if matches!(tokens[pos].kind, TokenKind::LBracket | TokenKind::LBrace) {
+                    let bracket = matches!(tokens[pos].kind, TokenKind::LBracket);
+                    let mut depth = 1;
+                    pos += 1;
+                    while pos < tokens.len() && depth > 0 {
+                        match tokens[pos].kind {
+                            TokenKind::LBracket if bracket => depth += 1,
+                            TokenKind::RBracket if bracket => depth -= 1,
+                            TokenKind::LBrace if !bracket => depth += 1,
+                            TokenKind::RBrace if !bracket => depth -= 1,
+                            _ => {}
+                        }
+                        pos += 1;
+                    }
+                    if !bracket {
+                        break;
+                    }
+                } else if matches!(tokens[pos].kind, TokenKind::Space) {
+                    pos += 1;
+                } else {
+                    break;
+                }
+            }
+        } else {
+            out.push(tokens[pos].clone());
+            pos += 1;
+        }
+    }
+    // A fragment without a document class has no preamble; copying its body
+    // here would execute/print it twice inside the external renderer.
+    if starts_with_document_class(tokens) {
+        raw_tokens(&out)
+    } else {
+        String::new()
+    }
+}
+
+fn plain_inlines(items: &[Inline]) -> String {
+    items
+        .iter()
+        .filter_map(|i| {
+            if let Inline::Run(run) = i {
+                Some(run)
+            } else {
+                None
+            }
+        })
+        .flat_map(|r| r.content.iter())
+        .filter_map(|c| {
+            if let RunContent::Text(t) = c {
+                Some(t.text.as_str())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 fn decode(bytes: &[u8], name: &str) -> Result<String, LatexError> {

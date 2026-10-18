@@ -20,11 +20,13 @@ use crate::LatexError;
 const TEXT_WIDTH: i32 = 9026;
 
 /// One declared table column.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct ColumnDef {
     align: Option<Justification>,
     /// Fixed width in twips; `None` means automatic.
     width: Option<i32>,
+    before: String,
+    after: String,
 }
 
 /// A cell parsed from its raw tokens.
@@ -165,7 +167,18 @@ pub(crate) fn build(
             );
             let fill = cell.shading.clone().or_else(|| row.fill.clone());
             placed.push(content_cell(
-                render_cell(&cell.tokens)?,
+                {
+                    let mut tokens = crate::lexer::lex("{");
+                    if let Some(def) = column_defs.get(column) {
+                        tokens.extend(crate::lexer::lex(&def.before));
+                    }
+                    tokens.extend(cell.tokens.iter().cloned());
+                    if let Some(def) = column_defs.get(column) {
+                        tokens.extend(crate::lexer::lex(&def.after));
+                    }
+                    tokens.extend(crate::lexer::lex("}"));
+                    render_cell(&tokens)?
+                },
                 align,
                 borders,
                 fill,
@@ -692,13 +705,32 @@ fn split_top_level(tokens: &[Token], separator: &TokenKind) -> Vec<Vec<Token>> {
 /// specification asked for more than `max` (so the caller can refuse the table
 /// rather than silently importing a truncated one).
 fn parse_columns(spec: &str, max: usize) -> (Vec<ColumnDef>, Vec<bool>, bool) {
+    parse_columns_depth(spec, max, 0)
+}
+
+fn parse_columns_depth(spec: &str, max: usize, depth: usize) -> (Vec<ColumnDef>, Vec<bool>, bool) {
+    if depth > 32 {
+        return (Vec::new(), Vec::new(), true);
+    }
     let max = max.max(1);
+    let mut pending = String::new();
     let mut columns: Vec<ColumnDef> = Vec::new();
     let mut bars: Vec<bool> = vec![false];
     let mut overflow = false;
     let mut chars = spec.chars().peekable();
     while let Some(c) = chars.next() {
+        let previous = columns.len();
         match c {
+            '>' => {
+                pending.push_str(&read_group_chars(&mut chars).unwrap_or_default());
+                pending.push(' ');
+            }
+            '<' => {
+                let suffix = read_group_chars(&mut chars).unwrap_or_default();
+                if let Some(last) = columns.last_mut() {
+                    last.after.push_str(&suffix);
+                }
+            }
             '|' => {
                 if let Some(last) = bars.last_mut() {
                     *last = true;
@@ -748,7 +780,7 @@ fn parse_columns(spec: &str, max: usize) -> (Vec<ColumnDef>, Vec<bool>, bool) {
                     &mut overflow,
                 );
             }
-            '@' => {
+            '@' | '!' => {
                 skip_braces(&mut chars);
             }
             '*' => {
@@ -756,7 +788,8 @@ fn parse_columns(spec: &str, max: usize) -> (Vec<ColumnDef>, Vec<bool>, bool) {
                     .and_then(|value| value.trim().parse::<usize>().ok())
                     .unwrap_or(0);
                 let inner = read_group_chars(&mut chars).unwrap_or_default();
-                let (inner_columns, inner_bars, inner_overflow) = parse_columns(&inner, max);
+                let (inner_columns, inner_bars, inner_overflow) =
+                    parse_columns_depth(&inner, max, depth + 1);
                 overflow |= inner_overflow;
                 if count > max {
                     overflow = true;
@@ -768,11 +801,27 @@ fn parse_columns(spec: &str, max: usize) -> (Vec<ColumnDef>, Vec<bool>, bool) {
                         overflow = true;
                         break;
                     }
-                    columns.extend(inner_columns.iter().copied());
+                    columns.extend(inner_columns.iter().cloned());
                     bars.extend(inner_bars.iter().copied());
                 }
             }
             _ => {}
+        }
+        if columns.len() > previous && !pending.is_empty() {
+            if let Some(column) = columns.get_mut(previous) {
+                for (command, align) in [
+                    (r"\centering", Justification::Center),
+                    (r"\raggedright", Justification::Start),
+                    (r"\raggedleft", Justification::End),
+                ] {
+                    if pending.contains(command) {
+                        column.align = Some(align);
+                        pending = pending.replace(command, "");
+                    }
+                }
+                pending = pending.replace(r"\arraybackslash", "");
+                column.before = std::mem::take(&mut pending);
+            }
         }
     }
     (columns, bars, overflow)
@@ -793,6 +842,7 @@ fn push_column(
     columns.push(ColumnDef {
         align: Some(align),
         width,
+        ..ColumnDef::default()
     });
     bars.push(false);
 }

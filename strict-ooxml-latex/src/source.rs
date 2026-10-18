@@ -14,6 +14,15 @@ use crate::LatexError;
 pub trait SourceProvider {
     /// Reads `name`, returning [`LatexError::SourceNotFound`] when it is absent.
     fn read(&self, name: &str) -> Result<Vec<u8>, LatexError>;
+
+    /// Optional conversion of opaque TeX graphics or unsupported image formats.
+    /// Default providers start no processes and access no network resources.
+    fn render_graphic(
+        &self,
+        _request: &crate::RenderRequest<'_>,
+    ) -> Result<Option<crate::RenderedGraphic>, LatexError> {
+        Ok(None)
+    }
 }
 
 /// A provider that holds every file in memory; used by tests and embedding.

@@ -986,3 +986,44 @@ fn script_alphabets_keep_source_text_and_use_distinct_faces() {
         );
     }
 }
+
+#[test]
+fn normal_math_text_uses_direct_text_bold_and_italic_before_measurement() {
+    for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
+        let svg = render_body(&format!(
+            "<w:p><m:oMath><m:r><m:rPr><m:nor/><m:sty m:val=\"bi\"/></m:rPr><w:rPr><w:b w:val=\"{}\"/><w:i w:val=\"{}\"/></w:rPr><m:t>Sample</m:t></m:r><m:r><m:t>Z</m:t></m:r></m:oMath></w:p>",
+            u8::from(bold), u8::from(italic)
+        ));
+        let end = svg.find(">Sample</text>").unwrap();
+        let start = svg[..end].rfind("<text ").unwrap();
+        let tag = &svg[start..end];
+        assert_eq!(tag.contains("font-weight=\"bold\""), bold, "{tag}");
+        assert_eq!(tag.contains("font-style=\"italic\""), italic, "{tag}");
+        // The following atom starts after the selected face's advances, not
+        // after a plain-face measurement subsequently painted in bold/italic.
+        let size = font_size_near(&svg, ">Sample</text>").unwrap();
+        let font = BuiltinFontProvider::new();
+        let expected: f64 = "Sample"
+            .chars()
+            .map(|ch| font.advance_em("Cambria Math", ch, bold, italic) * size)
+            .sum();
+        let actual =
+            position(&svg, ">Z</text>").unwrap().0 - position(&svg, ">Sample</text>").unwrap().0;
+        assert!(
+            (actual - expected).abs() < 0.1,
+            "{bold}/{italic}: {actual} vs {expected}"
+        );
+    }
+}
+
+#[test]
+fn ordinary_math_style_remains_independent_of_normal_text_properties() {
+    let svg = render_body("<w:p><m:oMath><m:r><m:rPr><m:sty m:val=\"i\"/></m:rPr><w:rPr><w:b/><w:i w:val=\"0\"/></w:rPr><m:t>Math</m:t></m:r><m:r><m:rPr><m:nor/><m:sty m:val=\"bi\"/></m:rPr><m:t>Plain</m:t></m:r></m:oMath></w:p>");
+    for (text, bold, italic) in [("Math", false, true), ("Plain", false, false)] {
+        let end = svg.find(&format!(">{text}</text>")).unwrap();
+        let start = svg[..end].rfind("<text ").unwrap();
+        let tag = &svg[start..end];
+        assert_eq!(tag.contains("font-weight=\"bold\""), bold);
+        assert_eq!(tag.contains("font-style=\"italic\""), italic);
+    }
+}

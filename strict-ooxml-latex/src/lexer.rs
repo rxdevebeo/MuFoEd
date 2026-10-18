@@ -97,6 +97,10 @@ type Chars<'a> = std::iter::Peekable<std::str::CharIndices<'a>>;
 /// Tokenizes a decoded LaTeX source.
 #[must_use]
 pub(crate) fn lex(input: &str) -> Vec<Token> {
+    lex_with_at_letter(input, false)
+}
+
+pub(crate) fn lex_with_at_letter(input: &str, mut at_letter: bool) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut iter = input.char_indices().peekable();
     while let Some((start, c)) = iter.next() {
@@ -123,7 +127,19 @@ pub(crate) fn lex(input: &str) -> Vec<Token> {
                     }
                     lex_verbatim_body(&mut tokens, start, &name, &mut iter);
                 } else {
-                    lex_control(&mut tokens, start, &mut iter);
+                    lex_control(&mut tokens, start, &mut iter, at_letter);
+                    if let Some(Token {
+                        kind: TokenKind::ControlWord(word),
+                        ..
+                    }) = tokens.last()
+                    {
+                        if word == "makeatletter" {
+                            at_letter = true;
+                        }
+                        if word == "makeatother" {
+                            at_letter = false;
+                        }
+                    }
                 }
             }
             '{' => push(&mut tokens, TokenKind::LBrace, start, start + 1),
@@ -260,15 +276,15 @@ fn lex_verbatim_body(tokens: &mut Vec<Token>, start: usize, name: &str, iter: &m
     push(tokens, TokenKind::RBrace, 0, 0);
 }
 
-fn lex_control(tokens: &mut Vec<Token>, start: usize, iter: &mut Chars<'_>) {
+fn lex_control(tokens: &mut Vec<Token>, start: usize, iter: &mut Chars<'_>, at_letter: bool) {
     let Some(&(_, first)) = iter.peek() else {
         push(tokens, TokenKind::ControlSymbol('\\'), start, start + 1);
         return;
     };
-    if first.is_ascii_alphabetic() {
+    if first.is_ascii_alphabetic() || (at_letter && first == '@') {
         let mut word = String::new();
         while let Some(&(_, ch)) = iter.peek() {
-            if ch.is_ascii_alphabetic() {
+            if ch.is_ascii_alphabetic() || (at_letter && ch == '@') {
                 word.push(ch);
                 iter.next();
             } else {

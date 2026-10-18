@@ -1,0 +1,14 @@
+{
+  "strict-ooxml-latex\\src\\lexer.rs": "e243011d2bcd158036cd940a3df85c0d2825e11c8fec29436969b32d87d6aaec",
+  "strict-ooxml-latex\\src\\lib.rs": "1876727e116b1a46a208a1b2e832536b36146a2891f308c846c4ccff42ae22be",
+  "strict-ooxml-latex\\src\\math.rs": "c4d568e1c637723f64f751e8cad46418102f36d4ae9070d348fa90f7f5ea2c64",
+  "strict-ooxml-latex\\src\\media.rs": "6edb1c35f29ef0628817c184ef9ec48d89eddfa499a235ab4b5b7244ac98075b",
+  "strict-ooxml-latex\\src\\parser.rs": "7555fbd200977c5485095e05a05c9fa24fd0290d7676d78367d6aef9bbd6be3a",
+  "strict-ooxml-latex\\src\\report.rs": "6401303164cea43f1e508670314ae09ce376cae8d379da97d40145fca76f0ccd",
+  "strict-ooxml-latex\\src\\source.rs": "b0a5e4b7898263f9549a6bf2ca6ce74cd0c16673da4bcb2ccca73c39ca2ad3b6",
+  "strict-ooxml-latex\\src\\table.rs": "f0ccf4b631e9035e2cacdc1e135396804467006a960d427f06ccd9a86fd76386",
+  "strict-ooxml\\src\\latex.rs": "485bfd750da11077b619e4adab24587b27b3ee3a0117050ae4c71dd8322622d6",
+  "tools\\latex-audit\\src\\main.rs": "f0133cb0baff01e70d133b05092b78d22517bbc55ea8232e437e4ea461db35f0",
+  "tools\\latex-audit\\run.py": "4f8a351e888b859e89dcae60bc2ef7f0438fa8202ba4fb79f94656d198b1b272",
+  "tools/latex-audit/run.py": "96ea33e3466d593fe0a4c6eab6b70b57ccf3176cca25e553d3849f934ca60950"
+}

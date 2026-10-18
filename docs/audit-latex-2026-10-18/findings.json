@@ -1,0 +1,92 @@
+[
+  {
+    "id": "LATEX-AUD-01",
+    "severity": "P0",
+    "classification": "document_loss",
+    "status": "CONFIRMED_REPRODUCED_UNFIXED",
+    "test": "aud01_literal_bracket_in_preamble_does_not_swallow_document",
+    "test_file": "strict-ooxml-latex/tests/cc0_regressions.rs",
+    "probe": "evidence/preamble.tex",
+    "expected_test_result_on_baseline": "FAIL when explicitly run; ignored by default"
+  },
+  {
+    "id": "LATEX-AUD-02",
+    "severity": "P1",
+    "classification": "math_atom_binding",
+    "status": "CONFIRMED_REPRODUCED_UNFIXED",
+    "test": "aud02_unbraced_script_consumes_one_tex_atom",
+    "test_file": "strict-ooxml-latex/tests/cc0_regressions.rs",
+    "probe": "evidence/script.tex",
+    "expected_test_result_on_baseline": "FAIL when explicitly run; ignored by default"
+  },
+  {
+    "id": "LATEX-AUD-03",
+    "severity": "P1",
+    "classification": "radical_arguments",
+    "status": "CONFIRMED_REPRODUCED_UNFIXED",
+    "test": "aud03_indexed_radical_keeps_degree_radicand_and_tail_separate",
+    "test_file": "strict-ooxml-latex/tests/cc0_regressions.rs",
+    "probe": "evidence/sqrt.tex",
+    "expected_test_result_on_baseline": "FAIL when explicitly run; ignored by default"
+  },
+  {
+    "id": "LATEX-AUD-04",
+    "severity": "P1",
+    "classification": "metadata_in_math",
+    "status": "CONFIRMED_REPRODUCED_UNFIXED",
+    "test": "aud04_label_is_metadata_not_math_ink",
+    "test_file": "strict-ooxml-latex/tests/cc0_regressions.rs",
+    "probe": "evidence/label.tex",
+    "expected_test_result_on_baseline": "FAIL when explicitly run; ignored by default"
+  },
+  {
+    "id": "LATEX-AUD-05",
+    "severity": "P1",
+    "classification": "layout_argument_in_math",
+    "status": "CONFIRMED_REPRODUCED_UNFIXED",
+    "test": "aud05_math_spacing_does_not_print_dimension",
+    "test_file": "strict-ooxml-latex/tests/cc0_regressions.rs",
+    "probe": "evidence/hspace.tex",
+    "expected_test_result_on_baseline": "FAIL when explicitly run; ignored by default"
+  },
+  {
+    "id": "LATEX-AUD-06",
+    "severity": "P1",
+    "classification": "array_preamble_in_cell",
+    "status": "CONFIRMED_REPRODUCED_UNFIXED",
+    "test": "aud06_array_column_preamble_is_not_cell_content",
+    "test_file": "strict-ooxml-latex/tests/cc0_regressions.rs",
+    "probe": "evidence/array.tex",
+    "expected_test_result_on_baseline": "FAIL when explicitly run; ignored by default"
+  },
+  {
+    "id": "LATEX-AUD-07",
+    "severity": "P1",
+    "classification": "nested_environment_truncation",
+    "status": "CONFIRMED_REPRODUCED_UNFIXED",
+    "test": "aud07_nested_environment_does_not_drop_outer_tail",
+    "test_file": "strict-ooxml-latex/tests/cc0_regressions.rs",
+    "probe": "evidence/nested.tex",
+    "expected_test_result_on_baseline": "FAIL when explicitly run; ignored by default"
+  },
+  {
+    "id": "LATEX-AUD-08",
+    "severity": "P2",
+    "classification": "layout_argument_in_text",
+    "status": "CONFIRMED_REPRODUCED_UNFIXED",
+    "test": "aud08_layout_configuration_is_not_document_text",
+    "test_file": "strict-ooxml-latex/tests/cc0_regressions.rs",
+    "probe": "evidence/config.tex",
+    "expected_test_result_on_baseline": "FAIL when explicitly run; ignored by default"
+  },
+  {
+    "id": "LATEX-AUD-09",
+    "severity": "P2",
+    "classification": "macro_definition_in_text",
+    "status": "CONFIRMED_REPRODUCED_UNFIXED",
+    "test": "aud09_macro_definition_parameters_are_not_document_text",
+    "test_file": "strict-ooxml-latex/tests/cc0_regressions.rs",
+    "probe": "evidence/defbody.tex",
+    "expected_test_result_on_baseline": "FAIL when explicitly run; ignored by default"
+  }
+]

@@ -1,0 +1,79 @@
+   Compiling toml_edit v0.22.27
+   Compiling strict-ooxml-latex v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-latex)
+   Compiling toml v0.8.23
+   Compiling strict-ooxml-testkit v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-testkit)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.67s
+     Running unittests src\lib.rs (target\debug\deps\strict_ooxml_latex-a38b0841c8fa398c.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\hostile.rs (target\debug\deps\hostile-61edeb723c39da0d.exe)
+
+running 9 tests
+test an_over_wide_multicolumn_is_refused ... ok
+test ordinary_nesting_is_not_mistaken_for_a_bomb ... ok
+test an_include_cycle_terminates ... ok
+test a_column_pack_does_not_allocate_billions_of_columns ... ok
+test a_padded_grid_is_refused_before_it_is_allocated ... ok
+test deeply_nested_groups_do_not_overflow_the_stack ... ok
+test a_huge_graphicspath_does_not_explode_the_candidate_list ... ok
+test deeply_nested_environments_do_not_overflow_the_stack ... ok
+test deeply_nested_math_does_not_overflow_the_stack ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+     Running tests\import.rs (target\debug\deps\import-374970ca746eada1.exe)
+
+running 39 tests
+test a_multibyte_label_does_not_panic ... ok
+test includegraphics_width_and_angle_are_applied ... ok
+test align_environment_produces_equation_array ... ok
+test input_is_resolved_through_the_provider ... ok
+test colors_and_font_sizes_apply ... ok
+test footnotes_create_notes_with_separators ... ok
+test labels_become_bookmarks_and_refs_become_fields ... ok
+test missing_include_is_a_loss_not_a_failure ... ok
+test display_math_becomes_a_math_paragraph ... ok
+test footnotemark_and_text_share_a_number ... ok
+test graphicspath_directories_are_searched ... ok
+test multicolumn_sets_grid_span ... ok
+test binom_and_infix_over_build_fractions ... ok
+test definecolor_rgb_and_html_models ... ok
+test inline_math_becomes_an_omml_expression ... ok
+test not_mathbb_and_styles ... ok
+test align_sets_alignment_points ... ok
+test paragraph_columns_carry_widths ... ok
+test accents_compose_to_precomposed_letters ... ok
+test multirow_creates_vertical_merge ... ok
+test formatting_commands_apply_character_properties ... ok
+test description_label_replaces_marker ... ok
+test plain_text_and_paragraphs ... ok
+test endnotes_use_the_endnotes_part ... ok
+test lists_use_real_numbering_definitions ... ok
+test gif_and_bmp_are_recognized ... ok
+test sections_become_outlined_headings ... ok
+test rules_and_colors_shape_borders_and_shading ... ok
+test stackrel_and_text_nesting ... ok
+test styles_table_carries_headings ... ok
+test starred_sections_are_unnumbered ... ok
+test tabular_becomes_a_table ... ok
+test unsupported_commands_are_reported_and_can_be_rejected ... ok
+test table_of_contents_becomes_a_toc_field ... ok
+test unsupported_image_container_is_a_loss_not_a_failure ... ok
+test verb_and_verbatim_preserve_specials ... ok
+test page_footer_and_twocolumn_are_applied ... ok
+test image_is_embedded_and_written ... ok
+test rich_document_writes_through_the_writer ... ok
+
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests strict_ooxml_latex
+
+running 2 tests
+test strict-ooxml-latex\src\lib.rs - (line 10) ... ok
+test strict-ooxml-latex\src\lib.rs - import (line 204) ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+

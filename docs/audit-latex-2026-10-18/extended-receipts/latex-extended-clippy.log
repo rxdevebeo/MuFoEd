@@ -1,0 +1,20 @@
+    Checking strict-ooxml-latex v0.1.0 (D:\projects\StrictLib-mufoed\strict-ooxml-latex)
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_latex-2dshewnxybh3x\s-hnbwydwoe8-0avdo4c-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\strict_ooxml_latex-0f6zripfylgqn\s-hnbwydwsyp-0f3uz56-working`
+
+warning: `strict-ooxml-latex` (lib test) generated 1 warning
+warning: `strict-ooxml-latex` (lib) generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\import-04da1e2tkz1e4\s-hnbwyegd47-1rnsidc-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\hostile-00jvzdqb9ifcf\s-hnbwyegglm-023zi2p-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\cc0_regressions-0zgqjuj3lugu0\s-hnbwyegbh1-1r7vb0l-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\projects\StrictLib-mufoed\target\debug\incremental\extensions-1i8ckedv6ykq1\s-hnbwyegks1-14dsh4a-working`
+
+warning: `strict-ooxml-latex` (test "hostile") generated 1 warning
+warning: `strict-ooxml-latex` (test "cc0_regressions") generated 1 warning
+warning: `strict-ooxml-latex` (test "import") generated 1 warning
+warning: `strict-ooxml-latex` (test "extensions") generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.50s

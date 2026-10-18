@@ -1,0 +1,15 @@
+{
+  "cases": 100,
+  "stages": {
+    "complete": 100
+  },
+  "timeouts": 0,
+  "cases_with_import_losses": 99,
+  "loss_events": 210289,
+  "info_events": 53407,
+  "pages_placed": 3990,
+  "math_expressions_in_main_document": 169071,
+  "cases_with_page_bounds_candidates": 37,
+  "issues_detail_cap_reached": 6,
+  "summary_sha256": "d8dc3d9ebdbc4542a8111509c2e9e0928c887d79acee5b7972b47b18f634fc46"
+}

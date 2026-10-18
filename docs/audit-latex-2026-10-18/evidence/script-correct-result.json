@@ -1,0 +1,51 @@
+{
+  "import": {
+    "details_truncated": false,
+    "feature_counts_truncated": false,
+    "features": {
+      "preamble:documentclass": {
+        "info": 1,
+        "loss": 0
+      }
+    },
+    "included_files": 0,
+    "info_count": 1,
+    "issues": [
+      {
+        "end": 14,
+        "feature": "preamble:documentclass",
+        "file": "script-correct.tex",
+        "severity": "Info",
+        "start": 0
+      }
+    ],
+    "loss_count": 0,
+    "nodes": 4,
+    "text_scalars": 5,
+    "tokens": 31
+  },
+  "import_ms": 5,
+  "input": "target\\latex-audit-probes\\script-correct.tex",
+  "render": {
+    "overflow_text": [
+      {
+        "baseline": -5.573333333333334,
+        "page": 1,
+        "page_height": 1122.5333333333333,
+        "page_width": 793.7333333333333,
+        "text": "2",
+        "width": 4.5012,
+        "x": 8.932000000000002
+      }
+    ],
+    "pages": 1,
+    "scope": "all_pages",
+    "text_items": 9,
+    "warnings": []
+  },
+  "render_page_limit": 0,
+  "stage": "complete",
+  "total_ms": 32,
+  "write_report": "NormalizationReport { conformance_detected: None, applied: {}, losses: [], pending: {}, removed_nodes: 0, reported_nodes: 0, fatal: None }",
+  "writer_no_silent_loss": true
+}
