@@ -60,7 +60,10 @@ pub enum VisualError {
     Render(StrictError),
     /// Model or revision is invalid.
     Edit(EditError),
-    /// Attribution would change placement or cannot be proved.
+    /// The stamped copy did not place like the original. Carets taken from
+    /// it would sit on the wrong lines, so the whole map is refused. A fill
+    /// that only changes colour, and one text fragment that cannot be bound,
+    /// do not.
     Attribution,
 }
 impl std::fmt::Display for VisualError {
@@ -387,7 +390,9 @@ impl Editor<'_> {
             })
             .flatten()
             .collect();
-        // The copy differs only in colours.
+        // The copy differs in colour and, for a picture fill, the shape
+        // description. Fill structure stays, so a gradient is still a path
+        // and a picture fill is still an image.
         let mut used = unused;
         let mut tagged = self.document.clone();
         let mut nodes = BTreeMap::new();
@@ -498,6 +503,7 @@ impl Editor<'_> {
                         .fill
                         .as_ref()
                         .and_then(|key| nodes.get(key))
+                        .or_else(|| i.stroke.as_ref().and_then(|key| nodes.get(key)))
                         .and_then(|n| n.drawing.clone())
                         .map(|at| {
                             (
@@ -533,7 +539,13 @@ impl Editor<'_> {
                 if text.field.is_some() {
                     continue;
                 }
-                spans.push(text_span(text, node, page, provider.as_ref())?);
+                // One fragment that cannot be bound keeps no stops. The rest
+                // of the map stays: a hyphen or a caps form the source does
+                // not contain must not hide every other caret. A layout that
+                // actually moved was already refused above.
+                if let Some(span) = text_span(text, node, page, provider.as_ref()) {
+                    spans.push(span);
+                }
             }
         }
         let mut merged: Vec<(TextPosition, VisualRect)> = Vec::new();
@@ -613,7 +625,7 @@ fn text_span(
     node: &mut Node,
     page: usize,
     provider: &dyn strict_ooxml_render_svg::FontProvider,
-) -> Result<Span, VisualError> {
+) -> Option<Span> {
     let family = chosen_family(&text.run, &text.text);
     let metrics = provider.metrics(&family, text.run.bold, text.run.italic);
     let rect = VisualRect {
@@ -624,59 +636,58 @@ fn text_span(
         height: (metrics.ascender + metrics.descender) * text.size_px,
     };
     if node.tab {
-        return Ok(Span {
+        return Some(Span {
             position: node.position.clone(),
             rect,
             stops: vec![(0, text.x), (1, text.x + text.width)],
         });
     }
     if node.position.inline.is_empty() {
+        // The empty-paragraph colour painted real ink. That is not a caret.
         if text.width.abs() > 1e-7 {
-            return Err(VisualError::Attribution);
+            return None;
         }
-        return Ok(Span {
+        return Some(Span {
             position: node.position.clone(),
             rect,
             stops: vec![(0, text.x)],
         });
     }
     let rendered = shown(&node.text, &text.run);
-    if node.cursor >= rendered.len() {
-        node.cursor = 0;
+    let mut cursor = node.cursor;
+    if cursor >= rendered.len() {
+        cursor = 0;
     }
     let find = |needle: &str| {
         rendered
-            .get(node.cursor..)
+            .get(cursor..)
             .and_then(|tail| tail.find(needle))
-            .map(|i| (i + node.cursor, needle.len()))
+            .map(|i| (i + cursor, needle.len()))
     };
     // A line broken by hyphenation shows a hyphen the text does not have.
-    let (start, len) = find(&text.text)
-        .or_else(|| {
-            text.text
-                .strip_suffix('-')
-                .filter(|s| !s.is_empty())
-                .and_then(find)
-        })
-        .ok_or(VisualError::Attribution)?;
+    let (start, len) = find(&text.text).or_else(|| {
+        text.text
+            .strip_suffix('-')
+            .filter(|s| !s.is_empty())
+            .and_then(find)
+    })?;
     let end = start + len;
     // Spaces the line starts with are laid out as an advance before the
     // item, not drawn in it; their carets stand in that advance.
     let skipped = rendered
-        .get(node.cursor..start)
+        .get(cursor..start)
         .filter(|gap| !gap.is_empty() && gap.chars().all(char::is_whitespace))
-        .map(|_| node.cursor);
-    node.cursor = end;
+        .map(|_| cursor);
     let mut stops = vec![];
     let mut scalar = 0;
     let mut bytes = 0;
     for grapheme in node.text.graphemes(true) {
         if skipped.is_some_and(|from| bytes >= from && bytes < start) {
-            let gap = rendered.get(bytes..start).ok_or(VisualError::Attribution)?;
+            let gap = rendered.get(bytes..start)?;
             stops.push((scalar, text.x - measure(gap, text, provider)));
         }
         if bytes >= start && bytes <= end {
-            let prefix = rendered.get(start..bytes).ok_or(VisualError::Attribution)?;
+            let prefix = rendered.get(start..bytes)?;
             let width = measure(prefix, text, provider);
             stops.push((scalar, text.x + width));
         }
@@ -684,10 +695,11 @@ fn text_span(
         bytes += shown(grapheme, &text.run).len();
     }
     if bytes >= start && bytes <= end {
-        let prefix = rendered.get(start..bytes).ok_or(VisualError::Attribution)?;
+        let prefix = rendered.get(start..bytes)?;
         stops.push((scalar, text.x + measure(prefix, text, provider)));
     }
-    Ok(Span {
+    node.cursor = end;
+    Some(Span {
         position: node.position.clone(),
         rect,
         stops,
@@ -766,6 +778,10 @@ fn close(a: f64, b: f64) -> bool {
     (a - b).abs() <= 1e-6
 }
 
+/// Item tree, text and geometry. Fill colour, stroke colour, image alt and
+/// gradient stops are paint: the stamp changes those and nothing else. A
+/// path, image or group that appears or disappears still fails, because the
+/// carets after it would be read from the wrong place.
 fn same_items(a: &[Item], b: &[Item]) -> bool {
     let all = |a: &[f64], b: &[f64]| a.iter().zip(b).all(|(a, b)| close(*a, *b));
     a.len() == b.len()
@@ -841,27 +857,35 @@ fn stamp_blocks(
                     containers: parents.to_vec(),
                     block,
                 };
-                if !crate::structured::complex_fields(&p.inlines) {
-                    let empty = p.inlines.iter().all(|i| match i {
-                        Inline::Run(r) => {
-                            r.revision.is_none()
-                                && r.content
-                                    .iter()
-                                    .all(|c| matches!(c, RunContent::Text(t) if t.text.is_empty()))
-                        }
-                        Inline::BookmarkStart(_)
-                        | Inline::BookmarkEnd(_)
-                        | Inline::CommentRangeStart(_)
-                        | Inline::CommentRangeEnd(_)
-                        | Inline::CommentReference(_) => true,
-                        _ => false,
-                    });
-                    if empty {
-                        stamp_empty(p, &address, used, nodes)?;
-                        continue;
+                let empty = p.inlines.iter().all(|i| match i {
+                    Inline::Run(r) => {
+                        r.revision.is_none()
+                            && r.content
+                                .iter()
+                                .all(|c| matches!(c, RunContent::Text(t) if t.text.is_empty()))
                     }
-                    stamp_inlines(&mut p.inlines, &address, &[], used, nodes)?;
+                    Inline::BookmarkStart(_)
+                    | Inline::BookmarkEnd(_)
+                    | Inline::CommentRangeStart(_)
+                    | Inline::CommentRangeEnd(_)
+                    | Inline::CommentReference(_) => true,
+                    _ => false,
+                });
+                if empty {
+                    stamp_empty(p, &address, used, nodes)?;
+                    continue;
                 }
+                // A hyperlink field used to drop the whole paragraph, so the
+                // caret could not stand on its ordinary text either. Field
+                // runs themselves stay unmarked.
+                stamp_inlines(
+                    &mut p.inlines,
+                    &address,
+                    &[],
+                    p.props.run_props.as_ref(),
+                    used,
+                    nodes,
+                )?;
             }
             Block::Table(t) => {
                 for (row, r) in t.rows.iter_mut().enumerate() {
@@ -940,6 +964,7 @@ fn stamp_inlines(
     inlines: &mut Vec<Inline>,
     address: &Address,
     parents: &[usize],
+    mark_props: Option<&strict_ooxml_wml::model::props::RunProperties>,
     used: &mut HashSet<String>,
     nodes: &mut BTreeMap<String, Node>,
 ) -> Result<(), VisualError> {
@@ -957,6 +982,9 @@ fn stamp_inlines(
                     inlines.push(inline);
                     continue;
                 }
+                // Each text node was already its own segment. Splitting the
+                // run changes addition order only; a wrap or a kerning shift
+                // still fails the placement compare.
                 for (content, c) in r.content.iter().enumerate() {
                     let mut run = r.clone();
                     run.content = vec![c.clone()];
@@ -997,9 +1025,15 @@ fn stamp_inlines(
                 }
                 continue;
             }
-            Inline::Hyperlink(v) => stamp_inlines(&mut v.inlines, address, &path, used, nodes)?,
-            Inline::SdtInline(v) => stamp_inlines(&mut v.inlines, address, &path, used, nodes)?,
-            Inline::Directional(v) => stamp_inlines(&mut v.inlines, address, &path, used, nodes)?,
+            Inline::Hyperlink(v) => {
+                stamp_inlines(&mut v.inlines, address, &path, mark_props, used, nodes)?;
+            }
+            Inline::SdtInline(v) => {
+                stamp_inlines(&mut v.inlines, address, &path, mark_props, used, nodes)?;
+            }
+            Inline::Directional(v) => {
+                stamp_inlines(&mut v.inlines, address, &path, mark_props, used, nodes)?;
+            }
             Inline::Drawing(d) => stamp_drawing(d, address, &path, None, used, nodes)?,
             Inline::Math(expression) => {
                 let key = next_color(used, nodes)?;
@@ -1044,15 +1078,17 @@ fn stamp_inlines(
                 );
             }
             Inline::Tab => {
-                // A tab between runs is laid out as a tab in a run is; in the
-                // copy it gets a run of its own to carry the key.
+                // A tab between runs is laid out from the paragraph mark.
+                // The copy needs a run to carry the key, and that run must
+                // wear the mark's own properties or the anchor's size drifts
+                // and the whole map is refused.
                 let key = next_color(used, nodes)?;
                 nodes.insert(key.clone(), tab_node(address, &path, 0));
+                let mut props = mark_props.cloned().unwrap_or_default();
+                props.color = Some(Color::new(hex_digits(&key).to_owned()));
+                props.color_theme = None;
                 inlines.push(Inline::Run(strict_ooxml_wml::model::Run {
-                    props: strict_ooxml_wml::model::props::RunProperties {
-                        color: Some(Color::new(hex_digits(&key).to_owned())),
-                        ..Default::default()
-                    },
+                    props,
                     content: vec![RunContent::Tab],
                     revision: None,
                     location: strict_ooxml_core::error::SourceLocation::unknown(),
@@ -1072,6 +1108,65 @@ fn stamp_inlines(
         inlines.push(inline);
     }
     Ok(())
+}
+
+/// Recolours a shape in place. The attribution copy must paint the same
+/// items as the original: a picture fill stays an image, a gradient stays
+/// one path, and an `a:alpha` on a solid fill stays a translucent group.
+/// Replacing any of those with a flat solid drops or adds an item and the
+/// caret map is refused.
+fn tint_shape(shape: &mut strict_ooxml_wml::model::Shape, key: &str) {
+    use strict_ooxml_wml::model::{GradientStop, ShapeFill};
+    // A picture fill's image uses this description as its alt text.
+    shape.descr = Some(key.into());
+    if let Some(stroke) = shape.stroke.as_mut().filter(|stroke| !stroke.none) {
+        tint_shape_color(
+            stroke.color.get_or_insert_with(|| keyed_shape_color(key)),
+            key,
+        );
+    }
+    // A missing fill and an explicit noFill have no colour for the path.
+    // A solid on the copy does not add an item; an open outline still
+    // carries the key on its stroke.
+    let bare = matches!(shape.fill, Some(ShapeFill::None) | None);
+    match &mut shape.fill {
+        Some(ShapeFill::Solid { color }) => tint_shape_color(color, key),
+        Some(ShapeFill::Gradient { stops, .. }) => {
+            if let Some(stop) = stops.first_mut() {
+                tint_shape_color(&mut stop.color, key);
+            } else {
+                stops.push(GradientStop {
+                    position: 0,
+                    color: keyed_shape_color(key),
+                });
+            }
+        }
+        Some(ShapeFill::Pattern { foreground, .. }) => match foreground {
+            Some(color) => tint_shape_color(color, key),
+            None => *foreground = Some(keyed_shape_color(key)),
+        },
+        Some(ShapeFill::Blip { .. } | ShapeFill::None) | None => {}
+    }
+    if bare {
+        shape.fill = Some(ShapeFill::Solid {
+            color: keyed_shape_color(key),
+        });
+    }
+}
+
+/// Sets the explicit colour the renderer paints, and leaves `a:alpha` markup
+/// so a translucent solid stays wrapped in a group.
+fn tint_shape_color(color: &mut strict_ooxml_wml::model::ShapeColor, key: &str) {
+    color.value = Some(Color::new(hex_digits(key).to_owned()));
+    color.theme = None;
+}
+
+fn keyed_shape_color(key: &str) -> strict_ooxml_wml::model::ShapeColor {
+    strict_ooxml_wml::model::ShapeColor {
+        value: Some(Color::new(hex_digits(key).to_owned())),
+        theme: None,
+        markup: None,
+    }
 }
 
 /// The node of a tab's caret anchor: the tab's own position.
@@ -1103,15 +1198,7 @@ fn stamp_drawing(
     fn mark_graphic(graphic: &mut Graphic, key: &str) {
         match graphic {
             Graphic::Picture(p) => p.descr = Some(key.into()),
-            Graphic::Shape(s) => {
-                s.fill = Some(strict_ooxml_wml::model::ShapeFill::Solid {
-                    color: strict_ooxml_wml::model::ShapeColor {
-                        value: Some(Color::new(hex_digits(key).to_owned())),
-                        theme: None,
-                        markup: None,
-                    },
-                });
-            }
+            Graphic::Shape(s) => tint_shape(s, key),
             Graphic::Group(g) => {
                 for child in &mut g.children {
                     mark_graphic(child, key);

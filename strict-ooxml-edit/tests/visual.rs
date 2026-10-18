@@ -611,3 +611,118 @@ fn every_chart_kind_has_one_full_frame_and_carets_even_without_data() {
         }
     }
 }
+
+/// Gradient, pattern, picture and translucent fills used to be replaced with
+/// a flat solid. A picture fill then lost its image and a translucent solid
+/// lost its group, and the whole caret map was refused. Recolouring in place
+/// keeps every caret, including the text around the shapes.
+#[test]
+fn shape_fills_keep_the_caret_map() {
+    use strict_ooxml_edit::DrawingPosition;
+    let shape = |fill: &str| {
+        format!(
+            "<w:p><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">\
+             <wp:extent cx=\"457200\" cy=\"228600\"/>\
+             <wp:docPr id=\"1\" name=\"s\"/>\
+             <a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">\
+             <wps:wsp><wps:cNvPr id=\"1\" name=\"s\"/><wps:spPr>\
+             <a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"457200\" cy=\"228600\"/></a:xfrm>\
+             <a:prstGeom prst=\"rect\"/>{fill}</wps:spPr></wps:wsp>\
+             </a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"
+        )
+    };
+    let body = format!(
+        "<w:p><w:r><w:t>Keep</w:t></w:r></w:p>{}{}{}{}{}",
+        shape(
+            "<a:gradFill><a:gsLst><a:gs pos=\"0\"><a:srgbClr val=\"FF0000\"/></a:gs>\
+             <a:gs pos=\"100000\"><a:srgbClr val=\"0000FF\"/></a:gs></a:gsLst><a:lin ang=\"0\"/></a:gradFill>"
+        ),
+        shape(
+            "<a:pattFill prst=\"pct20\"><a:fgClr><a:srgbClr val=\"112233\"/></a:fgClr>\
+             <a:bgClr><a:srgbClr val=\"FFFFFF\"/></a:bgClr></a:pattFill>"
+        ),
+        shape("<a:blipFill><a:blip r:embed=\"rIdMissing\"/></a:blipFill>"),
+        shape(
+            "<a:solidFill><a:srgbClr val=\"00AA00\"><a:alpha val=\"40000\"/></a:srgbClr></a:solidFill>"
+        ),
+        shape(
+            "<a:noFill/><a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill></a:ln>"
+        ),
+    );
+    let bytes = DocxBuilder::strict().body(&body).build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let mut document = parse_document(&package, &ParseOptions::default()).unwrap();
+    let before = document.body.clone();
+    let editor = Editor::new(&mut document, EditLimits::default()).unwrap();
+    let map = editor
+        .visual_map(0, &RenderOptions::default(), Some(&package))
+        .unwrap();
+    let text = TextPosition {
+        paragraph: Address::body(0),
+        inline: vec![0],
+        content: 0,
+        offset: 0,
+    };
+    let rects = map.caret(0, &text).unwrap();
+    assert_eq!(rects.len(), 1);
+    assert_eq!(
+        map.hit_test(
+            0,
+            rects[0].page,
+            rects[0].x,
+            rects[0].y + rects[0].height / 2.0
+        )
+        .unwrap(),
+        Some(text)
+    );
+    for block in 1..=5 {
+        let position = DrawingPosition {
+            paragraph: Address::body(block),
+            inline: vec![0],
+            content: Some(0),
+        };
+        assert!(
+            !map.drawing_rects(0, &position).unwrap().is_empty(),
+            "shape {block}"
+        );
+    }
+    assert_eq!(editor.document().body, before);
+}
+
+/// A tab between runs is laid out from the paragraph mark. The copy's run
+/// has to wear that mark, or a larger mark size moves the anchor and the
+/// map is refused.
+#[test]
+fn a_tab_between_runs_keeps_the_mark_size() {
+    use strict_ooxml_wml::model::{Block, Inline};
+    let bytes = DocxBuilder::strict()
+        .body(
+            "<w:p><w:pPr><w:rPr><w:sz w:val=\"40\"/><w:szCs w:val=\"40\"/></w:rPr></w:pPr>\
+             <w:r><w:t>A</w:t></w:r><w:r><w:t>B</w:t></w:r></w:p>",
+        )
+        .build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let mut document = parse_document(&package, &ParseOptions::default()).unwrap();
+    let Block::Paragraph(paragraph) = &mut document.body.blocks[0] else {
+        panic!("paragraph");
+    };
+    paragraph.inlines.insert(1, Inline::Tab);
+    let editor = Editor::new(&mut document, EditLimits::default()).unwrap();
+    let map = editor
+        .visual_map(0, &RenderOptions::default(), Some(&package))
+        .unwrap();
+    let before = TextPosition {
+        paragraph: Address::body(0),
+        inline: vec![0],
+        content: 0,
+        offset: 1,
+    };
+    let after = TextPosition {
+        paragraph: Address::body(0),
+        inline: vec![2],
+        content: 0,
+        offset: 0,
+    };
+    assert_eq!(map.caret(0, &before).unwrap().len(), 1);
+    assert_eq!(map.caret(0, &after).unwrap().len(), 1);
+}
