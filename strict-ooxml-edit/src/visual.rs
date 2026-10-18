@@ -288,10 +288,23 @@ impl VisualMap {
                 }
             }
         }
-        out.dedup_by(|a, b| {
-            a.page == b.page && (a.x - b.x).abs() < 1e-7 && (a.y - b.y).abs() < 1e-7
-        });
-        Ok(out)
+        // One source offset is the end of a fragment and the start of the
+        // next. A justified line widens the space between those two x
+        // positions, and both were drawn. The following glyph is the one
+        // further along the line.
+        let mut kept = Vec::new();
+        for rect in out {
+            if let Some(previous) = kept.iter_mut().find(|previous: &&mut VisualRect| {
+                previous.page == rect.page && (previous.y - rect.y).abs() < 1.0
+            }) {
+                if rect.x > previous.x {
+                    previous.x = rect.x;
+                }
+                continue;
+            }
+            kept.push(rect);
+        }
+        Ok(kept)
     }
     /// Rectangles covering a text-node scalar interval.
     pub fn selection(

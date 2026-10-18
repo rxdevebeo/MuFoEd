@@ -7,6 +7,42 @@ use strict_ooxml_edit::{
 use strict_ooxml_render_svg::{place_pages, Item, RenderOptions};
 use strict_ooxml_testkit::DocxBuilder;
 use strict_ooxml_wml::{parse_document, ParseOptions};
+/// A justified line widens the space after a word. That boundary is the end
+/// of one fragment and the start of the next, and both used to be drawn.
+#[test]
+fn a_justified_word_boundary_is_one_caret() {
+    let words = "alpha beta gamma delta epsilon zeta eta theta ".repeat(8);
+    let body = format!(
+        "<w:p><w:pPr><w:jc w:val=\"both\"/></w:pPr><w:r><w:t xml:space=\"preserve\">{words}</w:t></w:r></w:p>"
+    );
+    let bytes = DocxBuilder::strict().body(&body).build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let mut document = parse_document(&package, &ParseOptions::default()).unwrap();
+    let editor = Editor::new(&mut document, EditLimits::default()).unwrap();
+    let map = editor
+        .visual_map(0, &RenderOptions::default(), Some(&package))
+        .unwrap();
+    let paragraph = Address::body(0);
+    for offset in 0..=words.chars().count() {
+        let pos = TextPosition {
+            paragraph: paragraph.clone(),
+            inline: vec![0],
+            content: 0,
+            offset,
+        };
+        let rects = map.caret(0, &pos).unwrap();
+        let mut lines = Vec::new();
+        for rect in &rects {
+            let y = (rect.y * 10.0).round() as i64;
+            assert!(
+                !lines.contains(&(rect.page, y)),
+                "offset {offset} has two carets on one line: {rects:?}"
+            );
+            lines.push((rect.page, y));
+        }
+    }
+}
+
 #[test]
 fn caret_matches_renderer_and_hits_exact_unicode_boundaries() {
     let xml="<w:document xmlns:w=\"http://purl.oclc.org/ooxml/wordprocessingml/main\"><w:body><w:p><w:r><w:t>А🙂Б</w:t></w:r></w:p></w:body></w:document>";
