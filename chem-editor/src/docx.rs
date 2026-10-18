@@ -840,6 +840,8 @@ fn bond_shape(structure_id: u64, bond: &Bond, a: Point, b: Point, id: u32) -> w:
 }
 
 fn atom_shape(structure: &Structure, atom: &Atom, world: Point, id: u32) -> w::drawing::Graphic {
+    // Push the label outward, along the bonds' bisector, clear of the bonds.
+    let world = world.add(structure.label_outward(atom).scale(10.8));
     let label = atom_label(structure, atom);
     let width =
         (text_width(&label, 18.0) + text_width(&charge_text(atom.charge), 12.6) + 6.0).max(20.0);

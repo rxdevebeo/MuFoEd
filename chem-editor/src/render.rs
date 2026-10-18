@@ -169,6 +169,21 @@ pub fn structure_prims(structure: &Structure, theme: &Theme, show_carbon: bool) 
         .iter()
         .map(|atom| atom_label(structure, atom, show_carbon, theme.font))
         .collect();
+    // A labelled atom pushes its text outward, along the bonds' bisector, so
+    // the ring lines do not cross the letter. Bonds are then trimmed less.
+    let offsets: Vec<Point> = structure
+        .atoms
+        .iter()
+        .map(|atom| structure.label_outward(atom).scale(theme.font * 0.6))
+        .collect();
+    let trim_at = |index: usize| {
+        labels
+            .get(index)
+            .and_then(Option::as_ref)
+            .map_or(0.0, |label| {
+                (label.radius() - offsets[index].length()).max(1.5)
+            })
+    };
     let position = |id: u64| {
         structure
             .atom(id)
@@ -178,23 +193,15 @@ pub fn structure_prims(structure: &Structure, theme: &Theme, show_carbon: bool) 
         let (Some(a), Some(b)) = (position(bond.a), position(bond.b)) else {
             continue;
         };
-        let a_trim = labels
-            .get(index_of(structure, bond.a))
-            .and_then(Option::as_ref)
-            .map_or(0.0, Label::radius);
-        let b_trim = labels
-            .get(index_of(structure, bond.b))
-            .and_then(Option::as_ref)
-            .map_or(0.0, Label::radius);
-        let from = trim_towards(a, b, a_trim);
-        let to = trim_towards(b, a, b_trim);
+        let from = trim_towards(a, b, trim_at(index_of(structure, bond.a)));
+        let to = trim_towards(b, a, trim_at(index_of(structure, bond.b)));
         bond_prims(from, to, bond.order, bond.stereo, theme.ink, &mut prims);
     }
     for (index, atom) in structure.atoms.iter().enumerate() {
         let Some(label) = &labels[index] else {
             continue;
         };
-        let p = atom.position.add(structure.origin);
+        let p = atom.position.add(structure.origin).add(offsets[index]);
         let color = atom_color(atom.element, theme);
         let total = label.width + text_width(&label.charge, label_charge_size(theme));
         let left = p.x - total / 2.0;

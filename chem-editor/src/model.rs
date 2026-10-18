@@ -208,6 +208,31 @@ impl Structure {
         }
     }
 
+    /// Unit direction pointing away from an atom's bonds, so its label can sit
+    /// clear of them. Zero for an atom with no bonds or with balanced ones.
+    #[must_use]
+    pub fn label_outward(&self, atom: &Atom) -> Point {
+        let mut sum = Point::new(0.0, 0.0);
+        for bond in self.bonds_at(atom.id) {
+            let other = if bond.a == atom.id { bond.b } else { bond.a };
+            let Some(other) = self.atom(other) else {
+                continue;
+            };
+            let delta = other.position.sub(atom.position);
+            let length = delta.length();
+            if length > 0.001 {
+                sum.x += delta.x / length;
+                sum.y += delta.y / length;
+            }
+        }
+        let length = sum.length();
+        if length > 0.001 {
+            Point::new(-sum.x / length, -sum.y / length)
+        } else {
+            Point::new(0.0, 0.0)
+        }
+    }
+
     /// Implicit hydrogen count for an atom, honouring the explicit override.
     #[must_use]
     pub fn hydrogens(&self, atom: &Atom) -> u8 {
