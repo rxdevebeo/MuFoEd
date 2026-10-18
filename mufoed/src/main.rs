@@ -2,8 +2,8 @@
 //! toolkit.
 //!
 //! One window, one tab per document (as in WPS Office), a Word-style ribbon.
-//! Documents are opened from DOCX (Strict and Transitional), RTF, PDF and
-//! DjVu - the last two converted, scanned pages recognized by a local Ollama
+//! Documents are opened from DOCX (Strict and Transitional), RTF, HTML, LaTeX,
+//! PDF and DjVu - the last two converted, scanned pages recognized by a local Ollama
 //! vision model - shown as the toolkit renders them, edited through its
 //! transactional editor, and saved as Strict DOCX or exported to PDF, SVG and
 //! plain text. Interface strings come from JSON files (`locales/`).

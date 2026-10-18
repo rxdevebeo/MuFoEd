@@ -320,6 +320,8 @@ pub(crate) struct ImportDialog {
     first: usize,
     last: usize,
     ocr: bool,
+    /// When recognizing, the scan itself is stored in the document.
+    include_original: bool,
     layout: bool,
 }
 
@@ -627,7 +629,11 @@ impl App {
             } else {
                 Mode::Semantic
             },
-            images: import.images,
+            images: if import.ocr {
+                import.include_original
+            } else {
+                import.images
+            },
             pages: (!import.all_pages)
                 .then_some((import.first.max(1), import.last.max(import.first.max(1)))),
             ocr,
@@ -777,7 +783,7 @@ impl App {
                 let picked = rfd::FileDialog::new()
                     .set_title(self.t("dialog.insert_title"))
                     .add_filter(self.t("filter.all_supported"), formats::OPEN_EXTENSIONS)
-                    .add_filter("HTML, RTF", &["html", "htm", "rtf"])
+                    .add_filter("HTML, RTF, LaTeX", &["html", "htm", "rtf", "tex", "ltx"])
                     .add_filter(self.t("filter.text"), &["txt"])
                     .pick_file();
                 if let (Some(path), Some(tab)) = (picked, self.active_tab()) {
@@ -922,7 +928,14 @@ impl App {
                 self.ai_probe(ctx);
                 self.dialog = Some(Dialog::AiSetup);
             }
-            Action::ToggleAiPane => self.ai.open = !self.ai.open,
+            Action::ToggleAiPane => {
+                let tab = self.active_tab().map(|tab| tab.id);
+                self.ai.shown = match (self.ai.shown, tab) {
+                    (Some(shown), Some(tab)) if shown == tab => None,
+                    (_, Some(tab)) => Some(tab),
+                    _ => None,
+                };
+            }
             Action::ChartDialog => {
                 if let Some(tab) = self.active_tab() {
                     tab.send(Request::ChartOfObject);
@@ -1909,7 +1922,10 @@ impl eframe::App for App {
                     .active_tab()
                     .is_some_and(|tab| !tab.comments.is_empty());
                 let _ = has_comments;
-                if self.ai.open && self.active_tab().is_some() {
+                if self
+                    .active_tab()
+                    .is_some_and(|tab| self.ai.shown == Some(tab.id))
+                {
                     egui::Panel::right("ai")
                         .resizable(true)
                         .default_size(340.0)
@@ -2100,6 +2116,7 @@ impl App {
                     Kind::Pdf => Color32::from_rgb(200, 40, 40),
                     Kind::Djvu => Color32::from_rgb(120, 80, 160),
                     Kind::Rtf => Color32::from_rgb(40, 140, 120),
+                    Kind::Latex => Color32::from_rgb(180, 90, 20),
                     _ => theme::ACCENT,
                 };
                 ui.painter().rect_filled(badge, 3.0, badge_color);
@@ -2295,7 +2312,9 @@ impl App {
             comments_open: self.comments_open,
             spelling: self.settings.spelling,
             ai_language: &self.settings.ai_language,
-            ai_open: self.ai.open,
+            ai_open: self
+                .active_tab()
+                .is_some_and(|tab| self.ai.shown == Some(tab.id)),
             header_footer: tab
                 .and_then(|tab| tab.cursor.as_ref())
                 .and_then(|cursor| cursor.header_footer.as_ref()),
@@ -3999,7 +4018,9 @@ impl App {
                     ui.radio_value(&mut import.visual, false, t("import.semantic"));
                     ui.radio_value(&mut import.visual, true, t("import.visual"));
                     ui.add_space(4.0);
-                    ui.checkbox(&mut import.images, t("import.images"));
+                    ui.add_enabled_ui(!import.ocr, |ui| {
+                        ui.checkbox(&mut import.images, t("import.images"));
+                    });
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut import.all_pages, t("import.all_pages"));
                         ui.add_enabled_ui(!import.all_pages, |ui| {
@@ -4020,6 +4041,7 @@ impl App {
                         ui.checkbox(&mut import.ocr, t("import.ocr"));
                         ui.add_enabled_ui(import.ocr, |ui| {
                             ui.indent("ocr-options", |ui| {
+                                ui.checkbox(&mut import.include_original, t("import.ocr_original"));
                                 ui.checkbox(&mut import.layout, t("import.ocr_layout"));
                                 ui.label(
                                     RichText::new(format!(
@@ -4161,6 +4183,7 @@ impl ImportDialog {
             first: 1,
             last: 10,
             ocr: ocr && cfg!(feature = "ocr"),
+            include_original: false,
             layout: false,
         }
     }

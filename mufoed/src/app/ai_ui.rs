@@ -122,11 +122,12 @@ type PictureResult = Result<Vec<u8>, String>;
 /// Everything the AI side keeps.
 #[derive(Default)]
 pub(crate) struct AiState {
-    pub(crate) open: bool,
     probe: Probe,
     probe_rx: Option<Receiver<Result<Vec<String>, String>>>,
-    /// What waits for the document's text, by request id.
-    pending: Option<(u64, AiAction)>,
+    /// What waits for the document's text: request id, its tab, the action.
+    pending: Option<(u64, u64, AiAction)>,
+    /// The tab whose AI pane is open. Other documents do not show it.
+    pub(crate) shown: Option<u64>,
     next_id: u64,
     job: Option<Job>,
     download: Option<Download>,
@@ -210,6 +211,7 @@ impl App {
         let Some(tab) = self.active_tab() else {
             return;
         };
+        let tab_id = tab.id;
         tab.send(if matches!(action, AiAction::Cleanup(_)) {
             Request::CleanupSource { job: id }
         } else {
@@ -218,17 +220,17 @@ impl App {
                 job: id,
             }
         });
-        self.ai.pending = Some((id, action));
-        self.ai.open = true;
+        self.ai.pending = Some((id, tab_id, action));
+        self.ai.shown = Some(tab_id);
     }
 
     /// The document's text arrived: the job starts.
     pub(crate) fn ai_source(&mut self, ctx: &egui::Context, tab: u64, id: u64, source: AiSource) {
-        let Some((pending, action)) = self.ai.pending.take() else {
+        let Some((pending, pending_tab, action)) = self.ai.pending.take() else {
             return;
         };
         if pending != id {
-            self.ai.pending = Some((pending, action));
+            self.ai.pending = Some((pending, pending_tab, action));
             return;
         }
         let now = ctx.input(|input| input.time);
@@ -842,7 +844,7 @@ impl App {
             });
         });
         if closing {
-            self.ai.open = false;
+            self.ai.shown = None;
             return;
         }
         if let Some(config) = self.ai_config() {
@@ -853,18 +855,21 @@ impl App {
             );
         }
         ui.add_space(6.0);
-        if self.ai.pending.is_some() {
+        let here = self.active_tab().map(|tab| tab.id);
+        if self
+            .ai
+            .pending
+            .as_ref()
+            .is_some_and(|(_, tab, _)| Some(*tab) == here)
+        {
             ui.horizontal(|ui| {
                 ui.spinner();
                 ui.label(t("ai.preparing"));
             });
         }
-        if self
-            .ai
-            .job
-            .as_ref()
-            .is_some_and(|job| matches!(job.action, AiAction::Cleanup(_)))
-        {
+        if self.ai.job.as_ref().is_some_and(|job| {
+            Some(job.tab) == here && matches!(job.action, AiAction::Cleanup(_))
+        }) {
             let job = self.ai.job.as_mut().unwrap();
             let tab_id = job.tab;
             if let Some(plan) = cleanup_ui(ui, job, &self.i18n) {
@@ -874,8 +879,13 @@ impl App {
             }
             return;
         }
-        let Some(job) = self.ai.job.as_ref() else {
-            if self.ai.pending.is_none() {
+        let Some(job) = self.ai.job.as_ref().filter(|job| Some(job.tab) == here) else {
+            if self
+                .ai
+                .pending
+                .as_ref()
+                .is_none_or(|(_, tab, _)| Some(*tab) != here)
+            {
                 ui.label(RichText::new(t("ai.empty")).weak());
             }
             return;

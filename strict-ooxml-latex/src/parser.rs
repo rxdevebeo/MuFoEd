@@ -2877,6 +2877,7 @@ impl Parser<'_> {
             numbering,
             footnotes,
             endnotes,
+            comments: Vec::new(),
             settings: Settings {
                 footnote_properties: document_footnote,
                 endnote_properties: document_endnote,
@@ -2897,6 +2898,7 @@ impl Parser<'_> {
                 font_table: None,
                 footnotes: footnotes_part,
                 endnotes: endnotes_part,
+                comments: None,
                 theme: None,
             },
         };

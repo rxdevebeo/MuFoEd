@@ -9,7 +9,7 @@ use std::time::Instant;
 use eframe::egui;
 use strict_ooxml::OpenControl;
 
-use crate::formats::{Kind, Source};
+use crate::formats::{Kind, OriginalSource, Source};
 use crate::raster::Bitmap;
 use crate::worker::{
     self, Busy, Cursor, DocInfo, EditState, Note, OutlineEntry, PageData, Reply, Request,
@@ -104,6 +104,12 @@ pub(crate) struct ViewState {
     pub(crate) pending: HashSet<(usize, u64, u32)>,
     pub(crate) raster_tx: Sender<Rastered>,
     pub(crate) raster_rx: Receiver<Rastered>,
+    /// Source-page pictures for a recognition, beside the recognized pages.
+    pub(crate) original_tx: Sender<(usize, Result<Bitmap, String>)>,
+    pub(crate) original_rx: Receiver<(usize, Result<Bitmap, String>)>,
+    pub(crate) original_textures: HashMap<usize, egui::TextureHandle>,
+    pub(crate) original_pending: HashSet<usize>,
+    pub(crate) original_failed: HashSet<usize>,
     /// When the zoom last changed; rasterizing waits until it settles.
     pub(crate) zoom_changed: f64,
     pub(crate) scroll_to_page: Option<usize>,
@@ -160,11 +166,17 @@ pub(crate) struct Resize {
 impl ViewState {
     fn new() -> Self {
         let (raster_tx, raster_rx) = std::sync::mpsc::channel();
+        let (original_tx, original_rx) = std::sync::mpsc::channel();
         Self {
             textures: HashMap::new(),
             pending: HashSet::new(),
             raster_tx,
             raster_rx,
+            original_tx,
+            original_rx,
+            original_textures: HashMap::new(),
+            original_pending: HashSet::new(),
+            original_failed: HashSet::new(),
             zoom_changed: -1.0,
             scroll_to_page: None,
             scroll_to_caret: false,
@@ -197,6 +209,8 @@ pub(crate) struct DocTab {
     pub(crate) path: Option<PathBuf>,
     /// The file the tab was opened from.
     pub(crate) source: Option<PathBuf>,
+    /// The scan a recognition was started from, shown beside its text.
+    pub(crate) original: Option<OriginalSource>,
     pub(crate) kind: Option<Kind>,
     pub(crate) status: Status,
     pub(crate) control: OpenControl,
@@ -250,9 +264,19 @@ impl DocTab {
         ctx: &egui::Context,
     ) -> Self {
         let control = OpenControl::new();
-        let path = match &source {
-            Source::File { path, .. } => Some(path.clone()),
-            Source::New => None,
+        let (path, original) = match &source {
+            Source::File { path, import } if import.ocr.is_some() => (
+                Some(path.clone()),
+                crate::formats::detect(path)
+                    .filter(|kind| kind.converted())
+                    .map(|kind| OriginalSource {
+                        path: path.clone(),
+                        kind,
+                        first: import.pages.map(|(start, _)| start).unwrap_or(1),
+                    }),
+            ),
+            Source::File { path, .. } => (Some(path.clone()), None),
+            Source::New => (None, None),
         };
         let (requests, replies) = worker::spawn(source, system_fonts, control.clone(), ctx.clone());
         Self {
@@ -260,6 +284,7 @@ impl DocTab {
             title,
             path: None,
             source: path,
+            original,
             kind: None,
             status: Status::Loading,
             control,

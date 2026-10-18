@@ -5,7 +5,8 @@
 //! text positions, the caret and the selection. The interface sends requests
 //! and draws what comes back: pages as SVG, caret and selection rectangles in
 //! page pixels, the state of the ribbon's toggles. Layout, editing and saving
-//! never run on the interface thread.
+//! never run on the interface thread. Spelling runs on a thread of its own
+//! and never ahead of a waiting key.
 //!
 //! The caret is kept as a paragraph address and a scalar offset into the
 //! paragraph's text ([`Logical`]) rather than as a kernel `TextPosition`: an
@@ -17,7 +18,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use strict_ooxml::edit::{
     Address, Container, Edit, EditLimits, FormatPatch, OperationLimits, Operations, ReplacePolicy,
@@ -726,6 +727,177 @@ pub(crate) struct SpellError {
 /// A paragraph's text checked: its wrong words and the scripts unchecked.
 type Checked = Arc<(Vec<crate::spell::Word>, Vec<crate::spell::Script>)>;
 
+/// Shared with the spelling thread: which pass may publish, and the texts
+/// already checked.
+struct SpellSync {
+    epoch: u64,
+    cache: HashMap<String, Checked>,
+}
+
+/// One body paragraph copied for the spelling thread.
+struct SpellSource {
+    address: Address,
+    pieces: Vec<nav::Piece>,
+    text: String,
+}
+
+struct SpellDone {
+    errors: Vec<SpellError>,
+    missing: Vec<crate::spell::Script>,
+    cache: HashMap<String, Checked>,
+}
+
+fn spell_gate(sync: &Mutex<SpellSync>) -> std::sync::MutexGuard<'_, SpellSync> {
+    sync.lock().unwrap_or_else(|poison| poison.into_inner())
+}
+
+/// `None` when a newer pass has taken the epoch.
+fn spell_document(
+    speller: Arc<crate::spell::Speller>,
+    paragraphs: Vec<SpellSource>,
+    map: Option<Arc<VisualMap>>,
+    revision: u64,
+    cache: HashMap<String, Checked>,
+    sync: &Mutex<SpellSync>,
+    epoch: u64,
+) -> Option<SpellDone> {
+    let mut errors = Vec::new();
+    let mut missing: Vec<crate::spell::Script> = Vec::new();
+    let mut seen: HashMap<String, Checked> = HashMap::new();
+    for source in &paragraphs {
+        if spell_gate(sync).epoch != epoch {
+            return None;
+        }
+        let cached = cache
+            .get(&source.text)
+            .or_else(|| seen.get(&source.text))
+            .cloned();
+        let checked = cached.unwrap_or_else(|| verdicts(&speller, &source.text));
+        seen.insert(source.text.clone(), Arc::clone(&checked));
+        for script in &checked.1 {
+            if !missing.contains(script) {
+                missing.push(*script);
+            }
+        }
+        for word in &checked.0 {
+            if spell_gate(sync).epoch != epoch {
+                return None;
+            }
+            let start = Logical {
+                paragraph: source.address.clone(),
+                offset: word.start,
+            };
+            let end = Logical {
+                paragraph: source.address.clone(),
+                offset: word.end,
+            };
+            let rects = map
+                .as_ref()
+                .and_then(|map| {
+                    map.selection_between(
+                        revision,
+                        &text_position(&source.pieces, &start),
+                        &text_position(&source.pieces, &end),
+                    )
+                    .ok()
+                })
+                .unwrap_or_default();
+            errors.push(SpellError {
+                word: word.text.clone(),
+                start,
+                end,
+                rects,
+            });
+        }
+    }
+    Some(SpellDone {
+        errors,
+        missing,
+        cache: seen,
+    })
+}
+
+fn verdicts(speller: &crate::spell::Speller, text: &str) -> Checked {
+    let mut wrong = Vec::new();
+    let mut unknown = Vec::new();
+    for word in crate::spell::words(text) {
+        match speller.verdict(&word.text) {
+            crate::spell::Verdict::Right => {}
+            crate::spell::Verdict::Wrong => wrong.push(word),
+            crate::spell::Verdict::Unknown(script) => {
+                if !unknown.contains(&script) {
+                    unknown.push(script);
+                }
+            }
+        }
+    }
+    Arc::new((wrong, unknown))
+}
+
+/// The text position the visual map knows a caret by.
+fn text_position(pieces: &[nav::Piece], logical: &Logical) -> TextPosition {
+    if pieces.iter().all(|piece| piece.text.is_empty()) {
+        return TextPosition {
+            paragraph: logical.paragraph.clone(),
+            inline: vec![],
+            content: 0,
+            offset: 0,
+        };
+    }
+    let mut before = 0;
+    let mut fallback = None;
+    for piece in pieces {
+        let end = before + piece.len();
+        if piece.kind == nav::PieceKind::Text {
+            if (before..=end).contains(&logical.offset) {
+                return TextPosition {
+                    paragraph: logical.paragraph.clone(),
+                    inline: piece.inline.clone(),
+                    content: piece.content,
+                    offset: logical.offset - before,
+                };
+            }
+            if before <= logical.offset || fallback.is_none() {
+                let offset = if before <= logical.offset {
+                    piece.len()
+                } else {
+                    0
+                };
+                fallback = Some(TextPosition {
+                    paragraph: logical.paragraph.clone(),
+                    inline: piece.inline.clone(),
+                    content: piece.content,
+                    offset,
+                });
+            }
+        }
+        before = end;
+    }
+    // Beside a tab with no text there, the map knows the position by the
+    // tab itself: offset 0 before it, 1 after it.
+    let mut before = 0;
+    for piece in pieces {
+        let end = before + piece.len();
+        if (piece.text == "\t" || piece.text.starts_with(nav::OBJECT))
+            && (end == logical.offset || before == logical.offset)
+        {
+            return TextPosition {
+                paragraph: logical.paragraph.clone(),
+                inline: piece.inline.clone(),
+                content: piece.content,
+                offset: usize::from(end == logical.offset),
+            };
+        }
+        before = end;
+    }
+    fallback.unwrap_or(TextPosition {
+        paragraph: logical.paragraph.clone(),
+        inline: Vec::new(),
+        content: 0,
+        offset: 0,
+    })
+}
+
 /// A comment as the pane shows it.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CommentView {
@@ -1022,7 +1194,9 @@ fn run(
         ..RenderOptions::default()
     };
     let path = match source {
-        Source::File { path, .. } if !loaded.kind.converted() && loaded.kind != Kind::Rtf => {
+        Source::File { path, .. }
+            if !loaded.kind.converted() && !matches!(loaded.kind, Kind::Rtf | Kind::Latex) =>
+        {
             Some(path.clone())
         }
         _ => None,
@@ -1298,7 +1472,7 @@ struct Worker<'a, 's> {
     font_families: Vec<String>,
     replies: &'s Sender<Reply>,
     ctx: &'s eframe::egui::Context,
-    map: Option<VisualMap>,
+    map: Option<Arc<VisualMap>>,
     pages: Vec<Arc<PageData>>,
     page_sizes: Vec<(f64, f64)>,
     caret: Option<Logical>,
@@ -1318,6 +1492,9 @@ struct Worker<'a, 's> {
     pending_script: Option<Option<VertAlign>>,
     /// The story the caret edits: the body, or a header or footer.
     story: Story,
+    /// The page whose header or footer is open. The same story is painted on
+    /// every page that shows it; the caret stays on this page.
+    header_page: Option<usize>,
     /// Where the caret was in the body before a header was entered.
     body_caret: Option<Logical>,
     undo_depth: usize,
@@ -1329,8 +1506,11 @@ struct Worker<'a, 's> {
     outline: Vec<OutlineEntry>,
     read_only: Option<String>,
     speller: Option<Arc<crate::spell::Speller>>,
-    /// Paragraph texts already checked.
-    spelling: HashMap<String, Checked>,
+    /// Set when underlines should be rebuilt, and cleared once a pass starts.
+    spell_dirty: bool,
+    /// The epoch and word cache shared with the spelling thread. A pass sends
+    /// underlines only when the epoch is still the one it was started with.
+    spell_sync: Arc<Mutex<SpellSync>>,
 }
 
 impl<'a, 's> Worker<'a, 's> {
@@ -1363,8 +1543,13 @@ impl<'a, 's> Worker<'a, 's> {
             formula: None,
             pending_script: None,
             speller: None,
-            spelling: HashMap::new(),
+            spell_dirty: false,
+            spell_sync: Arc::new(Mutex::new(SpellSync {
+                epoch: 0,
+                cache: HashMap::new(),
+            })),
             story: Story::Body,
+            header_page: None,
             body_caret: None,
             undo_depth: 0,
             redo_depth: 0,
@@ -1398,7 +1583,8 @@ impl<'a, 's> Worker<'a, 's> {
         });
         self.send_cursor(false);
         self.send_state();
-        while let Ok(first) = requests.recv() {
+        let mut queued = None;
+        while let Some(first) = queued.take().or_else(|| requests.recv().ok()) {
             // Everything queued behind the first request is handled before the
             // next layout: typing faster than layout costs one layout, not one
             // per key.
@@ -1441,6 +1627,17 @@ impl<'a, 's> Worker<'a, 's> {
             }
             if edited {
                 self.send_state();
+            }
+            // Spelling waits until this burst is done, then runs beside the
+            // caret instead of ahead of the next key.
+            match requests.try_recv() {
+                Ok(next) => queued = Some(next),
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    if self.spell_dirty {
+                        self.schedule_spelling();
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
             }
         }
     }
@@ -1588,7 +1785,7 @@ impl<'a, 's> Worker<'a, 's> {
             }
             Request::Speller(speller) => {
                 self.speller = speller;
-                self.spelling.clear();
+                self.forget_spelling();
                 self.respell();
                 Outcome::Quiet
             }
@@ -1642,7 +1839,7 @@ impl<'a, 's> Worker<'a, 's> {
                 Outcome::Quiet
             }
             Request::Respell => {
-                self.spelling.clear();
+                self.forget_spelling();
                 self.respell();
                 Outcome::Quiet
             }
@@ -1876,7 +2073,7 @@ impl<'a, 's> Worker<'a, 's> {
             Session::Edit(_) if !placed => None,
             Session::Edit(editor) => {
                 match editor.visual_map_placed(editor.revision(), &self.options, &original) {
-                    Ok(map) => Some(map),
+                    Ok(map) => Some(Arc::new(map)),
                     Err(error) => {
                         if self.read_only.is_none() {
                             self.note("note.no_caret_map", error.to_string(), true);
@@ -1891,7 +2088,7 @@ impl<'a, 's> Worker<'a, 's> {
         self.send(Reply::Busy(None));
         let comments = self.comment_views();
         self.send(Reply::Comments(comments));
-        self.send_spelling();
+        self.spell_dirty = self.speller.is_some();
         let outline = self.build_outline();
         if outline != self.outline {
             self.outline.clone_from(&outline);
@@ -1994,67 +2191,7 @@ impl<'a, 's> Worker<'a, 's> {
     /// at the offset, or the nearest one before it (after a tab that ends a
     /// paragraph there is no text to stand in).
     fn position(&self, logical: &Logical) -> TextPosition {
-        let pieces = self.pieces(&logical.paragraph);
-        if pieces.iter().all(|piece| piece.text.is_empty()) {
-            return TextPosition {
-                paragraph: logical.paragraph.clone(),
-                inline: vec![],
-                content: 0,
-                offset: 0,
-            };
-        }
-        let mut before = 0;
-        let mut fallback = None;
-        for piece in &pieces {
-            let end = before + piece.len();
-            if piece.kind == nav::PieceKind::Text {
-                if (before..=end).contains(&logical.offset) {
-                    return TextPosition {
-                        paragraph: logical.paragraph.clone(),
-                        inline: piece.inline.clone(),
-                        content: piece.content,
-                        offset: logical.offset - before,
-                    };
-                }
-                if before <= logical.offset || fallback.is_none() {
-                    let offset = if before <= logical.offset {
-                        piece.len()
-                    } else {
-                        0
-                    };
-                    fallback = Some(TextPosition {
-                        paragraph: logical.paragraph.clone(),
-                        inline: piece.inline.clone(),
-                        content: piece.content,
-                        offset,
-                    });
-                }
-            }
-            before = end;
-        }
-        // Beside a tab with no text there, the map knows the position by the
-        // tab itself: offset 0 before it, 1 after it.
-        let mut before = 0;
-        for piece in &pieces {
-            let end = before + piece.len();
-            if (piece.text == "\t" || piece.text.starts_with(nav::OBJECT))
-                && (end == logical.offset || before == logical.offset)
-            {
-                return TextPosition {
-                    paragraph: logical.paragraph.clone(),
-                    inline: piece.inline.clone(),
-                    content: piece.content,
-                    offset: usize::from(end == logical.offset),
-                };
-            }
-            before = end;
-        }
-        fallback.unwrap_or(TextPosition {
-            paragraph: logical.paragraph.clone(),
-            inline: Vec::new(),
-            content: 0,
-            offset: 0,
-        })
+        text_position(&self.pieces(&logical.paragraph), logical)
     }
 
     /// The caret a kernel position stands for.
@@ -2102,12 +2239,42 @@ impl<'a, 's> Worker<'a, 's> {
     // ----- cursor -------------------------------------------------------
 
     fn caret_rect(&self) -> Option<VisualRect> {
-        let caret = self.caret.as_ref()?;
-        let map = self.map.as_ref()?;
-        map.caret(self.session.revision(), &self.position(caret))
-            .ok()?
-            .into_iter()
-            .next()
+        self.caret_rects().into_iter().next()
+    }
+
+    /// Caret rectangles of the active story. A repeated header or footer
+    /// keeps only the page that was opened for editing.
+    fn caret_rects(&self) -> Vec<VisualRect> {
+        let Some(caret) = &self.caret else {
+            return Vec::new();
+        };
+        let Some(map) = &self.map else {
+            return Vec::new();
+        };
+        let rects = map
+            .caret(self.session.revision(), &self.position(caret))
+            .unwrap_or_default();
+        self.on_edited_page(rects)
+    }
+
+    /// Drops copies of an open header or footer that belong to other pages.
+    fn on_edited_page(&self, rects: Vec<VisualRect>) -> Vec<VisualRect> {
+        let Some(page) = self
+            .header_page
+            .filter(|_| matches!(self.story, Story::HeaderFooter(_)))
+        else {
+            return rects;
+        };
+        let here: Vec<_> = rects
+            .iter()
+            .copied()
+            .filter(|rect| rect.page == page)
+            .collect();
+        if here.is_empty() {
+            rects
+        } else {
+            here
+        }
     }
 
     fn send_cursor(&mut self, scroll: bool) {
@@ -2134,6 +2301,7 @@ impl<'a, 's> Worker<'a, 's> {
             }
             _ => (Vec::new(), Vec::new()),
         };
+        let (carets, selection) = (self.on_edited_page(carets), self.on_edited_page(selection));
         // Selected cells show as cells, without a caret.
         let (carets, selection) = if self.cells.is_some() {
             (Vec::new(), self.cell_rects())
@@ -2329,8 +2497,12 @@ impl<'a, 's> Worker<'a, 's> {
             }
             if header(&self.story) && !header(&position.paragraph.story) {
                 self.body_caret = None;
+                self.header_page = None;
             }
             self.story = position.paragraph.story.clone();
+        }
+        if header(&self.story) {
+            self.header_page = Some(page);
         }
         let line_start = map
             .caret(revision, &position)
@@ -2710,7 +2882,8 @@ impl<'a, 's> Worker<'a, 's> {
         let position = map
             .hit_test(self.session.revision(), page, x, y)
             .ok()
-            .flatten()?;
+            .flatten()
+            .filter(|position| position.paragraph.story == self.story)?;
         Some(self.logical(&position))
     }
 
@@ -3652,96 +3825,84 @@ impl<'a, 's> Worker<'a, 's> {
 
     // ----- spelling -----------------------------------------------------
 
-    /// The words marked again: after the layout catches up (which marks
-    /// them), or at once when it is current.
+    /// Drops remembered verdicts so the next pass checks every paragraph.
+    fn forget_spelling(&self) {
+        spell_gate(&self.spell_sync).cache.clear();
+    }
+
+    /// Asks for underlines again. Layout runs first when the pages are stale;
+    /// the pass itself starts only once the request queue is empty.
     fn respell(&mut self) {
         if self.stale {
             self.ensure_layout();
-        } else {
-            self.send_spelling();
         }
-    }
-
-    /// Marks the body's misspelt words, from the texts checked before when
-    /// they have not changed.
-    fn send_spelling(&mut self) {
-        let Some(speller) = self.speller.clone() else {
+        if self.speller.is_none() {
+            self.spell_dirty = false;
+            {
+                let mut gate = spell_gate(&self.spell_sync);
+                gate.epoch = gate.epoch.wrapping_add(1);
+            }
             self.send(Reply::Spelling {
                 errors: Vec::new(),
                 missing: Vec::new(),
             });
             return;
-        };
-        let revision = self.session.revision();
-        let mut errors = Vec::new();
-        let mut missing: Vec<crate::spell::Script> = Vec::new();
-        let mut seen: HashMap<String, Checked> = HashMap::new();
-        for address in self.paragraphs(&Story::Body) {
-            let text = self.text_of(&address);
-            let cached = self
-                .spelling
-                .get(&text)
-                .or_else(|| seen.get(&text))
-                .cloned();
-            let checked = if let Some(checked) = cached {
-                checked
-            } else {
-                {
-                    let mut wrong = Vec::new();
-                    let mut unknown = Vec::new();
-                    for word in crate::spell::words(&text) {
-                        match speller.verdict(&word.text) {
-                            crate::spell::Verdict::Right => {}
-                            crate::spell::Verdict::Wrong => wrong.push(word),
-                            crate::spell::Verdict::Unknown(script) => {
-                                if !unknown.contains(&script) {
-                                    unknown.push(script);
-                                }
-                            }
-                        }
-                    }
-                    let checked: Checked = Arc::new((wrong, unknown));
-                    checked
-                }
-            };
-            seen.insert(text.clone(), Arc::clone(&checked));
-            for script in &checked.1 {
-                if !missing.contains(script) {
-                    missing.push(*script);
-                }
-            }
-            for word in &checked.0 {
-                let start = Logical {
-                    paragraph: address.clone(),
-                    offset: word.start,
-                };
-                let end = Logical {
-                    paragraph: address.clone(),
-                    offset: word.end,
-                };
-                let rects = self
-                    .map
-                    .as_ref()
-                    .and_then(|map| {
-                        map.selection_between(
-                            revision,
-                            &self.position(&start),
-                            &self.position(&end),
-                        )
-                        .ok()
-                    })
-                    .unwrap_or_default();
-                errors.push(SpellError {
-                    word: word.text.clone(),
-                    start,
-                    end,
-                    rects,
-                });
-            }
         }
-        // What is no longer in the document leaves the cache.
-        self.spelling = seen;
-        self.send(Reply::Spelling { errors, missing });
+        self.spell_dirty = true;
+    }
+
+    /// Copies the body and checks it on another thread. A newer pass, or
+    /// spelling switched off, makes this one throw its result away.
+    fn schedule_spelling(&mut self) {
+        self.spell_dirty = false;
+        let Some(speller) = self.speller.clone() else {
+            return;
+        };
+        let (epoch, cache) = {
+            let mut gate = spell_gate(&self.spell_sync);
+            gate.epoch = gate.epoch.wrapping_add(1);
+            (gate.epoch, gate.cache.clone())
+        };
+        let paragraphs = self
+            .paragraphs(&Story::Body)
+            .into_iter()
+            .map(|address| {
+                let pieces = self.pieces(&address);
+                let text: String = pieces.iter().map(|piece| piece.text.as_str()).collect();
+                SpellSource {
+                    address,
+                    pieces,
+                    text,
+                }
+            })
+            .collect();
+        let map = self.map.clone();
+        let revision = self.session.revision();
+        let replies = self.replies.clone();
+        let ctx = self.ctx.clone();
+        let sync = Arc::clone(&self.spell_sync);
+        let spawned = std::thread::Builder::new()
+            .name("mufoed-spelling".to_owned())
+            .spawn(move || {
+                let Some(done) =
+                    spell_document(speller, paragraphs, map, revision, cache, &sync, epoch)
+                else {
+                    return;
+                };
+                let mut gate = spell_gate(&sync);
+                if gate.epoch != epoch {
+                    return;
+                }
+                gate.cache = done.cache;
+                let _ = replies.send(Reply::Spelling {
+                    errors: done.errors,
+                    missing: done.missing,
+                });
+                ctx.request_repaint();
+            });
+        if spawned.is_err() {
+            self.spell_dirty = true;
+        }
     }
 
     // ----- comments -----------------------------------------------------
@@ -4674,6 +4835,7 @@ impl<'a, 's> Worker<'a, 's> {
             self.body_caret.clone_from(&self.caret);
         }
         self.story = story.clone();
+        self.header_page = Some(page);
         self.object = None;
         self.cells = None;
         self.anchor = None;
@@ -4700,6 +4862,7 @@ impl<'a, 's> Worker<'a, 's> {
             return Outcome::Quiet;
         }
         self.story = Story::Body;
+        self.header_page = None;
         self.anchor = None;
         self.caret = self.body_caret.take().or_else(|| {
             self.first_paragraph().map(|paragraph| Logical {
@@ -4946,13 +5109,7 @@ impl<'a, 's> Worker<'a, 's> {
 
     /// The page the caret is drawn on.
     fn caret_page(&self) -> usize {
-        let revision = self.session.revision();
-        self.caret
-            .as_ref()
-            .zip(self.map.as_ref())
-            .and_then(|(caret, map)| map.caret(revision, &self.position(caret)).ok())
-            .and_then(|rects| rects.first().map(|rect| rect.page))
-            .unwrap_or(0)
+        self.caret_rects().first().map_or(0, |rect| rect.page)
     }
 
     /// Takes the page numbers (and their paragraphs, when nothing else is
@@ -6916,7 +7073,10 @@ impl<'a, 's> Worker<'a, 's> {
                 return Outcome::Quiet;
             }
         };
-        if matches!(loaded.kind, formats::Kind::Html | formats::Kind::Rtf) {
+        if matches!(
+            loaded.kind,
+            formats::Kind::Html | formats::Kind::Rtf | formats::Kind::Latex
+        ) {
             return match self.insert_rich_document(&loaded.document) {
                 Ok(outcome) => {
                     self.note("note.imported", loaded.log, false);
@@ -10342,6 +10502,93 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Arrows and a single click stay in the body. A double click in the
+    /// top margin, or the header button, opens that page's header.
+    #[test]
+    fn the_caret_enters_a_header_only_on_purpose() {
+        with_empty_worker(|worker| {
+            worker.handle(Request::Type("body".into()));
+            worker.handle(Request::HeaderFooter(HeaderFooterCommand::Insert {
+                top: true,
+                align: Align::Left,
+                of_total: None,
+            }));
+            for _ in 0..2 {
+                worker.handle(Request::Move {
+                    motion: Motion::Up,
+                    extend: false,
+                });
+            }
+            assert!(
+                matches!(worker.story, Story::Body),
+                "an arrow moved the caret into the header"
+            );
+            assert!(matches!(
+                worker.caret.as_ref().map(|caret| &caret.paragraph.story),
+                Some(Story::Body)
+            ));
+            worker.handle(Request::Type("Q".into()));
+            let body = worker.text_of(&Address::body(0));
+            assert!(body.contains('Q'), "{body}");
+            let header_has_q = worker
+                .session
+                .document()
+                .headers_footers
+                .iter()
+                .any(|header| {
+                    worker
+                        .paragraphs(&Story::HeaderFooter(header.part.clone()))
+                        .iter()
+                        .any(|at| worker.text_of(at).contains('Q'))
+                });
+            assert!(!header_has_q, "typing went into the header");
+
+            worker.handle(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            });
+            worker.handle(Request::Insert(Insert::PageBreak));
+            worker.relayout();
+            assert!(worker.pages.len() >= 2, "{}", worker.pages.len());
+            worker.handle(Request::Click {
+                page: 1,
+                x: 200.0,
+                y: 20.0,
+                extend: false,
+                column: false,
+            });
+            assert!(matches!(worker.story, Story::Body));
+
+            let entered = worker.handle(Request::SelectWord {
+                page: 1,
+                x: 200.0,
+                y: 20.0,
+            });
+            assert!(matches!(entered, Outcome::Edited));
+            assert!(matches!(worker.story, Story::HeaderFooter(_)));
+            assert_eq!(worker.header_page, Some(1));
+            worker.handle(Request::Type("Head".into()));
+            worker.relayout();
+            let rects = worker.caret_rects();
+            assert!(!rects.is_empty(), "{:?}", worker.caret);
+            assert!(rects.iter().all(|rect| rect.page == 1), "{rects:?}");
+
+            worker.handle(Request::HeaderFooter(HeaderFooterCommand::Exit));
+            assert!(matches!(worker.story, Story::Body));
+            assert_eq!(worker.header_page, None);
+
+            worker.handle(Request::HeaderFooter(HeaderFooterCommand::Enter {
+                page: 0,
+                header: true,
+            }));
+            assert!(matches!(worker.story, Story::HeaderFooter(_)));
+            assert_eq!(worker.header_page, Some(0));
+            let rects = worker.caret_rects();
+            assert!(!rects.is_empty());
+            assert!(rects.iter().all(|rect| rect.page == 0), "{rects:?}");
+        });
     }
 
     /// Page numbers go into a footer made for them; a double click above

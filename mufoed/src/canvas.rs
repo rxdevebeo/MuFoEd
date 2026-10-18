@@ -31,8 +31,16 @@ const ZOOM_SETTLE: f64 = 0.18;
 /// At most this many bitmaps in flight per tab.
 const MAX_PENDING: usize = 4;
 
-/// Where each page sits in the column, in content coordinates.
-pub(crate) fn page_rects(tab: &DocTab) -> (Vec<Rect>, egui::Vec2) {
+/// Recognized pages, and the source pages beside them when the window is wide
+/// enough for a recognition.
+pub(crate) struct Desk {
+    pub(crate) pages: Vec<Rect>,
+    pub(crate) originals: Vec<Rect>,
+    pub(crate) content: egui::Vec2,
+}
+
+/// Where each page sits, in content coordinates.
+pub(crate) fn desk(tab: &DocTab) -> Desk {
     let zoom = tab.zoom;
     #[allow(clippy::cast_possible_truncation)]
     let widest = tab
@@ -40,16 +48,40 @@ pub(crate) fn page_rects(tab: &DocTab) -> (Vec<Rect>, egui::Vec2) {
         .iter()
         .map(|page| page.width as f32 * zoom)
         .fold(0.0_f32, f32::max);
-    let column = widest + GAP * 2.0;
+    let pair = tab.original.is_some() && tab.view.viewport.x >= widest * 2.0 + GAP * 3.0;
+    let column = if pair {
+        widest * 2.0 + GAP * 3.0
+    } else {
+        widest + GAP * 2.0
+    };
     let mut y = GAP;
-    let mut rects = Vec::with_capacity(tab.pages.len());
+    let mut pages = Vec::with_capacity(tab.pages.len());
+    let mut originals = Vec::new();
     for page in &tab.pages {
         #[allow(clippy::cast_possible_truncation)]
         let size = vec2(page.width as f32 * zoom, page.height as f32 * zoom);
-        rects.push(Rect::from_min_size(pos2((column - size.x) / 2.0, y), size));
+        if pair {
+            originals.push(Rect::from_min_size(pos2(GAP, y), size));
+            pages.push(Rect::from_min_size(pos2(GAP * 2.0 + widest, y), size));
+        } else {
+            pages.push(Rect::from_min_size(
+                pos2((column - size.x) / 2.0, y),
+                size,
+            ));
+        }
         y += size.y + GAP;
     }
-    (rects, vec2(column, y))
+    Desk {
+        pages,
+        originals,
+        content: vec2(column, y),
+    }
+}
+
+/// Where each recognized page sits in the column, in content coordinates.
+pub(crate) fn page_rects(tab: &DocTab) -> (Vec<Rect>, egui::Vec2) {
+    let desk = desk(tab);
+    (desk.pages, desk.content)
 }
 
 fn receive_bitmaps(ctx: &egui::Context, tab: &mut DocTab) {
@@ -94,6 +126,64 @@ fn receive_bitmaps(ctx: &egui::Context, tab: &mut DocTab) {
                 texture,
             },
         );
+    }
+}
+
+fn receive_originals(ctx: &egui::Context, tab: &mut DocTab) {
+    while let Ok((index, bitmap)) = tab.view.original_rx.try_recv() {
+        tab.view.original_pending.remove(&index);
+        let Ok(bitmap) = bitmap else {
+            tab.view.original_failed.insert(index);
+            continue;
+        };
+        let image =
+            egui::ColorImage::from_rgba_premultiplied([bitmap.width, bitmap.height], &bitmap.rgba);
+        let texture = ctx.load_texture(
+            format!("original-{}-{index}", tab.id),
+            image,
+            egui::TextureOptions::LINEAR,
+        );
+        tab.view.original_textures.insert(index, texture);
+    }
+}
+
+fn request_original(ctx: &egui::Context, tab: &mut DocTab, index: usize) {
+    if tab.original.is_none()
+        || tab.view.original_textures.contains_key(&index)
+        || tab.view.original_pending.contains(&index)
+        || tab.view.original_failed.contains(&index)
+        || tab.view.original_pending.len() >= 2
+    {
+        return;
+    }
+    let Some(source) = tab.original.clone() else {
+        return;
+    };
+    tab.view.original_pending.insert(index);
+    let sender = tab.view.original_tx.clone();
+    let ctx = ctx.clone();
+    rayon::spawn(move || {
+        let bitmap = original_bitmap(&source, index);
+        let _ = sender.send((index, bitmap));
+        ctx.request_repaint();
+    });
+}
+
+fn original_bitmap(source: &crate::formats::OriginalSource, index: usize) -> Result<crate::raster::Bitmap, String> {
+    #[cfg(feature = "ocr")]
+    {
+        let png = crate::formats::original_png(source, index)?;
+        let pixmap = crate::raster::picture_pixmap(&png).ok_or_else(|| "unreadable page".to_owned())?;
+        return Ok(crate::raster::Bitmap {
+            width: pixmap.width() as usize,
+            height: pixmap.height() as usize,
+            rgba: pixmap.data().to_vec(),
+        });
+    }
+    #[cfg(not(feature = "ocr"))]
+    {
+        let _ = (source, index);
+        Err("recognition is not in this build".to_owned())
     }
 }
 
@@ -230,8 +320,12 @@ pub(crate) fn show(
 ) {
     let ctx = ui.ctx().clone();
     receive_bitmaps(&ctx, tab);
+    receive_originals(&ctx, tab);
     let now = ui.input(|input| input.time);
-    let (rects, content) = page_rects(tab);
+    let layout = desk(tab);
+    let rects = &layout.pages;
+    let content = layout.content;
+    let originals = &layout.originals;
     let scale = tab.zoom * ctx.pixels_per_point();
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let key = (scale * 64.0).round().max(1.0) as u32;
@@ -262,6 +356,37 @@ pub(crate) fn show(
                         screen.intersects(clip).then_some(screen)
                     })
                     .collect();
+                for (index, rect) in originals.iter().enumerate() {
+                    let screen = rect.translate(offset);
+                    let local = rect.translate(center);
+                    if !local.expand2(vec2(0.0, rect.height())).intersects(viewport) {
+                        continue;
+                    }
+                    painter.rect_filled(
+                        screen.translate(vec2(1.5, 2.5)),
+                        1.0,
+                        Color32::from_black_alpha(40),
+                    );
+                    painter.rect_filled(screen, 0.0, Color32::WHITE);
+                    if let Some(texture) = tab.view.original_textures.get(&index) {
+                        painter.image(
+                            texture.id(),
+                            screen,
+                            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                            Color32::WHITE,
+                        );
+                    } else {
+                        request_original(&ctx, tab, index);
+                        let size = (screen.width() / 6.0).clamp(12.0, 36.0);
+                        egui::Spinner::new()
+                            .size(size)
+                            .color(Color32::from_gray(160))
+                            .paint_at(
+                                ui,
+                                Rect::from_center_size(screen.center(), vec2(size, size)),
+                            );
+                    }
+                }
                 for (index, rect) in rects.iter().enumerate() {
                     let screen = rect.translate(offset);
                     let local = rect.translate(center);
@@ -561,6 +686,9 @@ pub(crate) fn show(
                 let hit = |pos: egui::Pos2| -> Option<(usize, f64, f64)> {
                     let local = pos - offset;
                     let local = pos2(local.x, local.y);
+                    if originals.iter().any(|rect| rect.contains(local)) {
+                        return None;
+                    }
                     let (index, rect) = rects.iter().enumerate().min_by(|(_, a), (_, b)| {
                         a.distance_to_pos(local)
                             .total_cmp(&b.distance_to_pos(local))

@@ -2746,6 +2746,7 @@ dependencies = [
  "serde_json",
  "strict-ooxml",
  "strict-ooxml-core",
+ "strict-ooxml-pdf",
  "strict-ooxml-render-svg",
  "sys-locale",
  "unicode-segmentation",

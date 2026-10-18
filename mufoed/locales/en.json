@@ -331,6 +331,7 @@
       "docx_transitional": "DOCX (Transitional, normalized to Strict)",
       "rtf": "RTF (imported)",
       "html": "HTML (imported)",
+      "latex": "LaTeX (imported)",
       "pdf": "PDF (converted)",
       "djvu": "DjVu (converted)"
     },
@@ -461,6 +462,7 @@
       "from": "from",
       "to": "to",
       "ocr": "Recognize pages without text (Ollama)",
+      "ocr_original": "Include the original pages in the document",
       "ocr_layout": "Rebuild the page layout block by block",
       "ocr_model": "Model",
       "no_ocr_build": "This build has no recognition (feature `ocr`)."

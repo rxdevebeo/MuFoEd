@@ -19,12 +19,13 @@ doc = false
 [features]
 # Recognition of scanned PDF/DjVu pages through a local Ollama vision model.
 default = ["ocr"]
-ocr = ["strict-ooxml/ocr-ollama", "strict-ooxml/pdf-raster"]
+ocr = ["strict-ooxml/ocr-ollama", "strict-ooxml/pdf-raster", "dep:strict-ooxml-pdf"]
 
 [dependencies]
 diagram-editor = { path = "../diagram-editor", features = ["docx"] }
 encoding_rs.workspace = true
-strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write", "pdf", "convert", "rtf", "html", "djvu-image", "edit", "system-fonts", "font-download"] }
+strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write", "pdf", "convert", "rtf", "html", "latex", "djvu-image", "edit", "system-fonts", "font-download"] }
+strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf", optional = true, features = ["raster"] }
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-svg" }
 eframe = "0.35"

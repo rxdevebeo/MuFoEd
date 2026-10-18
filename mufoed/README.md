@@ -10,7 +10,7 @@ cargo +1.92.0 run -p mufoed --release -- [FILE...]
 
 What it shows:
 
-- **Open**: DOCX (Strict; Transitional through the normalizer), RTF (importer).
+- **Open**: DOCX (Strict; Transitional through the normalizer), RTF, HTML and LaTeX (importers).
 - **Convert**: PDF and DjVu into an editable Strict document, semantic or
   visual mode, page range, images; scanned pages recognized by a local Ollama
   vision model (feature `ocr`, on by default; endpoint and model in Options).
@@ -104,9 +104,10 @@ document request with its timing.
 браузера не воспроизводится. Загрузка изображений выполняется в рабочем потоке,
 с ограничениями объёма и общего времени HTTP-запросов.
 
-HTML (`.html`, `.htm`) и RTF доступны также через «Открыть», «Импорт документа»
+HTML (`.html`, `.htm`), RTF и LaTeX (`.tex`, `.ltx`) доступны также через «Открыть», «Импорт документа»
 и «Вставить текст из файла». При вставке сохраняются поддерживаемое форматирование
 и изображения, заменяется выделение; вся операция отменяется одним Undo.
+`\input` и `\include` читаются из папки исходного `.tex`.
 Относительные пути изображений HTML разрешаются от папки исходного файла.
 HTML читается в UTF-8, с BOM UTF-16 или в кодировке, указанной в `meta charset`.
 Исходный файл не перезаписывается: результат сохраняется в DOCX.

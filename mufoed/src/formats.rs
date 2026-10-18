@@ -2,9 +2,9 @@
 //!
 //! Every input ends as the same thing - an opened Strict package - so the
 //! editor, the renderer and the writer never need to know where a document
-//! came from. DOCX is read through the Transitional normalizer, RTF through the
-//! importer, PDF and DjVu through the converter (with recognition of scanned
-//! pages when it is asked for); a converted document is written to a Strict
+//! came from. DOCX is read through the Transitional normalizer, RTF, HTML and
+//! LaTeX through their importers, PDF and DjVu through the converter (with
+//! recognition of scanned pages when it is asked for); a converted document is written to a Strict
 //! package and opened again.
 
 use std::fmt::Write as _;
@@ -29,6 +29,8 @@ pub(crate) enum Kind {
     Rtf,
     /// HTML, imported.
     Html,
+    /// LaTeX, imported.
+    Latex,
     /// PDF, converted.
     Pdf,
     /// DjVu, converted.
@@ -42,6 +44,7 @@ impl Kind {
             Self::New | Self::Docx | Self::DocxTransitional => "W",
             Self::Rtf => "R",
             Self::Html => "H",
+            Self::Latex => "L",
             Self::Pdf => "P",
             Self::Djvu => "D",
         }
@@ -55,6 +58,7 @@ impl Kind {
             Self::DocxTransitional => "format.docx_transitional",
             Self::Rtf => "format.rtf",
             Self::Html => "format.html",
+            Self::Latex => "format.latex",
             Self::Pdf => "format.pdf",
             Self::Djvu => "format.djvu",
         }
@@ -140,6 +144,7 @@ pub(crate) fn detect(path: &Path) -> Option<Kind> {
         "docx" | "docm" | "dotx" => Some(Kind::Docx),
         "rtf" => Some(Kind::Rtf),
         "html" | "htm" => Some(Kind::Html),
+        "tex" | "ltx" => Some(Kind::Latex),
         "pdf" => Some(Kind::Pdf),
         "djvu" | "djv" => Some(Kind::Djvu),
         _ => None,
@@ -148,7 +153,7 @@ pub(crate) fn detect(path: &Path) -> Option<Kind> {
 
 /// Extensions the open dialog offers.
 pub(crate) const OPEN_EXTENSIONS: &[&str] = &[
-    "docx", "docm", "dotx", "rtf", "html", "htm", "pdf", "djvu", "djv",
+    "docx", "docm", "dotx", "rtf", "html", "htm", "tex", "ltx", "pdf", "djvu", "djv",
 ];
 
 /// An empty document with the styles a new document needs.
@@ -190,6 +195,7 @@ pub(crate) fn open(source: &Source, control: &OpenControl) -> Result<Loaded, Str
                 Kind::Docx | Kind::DocxTransitional | Kind::New => open_docx(path, control),
                 Kind::Rtf => open_rtf(path),
                 Kind::Html => open_html(path),
+                Kind::Latex => open_latex(path),
                 Kind::Pdf => open_pdf(path, import),
                 Kind::Djvu => open_djvu(path, import),
             }
@@ -231,6 +237,21 @@ fn open_rtf(path: &Path) -> Result<Loaded, String> {
     Ok(Loaded {
         document: opened.document,
         kind: Kind::Rtf,
+        log,
+    })
+}
+
+fn open_latex(path: &Path) -> Result<Loaded, String> {
+    let opened = StrictDocument::import_latex_path(path, &strict_ooxml::LatexOptions::default())
+        .map_err(|error| error.to_string())?;
+    let mut log = String::new();
+    let _ = writeln!(log, "{:?}", opened.status());
+    for issue in opened.pipeline_summary().issues {
+        let _ = writeln!(log, "{} {}: {}", issue.stage, issue.id, issue.detail);
+    }
+    Ok(Loaded {
+        document: opened.document,
+        kind: Kind::Latex,
         log,
     })
 }
@@ -399,6 +420,54 @@ fn open_djvu(path: &Path, import: &ImportOptions) -> Result<Loaded, String> {
     finish_conversion(&converted.document, &bag, path, Kind::Djvu, log)
 }
 
+/// The file a recognition was started from, so its pages can be shown beside
+/// the recognized text. `first` is the 1-based source page of document page 0.
+#[derive(Clone, Debug)]
+pub(crate) struct OriginalSource {
+    pub(crate) path: PathBuf,
+    pub(crate) kind: Kind,
+    pub(crate) first: usize,
+}
+
+/// The PNG of one source page. `document_page` is zero-based in the opened
+/// document.
+#[cfg(feature = "ocr")]
+pub(crate) fn original_png(source: &OriginalSource, document_page: usize) -> Result<Vec<u8>, String> {
+    let number = source.first.saturating_add(document_page);
+    let bytes = std::fs::read(&source.path).map_err(|error| error.to_string())?;
+    match source.kind {
+        Kind::Pdf => {
+            let pdf = strict_ooxml::PdfDocument::open(&bytes, strict_ooxml::PdfLimits::default())
+                .map_err(|error| error.to_string())?;
+            let raster = pdf.rasterizer().map_err(|error| error.to_string())?;
+            raster
+                .page_png(
+                    number.max(1),
+                    &strict_ooxml_pdf::raster::RasterOptions {
+                        scale: 1.25,
+                        ..strict_ooxml_pdf::raster::RasterOptions::default()
+                    },
+                )
+                .map_err(|error| error.to_string())
+        }
+        Kind::Djvu => {
+            let document =
+                strict_ooxml::DjvuDocument::open(&bytes, strict_ooxml::DjvuLimits::default())
+                    .map_err(|error| error.to_string())?;
+            let index = number.saturating_sub(1);
+            document
+                .pages()
+                .get(index)
+                .ok_or_else(|| format!("page {number} is not in the file"))?
+                .image_png(strict_ooxml::DjvuLimits::default())
+                .map_err(|error| error.to_string())
+        }
+        Kind::New | Kind::Docx | Kind::DocxTransitional | Kind::Rtf | Kind::Html | Kind::Latex => {
+            Err("this file has no page images".to_owned())
+        }
+    }
+}
+
 /// Writes a converted model to a Strict package and opens that package.
 fn finish_conversion(
     document: &strict_ooxml::Document,
@@ -463,6 +532,8 @@ mod tests {
         assert_eq!(detect(&dir.join("missing.rtf")), Some(Kind::Rtf));
         assert_eq!(detect(&dir.join("missing.HTML")), Some(Kind::Html));
         assert_eq!(detect(&dir.join("missing.htm")), Some(Kind::Html));
+        assert_eq!(detect(&dir.join("missing.tex")), Some(Kind::Latex));
+        assert_eq!(detect(&dir.join("missing.LTX")), Some(Kind::Latex));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -480,5 +551,62 @@ mod tests {
         assert!(!errors);
         assert_eq!(html_text(&encoded).unwrap(), source);
         assert!(html_text(&[0xff]).is_err());
+    }
+
+    #[test]
+    fn a_latex_file_opens_as_an_imported_document() {
+        let dir = std::env::temp_dir().join(format!("mufoed-latex-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("note.tex");
+        std::fs::write(
+            &path,
+            "\\documentclass{article}\n\\begin{document}\nHello\n\\end{document}\n",
+        )
+        .unwrap();
+        let loaded = open(
+            &Source::File {
+                path,
+                import: ImportOptions::default(),
+            },
+            &OpenControl::new(),
+        )
+        .expect("latex");
+        assert_eq!(loaded.kind, Kind::Latex);
+        let text: String = loaded
+            .document
+            .document()
+            .body
+            .blocks
+            .iter()
+            .filter_map(|block| {
+                let strict_ooxml::model::Block::Paragraph(paragraph) = block else {
+                    return None;
+                };
+                Some(
+                    paragraph
+                        .inlines
+                        .iter()
+                        .filter_map(|inline| {
+                            let strict_ooxml::model::Inline::Run(run) = inline else {
+                                return None;
+                            };
+                            Some(
+                                run.content
+                                    .iter()
+                                    .filter_map(|content| match content {
+                                        strict_ooxml::model::RunContent::Text(text) => {
+                                            Some(text.text.as_str())
+                                        }
+                                        _ => None,
+                                    })
+                                    .collect::<String>(),
+                            )
+                        })
+                        .collect::<String>(),
+                )
+            })
+            .collect();
+        assert!(text.contains("Hello"), "{text}");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

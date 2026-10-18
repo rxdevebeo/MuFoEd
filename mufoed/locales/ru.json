@@ -331,6 +331,7 @@
       "docx_transitional": "DOCX (Transitional, приведён к Strict)",
       "rtf": "RTF (импорт)",
       "html": "HTML (импорт)",
+      "latex": "LaTeX (импорт)",
       "pdf": "PDF (преобразован)",
       "djvu": "DjVu (преобразован)"
     },
@@ -461,6 +462,7 @@
       "from": "с",
       "to": "по",
       "ocr": "Распознавать страницы без текста (Ollama)",
+      "ocr_original": "Включить страницы оригинала в документ",
       "ocr_layout": "Восстанавливать блочную вёрстку страницы",
       "ocr_model": "Модель",
       "no_ocr_build": "Эта сборка без распознавания (feature `ocr`)."
