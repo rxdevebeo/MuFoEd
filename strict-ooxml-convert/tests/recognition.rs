@@ -120,14 +120,19 @@ fn first_description(bytes: &[u8]) -> Option<String> {
             continue;
         };
         for inline in &paragraph.inlines {
-            let Inline::Drawing(Drawing {
-                kind: DrawingKind::Inline(inline),
-                ..
-            }) = inline
-            else {
-                continue;
+            // A page's pictures are anchored to it; a rebuilt scan's are inline.
+            let doc_pr = match inline {
+                Inline::Drawing(Drawing {
+                    kind: DrawingKind::Inline(inline),
+                    ..
+                }) => inline.doc_pr.as_ref(),
+                Inline::Drawing(Drawing {
+                    kind: DrawingKind::Anchor(anchor),
+                    ..
+                }) => anchor.doc_pr.as_ref(),
+                _ => None,
             };
-            if let Some(descr) = inline.doc_pr.as_ref().and_then(|pr| pr.descr.as_ref()) {
+            if let Some(descr) = doc_pr.and_then(|pr| pr.descr.as_ref()) {
                 return Some(descr.to_string());
             }
         }

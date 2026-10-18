@@ -68,7 +68,9 @@ macro_rules! eprintln {
 mod djvu;
 mod font_packs;
 mod fonts;
+mod latex;
 mod lexicon_packs;
+mod paper;
 mod rtf;
 
 use std::fmt::Write as _;
@@ -78,8 +80,8 @@ use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
 use strict_ooxml::{
-    CellNoWrap, ConformancePolicy, Feature, FeatureStatus, Location, PageSelection, RenderOptions,
-    StrictDocument, TransitionalNormalizer,
+    CellNoWrap, ConformancePolicy, DefaultPaper, Feature, FeatureStatus, Location, PageSelection,
+    RenderOptions, StrictDocument, TransitionalNormalizer,
 };
 use strict_ooxml_core::error::StrictError;
 use strict_ooxml_core::ns::Conformance;
@@ -136,6 +138,7 @@ fn run_command() -> ExitCode {
         Some("djvu-dump") => djvu::run(&args.collect::<Vec<_>>(), true),
         Some("from-pdf") => run_from_pdf(&args.collect::<Vec<_>>()),
         Some("import-rtf") => rtf::run(&args.collect::<Vec<_>>()),
+        Some("import-latex") => latex::run(&args.collect::<Vec<_>>()),
         Some("write") => run_write(&args.collect::<Vec<_>>()),
         Some("normalize") => run_normalize(&args.collect::<Vec<_>>()),
         Some("lexicons") => match lexicon_packs::run(&args.collect::<Vec<_>>()) {
@@ -170,7 +173,7 @@ fn run_command() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|import-rtf|write|normalize|fonts|lexicons> <file> \
+        "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|import-rtf|import-latex|write|normalize|fonts|lexicons> <file> \
          [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
          [--no-floating] [--no-math] [--wps-times] [--cell-nowrap=spec|always] [--transitional] \
          [--fonts <manifest.json>] [--system-fonts] [--strict-fonts] [--fetch-fonts] [--no-font-packs]"
@@ -182,14 +185,16 @@ fn print_usage() {
     eprintln!("  --strict-fonts  render/to-pdf: refuse to render when a font the document names is unavailable");
     eprintln!("  --fetch-fonts   render/to-pdf: download the font packs the document's scripts need before rendering");
     eprintln!("  --no-font-packs render/to-pdf: do not use installed font packs");
+    eprintln!("  --default-page-size <letter|a4|auto>  render/to-pdf: paper for a section without w:pgSz (default auto: the machine's locale, like Word/WPS)");
     eprintln!("  fonts           font packs for CJK, Indic and other scripts: list | install <pack...|all> | remove <pack...|all> | needed <file> | path");
     eprintln!("  normalize       open a Transitional package and print the Loss Report");
     eprintln!("  to-pdf          render a .docx to PDF with embedded, selectable text (--out is required)");
     eprintln!("  from-djvu       import DjVu to Strict DOCX --out <file.docx> [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr]");
     eprintln!("  djvu-dump       inspect DjVu chunk headers and text-layer states");
-    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr [--ocr-model <name>] [--ocr-endpoint <url>] [--ocr-lang <tag>] [--fetch-lexicon] [--no-lexicon] [--ocr-layout]] [--report-out <json>] (--out is required)");
+    eprintln!("  from-pdf        convert a .pdf to a Strict .docx [--mode semantic|visual] [--pages N-M] [--no-images] [--ocr [--ocr-model <name>] [--ocr-endpoint <url>] [--ocr-lang <tag>] [--fetch-lexicon] [--no-lexicon] [--ocr-layout [--ocr-flow]]] [--report-out <json>] (--out is required)");
     eprintln!("  lexicons        word lists that restore diacritics in recognised text: list | install <id...|all> | remove <id...|all> | path");
     eprintln!("  import-rtf      import .rtf to Strict .docx (--out required); writes .rtf-report.json beside output; --wps-text --allow-unsigned-unicode --drop-nul --reject-unsupported are explicit opt-ins");
+    eprintln!("  import-latex    import .tex to Strict .docx (--out required); writes .latex-report.json beside output; resolves \\input/\\include relative to the input; --reject-unsupported is an explicit opt-in");
     eprintln!("  write           serialize the model back to a Strict .docx [--report-out <json>] (--out is required)");
 }
 
@@ -469,6 +474,7 @@ struct RenderArgs {
     math: bool,
     wps_times: bool,
     cell_no_wrap: CellNoWrap,
+    paper: DefaultPaper,
     fonts: fonts::FontArgs,
 }
 
@@ -482,6 +488,7 @@ impl RenderArgs {
         let mut math = true;
         let mut wps_times = false;
         let mut cell_no_wrap = CellNoWrap::default();
+        let mut paper = paper::detect();
         let mut fonts = fonts::FontArgs::default();
         let mut index = 0;
         while index < args.len() {
@@ -495,6 +502,19 @@ impl RenderArgs {
                 "--wps-times" => wps_times = true,
                 flag if flag.starts_with("--cell-nowrap=") => {
                     cell_no_wrap = parse_cell_no_wrap(flag)?;
+                }
+                flag if flag.starts_with("--default-page-size=") => {
+                    paper = paper::parse(
+                        flag.strip_prefix("--default-page-size=")
+                            .unwrap_or_default(),
+                    )?;
+                }
+                "--default-page-size" => {
+                    index += 1;
+                    paper = paper::parse(
+                        args.get(index)
+                            .ok_or("'--default-page-size' expects letter, a4 or auto")?,
+                    )?;
                 }
                 // Accepting the flag here rather than filtering it out of
                 // `args` keeps one source of truth for what the flag means.
@@ -541,6 +561,7 @@ impl RenderArgs {
             math,
             wps_times,
             cell_no_wrap,
+            paper,
             fonts,
         })
     }
@@ -594,7 +615,9 @@ fn run_to_pdf(args: &[String]) -> ExitCode {
         Ok(document) => match parsed
             .fonts
             .apply(
-                RenderOptions::default().cell_no_wrap(parsed.cell_no_wrap),
+                RenderOptions::default()
+                    .cell_no_wrap(parsed.cell_no_wrap)
+                    .default_paper(parsed.paper),
                 &document,
             )
             .map_err(StrictError::Unsupported)
@@ -668,6 +691,7 @@ struct WriteArgs {
     transitional: bool,
     report_out: Option<String>,
     cell_no_wrap: CellNoWrap,
+    paper: DefaultPaper,
     fonts: fonts::FontArgs,
 }
 
@@ -678,6 +702,7 @@ impl WriteArgs {
         let mut transitional = false;
         let mut report_out = None;
         let mut cell_no_wrap = CellNoWrap::default();
+        let mut paper = paper::detect();
         let mut fonts = fonts::FontArgs::default();
         let mut index = 0;
         while index < args.len() {
@@ -689,6 +714,19 @@ impl WriteArgs {
                 "--transitional" => transitional = true,
                 flag if flag.starts_with("--cell-nowrap=") => {
                     cell_no_wrap = parse_cell_no_wrap(flag)?;
+                }
+                flag if flag.starts_with("--default-page-size=") => {
+                    paper = paper::parse(
+                        flag.strip_prefix("--default-page-size=")
+                            .unwrap_or_default(),
+                    )?;
+                }
+                "--default-page-size" => {
+                    index += 1;
+                    paper = paper::parse(
+                        args.get(index)
+                            .ok_or("'--default-page-size' expects letter, a4 or auto")?,
+                    )?;
                 }
                 "--out" => {
                     index += 1;
@@ -720,6 +758,7 @@ impl WriteArgs {
             transitional,
             report_out,
             cell_no_wrap,
+            paper,
             fonts,
         })
     }
@@ -1007,6 +1046,7 @@ fn render_parsed(document: &StrictDocument, parsed: &RenderArgs) -> ExitCode {
     render_options = render_options.math(parsed.math);
     render_options = render_options.wps_times_calibration(parsed.wps_times);
     render_options = render_options.cell_no_wrap(parsed.cell_no_wrap);
+    render_options = render_options.default_paper(parsed.paper);
     render_options = match parsed.fonts.apply(render_options, document) {
         Ok(render_options) => render_options,
         Err(error) => {
@@ -1278,6 +1318,8 @@ struct OcrArgs {
     no_lexicon: bool,
     /// `--ocr-layout`: rebuild scanned pages block by block.
     layout: bool,
+    /// `--ocr-flow`: set a rebuilt page as one flow, not its blocks in place.
+    flow: bool,
 }
 
 impl OcrArgs {
@@ -1289,6 +1331,7 @@ impl OcrArgs {
             "--fetch-lexicon" => self.fetch_lexicon = true,
             "--no-lexicon" => self.no_lexicon = true,
             "--ocr-layout" => self.layout = true,
+            "--ocr-flow" => self.flow = true,
             "--ocr-model" | "--ocr-endpoint" | "--ocr-lang" => {
                 *index += 1;
                 let value = args
@@ -1328,6 +1371,7 @@ impl OcrArgs {
         options.text_recovery = Some(vision.clone());
         options.figure_classifier = Some(vision);
         options.recovery_layout = self.layout;
+        options.recovery_flow = self.flow;
         if let Some(language) = self.language {
             if !self.no_lexicon {
                 options.recovery_lexicon =
@@ -1356,7 +1400,8 @@ impl OcrArgs {
             || self.language.is_some()
             || self.fetch_lexicon
             || self.no_lexicon
-            || self.layout;
+            || self.layout
+            || self.flow;
         if !self.enabled && configured {
             return Err("OCR configuration requires --ocr".to_owned());
         }

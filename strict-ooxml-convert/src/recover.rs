@@ -139,6 +139,28 @@ pub(crate) enum RecoveredItem {
         /// Each column's items, top to bottom.
         cells: Vec<Vec<RecoveredItem>>,
     },
+    /// A block set where it stood on the scan: its box on the shown page, in
+    /// points (left, top, width, height), and its items.
+    Placed {
+        /// Left, top, width and height, in points of the shown page.
+        area: [f64; 4],
+        /// The block's items, top to bottom.
+        items: Vec<RecoveredItem>,
+        /// A vertical label: its text set turned, reading upward.
+        turned: bool,
+    },
+}
+
+impl RecoveredItem {
+    /// How many paragraphs the item holds, inside columns and placed blocks.
+    pub(crate) fn paragraphs(&self) -> usize {
+        match self {
+            Self::Paragraph(_) => 1,
+            Self::Picture(_) | Self::Table(_) => 0,
+            Self::Columns { cells, .. } => cells.iter().flatten().map(Self::paragraphs).sum(),
+            Self::Placed { items, .. } => items.iter().map(Self::paragraphs).sum(),
+        }
+    }
 }
 
 /// A picture cut out of a scanned page.
@@ -271,10 +293,8 @@ pub(crate) fn recover_pages(
                     layout::rebuild(&*recovery, &pixels, &frame, options, report)
                 {
                     report.recovered_pages += 1;
-                    report.recovered_paragraphs += items
-                        .iter()
-                        .filter(|item| matches!(item, RecoveredItem::Paragraph(_)))
-                        .count();
+                    report.recovered_paragraphs +=
+                        items.iter().map(RecoveredItem::paragraphs).sum::<usize>();
                     out.blocks.entry(index).or_default().push(RecoveredBlock {
                         items,
                         whole_page: true,
@@ -326,7 +346,9 @@ pub(crate) fn recover_pages(
                             .into_iter()
                             .map(|paragraph| RecoveredItem::Paragraph(Box::new(paragraph)))
                             .collect(),
-                        whole_page: false,
+                        // A scan read as plain lines (no layout) is still a
+                        // page of the book: it starts a page as well.
+                        whole_page: ask == Ask::Page,
                         extent: None,
                     });
                 }
@@ -370,6 +392,30 @@ struct Region {
     width: f64,
     height: f64,
     origin: Origin,
+}
+
+/// Whether the page's own painted text stands on a picture (three glyphs or
+/// more inside its box, in the page's unturned frame).
+#[cfg(feature = "raster")]
+fn text_over(page: &PdfPage, image: &strict_ooxml_pdf::PlacedImage) -> bool {
+    let top = page.geometry.height - (image.y + image.height);
+    let inside = page
+        .items()
+        .iter()
+        .filter(|item| match item {
+            strict_ooxml_pdf::Item::Glyph(glyph) => {
+                glyph.render_mode.paints()
+                    && !glyph.text.trim().is_empty()
+                    && glyph.x >= image.x
+                    && glyph.x <= image.x + image.width
+                    && glyph.y >= top
+                    && glyph.y <= top + image.height
+            }
+            _ => false,
+        })
+        .take(3)
+        .count();
+    inside >= 3
 }
 
 /// Where a picture lies on the page as it is displayed - the page the
@@ -529,7 +575,12 @@ fn mixed_regions_of(
         .items()
         .iter()
         .filter_map(|item| match item {
-            strict_ooxml_pdf::Item::Image(image) if image.image.is_some() => {
+            // A picture the page's own text is set over is a background: its
+            // raster holds that text, and a model asked about it read the
+            // text again, after the page, a slide's words twice.
+            strict_ooxml_pdf::Item::Image(image)
+                if image.image.is_some() && !text_over(page, image) =>
+            {
                 Some(picture_region(page, image))
             }
             _ => None,

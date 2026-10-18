@@ -53,6 +53,7 @@ pub(crate) fn resolve(
             scale,
             None,
             ctx.document.settings.gutter_at_top,
+            ctx.options.default_paper,
         );
         geometry.active_column = pending.column;
         let w = resolved_axis(
@@ -120,7 +121,10 @@ pub(crate) fn resolve(
     }
     behind.sort_by_key(|(page, order, _)| (*page, *order));
     front.sort_by_key(|(page, order, _)| (*page, *order));
-    for (page, _, mut items) in behind {
+    // Each behind-text item goes in front of what the page holds so far, so
+    // they are taken highest first: in ascending order the lowest was put in
+    // front last and a page-sized background covered the picture set on it.
+    for (page, _, mut items) in behind.into_iter().rev() {
         if let Some(page) = pages.get_mut(page) {
             ctx.charge_items(items.iter().map(|item| item.leaves().count()).sum())?;
             let mut combined = std::mem::take(&mut items);
@@ -469,7 +473,7 @@ mod tests {
 
     #[test]
     fn percentage_offsets_use_the_reference_span_including_negative_offsets() {
-        let geometry = geometry_for(None, 1.0, None, false);
+        let geometry = geometry_for(None, 1.0, None, false, crate::DefaultPaper::Letter);
         let position = Position {
             relative_from: Some("margin".into()),
             percent_offset: Some(25_000),

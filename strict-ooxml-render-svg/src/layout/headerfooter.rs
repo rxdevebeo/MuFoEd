@@ -88,6 +88,7 @@ pub(crate) fn decorate_pages(
             ctx.options.scale,
             None,
             ctx.document.settings.gutter_at_top,
+            ctx.options.default_paper,
         );
         let geometry = Geometry {
             width: page.width_px,

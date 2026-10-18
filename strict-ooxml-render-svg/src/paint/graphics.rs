@@ -233,6 +233,23 @@ fn blip_washout(children: &str) -> Option<f64> {
     (opacity < 0.999).then_some(opacity.clamp(0.05, 1.0))
 }
 
+/// The opacity a solid fill's colour states with `a:alpha` (Strict writes a
+/// percentage, Transitional thousandths of one), when it is not opaque.
+fn fill_alpha(shape: &Shape) -> Option<f64> {
+    let Some(ShapeFill::Solid { color }) = &shape.fill else {
+        return None;
+    };
+    let markup = color.markup.as_deref()?;
+    let rest = markup.get(markup.find("<a:alpha ")?..)?;
+    let tag = rest.get(..rest.find('>')?)?;
+    let value = tag.split_once(" val=\"")?.1.split('"').next()?;
+    let alpha = match value.strip_suffix('%') {
+        Some(percent) => percent.parse::<f64>().ok()? / 100.0,
+        None => value.parse::<f64>().ok()? / 100_000.0,
+    };
+    (alpha.is_finite() && alpha < 0.999).then_some(alpha.clamp(0.0, 1.0))
+}
+
 /// Builds the items of a shape (path + optional text box).
 #[allow(clippy::too_many_lines)]
 fn shape_items(
@@ -339,6 +356,22 @@ fn shape_items(
                     }
                 }
             }
+        }
+    }
+    // A fill colour's `a:alpha`: the shape's paint is that translucent (a
+    // light box over a photograph). Drawn opaque it hid what lay under it.
+    if let Some(opacity) = fill_alpha(shape) {
+        let painted = std::mem::take(&mut items);
+        if !painted.is_empty() {
+            items.push(Item::Group(crate::layout::GroupItem {
+                matrix: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                items: painted,
+                bounds: [x, y, w, h],
+                clip: None,
+                clip_path: None,
+                clip_inverse: false,
+                opacity,
+            }));
         }
     }
     if let Some(text) = &shape.text {

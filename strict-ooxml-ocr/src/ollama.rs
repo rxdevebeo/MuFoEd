@@ -220,17 +220,30 @@ impl OllamaVision {
             .timeout_global(Some(self.config.timeout))
             .build()
             .new_agent();
-        let response = agent
-            .post(url)
-            .header("content-type", "application/json")
-            .send(body)
-            .map_err(|error| {
-                if matches!(error, ureq::Error::Timeout(_)) {
-                    VisionError::TimedOut
-                } else {
-                    VisionError::Unreachable(error.to_string())
-                }
-            })?;
+        // A server error (a model reloading, a daemon restarting under an
+        // update) is retried twice, after 3 and 10 s: over a 258-page book
+        // eight pages lost their layout to a passing HTTP 500. A refused
+        // connection or a timeout is not: nothing suggests it will pass.
+        let mut pauses = [3u64, 10].into_iter();
+        let response = loop {
+            match agent
+                .post(url)
+                .header("content-type", "application/json")
+                .send(body)
+            {
+                Ok(response) => break response,
+                Err(ureq::Error::StatusCode(code)) if code >= 500 => match pauses.next() {
+                    Some(seconds) => std::thread::sleep(std::time::Duration::from_secs(seconds)),
+                    None => {
+                        return Err(VisionError::Unreachable(format!(
+                            "http status: {code}, three times"
+                        )))
+                    }
+                },
+                Err(ureq::Error::Timeout(_)) => return Err(VisionError::TimedOut),
+                Err(error) => return Err(VisionError::Unreachable(error.to_string())),
+            }
+        };
         // The budget is applied to the *read*, not to the request: a daemon
         // that answers with a hundred megabytes is a memory exhaustion bug in the
         // caller, and a local daemon is not a trusted source the way a file the

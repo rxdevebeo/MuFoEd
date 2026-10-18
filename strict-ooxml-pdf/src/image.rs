@@ -116,23 +116,173 @@ impl Encoded {
     /// Returns `png::EncodingError` when the samples cannot be laid out.
     pub fn to_png(&self) -> Result<Vec<u8>, png::EncodingError> {
         let Some((samples, components)) = self.raw_samples() else {
+            // A JPEG with a soft mask is decoded so the mask can be its alpha:
+            // as bytes alone, a cut-out figure stood on a black square.
+            if let Some(masked) = self.unmasked_jpeg() {
+                return masked.to_png();
+            }
             return Ok(self.jpeg_bytes().unwrap_or_default().to_vec());
         };
         let (width, height) = self.pixel_size();
+        // A PNG has no CMYK: four components were written as RGBA, cyan read
+        // as red and black as opacity, and a CMYK photograph came out a pale
+        // wash. They are converted to RGB first.
+        let converted = (components == 4).then(|| cmyk_to_rgb(samples));
+        let (samples, components) = match converted.as_deref() {
+            Some(rgb) => (rgb, 3),
+            None => (samples, components),
+        };
+        // The soft mask goes into the PNG as its alpha channel: a picture whose
+        // colour is all black and whose shape is all mask (how Word writes a
+        // signature) is otherwise a black box.
+        let with_alpha = match (components, self.alpha_channel()) {
+            (1 | 3, Some(alpha))
+                if (width as usize).checked_mul(height as usize) == Some(alpha.len()) =>
+            {
+                Some(interleave_alpha(samples, components, &alpha))
+            }
+            _ => None,
+        };
         let mut out = Vec::new();
         {
-            let color = match components {
-                1 => png::ColorType::Grayscale,
-                3 => png::ColorType::Rgb,
+            let color = match (components, with_alpha.is_some()) {
+                (1, false) => png::ColorType::Grayscale,
+                (1, true) => png::ColorType::GrayscaleAlpha,
+                (3, false) => png::ColorType::Rgb,
                 _ => png::ColorType::Rgba,
             };
             let mut encoder = png::Encoder::new(&mut out, width, height);
             encoder.set_color(color);
             encoder.set_depth(png::BitDepth::Eight);
             let mut writer = encoder.write_header()?;
-            writer.write_image_data(samples)?;
+            writer.write_image_data(with_alpha.as_deref().unwrap_or(samples))?;
         }
         Ok(out)
+    }
+}
+
+impl Encoded {
+    /// A JPEG with a soft mask, decoded to RGB samples with the mask as their
+    /// alpha; `None` when it has no mask or does not decode.
+    fn unmasked_jpeg(&self) -> Option<Encoded> {
+        use zune_core::{colorspace::ColorSpace, options::DecoderOptions};
+        let Encoded::Jpeg {
+            data,
+            alpha: Some(mask),
+            ..
+        } = self
+        else {
+            return None;
+        };
+        let Encoded::Raw {
+            width: mask_width,
+            height: mask_height,
+            samples: mask_samples,
+            components: 1,
+            ..
+        } = mask.as_ref()
+        else {
+            return None;
+        };
+        let options = DecoderOptions::default()
+            .set_strict_mode(false)
+            .jpeg_set_out_colorspace(ColorSpace::RGB);
+        let mut decoder = zune_jpeg::JpegDecoder::new_with_options(
+            std::io::Cursor::new(data.as_slice()),
+            options,
+        );
+        decoder.decode_headers().ok()?;
+        let info = decoder.info()?;
+        let (width, height) = (u32::from(info.width), u32::from(info.height));
+        let rgb = decoder.decode().ok()?;
+        let expected = (width as usize)
+            .checked_mul(height as usize)?
+            .checked_mul(3)?;
+        if rgb.len() != expected {
+            return None;
+        }
+        let alpha = fit_mask(mask_samples, (*mask_width, *mask_height), (width, height))?;
+        Some(Encoded::Raw {
+            width,
+            height,
+            samples: Arc::new(rgb),
+            components: 3,
+            alpha: Some(Arc::new(alpha)),
+        })
+    }
+}
+
+/// CMYK samples as RGB, the device conversion (ISO 32000-1 10.3.5).
+fn cmyk_to_rgb(samples: &[u8]) -> Vec<u8> {
+    let pixels = samples.len().checked_div(4).unwrap_or(0);
+    let mut out = Vec::with_capacity(pixels.saturating_mul(3));
+    for pixel in samples.chunks_exact(4) {
+        if let [c, m, y, k] = *pixel {
+            let white = u16::from(u8::MAX.saturating_sub(k));
+            for value in [c, m, y] {
+                let ink = u16::from(u8::MAX.saturating_sub(value))
+                    .saturating_mul(white)
+                    .checked_div(255)
+                    .unwrap_or(0);
+                out.push(u8::try_from(ink).unwrap_or(u8::MAX));
+            }
+        }
+    }
+    out
+}
+
+/// `components` channels per pixel and one alpha byte per pixel, as one
+/// interleaved buffer.
+fn interleave_alpha(samples: &[u8], components: u8, alpha: &[u8]) -> Vec<u8> {
+    let step = usize::from(components);
+    let mut out = Vec::with_capacity(samples.len().saturating_add(alpha.len()));
+    for (pixel, opacity) in samples.chunks_exact(step).zip(alpha) {
+        out.extend_from_slice(pixel);
+        out.push(*opacity);
+    }
+    out
+}
+
+/// A soft mask sampled at the picture's size (ISO 32000-1 11.6.5.3 lets the
+/// two differ; the mask is stretched over the picture), nearest pixel.
+fn fit_mask(mask: &[u8], from: (u32, u32), to: (u32, u32)) -> Option<Vec<u8>> {
+    let (mask_width, mask_height) = (from.0 as usize, from.1 as usize);
+    let (width, height) = (to.0 as usize, to.1 as usize);
+    if mask_width == 0 || mask_height == 0 || mask.len() != mask_width.checked_mul(mask_height)? {
+        return None;
+    }
+    if (mask_width, mask_height) == (width, height) {
+        return Some(mask.to_vec());
+    }
+    let mut out = Vec::with_capacity(width.checked_mul(height)?);
+    for row in 0..height {
+        let source_row = row.checked_mul(mask_height)?.checked_div(height)?;
+        let line = mask.get(source_row.checked_mul(mask_width)?..)?;
+        for column in 0..width {
+            let source_column = column.checked_mul(mask_width)?.checked_div(width)?;
+            out.push(*line.get(source_column)?);
+        }
+    }
+    Some(out)
+}
+
+/// Undoes `/Matte` (ISO 32000-1 11.6.5.3): the colours were premultiplied
+/// against the matte colour, `c' = m + a * (c - m)`, and a PNG wants `c`.
+fn unmatte(samples: &mut [u8], components: u8, alpha: &[u8], matte: &[f64]) {
+    let step = usize::from(components);
+    if matte.len() != step {
+        return;
+    }
+    for (pixel, opacity) in samples.chunks_exact_mut(step).zip(alpha) {
+        if *opacity == 0 {
+            continue;
+        }
+        let a = f64::from(*opacity) / 255.0;
+        for (value, matte) in pixel.iter_mut().zip(matte) {
+            let m = matte.clamp(0.0, 1.0) * 255.0;
+            let c = m + (f64::from(*value) - m) / a;
+            *value = c.round().clamp(0.0, 255.0) as u8;
+        }
     }
 }
 
@@ -468,24 +618,71 @@ fn decode_inner(
     // PNG's transparency alive through the conversion.
     if let Ok(mask_id) = dictionary.get(b"SMask").and_then(Object::as_reference) {
         if let Some((mask, _, _)) = mask_of(mask_id) {
-            match (&mut encoded, &mask) {
-                (Encoded::Jpeg { alpha: slot, .. }, _) => {
-                    *slot = Some(Box::new(mask));
-                }
-                (
-                    Encoded::Raw { alpha, .. },
-                    Encoded::Raw {
-                        samples: mask_samples,
-                        ..
-                    },
-                ) => {
-                    *alpha = Some(Arc::clone(mask_samples));
-                }
-                _ => {}
-            }
+            attach_mask(&mut encoded, mask, mask_id, document);
         }
     }
     Ok((encoded, width, height))
+}
+
+/// Gives a decoded picture its soft mask: a JPEG carries it beside its bytes,
+/// raw samples get it as their alpha channel at their own size, with colours
+/// premultiplied against `/Matte` restored.
+fn attach_mask(
+    encoded: &mut Encoded,
+    mask: Encoded,
+    mask_id: lopdf::ObjectId,
+    document: &lopdf::Document,
+) {
+    let resolve = resolver(document);
+    match (encoded, &mask) {
+        (Encoded::Jpeg { alpha: slot, .. }, _) => {
+            *slot = Some(Box::new(mask));
+        }
+        (
+            Encoded::Raw {
+                width,
+                height,
+                samples,
+                components,
+                alpha,
+            },
+            Encoded::Raw {
+                width: mask_width,
+                height: mask_height,
+                samples: mask_samples,
+                components: 1,
+                ..
+            },
+        ) => {
+            let Some(fitted) =
+                fit_mask(mask_samples, (*mask_width, *mask_height), (*width, *height))
+            else {
+                return;
+            };
+            let matte = document
+                .get_object(mask_id)
+                .and_then(Object::as_stream)
+                .ok()
+                .and_then(|mask| mask.dict.get(b"Matte").ok())
+                .and_then(|matte| resolve.get(matte))
+                .and_then(|matte| matte.as_array().ok())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| {
+                            resolve.get(item).and_then(|value| value.as_float().ok())
+                        })
+                        .map(f64::from)
+                        .collect::<Vec<_>>()
+                });
+            if let Some(matte) = matte {
+                let samples: &mut Vec<u8> = Arc::make_mut(samples);
+                unmatte(samples, *components, &fitted, &matte);
+            }
+            *alpha = Some(Arc::new(fitted));
+        }
+        _ => {}
+    }
 }
 
 /// The filter chain of a stream, as names.
@@ -1110,6 +1307,132 @@ mod tests {
             alpha: Some(std::sync::Arc::new(vec![255, 0])),
         };
         assert_eq!(image.alpha_channel(), Some(vec![255, 0]));
+    }
+
+    /// A baseline JPEG of one flat grey 8x8 block: unit quantisation, the
+    /// standard luminance Huffman tables, DC difference 0 and end of block.
+    fn grey_jpeg() -> Vec<u8> {
+        fn segment(out: &mut Vec<u8>, marker: u8, payload: &[u8]) {
+            out.extend_from_slice(&[0xFF, marker]);
+            out.extend_from_slice(
+                &u16::try_from(payload.len() + 2)
+                    .expect("short")
+                    .to_be_bytes(),
+            );
+            out.extend_from_slice(payload);
+        }
+        let mut out = vec![0xFF, 0xD8];
+        let mut quant = vec![0u8];
+        quant.extend_from_slice(&[1; 64]);
+        segment(&mut out, 0xDB, &quant);
+        segment(&mut out, 0xC0, &[8, 0, 8, 0, 8, 1, 1, 0x11, 0]);
+        let mut dc = vec![0x00, 0, 1, 5, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0];
+        dc.extend(0..12u8);
+        segment(&mut out, 0xC4, &dc);
+        let mut ac = vec![0x10, 0, 2, 1, 3, 3, 2, 4, 3, 5, 5, 4, 4, 0, 0, 1, 0x7D];
+        ac.extend_from_slice(&[
+            0x01, 0x02, 0x03, 0x00, 0x04, 0x11, 0x05, 0x12, 0x21, 0x31, 0x41, 0x06, 0x13, 0x51,
+            0x61, 0x07, 0x22, 0x71, 0x14, 0x32, 0x81, 0x91, 0xA1, 0x08, 0x23, 0x42, 0xB1, 0xC1,
+            0x15, 0x52, 0xD1, 0xF0, 0x24, 0x33, 0x62, 0x72, 0x82, 0x09, 0x0A, 0x16, 0x17, 0x18,
+            0x19, 0x1A, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
+            0x3A, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x53, 0x54, 0x55, 0x56, 0x57,
+            0x58, 0x59, 0x5A, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x73, 0x74, 0x75,
+            0x76, 0x77, 0x78, 0x79, 0x7A, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x92,
+            0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7,
+            0xA8, 0xA9, 0xAA, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xC2, 0xC3,
+            0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8,
+            0xD9, 0xDA, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xF1, 0xF2,
+            0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA,
+        ]);
+        segment(&mut out, 0xC4, &ac);
+        segment(&mut out, 0xDA, &[1, 1, 0x00, 0, 63, 0]);
+        // DC category 0 ("00"), end of block ("1010"), padded with ones.
+        out.extend_from_slice(&[0x2B, 0xFF, 0xD9]);
+        out
+    }
+
+    #[test]
+    fn a_masked_jpeg_is_a_png_with_its_mask() {
+        let jpeg = Encoded::Jpeg {
+            width: 8,
+            height: 8,
+            data: std::sync::Arc::new(grey_jpeg()),
+            alpha: Some(Box::new(Encoded::Raw {
+                width: 8,
+                height: 8,
+                samples: std::sync::Arc::new(vec![0; 64]),
+                components: 1,
+                alpha: None,
+            })),
+        };
+        let png = jpeg.to_png().expect("png");
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+        // IHDR's colour type: 6 is RGB with alpha.
+        assert_eq!(png[25], 6);
+    }
+
+    #[test]
+    fn cmyk_samples_become_rgb() {
+        // Pure cyan, and 50% black.
+        assert_eq!(
+            super::cmyk_to_rgb(&[255, 0, 0, 0, 0, 0, 0, 128]),
+            [0, 255, 255, 127, 127, 127]
+        );
+        let image = Encoded::Raw {
+            width: 1,
+            height: 1,
+            samples: std::sync::Arc::new(vec![255, 0, 0, 0]),
+            components: 4,
+            alpha: None,
+        };
+        // IHDR's colour type: 2 is RGB.
+        assert_eq!(image.to_png().expect("png")[25], 2);
+    }
+
+    #[test]
+    fn a_soft_mask_is_the_png_alpha() {
+        // Word's signature: every colour black, the shape all in the mask.
+        let image = Encoded::Raw {
+            width: 2,
+            height: 1,
+            samples: std::sync::Arc::new(vec![0; 6]),
+            components: 3,
+            alpha: Some(std::sync::Arc::new(vec![255, 0])),
+        };
+        let png = image.to_png().expect("png");
+        // IHDR's colour type: 6 is RGB with alpha.
+        assert_eq!(png[25], 6);
+        let gray = Encoded::Raw {
+            width: 2,
+            height: 1,
+            samples: std::sync::Arc::new(vec![0, 0]),
+            components: 1,
+            alpha: Some(std::sync::Arc::new(vec![255, 0])),
+        };
+        assert_eq!(gray.to_png().expect("png")[25], 4);
+        assert_eq!(
+            super::interleave_alpha(&[1, 2, 3, 4, 5, 6], 3, &[7, 8]),
+            [1, 2, 3, 7, 4, 5, 6, 8]
+        );
+    }
+
+    #[test]
+    fn a_mask_of_another_size_is_stretched_over_the_picture() {
+        assert_eq!(
+            super::fit_mask(&[10, 20], (2, 1), (4, 2)),
+            Some(vec![10, 10, 20, 20, 10, 10, 20, 20])
+        );
+        assert_eq!(super::fit_mask(&[1, 2, 3], (2, 2), (2, 2)), None);
+        assert_eq!(super::fit_mask(&[], (0, 0), (2, 2)), None);
+    }
+
+    #[test]
+    fn matte_premultiplied_colours_are_restored() {
+        // c' = m + a (c - m): white at half alpha against black is 128.
+        let mut samples = vec![128, 128, 128, 0, 0, 0];
+        super::unmatte(&mut samples, 3, &[128, 0], &[0.0, 0.0, 0.0]);
+        assert_eq!(&samples[..3], &[255, 255, 255]);
+        assert_eq!(&samples[3..], &[0, 0, 0]);
     }
 
     #[test]

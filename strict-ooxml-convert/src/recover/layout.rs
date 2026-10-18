@@ -831,136 +831,74 @@ struct Arrangement {
     page: (usize, usize),
 }
 
-/// The bands and columns of a page's blocks. The columns are found from the
-/// narrow blocks (under 30% of the text column; under 50% when fewer than two
-/// are): their x-ranges, joined where they overlap. A block across two
-/// columns or more - a title, a table head - is a band of its own; the other
-/// blocks belong to the column they overlap most. The blocks between two such
-/// bands are laid out side by side when they fill two columns or more that
-/// share some height.
+/// The bands and columns of a page's blocks. Blocks that share some height
+/// are a band (joined through any chain of such); a block alone at its
+/// height is a band of its own. Within a band, the x-ranges of its blocks,
+/// joined where they overlap, are its columns, and two or more are laid out
+/// side by side: an exercise beside its note, a text beside its photograph.
+/// A column under 10% of the text column (a page reference in a corner) is
+/// no column of its own: its blocks join the column to its left.
 fn arrange(areas: &[PixelBox], page: (usize, usize)) -> Arrangement {
     let width = page.1.saturating_sub(page.0).max(1);
-    let narrow = |limit: usize| -> Vec<usize> {
-        (0..areas.len())
-            .filter(|index| {
-                areas
-                    .get(*index)
-                    .is_some_and(|area| area.width() * 100 < width * limit)
-            })
-            .collect()
-    };
-    let mut seeds = narrow(30);
-    if seeds.len() < 2 {
-        seeds = narrow(50);
-    }
-    seeds.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.left));
-    let mut spans: Vec<(usize, usize)> = Vec::new();
-    for index in seeds {
+    let mut order: Vec<usize> = (0..areas.len()).collect();
+    order.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.top));
+    // Bands: runs of blocks whose height ranges chain together.
+    let mut bands: Vec<Vec<usize>> = Vec::new();
+    let mut bottom = 0usize;
+    for index in order {
         let Some(area) = areas.get(index) else {
             continue;
         };
-        match spans.last_mut() {
-            Some(span) if area.left < span.1 => span.1 = span.1.max(area.right),
-            _ => spans.push((area.left, area.right)),
+        match bands.last_mut() {
+            Some(band) if area.top < bottom => {
+                band.push(index);
+                bottom = bottom.max(area.bottom);
+            }
+            _ => {
+                bands.push(vec![index]);
+                bottom = area.bottom;
+            }
         }
-    }
-    let overlap = |area: &PixelBox, span: &(usize, usize)| {
-        area.right.min(span.1).saturating_sub(area.left.max(span.0))
-    };
-    // Per block: its column, or `None` across columns (or with no columns).
-    let column_of: Vec<Option<usize>> = areas
-        .iter()
-        .map(|area| {
-            if spans.len() < 2 {
-                return None;
-            }
-            let touched: Vec<usize> = spans
-                .iter()
-                .enumerate()
-                .filter(|(_, span)| overlap(area, span) > 0)
-                .map(|(at, _)| at)
-                .collect();
-            match touched.as_slice() {
-                [only] => Some(*only),
-                [] => spans
-                    .iter()
-                    .enumerate()
-                    .min_by_key(|(_, span)| {
-                        let centre = usize::midpoint(area.left, area.right);
-                        centre.abs_diff(usize::midpoint(span.0, span.1))
-                    })
-                    .map(|(at, _)| at),
-                _ => None,
-            }
-        })
-        .collect();
-    let mut order: Vec<usize> = (0..areas.len()).collect();
-    order.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.top));
-    let mut bands: Vec<Vec<usize>> = Vec::new();
-    let mut current: Vec<usize> = Vec::new();
-    for index in order {
-        if column_of.get(index).copied().flatten().is_none() {
-            if !current.is_empty() {
-                bands.push(std::mem::take(&mut current));
-            }
-            bands.push(vec![index]);
-        } else {
-            current.push(index);
-        }
-    }
-    if !current.is_empty() {
-        bands.push(current);
     }
     let mut frames = vec![page; areas.len()];
     let mut out = Vec::with_capacity(bands.len());
     for band in bands {
+        let mut by_left = band.clone();
+        by_left.sort_by_key(|index| areas.get(*index).map_or(0, |area| area.left));
         let mut columns: Vec<Column> = Vec::new();
-        for (at, span) in spans.iter().enumerate() {
-            let members: Vec<usize> = band
-                .iter()
-                .copied()
-                .filter(|index| column_of.get(*index).copied().flatten() == Some(at))
-                .collect();
-            if members.is_empty() {
+        for index in by_left {
+            let Some(area) = areas.get(index) else {
                 continue;
+            };
+            match columns.last_mut() {
+                Some(column) if area.left < column.1 => {
+                    column.1 = column.1.max(area.right);
+                    column.2.push(index);
+                }
+                _ => columns.push((area.left, area.right, vec![index])),
             }
-            let left = members
-                .iter()
-                .filter_map(|index| areas.get(*index))
-                .map(|area| area.left)
-                .min()
-                .unwrap_or(span.0);
-            let right = members
-                .iter()
-                .filter_map(|index| areas.get(*index))
-                .map(|area| area.right)
-                .max()
-                .unwrap_or(span.1);
-            columns.push((left, right, members));
         }
-        let side_by_side = columns.len() >= 2
-            && columns.iter().enumerate().any(|(at, column)| {
-                columns.iter().skip(at + 1).any(|other| {
-                    column.2.iter().any(|a| {
-                        other
-                            .2
-                            .iter()
-                            .any(|b| match (areas.get(*a), areas.get(*b)) {
-                                (Some(a), Some(b)) => a.top < b.bottom && b.top < a.bottom,
-                                _ => false,
-                            })
-                    })
-                })
-            });
-        if side_by_side {
-            for column in &columns {
+        // Too narrow to hold text: fold into the column to the left.
+        let mut folded: Vec<Column> = Vec::with_capacity(columns.len());
+        for column in columns {
+            let narrow = (column.1 - column.0) * 10 < width;
+            match folded.last_mut() {
+                Some(previous) if narrow => {
+                    previous.1 = previous.1.max(column.1);
+                    previous.2.extend(column.2);
+                }
+                _ => folded.push(column),
+            }
+        }
+        if folded.len() >= 2 {
+            for column in &folded {
                 for index in &column.2 {
                     if let Some(frame) = frames.get_mut(*index) {
                         *frame = (column.0, column.1);
                     }
                 }
             }
-            out.push((band, columns));
+            out.push((band, folded));
         } else {
             out.push((band, Vec::new()));
         }
@@ -1129,7 +1067,9 @@ fn build_items(
         let size = measured_sizes.get(index).copied().flatten()?;
         let running = !matches!(kind, BlockKind::Title | BlockKind::Heading);
         match body_size {
-            Some(body) if running && size > body * 0.6 && size < body * 1.6 => Some(body),
+            Some(body) if running && size > body * 0.5 && size < body * 2.0 => Some(body),
+            // A heading measured on its coloured band, not its letters.
+            Some(body) if kind == BlockKind::Heading && size > body * 2.0 => Some(body * 2.0),
             _ => Some(size),
         }
     };
@@ -1194,7 +1134,14 @@ fn build_items(
     let mut previous_bottom: Option<usize> = None;
     let (mut headings, mut figures, mut bold_blocks, mut tables) = (0usize, 0usize, 0usize, 0usize);
     let mut bold_words = 0usize;
-    let mut emit = |index: usize, items: &mut Vec<RecoveredItem>, figures: &mut usize| {
+    // Per item, the box it stands in when it is not its block's (a coloured
+    // area's picture).
+    let mut boxes: Vec<Option<PixelBox>> = Vec::new();
+    let placing = !options.recovery_flow;
+    let mut emit = |index: usize,
+                    items: &mut Vec<RecoveredItem>,
+                    boxes: &mut Vec<Option<PixelBox>>,
+                    figures: &mut usize| {
         let (Some(region), Some(done)) = (regions.get(index), emitted.get_mut(index)) else {
             return None;
         };
@@ -1213,10 +1160,13 @@ fn build_items(
             frame.scale,
             (!description.is_empty()).then_some(description),
         )));
+        boxes.push(Some(*region));
         Some(region.bottom)
     };
     // Where each block's items start in `items`.
     let mut starts: Vec<usize> = Vec::with_capacity(placed.len());
+    // Per block, whether it is a vertical label, set turned in its box.
+    let mut turned = vec![false; placed.len()];
     for (position, (block, measured)) in placed.iter().enumerate() {
         starts.push(items.len());
         let column = arrangement
@@ -1228,13 +1178,13 @@ fn build_items(
         for (index, region) in regions.iter().enumerate() {
             let unclaimed = region_text.get(index).is_none_or(Vec::is_empty);
             if unclaimed && region.top < measured.area.top {
-                if let Some(bottom) = emit(index, &mut items, &mut figures) {
+                if let Some(bottom) = emit(index, &mut items, &mut boxes, &mut figures) {
                     previous_bottom = Some(bottom);
                 }
             }
         }
         if let Some(index) = region_of(block) {
-            if let Some(bottom) = emit(index, &mut items, &mut figures) {
+            if let Some(bottom) = emit(index, &mut items, &mut boxes, &mut figures) {
                 previous_bottom = Some(bottom);
             }
             continue;
@@ -1289,9 +1239,14 @@ fn build_items(
             size: size_of(position, block.kind),
             bold,
             heading,
+            // Set in its own box, a block has no room above it nor indent:
+            // the box stands where the block did.
             before: previous_bottom
+                .filter(|_| !placing)
                 .map(|bottom| measured.area.top.saturating_sub(bottom) as f64 / frame.scale),
-            indent: if matches!(
+            indent: if placing {
+                0.0
+            } else if matches!(
                 measured.alignment(column, block.align),
                 Align::Left | Align::Justify
             ) {
@@ -1301,6 +1256,34 @@ fn build_items(
             },
             first_line: measured.first_line_indent() as f64 / frame.scale,
             language: options.recovery_language.clone(),
+        };
+        // In its own box, a block's type is no larger than its text fits:
+        // the size measured off the scan's lines took a drop capital's height
+        // for the paragraph's and a vertical label's for its letters, and the
+        // text ran out of its box over its neighbours. A tall narrow box of a
+        // few words is a vertical label, set turned.
+        let style = if placing {
+            let width = measured.area.width() as f64 / frame.scale;
+            let height = measured.area.height() as f64 / frame.scale;
+            let texts: Vec<String> = paragraph_texts(block.kind, &text)
+                .iter()
+                .map(|text| plain(text))
+                .collect();
+            let vertical = is_vertical(width, height, &texts);
+            if let Some(flag) = turned.get_mut(position) {
+                *flag = vertical;
+            }
+            let (along, across) = if vertical {
+                (height, width)
+            } else {
+                (width, height)
+            };
+            Style {
+                size: fit_size(&texts, along, across, style.size),
+                ..style
+            }
+        } else {
+            style
         };
         let rows = markdown_table(&text).or_else(|| {
             (block.kind == BlockKind::Table)
@@ -1354,9 +1337,16 @@ fn build_items(
     }
     let placed_end = items.len();
     for index in 0..regions.len() {
-        let _ = emit(index, &mut items, &mut figures);
+        let _ = emit(index, &mut items, &mut boxes, &mut figures);
     }
-    let items = arrangement.apply(items, &starts, placed_end, frame.scale);
+    // Every item pushed with no box of its own stands in its block's.
+    boxes.resize(items.len(), None);
+    let items = if placing {
+        let areas: Vec<PixelBox> = placed.iter().map(|(_, measured)| measured.area).collect();
+        place_items(items, &boxes, &starts, &areas, &turned, frame)
+    } else {
+        arrangement.apply(items, &starts, placed_end, frame.scale)
+    };
     report.record(
         "text.recovered",
         Severity::Recovered,
@@ -1383,6 +1373,112 @@ fn build_items(
     }
     let extent = extent_of(placed.iter().map(|(_, measured)| measured.area), frame);
     (items, extent)
+}
+
+/// The items of a page, each block's in a box where the block stood (a
+/// coloured area's picture in the area's): `boxes` gives an item's own box,
+/// `starts` where each block's items begin.
+fn place_items(
+    items: Vec<RecoveredItem>,
+    boxes: &[Option<PixelBox>],
+    starts: &[usize],
+    areas: &[PixelBox],
+    turned: &[bool],
+    frame: &Frame,
+) -> Vec<RecoveredItem> {
+    let to_points = |area: PixelBox| {
+        [
+            frame.origin.0 + area.left as f64 / frame.scale,
+            frame.origin.1 + area.top as f64 / frame.scale,
+            area.width() as f64 / frame.scale,
+            area.height() as f64 / frame.scale,
+        ]
+    };
+    let mut out = Vec::new();
+    let mut open: Option<(usize, Vec<RecoveredItem>)> = None;
+    let close = |open: &mut Option<(usize, Vec<RecoveredItem>)>, out: &mut Vec<RecoveredItem>| {
+        if let Some((block, items)) = open.take() {
+            if let Some(area) = areas.get(block) {
+                out.push(RecoveredItem::Placed {
+                    area: to_points(*area),
+                    items,
+                    turned: turned.get(block).copied().unwrap_or(false),
+                });
+            }
+        }
+    };
+    for (index, item) in items.into_iter().enumerate() {
+        if let Some(Some(area)) = boxes.get(index) {
+            close(&mut open, &mut out);
+            out.push(RecoveredItem::Placed {
+                area: to_points(*area),
+                items: vec![item],
+                turned: false,
+            });
+            continue;
+        }
+        // The block whose items this one is among: the last that starts at
+        // or before it.
+        let block = starts
+            .partition_point(|start| *start <= index)
+            .saturating_sub(1);
+        match open.as_mut() {
+            Some((current, items)) if *current == block => items.push(item),
+            _ => {
+                close(&mut open, &mut out);
+                open = Some((block, vec![item]));
+            }
+        }
+    }
+    close(&mut open, &mut out);
+    out
+}
+
+/// The width of a character of a substitute sans, as a share of its size:
+/// an average with room to spare.
+const CHAR_WIDTH: f64 = 0.52;
+/// Line height as a share of the type size.
+const LINE_HEIGHT: f64 = 1.2;
+
+/// The largest type size, no larger than `measured`, at which `texts` (one
+/// paragraph each), wrapped to `along` points, take no more than `across`
+/// points of lines (with a tenth to spare).
+fn fit_size(texts: &[String], along: f64, across: f64, measured: Option<f64>) -> Option<f64> {
+    let measured = measured?;
+    if texts.is_empty() || !(along > 0.0 && across > 0.0) {
+        return Some(measured);
+    }
+    let fits = |size: f64| {
+        let per_line = (along / (CHAR_WIDTH * size)).floor().max(1.0);
+        let lines: f64 = texts
+            .iter()
+            .map(|text| (text.chars().count() as f64 / per_line).ceil().max(1.0))
+            .sum();
+        lines * LINE_HEIGHT * size <= across * 1.1
+    };
+    if fits(measured) {
+        return Some(measured);
+    }
+    let (mut low, mut high) = (4.0_f64, measured);
+    if !fits(low) {
+        return Some(low);
+    }
+    for _ in 0..24 {
+        let middle = f64::midpoint(low, high);
+        if fits(middle) {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    Some((low * 2.0).floor() / 2.0)
+}
+
+/// Whether a box holds a vertical label: much taller than wide, narrow, and
+/// a few words.
+fn is_vertical(width: f64, height: f64, texts: &[String]) -> bool {
+    let chars: usize = texts.iter().map(|text| text.chars().count()).sum();
+    height > width * 2.5 && width < 48.0 && (1..=40).contains(&chars)
 }
 
 /// Whether a text is set in capitals: two letters or more, none lower case.
@@ -1806,22 +1902,22 @@ mod tests {
             right,
             bottom,
         };
-        // A title across the page, then two columns, then a footer.
+        // A title, a text beside its photograph, a full-width exercise.
         let areas = [
             area(100, 50, 900, 90),
-            area(100, 120, 480, 300),
-            area(520, 120, 900, 260),
-            area(100, 320, 480, 400),
-            area(100, 900, 900, 930),
+            area(100, 120, 600, 300),
+            area(640, 110, 900, 260),
+            area(100, 320, 900, 400),
+            // A page reference in the exercise's corner.
+            area(820, 405, 900, 420),
         ];
         let arrangement = super::arrange(&areas, (100, 900));
-        assert_eq!(arrangement.bands.len(), 3);
-        let columns = &arrangement.bands[1].1;
-        assert_eq!(columns.len(), 2);
-        assert_eq!(columns[0].2, vec![1, 3]);
-        assert_eq!(arrangement.frames[2], (520, 900));
+        let sides: Vec<usize> = arrangement.bands.iter().map(|band| band.1.len()).collect();
+        assert_eq!(sides, vec![0, 2, 0, 0], "{sides:?}");
+        assert_eq!(arrangement.frames[2], (640, 900));
         assert_eq!(arrangement.frames[0], (100, 900));
-        // A title and a table head across columns do not join them (page 6).
+        // The contents page: a title and a head across columns, then three
+        // columns whose blocks chain down the page.
         let contents = [
             area(66, 52, 578, 162),
             area(367, 165, 717, 180),
@@ -1834,12 +1930,80 @@ mod tests {
         let arrangement = super::arrange(&contents, (60, 944));
         let sides: Vec<usize> = arrangement.bands.iter().map(|band| band.1.len()).collect();
         assert_eq!(sides, vec![0, 0, 3], "{sides:?}");
-        // Indented blocks one under the other stay one column.
-        let stacked = [area(100, 100, 500, 140), area(200, 150, 520, 190)];
-        assert!(super::arrange(&stacked, (100, 900))
+        // A narrow neighbour folds into the column on its left.
+        let tight = [area(100, 100, 700, 200), area(720, 120, 780, 140)];
+        assert!(super::arrange(&tight, (100, 900))
             .bands
             .iter()
             .all(|band| band.1.is_empty()));
+    }
+
+    #[test]
+    fn the_type_is_no_larger_than_its_box_holds() {
+        let texts = |text: &str| vec![text.to_owned()];
+        // Ten letters fit a 100 pt line at 12 pt: the measure stands.
+        assert_eq!(
+            super::fit_size(&texts("abcdefghij"), 100.0, 20.0, Some(12.0)),
+            Some(12.0)
+        );
+        // A paragraph measured at 36 pt (its drop capital's height) in a box
+        // of 200 by 100 pt: 300 characters fit only far smaller.
+        let long = "x".repeat(300);
+        let size = super::fit_size(&texts(&long), 200.0, 100.0, Some(36.0)).expect("a size");
+        assert!(size < 12.0 && size > 6.0, "{size}");
+        // No measure, no size.
+        assert_eq!(super::fit_size(&texts("a"), 10.0, 10.0, None), None);
+        // A label 20 pt wide and 120 pt tall is vertical; a column is not.
+        assert!(super::is_vertical(20.0, 120.0, &texts("Lekcija 4")));
+        assert!(!super::is_vertical(200.0, 120.0, &texts("Lekcija 4")));
+        assert!(!super::is_vertical(
+            20.0,
+            120.0,
+            &texts(&"word ".repeat(20))
+        ));
+    }
+
+    #[test]
+    fn each_block_is_placed_in_its_own_box() {
+        use super::super::RecoveredItem;
+        let area = |left, top, right, bottom| PixelBox {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        let item = || RecoveredItem::Columns {
+            widths: Vec::new(),
+            cells: Vec::new(),
+        };
+        // Block 0's two items, a coloured area's picture met among them, and
+        // block 1's item; 2 pixels a point, the region from (10, 20).
+        let items = vec![item(), item(), item(), item()];
+        let boxes = [None, None, Some(area(100, 100, 300, 200)), None];
+        let starts = [0, 3];
+        let areas = [area(0, 0, 200, 40), area(0, 60, 400, 100)];
+        let frame = super::Frame {
+            scale: 2.0,
+            page: 1,
+            detail: None,
+            origin: (10.0, 20.0),
+        };
+        let placed = super::place_items(items, &boxes, &starts, &areas, &[false, false], &frame);
+        let shapes: Vec<([f64; 4], usize)> = placed
+            .iter()
+            .map(|item| match item {
+                RecoveredItem::Placed { area, items, .. } => (*area, items.len()),
+                _ => panic!("every item is placed"),
+            })
+            .collect();
+        assert_eq!(
+            shapes,
+            vec![
+                ([10.0, 20.0, 100.0, 20.0], 2),
+                ([60.0, 70.0, 100.0, 50.0], 1),
+                ([10.0, 50.0, 200.0, 20.0], 1),
+            ]
+        );
     }
 
     #[test]

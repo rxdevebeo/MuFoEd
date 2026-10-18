@@ -4,8 +4,10 @@
         --cli strict-ooxml.exe --out compare/
 
 `from-pdf --ocr --ocr-layout` starts every page it rebuilt on a page of its
-own (`w:pageBreakBefore`). This script cuts the DOCX at those breaks, renders
-each part with the CLI's `to-pdf`, and sets it beside the scan's page:
+own (`w:pageBreakBefore`); a page of text flows on from the one before, and
+its first paragraph carries `w:lastRenderedPageBreak`, Word's note that a
+page broke there. This script cuts the DOCX at both, renders each part with
+the CLI's `to-pdf`, and sets it beside the source's page:
 
 - `pages`: how many pages the part took - 1 when the page's content fits;
 - `ink_iou`: how far the ink lies where the scan's does, on a 40x56 grid of
@@ -52,7 +54,7 @@ def namespaces(xml: bytes) -> list[tuple[str, str]]:
 
 
 def split_docx(docx: Path, out: Path) -> list[Path]:
-    """The DOCX cut before every paragraph that breaks the page."""
+    """The DOCX cut before every paragraph that starts a source page."""
     with zipfile.ZipFile(docx) as archive:
         entries = {name: archive.read(name) for name in archive.namelist()}
     xml = entries["word/document.xml"]
@@ -68,7 +70,8 @@ def split_docx(docx: Path, out: Path) -> list[Path]:
     content = [child for child in children if child is not section]
     parts: list[list[ET.Element]] = [[]]
     for child in content:
-        breaks = child.find(f"{{{w}}}pPr/{{{w}}}pageBreakBefore") is not None
+        breaks = (child.find(f"{{{w}}}pPr/{{{w}}}pageBreakBefore") is not None
+                  or child.find(f"{{{w}}}r/{{{w}}}lastRenderedPageBreak") is not None)
         if breaks and parts[-1]:
             parts.append([])
         parts[-1].append(child)
@@ -118,7 +121,12 @@ def ink_grid(image: Image.Image) -> np.ndarray:
     luma = 0.299 * pixels[..., 0] + 0.587 * pixels[..., 1] + 0.114 * pixels[..., 2]
     chroma = pixels.max(-1) - pixels.min(-1)
     paper = np.median(luma)
-    ink = (luma < min(paper - 70, 170)) | ((chroma > 60) & (luma < paper - 20))
+    # Ink is what stands apart from the paper either way: dark on a light page,
+    # light on a dark slide (where measuring only "darker than the paper" saw
+    # no ink on either side and scored a blank result 1.0).
+    dark = luma < min(paper - 70, 170)
+    light = luma > max(paper + 70, 85)
+    ink = dark | light | ((chroma > 60) & (np.abs(luma - paper) > 20))
     height, width = ink.shape
     columns, rows = GRID
     grid = np.zeros((rows, columns), bool)

@@ -150,6 +150,26 @@ fn a_rectangle_becomes_a_path_with_its_fill() {
 }
 
 #[test]
+fn scn_and_scn_upper_set_the_fill_and_the_stroke() {
+    // Browsers and design tools paint in an ICC-based space with `scn`; its
+    // fill was dropped and every such shape came out black.
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\n/DeviceRGB cs 0 0.5 0 scn /DeviceRGB CS 0 0 1 SCN \
+         10 20 30 40 re B\nendstream",
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    let Some(Item::Vector(vector)) = page.items().first() else {
+        panic!("no path: {:?}", page.items());
+    };
+    assert_eq!(vector.fill.map(Rgb::to_rgb8), Some([0, 128, 0]));
+    assert_eq!(vector.stroke.map(Rgb::to_rgb8), Some([0, 0, 255]));
+}
+
+#[test]
 fn a_curve_is_flattened_within_the_documented_tolerance() {
     // A quarter-circle-ish curve; the flattening must stay within a small
     // fraction of a point of the true curve, which is what SC-9 asks of the
@@ -235,6 +255,141 @@ fn a_tj_adjustment_moves_the_pen_without_drawing() {
     // A is 6 pt wide at 10 pt, and the -1000 adjustment adds 10 pt.
     assert!((glyphs[0].x - 10.0).abs() < 0.01, "{}", glyphs[0].x);
     assert!((glyphs[1].x - 26.0).abs() < 0.01, "{}", glyphs[1].x);
+}
+
+#[test]
+fn a_glyph_scaled_by_the_text_matrix_is_as_wide_as_it_is_drawn() {
+    // `1 Tf` and a scaling `Tm`: the size comes from the matrix, and so must
+    // the width - A is 600/1000 em, 6 pt at 10 pt.
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\nBT /F1 1 Tf 10 0 0 10 10 50 Tm (AB) Tj ET\nendstream",
+        FONT,
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    let glyphs: Vec<&strict_ooxml_pdf::Glyph> = page
+        .items()
+        .iter()
+        .filter_map(|item| match item {
+            Item::Glyph(glyph) => Some(glyph),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(glyphs.len(), 2);
+    assert!((glyphs[0].size - 10.0).abs() < 0.01, "{}", glyphs[0].size);
+    assert!((glyphs[0].width - 6.0).abs() < 0.01, "{}", glyphs[0].width);
+    assert!((glyphs[1].x - 16.0).abs() < 0.01, "{}", glyphs[1].x);
+}
+
+#[test]
+fn td_moves_from_the_start_of_the_line_not_from_the_pen() {
+    // ISO 32000-1 9.4.2: `Td` offsets the *line* matrix. After `(A) Tj` the
+    // pen is 6 pt on; the next line still starts at x = 10.
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\nBT /F1 10 Tf 12 TL 1 0 0 1 10 50 Tm (A) Tj 0 -12 Td (B) Tj T* (A) Tj ET\nendstream",
+        FONT,
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    let glyphs: Vec<&strict_ooxml_pdf::Glyph> = page
+        .items()
+        .iter()
+        .filter_map(|item| match item {
+            Item::Glyph(glyph) => Some(glyph),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(glyphs.len(), 3);
+    for glyph in &glyphs {
+        assert!((glyph.x - 10.0).abs() < 0.01, "{}", glyph.x);
+    }
+    // y is from the page's top: 100 - 50, then 12 and 24 lower.
+    assert!((glyphs[1].y - glyphs[0].y - 12.0).abs() < 0.01);
+    assert!((glyphs[2].y - glyphs[1].y - 12.0).abs() < 0.01);
+}
+
+#[test]
+fn text_a_shading_is_painted_through_is_text_in_its_colour() {
+    // Design tools set gradient titles as clipping text (`7 Tr`) and a
+    // shading painted through it. The page's own clip before the text is not
+    // what is painted: no page-sized gradient box, and the title is text.
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << /F1 5 0 R >> /Shading << /Sh0 6 0 R >> >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\nq 0 0 200 100 re W n BT /F1 10 Tf 7 Tr 1 0 0 1 10 50 Tm (AB) Tj ET /Sh0 sh Q\nendstream",
+        FONT,
+        "<< /ShadingType 2 /ColorSpace /DeviceRGB /Coords [0 0 200 0] /Function << /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [0 0 1] /N 1 >> >>",
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    assert!(
+        !page
+            .items()
+            .iter()
+            .any(|item| matches!(item, Item::Vector(_))),
+        "no gradient box: {:?}",
+        page.items()
+    );
+    let lines = strict_ooxml_pdf::text::lines(page.items());
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0].text(), "AB");
+    assert_ne!(lines[0].glyphs[0].color.to_rgb8(), [0, 0, 0]);
+}
+
+#[test]
+fn a_shading_moved_by_cm_after_its_clip_fills_the_clip() {
+    // Illustrator's gradient: the shape as a clip, then a unit axis scaled onto
+    // it by `cm`, then `sh`.
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Shading << /Sh0 5 0 R >> >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\nq 10 10 100 50 re W n q 100 0 0 50 10 10 cm /Sh0 sh Q Q\nendstream",
+        "<< /ShadingType 2 /ColorSpace /DeviceRGB /Coords [0 0 1 0] /Extend [true true] /Function << /FunctionType 2 /Domain [0 1] /C0 [1 0 0] /C1 [0 0 1] /N 1 >> >>",
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    let vector = page
+        .items()
+        .iter()
+        .find_map(|item| match item {
+            Item::Vector(vector) => Some(vector),
+            _ => None,
+        })
+        .expect("the clip is filled");
+    let gradient = vector.gradient.as_ref().expect("with the shading");
+    let (sx, sy) = vector.ctm.apply(gradient.start.0, gradient.start.1);
+    let (ex, ey) = vector.ctm.apply(gradient.end.0, gradient.end.1);
+    assert!(
+        (sx - 10.0).abs() < 1e-6 && (sy - 10.0).abs() < 1e-6,
+        "{sx} {sy}"
+    );
+    assert!(
+        (ex - 110.0).abs() < 1e-6 && (ey - 10.0).abs() < 1e-6,
+        "{ex} {ey}"
+    );
+}
+
+#[test]
+fn clipping_text_without_a_shading_is_not_on_the_page() {
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        "<< /Length 0 >>\nstream\nBT /F1 10 Tf 7 Tr 1 0 0 1 10 50 Tm (AB) Tj ET\nendstream",
+        FONT,
+    ];
+    let mut pdf = open(&common::pdf_with(&objects));
+    let page = pdf.page(1).expect("page 1");
+    assert!(strict_ooxml_pdf::text::lines(page.items()).is_empty());
+    assert!(page.text().trim().is_empty(), "{}", page.text());
 }
 
 #[test]

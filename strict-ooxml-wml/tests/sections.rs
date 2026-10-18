@@ -321,7 +321,11 @@ fn zero_page_size_is_partial() {
     let entry = document.support.get("w:pgSz").expect("w:pgSz");
     assert_eq!(entry.status, SupportStatus::Partial);
     assert!(
-        entry.message.as_deref().unwrap_or("").contains("Letter"),
+        entry
+            .message
+            .as_deref()
+            .unwrap_or("")
+            .contains("page size"),
         "message={:?}",
         entry.message
     );

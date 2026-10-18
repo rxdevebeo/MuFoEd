@@ -51,10 +51,14 @@ edit = ["dep:strict-ooxml-edit", "write", "svg"]
 # Import builds an owned Strict package so existing media/render/write paths work.
 rtf = ["dep:strict-ooxml-rtf", "write"]
 html = ["dep:strict-ooxml-html", "write"]
+# LaTeX import into an owned Strict package (sections, lists, tables, images,
+# footnotes, hyperlinks, math and `\input`/`\include`).
+latex = ["dep:strict-ooxml-latex", "write"]
 
 [dependencies]
 strict-ooxml-html = { version = "0.1.0", path = "../strict-ooxml-html", optional = true }
 strict-ooxml-rtf = { version = "0.1.0", path = "../strict-ooxml-rtf", optional = true }
+strict-ooxml-latex = { version = "0.1.0", path = "../strict-ooxml-latex", optional = true }
 strict-ooxml-djvu = { version = "0.1.0", path = "../strict-ooxml-djvu", optional = true }
 strict-ooxml-ocr = { version = "0.1.0", path = "../strict-ooxml-ocr", optional = true }
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }

@@ -21,6 +21,7 @@ members = [
     "strict-ooxml-convert",
     "strict-ooxml-rtf",
     "strict-ooxml-html",
+    "strict-ooxml-latex",
     "strict-ooxml-ocr",
     "strict-ooxml-djvu",
     "strict-ooxml-write",
@@ -91,6 +92,8 @@ proptest = "1"
 resvg = "0.48"
 # Reference-PNG decoding for the SSIM harness.
 png = "0.18"
+# LaTeX accent composition (base letter + combining mark -> precomposed form).
+unicode-normalization = "0.1"
 
 # Lint policy (task S1.1). Every member crate opts in with `[lints] workspace = true`.
 [workspace.lints.rust]

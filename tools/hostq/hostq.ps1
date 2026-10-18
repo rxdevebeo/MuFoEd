@@ -406,7 +406,8 @@ $script:AllowedFields = @{
     'wps'         = @('id', 'kind', 'sha')
     'wps-qa'      = @('id', 'kind', 'sha', 'corpus', 'baseline', 'limit', 'capture', 'recompare', 'minutes', 'system_fonts', 'font_pack', 'font_packs')
     'rtf'         = @('id', 'kind', 'sha')
-    'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes', 'lang', 'lexicon', 'ocr_layout')
+    'pdf-dump'    = @('id', 'kind', 'sha', 'input', 'page', 'glyphs')
+    'ocr-probe'   = @('id', 'kind', 'sha', 'input', 'pages', 'model', 'prompt_file', 'scale', 'convert', 'layout', 'minutes', 'lang', 'lexicon', 'ocr_layout', 'images', 'ocr')
     'commit'      = @('id', 'kind', 'branch', 'paths', 'message')
     'push'        = @('id', 'kind', 'branch')
 }
@@ -472,6 +473,7 @@ function Test-JobRecord {
         'wps-qa' { $required = @('sha') }
         'rtf' { $required = @('sha') }
         'ocr-probe' { $required = @('sha', 'input', 'pages') }
+        'pdf-dump' { $required = @('sha', 'input') }
         'commit' { $required = @('branch', 'paths', 'message') }
         'push' { $required = @('branch') }
     }
@@ -525,6 +527,20 @@ function Test-JobRecord {
                 }
             }
         }
+        'pdf-dump' {
+            if ($Job.input -isnot [string] -or [string]$Job.input -notmatch '^testdata/[^\\:*?"<>|]+\.pdf$' -or [string]$Job.input -match '(^|/)\.\.(/|$)') {
+                return (& $reject 'input must be testdata/<path>.pdf without ..')
+            }
+            if (-not (Test-Path -LiteralPath (Join-RepoPath -Root $Repo -Relative ([string]$Job.input)) -PathType Leaf)) {
+                return (& $reject ("input '{0}' does not exist" -f $Job.input))
+            }
+            if ($fields -contains 'page' -and (-not ($Job.page -is [int] -or $Job.page -is [long]) -or [long]$Job.page -lt 1 -or [long]$Job.page -gt 100000)) {
+                return (& $reject 'page must be an integer 1..100000')
+            }
+            if ($fields -contains 'glyphs' -and $Job.glyphs -isnot [bool]) {
+                return (& $reject 'glyphs must be true or false')
+            }
+        }
         'ocr-probe' {
             # A scanned document of the owner's under testdata\, a short page
             # span (a vision model takes a minute a page), and an optional model
@@ -556,7 +572,7 @@ function Test-JobRecord {
             if ($fields -contains 'lang' -and ($Job.lang -isnot [string] -or [string]$Job.lang -notmatch '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$')) {
                 return (& $reject 'lang is not a BCP 47 tag')
             }
-            foreach ($flag in @('convert', 'layout', 'lexicon', 'ocr_layout')) {
+            foreach ($flag in @('convert', 'layout', 'lexicon', 'ocr_layout', 'images', 'ocr')) {
                 if ($fields -contains $flag -and $Job.$flag -isnot [bool]) {
                     return (& $reject ("{0} must be true or false" -f $flag))
                 }
@@ -1292,8 +1308,42 @@ function Invoke-WpsQa {
     return (New-Result $status $reason $steps $artifacts)
 }
 
+# What the PDF reader makes of one page (strict-ooxml-pdf example dump_lines):
+# its text lines and, with `glyphs`, every glyph. The first thing to look at
+# when a PDF converts wrong.
+function Invoke-PdfDump {
+    param([string]$Repo, [string]$QueueDir, [string]$Sha, $Job, [string]$OutDir)
+    $deadline = (Get-Date).AddMinutes(30)
+    $wt = Join-Path $QueueDir 'wt'
+    $target = Join-Path $QueueDir 'target'
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Ensure-Worktree -Repo $Repo -Wt $wt -Sha $Sha
+    $inputPdf = Join-RepoPath -Root $Repo -Relative ([string]$Job.input)
+    $page = '1'
+    if ($null -ne $Job.PSObject.Properties['page']) { $page = [string]([long]$Job.page) }
+    $steps = @()
+    $build = Invoke-Logged -Name 'build-dump' -Exe 'cargo' -Arguments @($script:Toolchain, 'build', '--release', '-p', 'strict-ooxml-pdf', '--example', 'dump_lines') -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env (Get-CargoEnv -Target $target) -OutDir $OutDir
+    $steps += $build
+    $artifacts = @()
+    if (-not $build.timedout -and $build.exit -eq 0) {
+        $exe = Join-Path $target 'release\examples\dump_lines.exe'
+        $dumpArgs = @($inputPdf, $page)
+        if ($null -ne $Job.PSObject.Properties['glyphs'] -and [bool]$Job.glyphs) { $dumpArgs += @('--glyphs') }
+        $run = Invoke-Logged -Name 'dump-lines' -Exe $exe -Arguments $dumpArgs -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
+        $steps += $run
+        $p = Join-Path $OutDir 'dump.txt'
+        Write-Utf8NoBom -Path $p -Text ([string]$run.stdout + "`n" + [string]$run.stderr)
+        $artifacts += New-Artifact -QueueDir $QueueDir -Path $p
+    }
+    $status = Get-StepsStatus $steps
+    $reason = ''
+    if ($status -ne 'ok') { $reason = ('pdf-dump: {0} step(s) non-zero' -f @($steps | Where-Object { $_.exit -ne 0 }).Count) }
+    return (New-Result $status $reason $steps $artifacts)
+}
+
 # Recognition of a scanned PDF by the owner's local Ollama, for debugging:
-# `convert` (default on) runs `from-pdf --ocr --no-images` on the page span and
+# `convert` (default on) runs `from-pdf --ocr` on the page span (with
+# `--no-images` unless `images` is true) and
 # `to-pdf` on the result; `layout` (default on) runs the `layout_probe`
 # example, which keeps each page picture the model saw and its verbatim answer
 # to a layout prompt (blocks, boxes, kinds, Markdown). The model is `model`, or
@@ -1311,7 +1361,13 @@ function Invoke-OcrProbe {
     $pages = [string]$Job.pages
     $convert = $true
     if ($null -ne $Job.PSObject.Properties['convert']) { $convert = [bool]$Job.convert }
-    $layout = $true
+    # `ocr: false` converts the PDF as it is, without a model: a text PDF's
+    # result is then the converter's own, not mixed with what a model read
+    # from its pictures. The layout probe needs the model, so it is off then
+    # unless asked for.
+    $ocr = $true
+    if ($null -ne $Job.PSObject.Properties['ocr']) { $ocr = [bool]$Job.ocr }
+    $layout = $ocr
     if ($null -ne $Job.PSObject.Properties['layout']) { $layout = [bool]$Job.layout }
     $ocrEnv = @{ STRICTLIB_LEXICON_DIR = (Join-Path $QueueDir 'lexicons') }
     if ($null -ne $Job.PSObject.Properties['model']) { $ocrEnv['OLLAMA_MODEL'] = [string]$Job.model }
@@ -1325,17 +1381,21 @@ function Invoke-OcrProbe {
             $cli = Join-Path $target 'release\strict-ooxml.exe'
             $docx = Join-Path $OutDir 'ocr.docx'
             $report = Join-Path $OutDir 'ocr-report.json'
-            $convertArgs = @('from-pdf', $inputPdf, '--ocr', '--pages', $pages, '--no-images', '--out', $docx, '--report-out', $report)
+            $convertArgs = @('from-pdf', $inputPdf, '--pages', $pages, '--out', $docx, '--report-out', $report)
+            if ($ocr) { $convertArgs += @('--ocr') }
+            # Pictures stay out unless `images` asks for them: they cost
+            # size and time, and recognition does not need them.
+            if (-not ($null -ne $Job.PSObject.Properties['images'] -and [bool]$Job.images)) { $convertArgs += @('--no-images') }
             # `lang` names the text's language; its word list (the executor's
             # own cache, fetched on first use) restores dropped diacritics
             # unless `lexicon` is false.
-            if ($null -ne $Job.PSObject.Properties['lang']) {
+            if ($ocr -and $null -ne $Job.PSObject.Properties['lang']) {
                 $convertArgs += @('--ocr-lang', [string]$Job.lang)
                 $useLexicon = $true
                 if ($null -ne $Job.PSObject.Properties['lexicon']) { $useLexicon = [bool]$Job.lexicon }
                 if ($useLexicon) { $convertArgs += @('--fetch-lexicon') } else { $convertArgs += @('--no-lexicon') }
             }
-            if ($null -ne $Job.PSObject.Properties['ocr_layout'] -and [bool]$Job.ocr_layout) { $convertArgs += @('--ocr-layout') }
+            if ($ocr -and $null -ne $Job.PSObject.Properties['ocr_layout'] -and [bool]$Job.ocr_layout) { $convertArgs += @('--ocr-layout') }
             $fromPdf = Invoke-Logged -Name 'from-pdf' -Exe $cli -Arguments $convertArgs -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -Env $ocrEnv -OutDir $OutDir
             # Exit 1 is a written document whose report has losses.
             if ($fromPdf.exit -eq 1 -and (Test-Path -LiteralPath $docx)) { $fromPdf.exit = 0 }
@@ -1353,7 +1413,8 @@ function Invoke-OcrProbe {
                 # Scan beside result, page by page (xtool/ocr-qa/compare.py):
                 # a page rebuilt from its layout starts a page of its own, so the
                 # DOCX is cut there and each part rendered next to its scan.
-                if ($null -ne $Job.PSObject.Properties['ocr_layout'] -and [bool]$Job.ocr_layout) {
+                # Without a model the comparison is the probe's point.
+                if ((-not $ocr) -or ($null -ne $Job.PSObject.Properties['ocr_layout'] -and [bool]$Job.ocr_layout)) {
                     $first = [string]([int](([string]$Job.pages) -split '-')[0])
                     $compareDir = Join-Path $OutDir 'compare'
                     $compare = Invoke-Logged -Name 'compare' -Exe $script:Python -Arguments @('-X', 'utf8', 'xtool/ocr-qa/compare.py', '--source', $inputPdf, '--first', $first, '--docx', $docx, '--cli', $cli, '--out', $compareDir) -WorkDir $wt -TimeoutSec (Get-Budget $deadline) -OutDir $OutDir
@@ -1648,6 +1709,7 @@ function Invoke-JobFile {
                 'bench' { $r = Invoke-Bench -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
                 'wps' { $r = Invoke-Wps -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'wps-qa' { $r = Invoke-WpsQa -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
+                'pdf-dump' { $r = Invoke-PdfDump -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
                 'ocr-probe' { $r = Invoke-OcrProbe -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -Job $job -OutDir $outDir }
                 'rtf' { $r = Invoke-Rtf -Repo $Repo -QueueDir $QueueDir -Sha $fullSha -OutDir $outDir -AfterCopyHook $AfterCopyHook }
                 'commit' { $r = Invoke-Commit -Repo $Repo -Job $job -OutDir $outDir }

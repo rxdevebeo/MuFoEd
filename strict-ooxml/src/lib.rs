@@ -140,6 +140,17 @@ pub use strict_ooxml_rtf::{
     RtfReport, RtfSpan, UnicodeParameterPolicy, UnsupportedPolicy,
 };
 
+#[cfg(feature = "latex")]
+mod latex;
+#[cfg(feature = "latex")]
+pub use latex::{LatexOpenError, LatexOpened, LatexStatus};
+#[cfg(feature = "latex")]
+pub use strict_ooxml_latex::{
+    FsSource, LatexError, LatexFeatureCount, LatexIssue, LatexLimits, LatexOptions, LatexReport,
+    LatexSpan, MemorySource, Severity as LatexSeverity, SourceProvider,
+    UnsupportedPolicy as LatexUnsupportedPolicy,
+};
+
 #[cfg(feature = "convert")]
 pub use strict_ooxml_convert::{
     convert as convert_pdf, ConversionReport, ConvertError, Converted, Lexicon, LexiconError, Mode,
@@ -172,8 +183,8 @@ pub use strict_ooxml_render_svg::font::system as system_fonts;
 pub use strict_ooxml_render_svg::font::{FontAsset, FontAssetError, FontAssetLimits, FontAssets};
 #[cfg(feature = "svg")]
 pub use strict_ooxml_render_svg::{
-    paint_page, CellNoWrap, FontPolicy, MediaMode, Page, PageSelection, PlacedPage, Placement,
-    RenderError, RenderOptions, WrapCoordinates,
+    paint_page, CellNoWrap, DefaultPaper, FontPolicy, MediaMode, Page, PageSelection, PlacedPage,
+    Placement, RenderError, RenderOptions, WrapCoordinates,
 };
 #[cfg(feature = "report")]
 pub use strict_ooxml_report::{
