@@ -1,6 +1,179 @@
 use crate::{DiagramEditor, Group, Node, Point, Target};
 use std::collections::BTreeSet;
+/// Alignment of selected objects within their shared visual bounds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Alignment {
+    /// Left edges.
+    Left,
+    /// Horizontal centers.
+    Center,
+    /// Right edges.
+    Right,
+    /// Top edges.
+    Top,
+    /// Vertical centers.
+    Middle,
+    /// Bottom edges.
+    Bottom,
+}
+/// Distribution direction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Axis {
+    /// Horizontal gaps.
+    Horizontal,
+    /// Vertical gaps.
+    Vertical,
+}
 impl DiagramEditor {
+    pub(crate) fn selection_units(&self) -> Vec<Vec<u64>> {
+        let mut remaining = self.selected_nodes();
+        let mut units = vec![];
+        for group in &self.diagram.groups {
+            if group.members.iter().all(|id| remaining.contains(id)) {
+                for id in &group.members {
+                    remaining.remove(id);
+                }
+                units.push(group.members.clone());
+            }
+        }
+        units.extend(remaining.into_iter().map(|id| vec![id]));
+        units
+    }
+    fn unit_bounds(&self, ids: &[u64]) -> (Point, Point) {
+        let mut min = Point::new(f32::INFINITY, f32::INFINITY);
+        let mut max = Point::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
+        for n in self.diagram.nodes.iter().filter(|n| ids.contains(&n.id)) {
+            let (a, b) = n.visual_bounds();
+            min.x = min.x.min(a.x);
+            min.y = min.y.min(a.y);
+            max.x = max.x.max(b.x);
+            max.y = max.y.max(b.y);
+        }
+        (min, max)
+    }
+    fn translate_units(&mut self, moves: &[(Vec<u64>, Point)]) -> Result<(), String> {
+        let mut next = self.diagram.clone();
+        for (ids, delta) in moves {
+            for n in &mut next.nodes {
+                if ids.contains(&n.id) {
+                    n.position.x += delta.x;
+                    n.position.y += delta.y;
+                }
+            }
+        }
+        next.validate()?;
+        self.commit();
+        self.begin();
+        self.diagram = next;
+        self.commit();
+        Ok(())
+    }
+    /// Aligns shapes/groups without changing their sizes or internal geometry.
+    /// # Errors
+    /// Requires two independent selected objects and valid resulting coordinates.
+    pub fn align_selected(&mut self, alignment: Alignment) -> Result<(), String> {
+        let units = self.selection_units();
+        if units.len() < 2 {
+            return Err("Select at least two objects".into());
+        }
+        let bounds: Vec<_> = units.iter().map(|ids| self.unit_bounds(ids)).collect();
+        let min = Point::new(
+            bounds.iter().map(|b| b.0.x).fold(f32::INFINITY, f32::min),
+            bounds.iter().map(|b| b.0.y).fold(f32::INFINITY, f32::min),
+        );
+        let max = Point::new(
+            bounds
+                .iter()
+                .map(|b| b.1.x)
+                .fold(f32::NEG_INFINITY, f32::max),
+            bounds
+                .iter()
+                .map(|b| b.1.y)
+                .fold(f32::NEG_INFINITY, f32::max),
+        );
+        let moves = units
+            .into_iter()
+            .zip(bounds)
+            .map(|(ids, (a, b))| {
+                let delta = match alignment {
+                    Alignment::Left => Point::new(min.x - a.x, 0.0),
+                    Alignment::Center => Point::new((min.x + max.x - a.x - b.x) / 2.0, 0.0),
+                    Alignment::Right => Point::new(max.x - b.x, 0.0),
+                    Alignment::Top => Point::new(0.0, min.y - a.y),
+                    Alignment::Middle => Point::new(0.0, (min.y + max.y - a.y - b.y) / 2.0),
+                    Alignment::Bottom => Point::new(0.0, max.y - b.y),
+                };
+                (ids, delta)
+            })
+            .collect::<Vec<_>>();
+        self.translate_units(&moves)
+    }
+    /// Distributes equal gaps; outermost objects stay fixed, groups remain rigid.
+    /// # Errors
+    /// Requires three independent selected objects and valid resulting coordinates.
+    pub fn distribute_selected(&mut self, axis: Axis) -> Result<(), String> {
+        let coord = |p: Point| if axis == Axis::Horizontal { p.x } else { p.y };
+        let mut units: Vec<_> = self
+            .selection_units()
+            .into_iter()
+            .map(|ids| {
+                let (a, b) = self.unit_bounds(&ids);
+                (ids, coord(a), coord(b))
+            })
+            .collect();
+        if units.len() < 3 {
+            return Err("Select at least three objects".into());
+        }
+        units.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0[0].cmp(&b.0[0])));
+        let first = units[0].1;
+        let last = units.last().unwrap().2;
+        let total: f32 = units.iter().map(|u| u.2 - u.1).sum();
+        let gap =
+            (last - first - total) / f32::from(u16::try_from(units.len() - 1).unwrap_or(u16::MAX));
+        let mut at = first;
+        let mut moves = vec![];
+        for (ids, start, end) in units {
+            let d = at - start;
+            moves.push((
+                ids,
+                if axis == Axis::Horizontal {
+                    Point::new(d, 0.0)
+                } else {
+                    Point::new(0.0, d)
+                },
+            ));
+            at += end - start + gap;
+        }
+        self.translate_units(&moves)
+    }
+    /// Rotates selected nodes around their common center in one transaction.
+    /// # Errors
+    /// Rejects non-finite angles, empty selection or out-of-bounds geometry.
+    pub fn rotate_selected(&mut self, degrees: f32) -> Result<(), String> {
+        if !degrees.is_finite() {
+            return Err("Invalid rotation".into());
+        }
+        let ids = self.selected_nodes();
+        if ids.is_empty() {
+            return Err("Nothing selected".into());
+        }
+        let (a, b) = self.unit_bounds(&ids.iter().copied().collect::<Vec<_>>());
+        let center = Point::new(a.x.midpoint(b.x), a.y.midpoint(b.y));
+        let mut next = self.diagram.clone();
+        for n in &mut next.nodes {
+            if ids.contains(&n.id) {
+                let c = crate::model::rotate(n.center(), center, degrees);
+                n.position = Point::new(c.x - n.size.x / 2.0, c.y - n.size.y / 2.0);
+                n.style.rotation = (n.style.rotation + degrees).rem_euclid(360.0);
+            }
+        }
+        next.validate()?;
+        self.commit();
+        self.begin();
+        self.diagram = next;
+        self.commit();
+        Ok(())
+    }
     /// Duplicates selected shapes, groups and internal links with new IDs.
     /// # Errors
     /// Rejects missing selection or exceeded scene limits without altering it.
@@ -127,15 +300,10 @@ impl DiagramEditor {
             .iter()
             .filter(|n| ids.contains(&n.id))
             .collect();
-        let first = nodes.first()?;
-        let mut min = first.position;
-        let mut max = Point::new(min.x + first.size.x, min.y + first.size.y);
-        for n in nodes {
-            min.x = min.x.min(n.position.x);
-            min.y = min.y.min(n.position.y);
-            max.x = max.x.max(n.position.x + n.size.x);
-            max.y = max.y.max(n.position.y + n.size.y);
+        if nodes.is_empty() {
+            return None;
         }
+        let (min, max) = self.unit_bounds(&ids.into_iter().collect::<Vec<_>>());
         Some((min, Point::new(max.x - min.x, max.y - min.y)))
     }
     /// Moves or scales selected nodes as one action. Text size is preserved.
@@ -186,6 +354,7 @@ impl DiagramEditor {
         let (p, size) = self.selection_frame()?;
         node.position = p;
         node.size = size;
+        node.style.rotation = 0.0;
         Some(node)
     }
 }

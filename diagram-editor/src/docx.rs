@@ -143,6 +143,14 @@ fn node_graphic(n: &Node) -> w::drawing::Graphic {
     });
     s.geometry = w::drawing::ShapeGeometry::Preset(preset(n.kind).into());
     s.tx_box = Some(n.kind == ShapeKind::Text);
+    if n.style.rotation.abs() > 0.001 {
+        s.xfrm = Some(w::drawing::Xfrm {
+            offset: s.offset,
+            rot: Some((f64::from(n.style.rotation) * 60000.0).round() as i32),
+            flip_h: false,
+            flip_v: false,
+        });
+    }
     s.fill = Some(if n.style.no_fill || n.kind == ShapeKind::Text {
         w::drawing::ShapeFill::None
     } else {
@@ -202,10 +210,11 @@ fn bounds<'a>(nodes: impl Iterator<Item = &'a Node>) -> (Point, Point) {
     let mut min = Point::new(0.0, 0.0);
     let mut max = Point::new(1.0, 1.0);
     for n in nodes {
-        min.x = min.x.min(n.position.x);
-        min.y = min.y.min(n.position.y);
-        max.x = max.x.max(n.position.x + n.size.x);
-        max.y = max.y.max(n.position.y + n.size.y);
+        let (a, b) = n.visual_bounds();
+        min.x = min.x.min(a.x);
+        min.y = min.y.min(a.y);
+        max.x = max.x.max(b.x);
+        max.y = max.y.max(b.y);
     }
     (min, Point::new(max.x - min.x, max.y - min.y))
 }
@@ -302,9 +311,7 @@ impl Diagram {
         size.x += 40.0;
         size.y += 40.0;
         if size.x > 1800.0 || size.y > 2400.0 {
-            return Err(
-                "Схема слишком велика для DOCX: уменьшите её до 1800 × 2400 пикселей".into(),
-            );
+            return Err("Diagram is too large for DOCX: reduce it to 1800 × 2400 pixels".into());
         }
         let root_id = self
             .nodes
@@ -361,15 +368,21 @@ impl Diagram {
         }
         let mut issues = vec![];
         if !self.connections.is_empty() {
-            issues.push("DOCX: стрелки сохранены как редактируемые линии без привязки концов к фигурам; точные связи сохраняет JSON".into());
+            issues.push("DOCX: connectors are editable lines without endpoint bindings; JSON preserves exact connections".into());
         }
         for n in &self.nodes {
             if n.style.no_fill || n.style.no_stroke || n.kind == ShapeKind::Text {
-                issues.push(format!("Фигура {}: цвета отключённых заливки/контура не сохраняются в DOCX; исходные параметры сохраняет JSON",n.id));
+                issues.push(format!("Shape {}: inactive fill/outline colors are not stored in DOCX; JSON preserves them",n.id));
             }
             if ((n.font_size * 1.5).round() / 1.5 - n.font_size).abs() > 0.001 {
-                issues.push(format!("Кегль фигуры {} округлён до половины пункта", n.id));
+                issues.push(format!(
+                    "Shape {} font size was rounded to half a point",
+                    n.id
+                ));
             }
+        }
+        if self.connections.iter().any(|c| !self.route_status(c).1) {
+            issues.push("Route could not avoid all obstacles".into());
         }
         Ok(DocxExport {
             bytes: output.bytes,
@@ -400,31 +413,36 @@ impl Diagram {
                                     match c {
                                         w::RunContent::Drawing(d) => drawings.push(d),
                                         w::RunContent::Text(t) if t.text.trim().is_empty() => {}
-                                        _ => return Err("DOCX содержит текст вне схемы".into()),
+                                        _ => {
+                                            return Err(
+                                                "DOCX contains text outside the diagram".into()
+                                            )
+                                        }
                                     }
                                 }
                             }
-                            _ => return Err("DOCX содержит неподдерживаемое содержимое".into()),
+                            _ => return Err("DOCX contains unsupported content".into()),
                         }
                     }
                 }
-                _ => return Err("Ожидался DOCX с одной схемой".into()),
+                _ => return Err("Expected a DOCX containing one diagram".into()),
             }
         }
         if drawings.len() != 1 {
-            return Err("Ожидался один графический холст DOCX".into());
+            return Err("Expected one DOCX drawing canvas".into());
         }
         let graphic = match &drawings[0].kind {
             w::DrawingKind::Inline(i) => i.graphic.as_ref(),
-            _ => return Err("Импорт закреплённого холста пока не поддерживается".into()),
+            _ => return Err("Importing an anchored canvas is not supported".into()),
         };
         let w::drawing::Graphic::Group(root) = graphic else {
-            return Err("Ожидалась группа фигур".into());
+            return Err("Expected a group of shapes".into());
         };
-        if root.xfrm.is_some_and(|x| {
-            x.rot.unwrap_or(0) != 0 || x.flip_h || x.flip_v || x.extent != x.child_extent
-        }) {
-            return Err("Масштабированный или повёрнутый корневой холст пока не поддержан".into());
+        if root
+            .xfrm
+            .is_some_and(|x| x.flip_h || x.flip_v || x.extent != x.child_extent)
+        {
+            return Err("A scaled or rotated root canvas is not supported".into());
         }
         let mut diagram = Self::default();
         let mut lines = vec![];
@@ -433,20 +451,20 @@ impl Diagram {
         }
         for s in lines {
             let w::drawing::ShapeGeometry::Custom(geometry) = &s.geometry else {
-                return Err("Неподдерживаемая геометрия соединителя".into());
+                return Err("Unsupported connector geometry".into());
             };
-            let path = geometry.paths.first().ok_or("Пустой соединитель")?;
+            let path = geometry.paths.first().ok_or("Empty connector")?;
             if geometry.paths.len() != 1 {
-                return Err("Многоконтурная линия не поддержана".into());
+                return Err("Multiple connector paths are not supported".into());
             }
-            let line_extent = s.extent.ok_or("Нет размера линии")?;
+            let line_extent = s.extent.ok_or("Missing connector extent")?;
             if path.width != line_extent.cx.0 || path.height != line_extent.cy.0 {
-                return Err("Масштабированные координаты линии пока не поддержаны".into());
+                return Err("Scaled connector coordinates are not supported".into());
             }
             let offset = s
                 .offset
                 .or_else(|| s.xfrm.and_then(|x| x.offset))
-                .ok_or("Нет положения линии")?;
+                .ok_or("Missing connector position")?;
             let mut points = vec![];
             for command in &path.commands {
                 match command {
@@ -455,14 +473,15 @@ impl Diagram {
                         px(offset.0) + px(w::Emu(*x)),
                         px(offset.1) + px(w::Emu(*y)),
                     )),
-                    _ => return Err("Кривой соединитель не поддержан".into()),
+                    _ => return Err("Curved connectors are not supported".into()),
                 }
             }
-            let from = match_port(&diagram, *points.first().ok_or("Пустая линия")?)?;
-            let to = match_port(&diagram, *points.last().ok_or("Пустая линия")?)?;
-            let stroke = s.stroke.as_ref().ok_or("Нет стиля линии")?;
+            let from = match_port(&diagram, *points.first().ok_or("Empty line")?)?;
+            let to = match_port(&diagram, *points.last().ok_or("Empty line")?)?;
+            let stroke = s.stroke.as_ref().ok_or("Missing connector style")?;
             diagram.connections.push(Connection {
-                id: u64::from(s.nv_id.ok_or("Нет ID линии")?),
+                routing: crate::Routing::Simple,
+                id: u64::from(s.nv_id.ok_or("Missing connector ID")?),
                 from: from.0,
                 to: to.0,
                 from_port: from.1,
@@ -473,28 +492,37 @@ impl Diagram {
                 start_arrow: read_arrow(stroke.head_end.as_deref())?,
                 end_arrow: read_arrow(stroke.tail_end.as_deref())?,
             });
-            let route = diagram.route(
+            let same = |route: &[Point]| {
+                route.len() == points.len()
+                    && route
+                        .iter()
+                        .zip(&points)
+                        .all(|(a, b)| (a.x - b.x).hypot(a.y - b.y) <= 0.05)
+            };
+            let mut route = diagram.route(
                 diagram
                     .connections
                     .last()
-                    .ok_or("Не удалось восстановить линию")?,
+                    .ok_or("Could not restore connector")?,
             );
+            if !same(&route) {
+                diagram.connections.last_mut().unwrap().routing = crate::Routing::AvoidObstacles;
+                route = diagram.route(diagram.connections.last().unwrap());
+            }
             if route.len() != points.len()
                 || route
                     .iter()
                     .zip(&points)
                     .any(|(a, b)| (a.x - b.x).hypot(a.y - b.y) > 0.05)
             {
-                return Err(
-                    "Линия имеет изменённый вручную маршрут; откройте исходный JSON".into(),
-                );
+                return Err("Connector route was changed manually; open the original JSON".into());
             }
         }
         diagram.validate()?;
         let issues = if diagram.connections.is_empty() {
             vec![]
         } else {
-            vec!["Привязки стрелок восстановлены по совпадению концов с портами фигур; DOCX не хранит их через текущую модель библиотеки".into()]
+            vec!["Connections were inferred from matching endpoints and shape ports; the current library model does not store DOCX bindings".into()]
         };
         Ok(DocxImport { diagram, issues })
     }
@@ -512,14 +540,14 @@ fn match_port(d: &Diagram, p: Point) -> Result<(u64, Port), String> {
     if found.len() == 1 {
         Ok(found[0])
     } else {
-        Err("Невозможно однозначно восстановить привязку линии; откройте исходный JSON".into())
+        Err("Cannot infer an unambiguous connector binding; open the original JSON".into())
     }
 }
 fn read_arrow(v: Option<&str>) -> Result<bool, String> {
     match v {
         None | Some("none") => Ok(false),
         Some("triangle") => Ok(true),
-        _ => Err("Неподдерживаемый наконечник".into()),
+        _ => Err("Unsupported arrowhead".into()),
     }
 }
 fn read_dash(v: Option<&str>) -> Result<Dash, String> {
@@ -527,16 +555,16 @@ fn read_dash(v: Option<&str>) -> Result<Dash, String> {
         None | Some("solid") => Ok(Dash::Solid),
         Some("dash") => Ok(Dash::Dashed),
         Some("dot") => Ok(Dash::Dotted),
-        _ => Err("Неподдерживаемый пунктир".into()),
+        _ => Err("Unsupported dash".into()),
     }
 }
 fn read_color(c: Option<&w::drawing::ShapeColor>) -> Result<[u8; 3], String> {
     let s = c
         .and_then(|c| c.value.as_ref())
         .map(w::Color::as_str)
-        .ok_or("Цвет темы или отсутствующий цвет не поддержан")?;
+        .ok_or("Theme or missing colors are not supported")?;
     if s.len() != 6 || !s.is_ascii() || !s.bytes().all(|c| c.is_ascii_hexdigit()) {
-        return Err("Неподдерживаемый цвет".into());
+        return Err("Unsupported color".into());
     }
     Ok([
         u8::from_str_radix(&s[0..2], 16).map_err(|e| e.to_string())?,
@@ -551,7 +579,7 @@ fn import_graphic(
     depth: usize,
 ) -> Result<(), String> {
     if depth > 1 {
-        return Err("Вложенные группы пока не поддерживаются".into());
+        return Err("Nested groups are not supported".into());
     }
     match graphic {
         w::drawing::Graphic::Group(g) => {
@@ -562,7 +590,7 @@ fn import_graphic(
                     || x.extent != x.child_extent
                     || x.offset != x.child_offset
                 {
-                    return Err("Преобразованная группа не поддерживается".into());
+                    return Err("Transformed groups are not supported".into());
                 }
             }
             let before = d.nodes.len();
@@ -570,22 +598,20 @@ fn import_graphic(
                 import_graphic(child, d, lines, depth + 1)?;
             }
             d.groups.push(Group {
-                id: u64::from(g.nv_id.ok_or("Нет ID группы")?),
+                id: u64::from(g.nv_id.ok_or("Missing group ID")?),
                 members: d.nodes[before..].iter().map(|n| n.id).collect(),
             });
         }
         w::drawing::Graphic::Shape(s) if s.connector => lines.push(s.clone()),
         w::drawing::Graphic::Shape(s) => {
             if s.effects.is_some() || s.style.is_some() {
-                return Err("Эффекты и ссылки на стили темы пока не поддержаны".into());
+                return Err("Effects and theme style references are not supported".into());
             }
-            if s.xfrm
-                .is_some_and(|x| x.rot.unwrap_or(0) != 0 || x.flip_h || x.flip_v)
-            {
-                return Err("Поворот фигуры пока не поддержан".into());
+            if s.xfrm.is_some_and(|x| x.flip_h || x.flip_v) {
+                return Err("Flipped shapes are not supported".into());
             }
             let w::drawing::ShapeGeometry::Preset(preset) = &s.geometry else {
-                return Err("Произвольный контур пока не поддержан".into());
+                return Err("Custom shape paths are not supported".into());
             };
             let kind = if s.tx_box == Some(true) {
                 ShapeKind::Text
@@ -600,22 +626,28 @@ fn import_graphic(
                     "hexagon" => ShapeKind::Hexagon,
                     "flowChartDocument" => ShapeKind::Document,
                     "rightArrow" => ShapeKind::RightArrow,
-                    _ => return Err(format!("Не поддерживается фигура {preset}")),
+                    _ => return Err(format!("Unsupported shape {preset}")),
                 }
             };
             let offset = s
                 .offset
                 .or_else(|| s.xfrm.and_then(|x| x.offset))
-                .ok_or("Нет положения фигуры")?;
-            let size = s.extent.ok_or("Нет размера фигуры")?;
-            let mut style = NodeStyle::default();
+                .ok_or("Missing shape position")?;
+            let size = s.extent.ok_or("Missing shape extent")?;
+            let mut style = NodeStyle {
+                rotation: s
+                    .xfrm
+                    .and_then(|x| x.rot)
+                    .map_or(0.0, |r| (r as f32 / 60000.0).rem_euclid(360.0)),
+                ..NodeStyle::default()
+            };
             let fill = match &s.fill {
                 Some(w::drawing::ShapeFill::Solid { color }) => read_color(Some(color))?,
                 Some(w::drawing::ShapeFill::None) => {
                     style.no_fill = kind != ShapeKind::Text;
                     [231, 240, 252]
                 }
-                _ => return Err("Неподдерживаемая заливка".into()),
+                _ => return Err("Unsupported fill".into()),
             };
             let stroke = if let Some(line) = &s.stroke {
                 style.no_stroke = line.none && kind != ShapeKind::Text;
@@ -627,7 +659,7 @@ fn import_graphic(
                     read_color(line.color.as_ref())?
                 }
             } else {
-                return Err("Нет стиля контура".into());
+                return Err("Missing outline style".into());
             };
             let mut text = vec![];
             let mut font_size = 16.0;
@@ -643,8 +675,7 @@ fn import_graphic(
                             .any(|v| (px(v) - style.padding).abs() > 0.001)
                     {
                         return Err(
-                            "Неравные поля или вертикальное выравнивание текста не поддержаны"
-                                .into(),
+                            "Unequal padding or vertical text alignment is not supported".into(),
                         );
                     }
                     style.wrap = body.wrap.as_deref() != Some("none");
@@ -652,26 +683,24 @@ fn import_graphic(
                 let mut formatting = None;
                 for block in &t.blocks {
                     let w::Block::Paragraph(p) = block else {
-                        return Err("Таблица внутри фигуры не поддержана".into());
+                        return Err("Tables inside shapes are not supported".into());
                     };
                     style.align = match p.props.alignment {
                         Some(w::Justification::Start) | None => TextAlign::Left,
                         Some(w::Justification::Center) => TextAlign::Center,
                         Some(w::Justification::End) => TextAlign::Right,
-                        _ => return Err("Неподдерживаемое выравнивание".into()),
+                        _ => return Err("Unsupported text alignment".into()),
                     };
                     let mut paragraph_props = p.props.clone();
                     paragraph_props.alignment = None;
                     paragraph_props.location = None;
                     if paragraph_props != w::props::ParagraphProperties::default() {
-                        return Err(
-                            "Дополнительное форматирование абзаца пока не поддержано".into()
-                        );
+                        return Err("Additional paragraph formatting is not supported".into());
                     }
                     let mut value = String::new();
                     for i in &p.inlines {
                         let w::Inline::Run(r) = i else {
-                            return Err("Сложный текст фигуры не поддержан".into());
+                            return Err("Complex shape text is not supported".into());
                         };
                         let signature = (
                             r.props.size,
@@ -686,9 +715,7 @@ fn import_graphic(
                         extra.fonts = None;
                         extra.location = None;
                         if extra != w::props::RunProperties::default() {
-                            return Err(
-                                "Дополнительное форматирование текста пока не поддержано".into()
-                            );
+                            return Err("Additional text formatting is not supported".into());
                         }
                         if r.props.fonts.as_ref().is_some_and(|f| {
                             [f.ascii.as_deref(), f.h_ansi.as_deref()]
@@ -696,10 +723,10 @@ fn import_graphic(
                                 .flatten()
                                 .any(|name| !name.eq_ignore_ascii_case("Calibri"))
                         }) {
-                            return Err("Другой шрифт пока не поддержан".into());
+                            return Err("Other fonts are not supported".into());
                         }
                         if formatting.is_some_and(|previous| previous != signature) {
-                            return Err("Смешанное форматирование текста пока не поддержано".into());
+                            return Err("Mixed text formatting is not supported".into());
                         }
                         formatting = Some(signature);
                         font_size = r.props.size.map_or(16.0, |h| h.0 as f32 / 1.5);
@@ -710,7 +737,7 @@ fn import_graphic(
                                 w::RunContent::Text(t) => value.push_str(&t.text),
                                 w::RunContent::Break(_) => value.push('\n'),
                                 w::RunContent::Tab => value.push('\t'),
-                                _ => return Err("Сложный текст фигуры не поддержан".into()),
+                                _ => return Err("Complex shape text is not supported".into()),
                             }
                         }
                     }
@@ -718,7 +745,7 @@ fn import_graphic(
                 }
             }
             d.nodes.push(Node {
-                id: u64::from(s.nv_id.ok_or("Нет ID фигуры")?),
+                id: u64::from(s.nv_id.ok_or("Missing shape ID")?),
                 kind,
                 position: Point::new(px(offset.0), px(offset.1)),
                 size: Point::new(px(size.cx), px(size.cy)),
@@ -729,7 +756,7 @@ fn import_graphic(
                 style,
             });
         }
-        _ => return Err("Неподдерживаемый графический объект".into()),
+        _ => return Err("Unsupported graphic object".into()),
     }
     Ok(())
 }

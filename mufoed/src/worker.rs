@@ -2358,7 +2358,7 @@ impl<'a, 's> Worker<'a, 's> {
         let rects = map
             .caret(self.session.revision(), &self.position(caret))
             .unwrap_or_default();
-        self.on_edited_page(rects)
+        self.on_edited_page(self.scheme_carets(rects))
     }
 
     /// Drops copies of an open header or footer that belong to other pages.
@@ -2405,7 +2405,10 @@ impl<'a, 's> Worker<'a, 's> {
             }
             _ => (Vec::new(), Vec::new()),
         };
-        let (carets, selection) = (self.on_edited_page(carets), self.on_edited_page(selection));
+        let (carets, selection) = (
+            self.on_edited_page(self.scheme_carets(carets)),
+            self.on_edited_page(selection),
+        );
         // Selected cells show as cells, without a caret.
         let (carets, selection) = if self.cells.is_some() {
             (Vec::new(), self.cell_rects())

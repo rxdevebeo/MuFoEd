@@ -1,4 +1,6 @@
 //! A document tab: the worker's channels and what it last said.
+#[cfg(test)]
+mod scheme_tests;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;

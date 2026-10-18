@@ -1,6 +1,11 @@
 #![allow(clippy::many_single_char_names, clippy::struct_excessive_bools)]
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+pub(crate) fn rotate(p: Point, center: Point, degrees: f32) -> Point {
+    let (s, c) = degrees.to_radians().sin_cos();
+    let (x, y) = (p.x - center.x, p.y - center.y);
+    Point::new(center.x + c * x - s * y, center.y + s * x + c * y)
+}
 
 /// Logical pixel coordinates, independent of canvas zoom and pan.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -70,6 +75,8 @@ pub enum Dash {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct NodeStyle {
+    /// Clockwise rotation about the node center, in degrees.
+    pub rotation: f32,
     /// No fill behind the label.
     pub no_fill: bool,
     /// No outline.
@@ -92,6 +99,7 @@ pub struct NodeStyle {
 impl Default for NodeStyle {
     fn default() -> Self {
         Self {
+            rotation: 0.0,
             no_fill: false,
             no_stroke: false,
             width: 1.7,
@@ -130,6 +138,25 @@ pub struct Node {
     pub style: NodeStyle,
 }
 impl Node {
+    /// Axis-aligned visual bounds including rotation (minimum and maximum corners).
+    #[must_use]
+    pub fn visual_bounds(&self) -> (Point, Point) {
+        let mut min = Point::new(f32::INFINITY, f32::INFINITY);
+        let mut max = Point::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
+        for p in [
+            self.position,
+            Point::new(self.position.x + self.size.x, self.position.y),
+            Point::new(self.position.x + self.size.x, self.position.y + self.size.y),
+            Point::new(self.position.x, self.position.y + self.size.y),
+        ] {
+            let p = rotate(p, self.center(), self.style.rotation);
+            min.x = min.x.min(p.x);
+            min.y = min.y.min(p.y);
+            max.x = max.x.max(p.x);
+            max.y = max.y.max(p.y);
+        }
+        (min, max)
+    }
     /// Centre of the node frame.
     #[must_use]
     pub fn center(&self) -> Point {
@@ -156,10 +183,10 @@ impl Node {
                 | ShapeKind::Diamond
                 | ShapeKind::Text
         ) {
-            return fallback;
+            return rotate(fallback, c, self.style.rotation);
         }
         let direction = Point::new(fallback.x - c.x, fallback.y - c.y);
-        let points = self.outline();
+        let points = self.local_outline();
         let mut best = 1.0_f32;
         for i in 0..points.len() {
             let a = points[i];
@@ -176,11 +203,16 @@ impl Node {
                 }
             }
         }
-        Point::new(c.x + direction.x * best, c.y + direction.y * best)
+        rotate(
+            Point::new(c.x + direction.x * best, c.y + direction.y * best),
+            c,
+            self.style.rotation,
+        )
     }
     /// Geometric hit test rather than just the bounding rectangle.
     #[must_use]
     pub fn contains(&self, p: Point) -> bool {
+        let p = rotate(p, self.center(), -self.style.rotation);
         let c = self.center();
         let x = (p.x - c.x).abs() / (self.size.x / 2.0);
         let y = (p.y - c.y).abs() / (self.size.y / 2.0);
@@ -192,7 +224,7 @@ impl Node {
             | ShapeKind::Hexagon
             | ShapeKind::RightArrow
             | ShapeKind::Document => {
-                let vertices = self.outline();
+                let vertices = self.local_outline();
                 let mut inside = false;
                 for i in 0..vertices.len() {
                     let a = vertices[i];
@@ -211,6 +243,12 @@ impl Node {
     /// Polygon for the non-elliptic preset outline in scene coordinates.
     #[must_use]
     pub fn outline(&self) -> Vec<Point> {
+        self.local_outline()
+            .into_iter()
+            .map(|p| rotate(p, self.center(), self.style.rotation))
+            .collect()
+    }
+    fn local_outline(&self) -> Vec<Point> {
         if self.kind == ShapeKind::Rounded {
             let r = self.size.x.min(self.size.y) / 6.0;
             let (x, y, w, h) = (self.position.x, self.position.y, self.size.x, self.size.y);
@@ -348,9 +386,21 @@ pub enum Port {
     Bottom,
 }
 /// Directed orthogonal connector; endpoints are never duplicated coordinates.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Routing {
+    /// Original short orthogonal route.
+    #[default]
+    Simple,
+    /// Bounded orthogonal search around visual shape bounds.
+    AvoidObstacles,
+}
+/// Directed connector with stable shape and port references.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Connection {
+    /// Routing policy; older scenes preserve their original route.
+    #[serde(default)]
+    pub routing: Routing,
     /// Stable scene ID.
     pub id: u64,
     /// Source node ID.
@@ -387,7 +437,7 @@ fn yes() -> bool {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Diagram {
-    /// Scene schema version, currently 2.
+    /// Scene schema version, currently 3; versions 1/2 migrate on JSON load.
     pub version: u32,
     /// Paint order: later nodes cover earlier ones.
     pub nodes: Vec<Node>,
@@ -400,7 +450,7 @@ pub struct Diagram {
 impl Default for Diagram {
     fn default() -> Self {
         Self {
-            version: 2,
+            version: 3,
             nodes: vec![],
             connections: vec![],
             groups: vec![],
@@ -412,7 +462,7 @@ impl Diagram {
     /// # Errors
     /// Returns a diagnostic for unsupported versions or invalid scene data.
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 2 {
+        if self.version != 3 {
             return Err("Unsupported diagram version".into());
         }
         if self.nodes.len() > 1000 || self.connections.len() > 2000 {
@@ -433,6 +483,8 @@ impl Diagram {
                 || !(8.0..=96.0).contains(&n.font_size)
                 || n.text.len() > 8192
                 || !n.style.width.is_finite()
+                || !n.style.rotation.is_finite()
+                || !(0.0..360.0).contains(&n.style.rotation)
                 || !(0.5..=20.0).contains(&n.style.width)
                 || !n.style.padding.is_finite()
                 || !(0.0..=100.0).contains(&n.style.padding)
@@ -490,8 +542,8 @@ impl Diagram {
             return Err("Diagram file is too large".into());
         }
         let mut diagram: Self = serde_json::from_str(json).map_err(|e| e.to_string())?;
-        if diagram.version == 1 {
-            diagram.version = 2;
+        if diagram.version == 1 || diagram.version == 2 {
+            diagram.version = 3;
         }
         diagram.validate()?;
         Ok(diagram)
@@ -511,6 +563,21 @@ impl Diagram {
     /// Current connector path, recalculated from its attached shapes.
     #[must_use]
     pub fn route(&self, c: &Connection) -> Vec<Point> {
+        self.route_status(c).0
+    }
+    /// Route plus whether requested obstacle avoidance succeeded. A bounded
+    /// search may fall back to the original route; callers can show a warning.
+    #[must_use]
+    pub fn route_status(&self, c: &Connection) -> (Vec<Point>, bool) {
+        if c.routing == Routing::AvoidObstacles {
+            if let Some(path) = crate::routing::avoid(self, c) {
+                return (path, true);
+            }
+            return (self.simple_route(c), false);
+        }
+        (self.simple_route(c), true)
+    }
+    fn simple_route(&self, c: &Connection) -> Vec<Point> {
         let (Some(a), Some(b)) = (self.node(c.from), self.node(c.to)) else {
             return vec![];
         };
@@ -522,8 +589,16 @@ impl Diagram {
             Port::Top => Point::new(p.x, p.y - 24.0),
             Port::Bottom => Point::new(p.x, p.y + 24.0),
         };
-        let a = outward(start, c.from_port);
-        let b = outward(end, c.to_port);
+        let a = rotate(
+            outward(rotate(start, a.center(), -a.style.rotation), c.from_port),
+            a.center(),
+            a.style.rotation,
+        );
+        let b = rotate(
+            outward(rotate(end, b.center(), -b.style.rotation), c.to_port),
+            b.center(),
+            b.style.rotation,
+        );
         let horizontal = |p| matches!(p, Port::Left | Port::Right);
         let mut path = vec![start, a];
         match (horizontal(c.from_port), horizontal(c.to_port)) {

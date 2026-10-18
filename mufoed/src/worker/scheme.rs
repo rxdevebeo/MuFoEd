@@ -15,6 +15,11 @@ pub(crate) struct Plan {
     selection: Option<(Logical, Logical)>,
     pub(crate) issues: Vec<String>,
 }
+impl Plan {
+    pub(crate) fn is_new(&self) -> bool {
+        self.replace.is_none()
+    }
+}
 #[cfg(test)]
 pub(crate) fn preview_plan() -> Plan {
     Plan {
@@ -110,6 +115,44 @@ fn to_drawing(diagram: &Diagram) -> Result<(Drawing, Vec<String>), String> {
     Ok((drawing, output.issues))
 }
 impl Worker<'_, '_> {
+    /// Text inside a grouped drawing is outside the host paragraph's caret
+    /// flow. Use the drawing boundary instead of repeating its child anchors.
+    pub(super) fn scheme_carets(&self, original: Vec<VisualRect>) -> Vec<VisualRect> {
+        let Some(caret) = &self.caret else {
+            return original;
+        };
+        let Some(map) = &self.map else {
+            return original;
+        };
+        for (offset, at) in self.objects_of(&caret.paragraph) {
+            if caret.offset != offset && caret.offset != offset + 1 {
+                continue;
+            }
+            let Some(drawing) = self.drawing_at(&at).filter(is_scheme) else {
+                continue;
+            };
+            let Ok(rects) = map.drawing_rects(self.session.revision(), &at) else {
+                continue;
+            };
+            let boundary = frame(&drawing, &rects, self.options.scale);
+            if boundary.is_empty() {
+                continue;
+            }
+            return boundary
+                .into_iter()
+                .map(|r| VisualRect {
+                    x: if caret.offset == offset {
+                        r.x - 2.0
+                    } else {
+                        r.x + r.width + 2.0
+                    },
+                    width: 1.0,
+                    ..r
+                })
+                .collect();
+        }
+        original
+    }
     pub(super) fn scheme_plan(&self) -> Result<Plan, String> {
         if self.read_only.is_some() {
             return Err("Document is read-only".into());
@@ -292,7 +335,7 @@ impl Worker<'_, '_> {
 }
 /// Merge primitive rectangles into one frame per page. For our standard canvas,
 /// recover the full drawing extent from its child coordinate transform.
-pub(crate) fn frame(drawing: &Drawing, rects: &[VisualRect], scale: f64) -> Vec<VisualRect> {
+pub(crate) fn frame(drawing: &Drawing, rects: &[VisualRect], dpi: f64) -> Vec<VisualRect> {
     fn min_nodes(g: &Graphic, min: &mut (i64, i64)) {
         match g {
             Graphic::Shape(s) if !s.connector => {
@@ -352,13 +395,16 @@ pub(crate) fn frame(drawing: &Drawing, rects: &[VisualRect], scale: f64) -> Vec<
     if min.0 == i64::MAX || child_extent.cx.0 <= 0 || child_extent.cy.0 <= 0 {
         return merged;
     }
+    // RenderOptions::scale is pixels per inch, not a zoom multiplier.
+    // Primitive rectangles already use that DPI; one inch is 914400 EMU.
+    let pixels_per_emu = dpi / 914_400.0;
     for r in &mut merged {
         r.x -=
-            (min.0 - ox.0) as f64 * extent.cx.0 as f64 / child_extent.cx.0 as f64 / 9525.0 * scale;
+            (min.0 - ox.0) as f64 * extent.cx.0 as f64 / child_extent.cx.0 as f64 * pixels_per_emu;
         r.y -=
-            (min.1 - oy.0) as f64 * extent.cy.0 as f64 / child_extent.cy.0 as f64 / 9525.0 * scale;
-        r.width = extent.cx.0 as f64 / 9525.0 * scale;
-        r.height = extent.cy.0 as f64 / 9525.0 * scale;
+            (min.1 - oy.0) as f64 * extent.cy.0 as f64 / child_extent.cy.0 as f64 * pixels_per_emu;
+        r.width = extent.cx.0 as f64 * pixels_per_emu;
+        r.height = extent.cy.0 as f64 * pixels_per_emu;
     }
     merged
 }
@@ -369,6 +415,59 @@ mod tests {
         tests::with_worker_replies, Address, ContextObject, ObjectCommand, Reply, Request, Session,
     };
     use super::*;
+    #[test]
+    fn rotated_scheme_frame_contains_all_primitives_and_reopens() {
+        with_worker_replies(|worker, _| {
+            let mut plan = worker.scheme_plan().unwrap();
+            let mut scene = diagram_editor::DiagramEditor::new(plan.diagram).unwrap();
+            let ids = scene
+                .diagram()
+                .nodes
+                .iter()
+                .map(|n| n.id)
+                .collect::<Vec<_>>();
+            scene.select_nodes(&ids).unwrap();
+            scene.rotate_selected(30.0).unwrap();
+            plan.diagram = scene.diagram().clone();
+            assert!(matches!(worker.put_scheme(plan), Outcome::Edited));
+            worker.relayout();
+            let view = worker.object_view().unwrap();
+            let frame = view.rects[0];
+            worker.object = None;
+            let carets = worker.caret_rects();
+            assert_eq!(carets.len(), 1);
+            assert!(carets[0].x < frame.x);
+            assert!((carets[0].height - frame.height).abs() < 0.01);
+            worker.object = worker
+                .objects_of(&super::super::Address::body(0))
+                .first()
+                .map(|(_, at)| at.clone());
+            let at = worker.object.as_ref().unwrap();
+            let primitives = worker
+                .map
+                .as_ref()
+                .unwrap()
+                .drawing_rects(worker.session.revision(), at)
+                .unwrap();
+            for r in primitives {
+                assert!(
+                    r.x >= frame.x - 1.0
+                        && r.y >= frame.y - 1.0
+                        && r.x + r.width <= frame.x + frame.width + 1.0
+                        && r.y + r.height <= frame.y + frame.height + 1.0,
+                    "{r:?} outside {frame:?}"
+                );
+            }
+            worker.scheme_sources.clear();
+            assert!(worker
+                .scheme_plan()
+                .unwrap()
+                .diagram
+                .nodes
+                .iter()
+                .all(|n| (n.style.rotation - 30.0).abs() < 0.01));
+        });
+    }
 
     #[test]
     fn scheme_insert_edit_undo_redo_and_reopen_docx() {
@@ -386,7 +485,7 @@ mod tests {
             assert!(view.scheme);
             assert_eq!(view.rects.len(), 1);
             assert!(
-                (view.rects[0].width - view.width as f64 / 9525.0 * worker.options.scale).abs()
+                (view.rects[0].width - view.width as f64 / 914_400.0 * worker.options.scale).abs()
                     < 0.1,
                 "{:?}; extent {} scale {}",
                 view.rects,

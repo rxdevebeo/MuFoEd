@@ -188,7 +188,7 @@ fn grouping_duplication_and_reordering_are_atomic_and_keep_internal_links() {
 fn v1_json_migrates_and_extended_styles_roundtrip() {
     let old = r#"{"version":1,"nodes":[{"id":1,"kind":"Rectangle","position":{"x":0,"y":0},"size":{"x":160,"y":80},"text":"old","fill":[255,255,255],"stroke":[0,0,0],"font_size":16}],"connections":[]}"#;
     let diagram = Diagram::from_json(old).unwrap();
-    assert_eq!(diagram.version, 2);
+    assert_eq!(diagram.version, 3);
     assert!(diagram.groups.is_empty());
     assert_eq!(
         Diagram::from_json(&diagram.to_json().unwrap()).unwrap(),

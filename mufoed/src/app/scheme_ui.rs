@@ -17,8 +17,20 @@ impl std::fmt::Debug for SchemeDialog {
     }
 }
 impl SchemeDialog {
-    pub(crate) fn new(tab: u64, plan: Box<crate::worker::scheme::Plan>) -> Result<Self, String> {
-        let editor = diagram_editor::DiagramEditor::new(plan.diagram.clone())?;
+    pub(crate) fn new(
+        tab: u64,
+        plan: Box<crate::worker::scheme::Plan>,
+        language: &str,
+    ) -> Result<Self, String> {
+        let locale = diagram_editor::Locale::new(language);
+        let mut source = plan.diagram.clone();
+        if plan.is_new() {
+            for node in &mut source.nodes {
+                node.text = locale.text(&node.text).to_owned();
+            }
+        }
+        let mut editor = diagram_editor::DiagramEditor::new(source)?;
+        editor.set_locale(locale);
         Ok(Self {
             tab,
             plan,
@@ -27,6 +39,9 @@ impl SchemeDialog {
         })
     }
     pub(crate) fn show(&mut self, ctx: &egui::Context, i18n: &crate::i18n::I18n) -> (bool, bool) {
+        self.editor
+            .set_locale(diagram_editor::Locale::new(i18n.language()));
+        let locale = self.editor.locale().clone();
         let size = ctx.input(|i| i.content_rect().size());
         let width = (size.x - 64.0).clamp(600.0, 1140.0);
         let height = (size.y - 80.0).clamp(360.0, 760.0);
@@ -76,10 +91,17 @@ impl SchemeDialog {
                 }
             });
             if let Some(error) = &self.error {
-                ui.colored_label(ui.visuals().error_fg_color, error);
+                ui.colored_label(ui.visuals().error_fg_color, locale.diagnostic(error));
             }
             if !self.plan.issues.is_empty() {
-                ui.small(self.plan.issues.join("; "));
+                ui.small(
+                    self.plan
+                        .issues
+                        .iter()
+                        .map(|s| locale.diagnostic(s))
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                );
             }
             egui::ScrollArea::vertical()
                 .id_salt("scheme-editor-scroll")
@@ -146,7 +168,8 @@ mod tests {
             let mut i18n = crate::i18n::I18n::load(&[]);
             i18n.set_language("ru");
             let mut dialog =
-                SchemeDialog::new(1, Box::new(crate::worker::scheme::preview_plan())).unwrap();
+                SchemeDialog::new(1, Box::new(crate::worker::scheme::preview_plan()), "ru")
+                    .unwrap();
             let mut state = (true, false);
             let mut frame = |events| {
                 ctx.run_ui(

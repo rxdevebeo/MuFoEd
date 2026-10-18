@@ -1,4 +1,10 @@
-#![allow(clippy::too_many_lines, clippy::similar_names)]
+#![allow(
+    clippy::too_many_lines,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 use crate::{DiagramEditor, Node, Point, Port, ShapeKind, Target, Tool};
 use egui::{
     Align2, Color32, FontId, Key, PointerButton, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2,
@@ -10,6 +16,12 @@ pub(crate) struct Drag {
     members: Vec<Node>,
     start: Point,
     resize: bool,
+}
+#[derive(Clone)]
+pub(crate) struct Marquee {
+    start: Point,
+    end: Point,
+    original: std::collections::BTreeSet<u64>,
 }
 const BLUE: Color32 = Color32::from_rgb(43, 87, 154);
 fn color(c: [u8; 3]) -> Color32 {
@@ -143,58 +155,61 @@ fn arrow(painter: &egui::Painter, a: Pos2, b: Pos2, color: Color32, zoom: f32) {
 }
 fn name(k: ShapeKind) -> &'static str {
     match k {
-        ShapeKind::Rectangle => "Прямоугольник",
-        ShapeKind::Rounded => "Скруглённый",
-        ShapeKind::Ellipse => "Эллипс",
-        ShapeKind::Diamond => "Ромб",
-        ShapeKind::Text => "Текст",
-        ShapeKind::Triangle => "Треугольник",
-        ShapeKind::Trapezoid => "Трапеция",
-        ShapeKind::Hexagon => "Шестиугольник",
-        ShapeKind::Document => "Документ",
-        ShapeKind::RightArrow => "Стрелка",
+        ShapeKind::Rectangle => "Rectangle",
+        ShapeKind::Rounded => "Rounded",
+        ShapeKind::Ellipse => "Ellipse",
+        ShapeKind::Diamond => "Diamond",
+        ShapeKind::Text => "Text",
+        ShapeKind::Triangle => "Triangle",
+        ShapeKind::Trapezoid => "Trapezoid",
+        ShapeKind::Hexagon => "Hexagon",
+        ShapeKind::Document => "Document",
+        ShapeKind::RightArrow => "Arrow",
     }
 }
 fn port_name(p: Port) -> &'static str {
     match p {
-        Port::Left => "Слева",
-        Port::Right => "Справа",
-        Port::Top => "Сверху",
-        Port::Bottom => "Снизу",
+        Port::Left => "Left",
+        Port::Right => "Right",
+        Port::Top => "Top",
+        Port::Bottom => "Bottom",
     }
 }
-fn dash_combo(ui: &mut egui::Ui, id: &str, dash: &mut crate::Dash) {
+fn dash_combo(ui: &mut egui::Ui, id: &str, dash: &mut crate::Dash, locale: &crate::Locale) {
+    let t = |key| locale.text(key);
     egui::ComboBox::from_id_salt(id)
         .selected_text(match dash {
-            crate::Dash::Solid => "Сплошная",
-            crate::Dash::Dashed => "Штриховая",
-            crate::Dash::Dotted => "Точечная",
+            crate::Dash::Solid => t("Solid"),
+            crate::Dash::Dashed => t("Dashed"),
+            crate::Dash::Dotted => t("Dotted"),
         })
         .show_ui(ui, |ui| {
-            ui.selectable_value(dash, crate::Dash::Solid, "Сплошная");
-            ui.selectable_value(dash, crate::Dash::Dashed, "Штриховая");
-            ui.selectable_value(dash, crate::Dash::Dotted, "Точечная");
+            ui.selectable_value(dash, crate::Dash::Solid, t("Solid"));
+            ui.selectable_value(dash, crate::Dash::Dashed, t("Dashed"));
+            ui.selectable_value(dash, crate::Dash::Dotted, t("Dotted"));
         });
 }
 impl DiagramEditor {
     /// Draws the complete embeddable editor (tools, canvas and inspector).
     /// Returns whether an edit was committed during this frame.
     pub fn show(&mut self, ui: &mut egui::Ui) -> bool {
+        let locale = self.locale.clone();
+        let t = |key| locale.text(key);
         let revision = self.revision;
         ui.horizontal_wrapped(|ui| {
             for (label, tool) in [
-                ("Выбор", Tool::Select),
-                ("Блок", Tool::Shape(ShapeKind::Rectangle)),
-                ("Скруглённый", Tool::Shape(ShapeKind::Rounded)),
-                ("Эллипс", Tool::Shape(ShapeKind::Ellipse)),
-                ("Ромб", Tool::Shape(ShapeKind::Diamond)),
-                ("Текст", Tool::Shape(ShapeKind::Text)),
-                ("Треугольник", Tool::Shape(ShapeKind::Triangle)),
-                ("Трапеция", Tool::Shape(ShapeKind::Trapezoid)),
-                ("Шестиугольник", Tool::Shape(ShapeKind::Hexagon)),
-                ("Документ", Tool::Shape(ShapeKind::Document)),
-                ("Стрелка", Tool::Shape(ShapeKind::RightArrow)),
-                ("Связь", Tool::Connect),
+                (t("Select"), Tool::Select),
+                (t("Block"), Tool::Shape(ShapeKind::Rectangle)),
+                (t("Rounded"), Tool::Shape(ShapeKind::Rounded)),
+                (t("Ellipse"), Tool::Shape(ShapeKind::Ellipse)),
+                (t("Diamond"), Tool::Shape(ShapeKind::Diamond)),
+                (t("Text"), Tool::Shape(ShapeKind::Text)),
+                (t("Triangle"), Tool::Shape(ShapeKind::Triangle)),
+                (t("Trapezoid"), Tool::Shape(ShapeKind::Trapezoid)),
+                (t("Hexagon"), Tool::Shape(ShapeKind::Hexagon)),
+                (t("Document"), Tool::Shape(ShapeKind::Document)),
+                (t("Arrow"), Tool::Shape(ShapeKind::RightArrow)),
+                (t("Connect"), Tool::Connect),
             ] {
                 if ui.selectable_label(self.tool == tool, label).clicked() {
                     self.commit();
@@ -206,22 +221,22 @@ impl DiagramEditor {
             if ui
                 .add_enabled(
                     !self.undo.is_empty() || self.edit_base.is_some(),
-                    egui::Button::new("Отменить"),
+                    egui::Button::new(t("Undo")),
                 )
-                .on_hover_text("Отменить (Ctrl+Z)")
+                .on_hover_text(t("Undo (Ctrl+Z)"))
                 .clicked()
             {
                 self.undo();
             }
             if ui
-                .add_enabled(!self.redo.is_empty(), egui::Button::new("Повторить"))
-                .on_hover_text("Повторить (Ctrl+Y)")
+                .add_enabled(!self.redo.is_empty(), egui::Button::new(t("Redo")))
+                .on_hover_text(t("Redo (Ctrl+Y)"))
                 .clicked()
             {
                 self.redo();
             }
             if ui
-                .add_enabled(self.selection.is_some(), egui::Button::new("Удалить"))
+                .add_enabled(self.selection.is_some(), egui::Button::new(t("Delete")))
                 .clicked()
             {
                 self.delete_selected();
@@ -231,7 +246,7 @@ impl DiagramEditor {
             if ui
                 .add_enabled(
                     self.selected_nodes().len() >= 2,
-                    egui::Button::new("Группировать"),
+                    egui::Button::new(t("Group")),
                 )
                 .clicked()
             {
@@ -240,40 +255,83 @@ impl DiagramEditor {
             if ui
                 .add_enabled(
                     !self.selected_nodes().is_empty(),
-                    egui::Button::new("Разгруппировать"),
+                    egui::Button::new(t("Ungroup")),
                 )
                 .clicked()
             {
                 self.ungroup_selected();
             }
-            if ui.small_button("На передний план").clicked() {
+            if ui.small_button(t("Bring to front")).clicked() {
                 self.reorder_selected(true);
             }
-            if ui.small_button("На задний план").clicked() {
+            if ui.small_button(t("Send to back")).clicked() {
                 self.reorder_selected(false);
             }
             if ui
                 .add_enabled(
                     !self.selected_nodes().is_empty(),
-                    egui::Button::new("Дублировать"),
+                    egui::Button::new(t("Duplicate")),
                 )
                 .clicked()
             {
                 let _ = self.duplicate_selected();
             }
-            ui.weak("Shift+щелчок: несколько фигур");
+            ui.weak(t("Shift+click: multiple shapes"));
         });
         ui.horizontal_wrapped(|ui| {
-            ui.checkbox(&mut self.snap,"Привязка к сетке");
+            let count = self.selection_units().len();
+            ui.add_enabled_ui(count >= 2, |ui| {
+                ui.menu_button(t("Align and distribute"), |ui| {
+                    for (label, alignment) in [
+                        ("Align left", crate::Alignment::Left),
+                        ("Align center", crate::Alignment::Center),
+                        ("Align right", crate::Alignment::Right),
+                        ("Align top", crate::Alignment::Top),
+                        ("Align middle", crate::Alignment::Middle),
+                        ("Align bottom", crate::Alignment::Bottom),
+                    ] {
+                        if ui.button(t(label)).clicked() {
+                            let _ = self.align_selected(alignment);
+                            ui.close();
+                        }
+                    }
+                    for (label, axis) in [
+                        ("Distribute horizontally", crate::Axis::Horizontal),
+                        ("Distribute vertically", crate::Axis::Vertical),
+                    ] {
+                        if ui
+                            .add_enabled(count >= 3, egui::Button::new(t(label)))
+                            .clicked()
+                        {
+                            let _ = self.distribute_selected(axis);
+                            ui.close();
+                        }
+                    }
+                });
+            });
+            for (label, angle) in [("Rotate left", -90.0), ("Rotate right", 90.0)] {
+                if ui
+                    .add_enabled(
+                        !self.selected_nodes().is_empty(),
+                        egui::Button::new(t(label)),
+                    )
+                    .clicked()
+                {
+                    let _ = self.rotate_selected(angle);
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.checkbox(&mut self.snap,t("Snap to grid"));
             if ui.small_button("−").clicked() { self.zoom = (self.zoom / 1.2).max(0.25); }
             ui.label(format!("{:.0}%",self.zoom*100.0));
             if ui.small_button("+").clicked() { self.zoom = (self.zoom * 1.2).min(3.0); }
-            if ui.small_button("Сброс вида").clicked() { self.zoom=1.0; self.pan=egui::vec2(40.0,40.0); }
+            if ui.small_button(t("Reset view")).clicked() { self.zoom=1.0; self.pan=egui::vec2(40.0,40.0); }
             ui.separator();
             ui.weak(match self.tool {
-                Tool::Select => "Перенос мышью • маркер справа снизу • колесо: прокрутка • средняя кнопка: панорама",
-                Tool::Connect => if self.pending_connection.is_some() { "Выберите конечную фигуру • Esc: отмена" } else { "Выберите начальную фигуру" },
-                Tool::Shape(_) => "Щёлкните на холсте, чтобы добавить фигуру",
+                Tool::Select => t("Drag to move • bottom-right handle: resize • wheel: scroll • middle button: pan"),
+                Tool::Connect => if self.pending_connection.is_some() { t("Choose target shape • Esc: cancel") } else { t("Choose source shape") },
+                Tool::Shape(_) => t("Click the canvas to add a shape"),
             });
         });
         ui.separator();
@@ -300,6 +358,8 @@ impl DiagramEditor {
         self.revision != revision
     }
     fn canvas(&mut self, ui: &mut egui::Ui) {
+        let locale = self.locale.clone();
+        let t = |key| locale.text(key);
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
         let painter = ui.painter().with_clip_rect(rect);
         painter.rect_filled(rect, 0.0, Color32::WHITE);
@@ -377,6 +437,16 @@ impl DiagramEditor {
                         start,
                         resize,
                     });
+                } else {
+                    self.marquee = Some(Marquee {
+                        start,
+                        end: start,
+                        original: if ui.input(|i| i.modifiers.shift) {
+                            self.selected_nodes()
+                        } else {
+                            std::collections::BTreeSet::default()
+                        },
+                    });
                 }
             }
         }
@@ -421,6 +491,23 @@ impl DiagramEditor {
         if self.drag.is_some() && !ui.input(|i| i.pointer.button_down(PointerButton::Primary)) {
             self.drag = None;
             self.commit();
+        }
+        if let Some(marquee) = &mut self.marquee {
+            if let Some(p) = p {
+                marquee.end = p;
+            }
+        }
+        if self.marquee.is_some() && !ui.input(|i| i.pointer.button_down(PointerButton::Primary)) {
+            let marquee = self.marquee.take().unwrap();
+            let area = Rect::from_two_pos(screen(marquee.start), screen(marquee.end));
+            let mut ids = marquee.original;
+            for node in &self.diagram.nodes {
+                let (a, b) = node.visual_bounds();
+                if area.contains_rect(Rect::from_min_max(screen(a), screen(b))) {
+                    ids.insert(node.id);
+                }
+            }
+            let _ = self.select_nodes(&ids.into_iter().collect::<Vec<_>>());
         }
         if response.clicked() {
             self.commit();
@@ -536,13 +623,23 @@ impl DiagramEditor {
                         self.diagram = before;
                     }
                 }
+                self.marquee = None;
                 self.pending_connection = None;
                 self.tool = Tool::Select;
             }
         }
         let screen = |p: Point| origin + egui::vec2(p.x, p.y) * self.zoom;
+        if let Some(m) = &self.marquee {
+            let area = Rect::from_two_pos(screen(m.start), screen(m.end));
+            painter.rect_filled(area, 0.0, BLUE.linear_multiply(0.1));
+            painter.rect_stroke(area, 0.0, Stroke::new(1.0, BLUE), StrokeKind::Inside);
+        }
+
+        let mut route_failed = false;
         for c in &self.diagram.connections {
-            let points: Vec<_> = self.diagram.route(c).into_iter().map(screen).collect();
+            let (route, found) = self.diagram.route_status(c);
+            route_failed |= !found;
+            let points: Vec<_> = route.into_iter().map(screen).collect();
             let selected = self.selection == Some(Target::Connection(c.id));
             let stroke = Stroke::new(
                 c.width * self.zoom + if selected { 1.0 } else { 0.0 },
@@ -598,42 +695,51 @@ impl DiagramEditor {
             } else {
                 color(node.fill)
             };
-            match node.kind {
-                ShapeKind::Rectangle | ShapeKind::Rounded => {
-                    painter.rect(
-                        frame,
-                        if node.kind == ShapeKind::Rounded {
-                            node.size.x.min(node.size.y) / 6.0 * self.zoom
-                        } else {
-                            0.0
-                        },
-                        fill,
-                        stroke,
-                        StrokeKind::Inside,
-                    );
+            if node.style.rotation.abs() > 0.001 && node.kind != ShapeKind::Text {
+                polygon(
+                    &painter,
+                    node.outline().into_iter().map(screen).collect(),
+                    fill,
+                    stroke,
+                );
+            } else {
+                match node.kind {
+                    ShapeKind::Rectangle | ShapeKind::Rounded => {
+                        painter.rect(
+                            frame,
+                            if node.kind == ShapeKind::Rounded {
+                                node.size.x.min(node.size.y) / 6.0 * self.zoom
+                            } else {
+                                0.0
+                            },
+                            fill,
+                            stroke,
+                            StrokeKind::Inside,
+                        );
+                    }
+                    ShapeKind::Ellipse => {
+                        painter.add(egui::Shape::ellipse_filled(
+                            frame.center(),
+                            frame.size() / 2.0,
+                            fill,
+                        ));
+                        painter.add(egui::Shape::ellipse_stroke(
+                            frame.center(),
+                            frame.size() / 2.0,
+                            stroke,
+                        ));
+                    }
+                    ShapeKind::Diamond
+                    | ShapeKind::Triangle
+                    | ShapeKind::Trapezoid
+                    | ShapeKind::Hexagon
+                    | ShapeKind::RightArrow
+                    | ShapeKind::Document => {
+                        let points: Vec<_> = node.outline().into_iter().map(screen).collect();
+                        polygon(&painter, points, fill, stroke);
+                    }
+                    ShapeKind::Text => {}
                 }
-                ShapeKind::Ellipse => {
-                    painter.add(egui::Shape::ellipse_filled(
-                        frame.center(),
-                        frame.size() / 2.0,
-                        fill,
-                    ));
-                    painter.add(egui::Shape::ellipse_stroke(
-                        frame.center(),
-                        frame.size() / 2.0,
-                        stroke,
-                    ));
-                }
-                ShapeKind::Diamond
-                | ShapeKind::Triangle
-                | ShapeKind::Trapezoid
-                | ShapeKind::Hexagon
-                | ShapeKind::RightArrow
-                | ShapeKind::Document => {
-                    let points: Vec<_> = node.outline().into_iter().map(screen).collect();
-                    polygon(&painter, points, fill, stroke);
-                }
-                ShapeKind::Text => {}
             }
             if node.style.dash != crate::Dash::Solid
                 && !node.style.no_stroke
@@ -657,6 +763,14 @@ impl DiagramEditor {
                 Color32::from_gray(30),
                 f32::INFINITY,
             );
+            if node.style.rotation.abs() > 0.001 {
+                job.wrap.max_width = (node.size.x - node.style.padding * 2.0).max(8.0) * self.zoom;
+                job.wrap.max_rows = ((node.size.y - node.style.padding * 2.0).max(1.0)
+                    / (node.font_size * 1.2))
+                    .floor()
+                    .max(1.0) as usize;
+                job.wrap.overflow_character = None;
+            }
             if let Some(section) = job.sections.first_mut() {
                 section.format.italics = node.style.italic;
             }
@@ -669,32 +783,56 @@ impl DiagramEditor {
                 }
             };
             let text_pos = egui::pos2(text_x, frame.center().y - galley.size().y / 2.0);
-            let text_painter = painter.with_clip_rect(
-                frame
-                    .shrink(node.style.padding.min(frame.width() / 3.0) * self.zoom)
-                    .intersect(rect),
-            );
-            if node.style.bold {
-                text_painter.galley(
-                    text_pos + egui::vec2(0.45 * self.zoom, 0.0),
+            if node.style.rotation.abs() > 0.001 {
+                let p = crate::model::rotate(
+                    Point::new(text_pos.x, text_pos.y),
+                    Point::new(frame.center().x, frame.center().y),
+                    node.style.rotation,
+                );
+                let mut shape = egui::epaint::TextShape::new(
+                    egui::pos2(p.x, p.y),
                     galley.clone(),
                     Color32::from_gray(30),
+                )
+                .with_angle(node.style.rotation.to_radians());
+                // Galley wrapping and row limits keep rotated text within its local frame.
+                painter.add(shape.clone());
+                if node.style.bold {
+                    shape.pos += egui::vec2(0.45 * self.zoom, 0.0);
+                    painter.add(shape);
+                }
+            } else {
+                let text_painter = painter.with_clip_rect(
+                    frame
+                        .shrink(node.style.padding.min(frame.width() / 3.0) * self.zoom)
+                        .intersect(rect),
                 );
+                if node.style.bold {
+                    text_painter.galley(
+                        text_pos + egui::vec2(0.45 * self.zoom, 0.0),
+                        galley.clone(),
+                        Color32::from_gray(30),
+                    );
+                }
+                text_painter.galley(text_pos, galley, Color32::from_gray(30));
             }
-            text_painter.galley(text_pos, galley, Color32::from_gray(30));
             if self.selected_nodes().contains(&node.id) || self.pending_connection == Some(node.id)
             {
+                let (a, b) = node.visual_bounds();
+                let selection = Rect::from_min_max(screen(a), screen(b));
                 painter.rect_stroke(
-                    frame.expand(3.0),
+                    selection.expand(3.0),
                     0.0,
                     Stroke::new(1.2, BLUE),
                     StrokeKind::Outside,
                 );
-                painter.rect_filled(
-                    Rect::from_center_size(frame.right_bottom(), Vec2::splat(9.0)),
-                    1.0,
-                    BLUE,
-                );
+                if self.selected_nodes().len() <= 1 {
+                    painter.rect_filled(
+                        Rect::from_center_size(selection.right_bottom(), Vec2::splat(9.0)),
+                        1.0,
+                        BLUE,
+                    );
+                }
                 if self.tool == Tool::Connect {
                     for port in [Port::Left, Port::Right, Port::Top, Port::Bottom] {
                         painter.circle_filled(screen(node.port(port)), 4.0, BLUE);
@@ -706,33 +844,47 @@ impl DiagramEditor {
             painter.text(
                 rect.center(),
                 Align2::CENTER_CENTER,
-                "Выберите фигуру сверху и щёлкните на холсте",
+                t("Choose a shape above and click the canvas"),
                 FontId::proportional(17.0),
                 Color32::GRAY,
             );
         }
+        if route_failed {
+            painter.text(
+                rect.left_top() + egui::vec2(8.0, 8.0),
+                Align2::LEFT_TOP,
+                t("Route could not avoid all obstacles"),
+                FontId::proportional(13.0),
+                Color32::from_rgb(150, 80, 0),
+            );
+        }
     }
     fn inspector(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Свойства");
+        let locale = self.locale.clone();
+        let t = |key| locale.text(key);
+        ui.heading(t("Properties"));
         ui.add_space(8.0);
         match self.selection {
             Some(Target::Node(id)) => {
                 let Some(mut node) = self.diagram.node(id).cloned() else {
                     return;
                 };
-                ui.label(name(node.kind));
+                ui.label(t(name(node.kind)));
                 if self.selected_nodes().len() > 1 {
-                    ui.label(format!("Выбрано фигур: {}", self.selected_nodes().len()));
+                    ui.label(locale.format(
+                        "Selected shapes: {}",
+                        &[self.selected_nodes().len().to_string()],
+                    ));
                     if let Some((mut position, mut size)) = self.selection_frame() {
                         let old = (position, size);
                         for (label, value) in [
                             ("X", &mut position.x),
                             ("Y", &mut position.y),
-                            ("Ширина", &mut size.x),
-                            ("Высота", &mut size.y),
+                            (t("Width"), &mut size.x),
+                            (t("Height"), &mut size.y),
                         ] {
                             ui.horizontal(|ui| {
-                                ui.label(label);
+                                ui.label(t(label));
                                 ui.add(egui::DragValue::new(value));
                             });
                         }
@@ -745,11 +897,13 @@ impl DiagramEditor {
                             self.commit();
                         }
                     }
-                    ui.weak("Shift+щелчок добавляет фигуры. Группа переносится и меняет размер целиком.");
+                    ui.weak(t(
+                        "Shift+click adds shapes. A group moves and resizes as a whole.",
+                    ));
                     return;
                 }
                 ui.separator();
-                ui.label("Текст");
+                ui.label(t("Text"));
                 let text = ui.add(
                     egui::TextEdit::multiline(&mut node.text)
                         .id_salt(("diagram-text", id))
@@ -766,33 +920,34 @@ impl DiagramEditor {
                 for (label, value, range) in [
                     ("X", &mut node.position.x, -100_000.0..=100_000.0),
                     ("Y", &mut node.position.y, -100_000.0..=100_000.0),
-                    ("Ширина", &mut node.size.x, 24.0..=10000.0),
-                    ("Высота", &mut node.size.y, 24.0..=10000.0),
-                    ("Кегль", &mut node.font_size, 8.0..=96.0),
+                    (t("Width"), &mut node.size.x, 24.0..=10000.0),
+                    (t("Height"), &mut node.size.y, 24.0..=10000.0),
+                    (t("Font size"), &mut node.font_size, 8.0..=96.0),
+                    (t("Rotation"), &mut node.style.rotation, 0.0..=359.99),
                 ] {
                     ui.horizontal(|ui| {
-                        ui.label(label);
+                        ui.label(t(label));
                         let r = ui.add(egui::DragValue::new(value).range(range).speed(1.0));
                         changed |= r.changed();
                         finished |= r.drag_stopped() || r.lost_focus();
                     });
                 }
                 ui.horizontal(|ui| {
-                    ui.label("Заливка");
+                    ui.label(t("Fill"));
                     changed |= ui.color_edit_button_srgb(&mut node.fill).changed();
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Контур");
+                    ui.label(t("Outline"));
                     changed |= ui.color_edit_button_srgb(&mut node.stroke).changed();
                 });
-                ui.checkbox(&mut node.style.no_fill, "Без заливки")
+                ui.checkbox(&mut node.style.no_fill, t("No fill"))
                     .changed()
                     .then(|| changed = true);
                 changed |= ui
-                    .checkbox(&mut node.style.no_stroke, "Без контура")
+                    .checkbox(&mut node.style.no_stroke, t("No outline"))
                     .changed();
                 ui.horizontal(|ui| {
-                    ui.label("Толщина");
+                    ui.label(t("Width of line"));
                     changed |= ui
                         .add(
                             egui::DragValue::new(&mut node.style.width)
@@ -802,33 +957,37 @@ impl DiagramEditor {
                         .changed();
                 });
                 let old_style = node.style.clone();
-                dash_combo(ui, "Контур", &mut node.style.dash);
+                dash_combo(ui, "node-dash", &mut node.style.dash, &locale);
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut node.style.bold, "Жирный");
-                    ui.checkbox(&mut node.style.italic, "Курсив");
+                    ui.checkbox(&mut node.style.bold, t("Bold"));
+                    ui.checkbox(&mut node.style.italic, t("Italic"));
                 });
                 egui::ComboBox::from_id_salt("text-align")
                     .selected_text(match node.style.align {
-                        crate::TextAlign::Left => "Текст слева",
-                        crate::TextAlign::Center => "Текст по центру",
-                        crate::TextAlign::Right => "Текст справа",
+                        crate::TextAlign::Left => t("Align text left"),
+                        crate::TextAlign::Center => t("Center text"),
+                        crate::TextAlign::Right => t("Align text right"),
                     })
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut node.style.align, crate::TextAlign::Left, "Слева");
+                        ui.selectable_value(
+                            &mut node.style.align,
+                            crate::TextAlign::Left,
+                            t("Left"),
+                        );
                         ui.selectable_value(
                             &mut node.style.align,
                             crate::TextAlign::Center,
-                            "По центру",
+                            t("Center"),
                         );
                         ui.selectable_value(
                             &mut node.style.align,
                             crate::TextAlign::Right,
-                            "Справа",
+                            t("Right"),
                         );
                     });
-                ui.checkbox(&mut node.style.wrap, "Перенос строк");
+                ui.checkbox(&mut node.style.wrap, t("Wrap text"));
                 ui.horizontal(|ui| {
-                    ui.label("Поля");
+                    ui.label(t("Padding"));
                     ui.add(egui::DragValue::new(&mut node.style.padding).range(0.0..=100.0));
                 });
                 changed |= node.style != old_style;
@@ -846,7 +1005,9 @@ impl DiagramEditor {
                     self.commit();
                 }
                 ui.add_space(12.0);
-                ui.weak("Для размера тяните синий маркер справа снизу. Двойной щелчок переводит фокус в текст.");
+                ui.weak(t(
+                    "Drag the blue bottom-right handle to resize. Double-click to edit text.",
+                ));
             }
             Some(Target::Connection(id)) => {
                 let Some(mut c) = self
@@ -858,31 +1019,50 @@ impl DiagramEditor {
                 else {
                     return;
                 };
-                ui.label("Связанная стрелка");
-                ui.label(format!("Из {} в {}", c.from, c.to));
+                ui.label(t("Linked connector"));
+                ui.label(locale.format("From {} to {}", &[c.from.to_string(), c.to.to_string()]));
                 let before = c.clone();
-                for (label, port) in [("Начало", &mut c.from_port), ("Конец", &mut c.to_port)]
-                {
+                for (label, port) in [(t("Start"), &mut c.from_port), (t("End"), &mut c.to_port)] {
                     egui::ComboBox::from_id_salt(("port", id, label))
-                        .selected_text(format!("{label}: {}", port_name(*port)))
+                        .selected_text(format!("{label}: {}", t(port_name(*port))))
                         .show_ui(ui, |ui| {
                             for p in [Port::Left, Port::Right, Port::Top, Port::Bottom] {
-                                ui.selectable_value(port, p, port_name(p));
+                                ui.selectable_value(port, p, t(port_name(p)));
                             }
                         });
                 }
+                egui::ComboBox::from_id_salt("routing-policy")
+                    .selected_text(t(if c.routing == crate::Routing::Simple {
+                        "Simple"
+                    } else {
+                        "Avoid obstacles"
+                    }))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut c.routing, crate::Routing::Simple, t("Simple"));
+                        ui.selectable_value(
+                            &mut c.routing,
+                            crate::Routing::AvoidObstacles,
+                            t("Avoid obstacles"),
+                        );
+                    });
+                if !self.diagram.route_status(&c).1 {
+                    ui.colored_label(
+                        ui.visuals().warn_fg_color,
+                        t("Route could not avoid all obstacles"),
+                    );
+                }
                 ui.color_edit_button_srgb(&mut c.color);
                 ui.horizontal(|ui| {
-                    ui.label("Толщина");
+                    ui.label(t("Width of line"));
                     ui.add(
                         egui::DragValue::new(&mut c.width)
                             .range(0.5..=20.0)
                             .speed(0.1),
                     );
                 });
-                dash_combo(ui, "Линия", &mut c.dash);
-                ui.checkbox(&mut c.start_arrow, "Стрелка в начале");
-                ui.checkbox(&mut c.end_arrow, "Стрелка в конце");
+                dash_combo(ui, "connector-dash", &mut c.dash, &locale);
+                ui.checkbox(&mut c.start_arrow, t("Start arrow"));
+                ui.checkbox(&mut c.end_arrow, t("End arrow"));
                 if c != before {
                     self.begin();
                     if let Some(link) = self.diagram.connections.iter_mut().find(|c| c.id == id) {
@@ -892,15 +1072,17 @@ impl DiagramEditor {
                 if !ui.input(|i| i.pointer.any_down()) && !ui.ctx().egui_wants_keyboard_input() {
                     self.commit();
                 }
-                ui.weak("Связь сохраняется при переносе и изменении размера фигур.");
+                ui.weak(t("Connections follow shapes when moved or resized."));
             }
             None => {
-                ui.weak("Выберите фигуру или стрелку.");
+                ui.weak(t("Select a shape or connector."));
                 ui.add_space(12.0);
-                ui.label(format!(
-                    "Фигур: {}\nСвязей: {}",
-                    self.diagram.nodes.len(),
-                    self.diagram.connections.len()
+                ui.label(locale.format(
+                    "Shapes: {}\nConnections: {}",
+                    &[
+                        self.diagram.nodes.len().to_string(),
+                        self.diagram.connections.len().to_string(),
+                    ],
                 ));
             }
         }
@@ -974,6 +1156,57 @@ mod tests {
             pressed,
             modifiers: egui::Modifiers::default(),
         }
+    }
+    #[test]
+    fn marquee_selects_whole_groups_and_escape_preserves_selection() {
+        let ctx = egui::Context::default();
+        let mut editor = DiagramEditor::sample();
+        let first = editor.diagram.nodes[0].id;
+        let second = editor.diagram.nodes[1].id;
+        editor.select_nodes(&[first, second]).unwrap();
+        editor.group_selected().unwrap();
+        editor.select(None).unwrap();
+        let revision = editor.revision();
+        let origin = frame(&ctx, &mut editor, vec![]);
+        let start = origin + egui::vec2(60.0, 60.0);
+        let end = origin + egui::vec2(260.0, 180.0);
+        frame(
+            &ctx,
+            &mut editor,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(&ctx, &mut editor, vec![egui::Event::PointerMoved(end)]);
+        frame(&ctx, &mut editor, vec![button(end, false)]);
+        assert_eq!(
+            editor.selected_nodes(),
+            [first, second].into_iter().collect()
+        );
+        assert_eq!(editor.revision(), revision);
+        let start = origin + egui::vec2(10.0, 10.0);
+        let end = origin + egui::vec2(40.0, 40.0);
+        frame(
+            &ctx,
+            &mut editor,
+            vec![egui::Event::PointerMoved(start), button(start, true)],
+        );
+        frame(&ctx, &mut editor, vec![egui::Event::PointerMoved(end)]);
+        frame(
+            &ctx,
+            &mut editor,
+            vec![egui::Event::Key {
+                key: Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::default(),
+            }],
+        );
+        frame(&ctx, &mut editor, vec![button(end, false)]);
+        assert_eq!(
+            editor.selected_nodes(),
+            [first, second].into_iter().collect()
+        );
+        assert_eq!(editor.revision(), revision);
     }
     #[test]
     fn dragging_and_resizing_are_single_undo_actions_and_delete_restores_links() {

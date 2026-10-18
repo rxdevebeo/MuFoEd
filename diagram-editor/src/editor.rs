@@ -22,6 +22,7 @@ pub enum Target {
 /// Reusable editor with bounded scene history. The host owns persistence.
 #[derive(Clone)]
 pub struct DiagramEditor {
+    pub(crate) locale: crate::Locale,
     pub(crate) diagram: Diagram,
     pub(crate) selection: Option<Target>,
     pub(crate) multi: std::collections::BTreeSet<u64>,
@@ -30,6 +31,7 @@ pub struct DiagramEditor {
     pub(crate) undo: Vec<Diagram>,
     pub(crate) redo: Vec<Diagram>,
     pub(crate) edit_base: Option<Diagram>,
+    pub(crate) marquee: Option<crate::widget::Marquee>,
     pub(crate) drag: Option<crate::widget::Drag>,
     pub(crate) pan: egui::Vec2,
     pub(crate) zoom: f32,
@@ -40,6 +42,7 @@ pub struct DiagramEditor {
 impl Default for DiagramEditor {
     fn default() -> Self {
         Self {
+            locale: crate::Locale::default(),
             diagram: Diagram::default(),
             selection: None,
             multi: std::collections::BTreeSet::new(),
@@ -49,6 +52,7 @@ impl Default for DiagramEditor {
             redo: vec![],
             edit_base: None,
             drag: None,
+            marquee: None,
             pan: egui::vec2(40.0, 40.0),
             zoom: 1.0,
             snap: true,
@@ -58,6 +62,15 @@ impl Default for DiagramEditor {
     }
 }
 impl DiagramEditor {
+    /// Changes interface language without translating document text or recording Undo.
+    pub fn set_locale(&mut self, locale: crate::Locale) {
+        self.locale = locale;
+    }
+    /// Current catalog, also usable to translate API errors and DOCX reports.
+    #[must_use]
+    pub const fn locale(&self) -> &crate::Locale {
+        &self.locale
+    }
     /// Creates an editor from a validated scene.
     /// # Errors
     /// Returns the scene validation error.
@@ -108,6 +121,8 @@ impl DiagramEditor {
         diagram.validate()?;
         self.begin();
         self.diagram = diagram;
+        self.marquee = None;
+        self.drag = None;
         self.selection = None;
         self.multi.clear();
         self.pending_connection = None;
@@ -157,7 +172,7 @@ impl DiagramEditor {
             kind,
             position,
             size: Point::new(160.0, 80.0),
-            text: "Текст".into(),
+            text: self.locale.text("Text").into(),
             fill: [231, 240, 252],
             stroke: [43, 87, 154],
             font_size: 16.0,
@@ -207,6 +222,7 @@ impl DiagramEditor {
         let id = self.next_id();
         let mut next = self.diagram.clone();
         next.connections.push(Connection {
+            routing: crate::Routing::AvoidObstacles,
             id,
             from,
             to,
@@ -258,6 +274,7 @@ impl DiagramEditor {
             self.multi.clear();
             self.pending_connection = None;
             self.drag = None;
+            self.marquee = None;
             self.revision += 1;
         }
     }
@@ -270,6 +287,7 @@ impl DiagramEditor {
             self.multi.clear();
             self.pending_connection = None;
             self.drag = None;
+            self.marquee = None;
             self.revision += 1;
         }
     }
@@ -287,7 +305,7 @@ impl DiagramEditor {
         let c = e
             .add_node(ShapeKind::Rectangle, Point::new(360.0, 280.0))
             .expect("valid sample");
-        for (id, label) in [(a, "Начало"), (b, "Готово?"), (c, "Обработка")] {
+        for (id, label) in [(a, "Start"), (b, "Ready?"), (c, "Process")] {
             let mut n = e.diagram.node(id).expect("sample node").clone();
             n.text = label.into();
             e.update_node(n).expect("valid sample text");
@@ -301,6 +319,17 @@ impl DiagramEditor {
         e.selection = None;
         e.revision = 0;
         e
+    }
+    /// Creates a localized starter scene. Subsequent language changes never
+    /// translate its text or user-authored content.
+    #[must_use]
+    pub fn sample_with_locale(locale: crate::Locale) -> Self {
+        let mut editor = Self::sample();
+        for node in &mut editor.diagram.nodes {
+            node.text = locale.text(&node.text).to_owned();
+        }
+        editor.set_locale(locale);
+        editor
     }
 }
 

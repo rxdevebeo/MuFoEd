@@ -1,11 +1,14 @@
 //! Standalone review host; the library itself has no file dialogs or I/O.
-use diagram_editor::{Diagram, DiagramEditor};
+use diagram_editor::{Diagram, DiagramEditor, Locale};
 use egui::{Color32, RichText};
 use std::io::Read as _;
 
 fn main() -> eframe::Result {
+    let locale = Locale::new(&std::env::var("DIAGRAM_LANGUAGE").unwrap_or_else(|_| "en".into()));
     let mut options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 780.0]),
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1200.0, 780.0])
+            .with_title(locale.text("Shapes and diagram editor")),
         ..Default::default()
     };
     #[cfg(windows)]
@@ -14,13 +17,15 @@ fn main() -> eframe::Result {
         setup.instance_descriptor.backends = Backends::from_env().unwrap_or(Backends::DX12);
     }
     eframe::run_native(
-        "Редактор фигур и схем — MVP",
+        "Shapes and diagram editor",
         options,
         Box::new(|cc| {
             cc.egui_ctx.set_visuals(egui::Visuals::light());
             let mut app = Demo {
                 editor: {
-                    let mut editor = DiagramEditor::sample();
+                    let mut editor = DiagramEditor::sample_with_locale(Locale::new(
+                        &std::env::var("DIAGRAM_LANGUAGE").unwrap_or_else(|_| "en".into()),
+                    ));
                     if std::env::var_os("DIAGRAM_SELECT").is_some() {
                         let id = editor.diagram().nodes[0].id;
                         let _ = editor.select(Some(diagram_editor::Target::Node(id)));
@@ -54,14 +59,17 @@ struct Demo {
 impl Demo {
     fn open(&mut self) -> Result<(), String> {
         let Some(path) = rfd::FileDialog::new()
-            .add_filter("Схема JSON / DOCX", &["json", "docx"])
+            .add_filter(
+                self.editor.locale().text("Diagram JSON / DOCX"),
+                &["json", "docx"],
+            )
             .pick_file()
         else {
             return Ok(());
         };
         self.load_path(&path)?;
         if self.message.is_empty() {
-            self.message = format!("Открыто: {}", path.display());
+            self.message = format!("Opened: {}", path.display());
         }
         Ok(())
     }
@@ -97,7 +105,7 @@ impl Demo {
         };
         std::fs::write(&path, output.bytes).map_err(|e| e.to_string())?;
         self.message = if output.issues.is_empty() {
-            format!("Сохранено: {}", path.display())
+            format!("Saved: {}", path.display())
         } else {
             output.issues.join("; ")
         };
@@ -119,23 +127,33 @@ impl Demo {
             self.editor.diagram().to_json()?
         };
         std::fs::write(&path, content).map_err(|e| e.to_string())?;
-        self.message = format!("Сохранено: {}", path.display());
+        self.message = format!("Saved: {}", path.display());
         Ok(())
     }
 }
 impl eframe::App for Demo {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let locale = self.editor.locale().clone();
+        let t = |key| locale.text(key);
         egui::CentralPanel::default().show(ui,|ui|{
-            ui.horizontal(|ui|{
-                ui.heading(RichText::new("Фигуры и схемы").color(Color32::from_rgb(43,87,154)));
-                ui.weak("MVP • отдельный egui-компонент");
-                if ui.button("Открыть JSON / DOCX").clicked(){if let Err(e)=self.open(){self.message=e;}}
-                if ui.button("Сохранить JSON").clicked(){if let Err(e)=self.save(false){self.message=e;}}
-                if ui.button("Экспорт SVG").clicked(){if let Err(e)=self.save(true){self.message=e;}}
-                if ui.button("Экспорт DOCX").clicked(){if let Err(e)=self.save_docx(){self.message=e;}}
-                if ui.button("Новая схема").clicked(){let _=self.editor.replace(Diagram::default());}
+            ui.horizontal(|ui| {
+                ui.label(t("Language"));
+                let mut code=self.editor.locale().code().to_owned();
+                egui::ComboBox::from_id_salt("diagram-language").selected_text(if code.starts_with("ru"){ "Русский" }else{ "English" }).show_ui(ui,|ui|{
+                    ui.selectable_value(&mut code,"en".into(),"English"); ui.selectable_value(&mut code,"ru".into(),"Русский");
+                });
+                if code!=self.editor.locale().code(){ self.editor.set_locale(Locale::new(&code)); ui.ctx().send_viewport_cmd(egui::ViewportCommand::Title(self.editor.locale().text("Shapes and diagram editor").into())); }
             });
-            ui.label(if self.message.is_empty(){"Схема редактируется автономно. JSON сохраняет фигуры и связи; SVG предназначен для просмотра."}else{&self.message});
+            ui.horizontal(|ui|{
+                ui.heading(RichText::new(t("Shapes and diagrams")).color(Color32::from_rgb(43,87,154)));
+                ui.weak(t("MVP • embeddable egui component"));
+                if ui.button(t("Open JSON / DOCX")).clicked(){if let Err(e)=self.open(){self.message=e;}}
+                if ui.button(t("Save JSON")).clicked(){if let Err(e)=self.save(false){self.message=e;}}
+                if ui.button(t("Export SVG")).clicked(){if let Err(e)=self.save(true){self.message=e;}}
+                if ui.button(t("Export DOCX")).clicked(){if let Err(e)=self.save_docx(){self.message=e;}}
+                if ui.button(t("New diagram")).clicked(){let _=self.editor.replace(Diagram::default());}
+            });
+            ui.label(if self.message.is_empty(){t("Edit diagrams offline. JSON preserves shapes and connections; SVG is for viewing.").to_owned()}else{locale.diagnostic(&self.message)});
             ui.separator();self.editor.show(ui);
         });
         if let Some(path) = &self.shot {

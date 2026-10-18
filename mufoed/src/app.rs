@@ -1069,10 +1069,12 @@ impl App {
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             for event in tab.poll() {
                 match event {
-                    TabEvent::Scheme(plan) => match scheme_ui::SchemeDialog::new(tab.id, plan) {
-                        Ok(dialog) => self.dialog = Some(Dialog::Scheme(Box::new(dialog))),
-                        Err(error) => messages.push((error, true)),
-                    },
+                    TabEvent::Scheme(plan) => {
+                        match scheme_ui::SchemeDialog::new(tab.id, plan, self.i18n.language()) {
+                            Ok(dialog) => self.dialog = Some(Dialog::Scheme(Box::new(dialog))),
+                            Err(error) => messages.push((error, true)),
+                        }
+                    }
                     TabEvent::FormulaRecognition(plan) => {
                         self.dialog = Some(Dialog::FormulaRecognition(Box::new(
                             recognition_ui::RecognitionDialog::new(ctx, tab.id, plan),
@@ -1080,7 +1082,12 @@ impl App {
                     }
                     TabEvent::CleanupResult(applied) => cleanup_results.push((tab.id, applied)),
                     TabEvent::Note(note) => {
-                        let detail = explain_note(&self.i18n, &note.detail);
+                        let detail = if note.key.starts_with("scheme.") {
+                            diagram_editor::Locale::new(self.i18n.language())
+                                .diagnostic(&note.detail)
+                        } else {
+                            explain_note(&self.i18n, &note.detail)
+                        };
                         let mut text = self.i18n.t(note.key).to_owned();
                         if !note.detail.is_empty() {
                             text = if note.detail.starts_with("note.") && !text.contains("{detail}")

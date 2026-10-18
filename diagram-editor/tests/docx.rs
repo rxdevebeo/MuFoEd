@@ -41,7 +41,7 @@ fn all_presets_styles_text_and_groups_survive_a_strict_package() {
     editor.group_selected().unwrap();
     let exported = editor.diagram().to_docx().unwrap();
     assert!(
-        exported.issues.iter().all(|i| i.contains("отключённых")),
+        exported.issues.iter().all(|i| i.contains("inactive")),
         "{:?}",
         exported.issues
     );

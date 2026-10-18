@@ -23,10 +23,11 @@ impl Diagram {
         let mut max_x = 640.0_f32;
         let mut max_y = 480.0_f32;
         for n in &self.nodes {
-            min_x = min_x.min(n.position.x - 40.0);
-            min_y = min_y.min(n.position.y - 40.0);
-            max_x = max_x.max(n.position.x + n.size.x + 40.0);
-            max_y = max_y.max(n.position.y + n.size.y + 40.0);
+            let (a, b) = n.visual_bounds();
+            min_x = min_x.min(a.x - 40.0);
+            min_y = min_y.min(a.y - 40.0);
+            max_x = max_x.max(b.x + 40.0);
+            max_y = max_y.max(b.y + 40.0);
         }
         for c in &self.connections {
             for p in self.route(c) {
@@ -77,6 +78,13 @@ impl Diagram {
         }
         for n in &self.nodes {
             let (x, y, w, h) = (n.position.x, n.position.y, n.size.x, n.size.y);
+            let _ = writeln!(
+                svg,
+                "<g transform=\"rotate({} {} {})\">",
+                n.style.rotation,
+                n.center().x,
+                n.center().y
+            );
             let style = format!(
                 "fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{}",
                 if n.style.no_fill {
@@ -113,7 +121,9 @@ impl Diagram {
                 | ShapeKind::Document
                 | ShapeKind::RightArrow => {
                     let mut points = String::new();
-                    for p in n.outline() {
+                    let mut local = n.clone();
+                    local.style.rotation = 0.0;
+                    for p in local.outline() {
                         let _ = write!(points, "{},{} ", p.x, p.y);
                     }
                     let _ = writeln!(svg, "<polygon points=\"{points}\" {style}/>");
@@ -140,7 +150,7 @@ impl Diagram {
                     escape(line)
                 );
             }
-            svg.push_str("</text>\n");
+            svg.push_str("</text></g>\n");
         }
         svg.push_str("</svg>\n");
         Ok(svg)
