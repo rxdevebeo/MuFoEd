@@ -5480,21 +5480,37 @@ impl<'a, 's> Worker<'a, 's> {
         for piece in self.pieces(&caret.paragraph) {
             let end = before + piece.len();
             if piece.text.starts_with(nav::OBJECT) && end == caret.offset {
-                let object = DrawingPosition {
-                    paragraph: caret.paragraph.clone(),
-                    inline: piece.inline.clone(),
-                    content: (piece.kind == nav::PieceKind::RunAtom).then_some(piece.content),
-                };
-                return map
-                    .drawing_rects(self.session.revision(), &object)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|rect| VisualRect {
-                        x: rect.x + rect.width,
-                        width: 1.0,
-                        ..rect
-                    })
-                    .collect();
+            let object = DrawingPosition {
+                paragraph: caret.paragraph.clone(),
+                inline: piece.inline.clone(),
+                content: (piece.kind == nav::PieceKind::RunAtom).then_some(piece.content),
+            };
+            let rects = map
+                .drawing_rects(self.session.revision(), &object)
+                .unwrap_or_default();
+            // A grouped drawing has one rect per shape; the caret sits after the
+            // whole drawing, so merge them into one frame per page first.
+            let mut merged: Vec<VisualRect> = Vec::new();
+            for rect in rects {
+                if let Some(old) = merged.iter_mut().find(|r| r.page == rect.page) {
+                    let right = (old.x + old.width).max(rect.x + rect.width);
+                    let bottom = (old.y + old.height).max(rect.y + rect.height);
+                    old.x = old.x.min(rect.x);
+                    old.y = old.y.min(rect.y);
+                    old.width = right - old.x;
+                    old.height = bottom - old.y;
+                } else {
+                    merged.push(rect);
+                }
+            }
+            return merged
+                .into_iter()
+                .map(|rect| VisualRect {
+                    x: rect.x + rect.width,
+                    width: 1.0,
+                    ..rect
+                })
+                .collect();
             }
             before = end;
         }
