@@ -109,16 +109,34 @@ pub(crate) fn resolve(
         }
         // A frame whose box leaves the sheet (cluster 3: a duplicate text box
         // anchored far left, margin notes). The mark is diagnostic;
-        // `OffPageInk::Clamp` pulls the frame back onto the page horizontally.
-        let (x, off_page) = clamp_frame(ctx, &geometry, x, y, w, h);
-        let mut items = crate::paint::graphics::anchor_items(ctx, &pending.anchor, x, y, w, h);
+        // `OffPageInk::Clamp` pulls the frame back onto the page.
+        let placement = clamp_frame(ctx, &geometry, x, y, w, h);
+        let mut items = crate::paint::graphics::anchor_items(
+            ctx,
+            &pending.anchor,
+            placement.x,
+            placement.y,
+            placement.w,
+            placement.h,
+        );
         if items.is_empty() {
             continue;
         }
-        if off_page {
+        if placement.off_page {
             mark_floating_items(&mut items);
         }
-        occupied.push((pending.page, [x, y, w, h], pending.anchor.allow_overlap));
+        if let Some(clip) = placement.clip {
+            items = clip_frame_items(
+                items,
+                clip,
+                [placement.x, placement.y, placement.w, placement.h],
+            );
+        }
+        occupied.push((
+            pending.page,
+            [placement.x, placement.y, placement.w, placement.h],
+            pending.anchor.allow_overlap,
+        ));
         let order = pending.anchor.relative_height.map_or(0, i64::from);
         let entry = (pending.page, order, items);
         if pending.anchor.behind_doc {
@@ -352,11 +370,34 @@ pub(crate) fn resolved_extent(
     }
 }
 
-/// Clamps a floating frame's resolved origin onto the page horizontally when
-/// [`crate::OffPageInk::Clamp`] asks for it, and reports whether its box left
-/// the page (so its text can carry [`OffPageReason::Floating`]). The two
-/// anchor placements — the body pass ([`resolve`]) and the cell pass in
-/// `table.rs` — share this so the mark and the correction cannot disagree.
+/// Where a floating frame lands once [`crate::OffPageInk::Clamp`] has had its
+/// say. A frame the model places off the sheet is confined to it: an origin
+/// off the left/right or top/bottom is pulled back, and a box wider or taller
+/// than the sheet — which no origin can move on — is shrunk to the sheet
+/// (reflowing a wrapping box) and its ink clipped to the sheet.
+/// [`Self::off_page`] reports the source position so the frame's text can carry
+/// [`OffPageReason::Floating`].
+pub(crate) struct FramePlacement {
+    /// On-page origin x (the source x under `Keep`).
+    pub x: f64,
+    /// On-page origin y (the source y under `Keep`).
+    pub y: f64,
+    /// On-page width (the source width under `Keep`).
+    pub w: f64,
+    /// On-page height (the source height under `Keep`).
+    pub h: f64,
+    /// The source box left the page (so the mark is warranted).
+    pub off_page: bool,
+    /// A page-space box to which the frame's ink is clipped, when the frame is
+    /// larger than the sheet and `Clamp` asks for it. `None` keeps the ink.
+    pub clip: Option<[f64; 4]>,
+}
+
+/// Confines a floating frame to the sheet when [`crate::OffPageInk::Clamp`]
+/// asks for it, and reports whether its box left the page (so its text can
+/// carry [`OffPageReason::Floating`]). The three anchor placements — the body
+/// pass ([`resolve`]) and the two cell/row passes in `table.rs` — share this so
+/// the mark and the correction cannot disagree.
 pub(crate) fn clamp_frame(
     ctx: &LayoutContext<'_>,
     geometry: &Geometry,
@@ -364,15 +405,40 @@ pub(crate) fn clamp_frame(
     y: f64,
     w: f64,
     h: f64,
-) -> (f64, bool) {
+) -> FramePlacement {
     let off = x < -OFF_PAGE_TOLERANCE
         || x + w > geometry.width + OFF_PAGE_TOLERANCE
         || y < -OFF_PAGE_TOLERANCE
         || y + h > geometry.height + OFF_PAGE_TOLERANCE;
     if off && ctx.options.off_page_ink == crate::OffPageInk::Clamp {
-        (x.clamp(0.0, (geometry.width - w).max(0.0)), off)
+        // A frame the model places off the sheet is confined to it: the origin
+        // is pulled back, and a box wider or taller than the sheet — which no
+        // origin can bring in, and which a `wrap="none"` box cannot reflow — is
+        // clipped to the sheet so only its on-sheet ink is drawn. The text the
+        // clip cuts stays in the model (and carries its off-page mark), so it
+        // can be moved on later without loss.
+        let too_big =
+            w > geometry.width + OFF_PAGE_TOLERANCE || h > geometry.height + OFF_PAGE_TOLERANCE;
+        let clip = too_big.then_some([0.0, 0.0, geometry.width, geometry.height]);
+        let w = w.min(geometry.width);
+        let h = h.min(geometry.height);
+        FramePlacement {
+            x: x.clamp(0.0, (geometry.width - w).max(0.0)),
+            y: y.clamp(0.0, (geometry.height - h).max(0.0)),
+            w,
+            h,
+            off_page: off,
+            clip,
+        }
     } else {
-        (x, off)
+        FramePlacement {
+            x,
+            y,
+            w,
+            h,
+            off_page: off,
+            clip: None,
+        }
     }
 }
 
@@ -387,6 +453,21 @@ pub(crate) fn mark_floating_items(items: &mut [Item]) {
             }
         }
     }
+}
+
+/// Wraps a frame's items in a page-space clip so the ink outside the sheet is
+/// not drawn; a `wrap="none"` frame that cannot be brought on by position is
+/// confined this way under [`crate::OffPageInk::Clamp`].
+pub(crate) fn clip_frame_items(items: Vec<Item>, clip: [f64; 4], bounds: [f64; 4]) -> Vec<Item> {
+    vec![Item::Group(crate::layout::GroupItem {
+        matrix: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        items,
+        bounds,
+        clip: Some(clip),
+        clip_path: None,
+        clip_inverse: false,
+        opacity: 1.0,
+    })]
 }
 
 /// Wrap exclusion in absolute page coordinates, or `None` when text is not excluded.

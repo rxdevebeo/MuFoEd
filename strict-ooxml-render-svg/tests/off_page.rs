@@ -47,6 +47,30 @@ fn render_body_with(body: &str, options: &RenderOptions) -> Vec<strict_ooxml_ren
     render(&document, options).expect("render")
 }
 
+/// A text box wider than the sheet, anchored off the left edge and set not to
+/// wrap (`wrap="none"`), so no origin can bring its far edge on and it cannot
+/// reflow: `Clamp` has to clip its ink to the sheet.
+fn wide_frame_body() -> String {
+    let shape = "<wps:wsp><wps:cNvPr id=\"2\" name=\"box\"/><wps:cNvSpPr/><wps:spPr>\
+<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"18288000\" cy=\"914400\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"/><a:noFill/></wps:spPr>\
+<wps:txbx><w:txbxContent><w:p><w:r><w:t>Wide</w:t></w:r></w:p></w:txbxContent></wps:txbx>\
+<wps:bodyPr wrap=\"none\"/></wps:wsp>";
+    format!(
+        "<w:p><w:r><w:drawing><wp:anchor behindDoc=\"0\" relativeHeight=\"1\" simplePos=\"0\" \
+distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" allowOverlap=\"1\" layoutInCell=\"1\" locked=\"0\">\
+<wp:simplePos x=\"0\" y=\"0\"/>\
+<wp:positionH relativeFrom=\"page\"><wp:posOffset>-2000000</wp:posOffset></wp:positionH>\
+<wp:positionV relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionV>\
+<wp:extent cx=\"18288000\" cy=\"914400\"/><wp:wrapNone/><wp:docPr id=\"1\" name=\"tb\"/>\
+<a:graphic><a:graphicData uri=\"{SHAPE_DATA_URI}\">{shape}</a:graphicData></a:graphic>\
+</wp:anchor></w:drawing></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"0\" w:right=\"0\" w:bottom=\"0\" w:left=\"0\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>\
+</w:sectPr>"
+    )
+}
+
 #[test]
 fn a_tab_past_the_page_is_marked_tab_stop() {
     let pages = render_body_with(&tab_body(), &RenderOptions::default());
@@ -108,6 +132,26 @@ fn clamping_pulls_the_frame_onto_the_page() {
         page.off_page.is_empty(),
         "the frame is on the page: {:?}",
         page.off_page
+    );
+}
+
+#[test]
+fn clamping_clips_a_frame_wider_than_the_page() {
+    let options = RenderOptions::default().off_page_ink(OffPageInk::Clamp);
+    let pages = render_body_with(&wide_frame_body(), &options);
+    let page = &pages[0];
+    assert!(
+        page.svg.contains("overflow=\"hidden\""),
+        "the frame's ink is clipped to the page"
+    );
+    assert!(
+        page.svg.contains("Wide"),
+        "the text is clipped, not dropped"
+    );
+    let kept = render_body_with(&wide_frame_body(), &RenderOptions::default());
+    assert!(
+        !kept[0].svg.contains("overflow=\"hidden\""),
+        "no clip unless clamp is asked for"
     );
 }
 
