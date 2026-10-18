@@ -538,8 +538,20 @@ impl ColumnLayout {
         let mut boxes = [(0.0, 0.0); MAX_COLUMNS];
         let count = if columns.equal_width || columns.columns.is_empty() {
             let count = columns.count.map_or(1, usize::from).clamp(1, MAX_COLUMNS);
-            let gap = px(columns.space, DEFAULT_COLUMN_SPACE_TWIPS);
-            let width = ((content_width - gap * (count - 1) as f64) / count as f64).max(1.0);
+            // A `w:space` that leaves no usable column is treated as absent, the
+            // way Word and WPS read a garbage value: the CC0 sample's 361800
+            // twips (250 in) would otherwise put the second column 18000 pt to
+            // the right, or squeeze two columns into slivers. Word's default gap
+            // keeps the columns equal and on the page.
+            let declared = px(columns.space, DEFAULT_COLUMN_SPACE_TWIPS);
+            let fair = content_width / count as f64;
+            let width_with = |gap: f64| (content_width - gap * (count - 1) as f64) / count as f64;
+            let gap = if width_with(declared) >= fair / 2.0 {
+                declared
+            } else {
+                px(None, DEFAULT_COLUMN_SPACE_TWIPS)
+            };
+            let width = width_with(gap).max(1.0);
             for (index, slot) in boxes.iter_mut().take(count).enumerate() {
                 *slot = (index as f64 * (width + gap), width);
             }
@@ -547,6 +559,7 @@ impl ColumnLayout {
         } else {
             let specs: Vec<_> = columns.columns.iter().take(MAX_COLUMNS).collect();
             let count = specs.len();
+            let max_gap = content_width / count as f64;
             let spaces: Vec<f64> = specs
                 .iter()
                 .enumerate()
@@ -554,14 +567,14 @@ impl ColumnLayout {
                     if index + 1 == count {
                         0.0
                     } else {
-                        px(spec.space, 0)
+                        px(spec.space, 0).min(max_gap)
                     }
                 })
                 .collect();
             let declared: f64 = specs
                 .iter()
                 .filter_map(|spec| spec.width)
-                .map(|width| px(Some(width), 0))
+                .map(|width| px(Some(width), 0).min(content_width))
                 .sum();
             let missing = specs.iter().filter(|spec| spec.width.is_none()).count();
             let share = if missing == 0 {
@@ -574,7 +587,7 @@ impl ColumnLayout {
                 let width = spec
                     .width
                     .map_or(share, |width| px(Some(width), 0))
-                    .max(1.0);
+                    .clamp(1.0, content_width);
                 *slot = (offset, width);
                 offset += width + space;
             }

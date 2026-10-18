@@ -101,6 +101,28 @@ fn equal_columns_divide_the_content_width_leaving_the_space_between() {
 }
 
 #[test]
+fn an_absurd_column_space_keeps_the_next_column_on_the_page() {
+    // CC0 sample-files.com-multi-column: `w:cols w:num="2" w:space="360000"`
+    // (250 in). Word and WPS reduce the gap so the second column still fits;
+    // we placed it at the margin plus the raw gap — 18000 pt to the right.
+    let body = format!(
+        "{}<w:p><w:r><w:br w:type=\"column\"/><w:t>Right</w:t></w:r></w:p><w:sectPr>{PAGE}<w:cols w:num=\"2\" w:space=\"360000\"/></w:sectPr>",
+        para("Left")
+    );
+    let pages = render_body(&body);
+    assert_eq!(pages.len(), 1);
+    let (left, _) = text_at(&pages[0].svg, "Left");
+    let (right, _) = text_at(&pages[0].svg, "Right");
+    assert!(near(left, 96.0), "first column at the margin: {left}");
+    // The garbage gap is ignored: two equal columns 48 px apart, as if `w:space`
+    // were Word's default (the page is Letter, content 624 px from x = 96).
+    assert!(
+        near(right, 432.0),
+        "the second column is a normal equal column: {right}"
+    );
+}
+
+#[test]
 fn unequal_columns_take_each_col_width_and_space() {
     for equal_width in [" w:equalWidth=\"0\"", ""] {
         // Without equalWidth the `w:col` children still define the columns
