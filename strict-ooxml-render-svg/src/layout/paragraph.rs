@@ -473,7 +473,14 @@ fn layout_paragraph_horizontal(
             && computed.character_indents[0].is_none()
         {
             if let Some(start) = marker.indent_start_pt {
-                computed.indent_start_pt = start;
+                // The level's `w:start` is the paragraph's *start* side: the
+                // physical left for LTR, but the physical right for RTL, whose
+                // indents were already swapped into `indent_end_pt`/`start`.
+                if computed.bidi {
+                    computed.indent_end_pt = start;
+                } else {
+                    computed.indent_start_pt = start;
+                }
             }
         }
         let direct_line =

@@ -178,6 +178,35 @@ fn wingdings_clock_is_not_turned_into_a_bullet() {
 }
 
 #[test]
+fn an_rtl_lists_first_line_stays_on_the_sheet() {
+    // The numbering level indents from the start (right for RTL); the
+    // paragraph keeps the level's start and overrides only the hanging. The
+    // start must land on the right, or the first line hangs off the sheet.
+    let numbering = format!(
+        "<?xml version=\"1.0\"?><w:numbering xmlns:w=\"{W}\"><w:abstractNum w:abstractNumId=\"0\">\
+<w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%1.\"/>\
+<w:pPr><w:ind w:start=\"8000\" w:hanging=\"1000\"/></w:pPr></w:lvl>\
+</w:abstractNum>\
+<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num></w:numbering>"
+    );
+    let body =
+        "<w:p><w:pPr><w:bidi/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>\
+<w:ind w:hanging=\"6000\"/><w:jc w:val=\"start\"/></w:pPr><w:r><w:t>Item</w:t></w:r></w:p>";
+    let pages = build(body, &numbering);
+    let page = &pages[0];
+    assert!(page.svg.contains("Item"), "the text renders");
+    let rightmost = texts(&page.svg)
+        .iter()
+        .map(|(_, x)| *x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!(
+        rightmost <= page.width_px + 0.5,
+        "the first line is on the sheet: rightmost {rightmost} of {}",
+        page.width_px
+    );
+}
+
+#[test]
 fn level_indentation_offsets_the_marker() {
     let numbering = format!(
         "<?xml version=\"1.0\"?><w:numbering xmlns:w=\"{W}\"><w:abstractNum w:abstractNumId=\"0\">\
