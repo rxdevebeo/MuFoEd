@@ -16,6 +16,12 @@ What it shows:
   vision model (feature `ocr`, on by default; endpoint and model in Options).
 - **Display**: pages rendered to SVG by the library and rasterized with the
   bundled faces; navigation pane (headings, pages), support report pane.
+- **Navigation**: a hand cursor marks headings, page entries, bookmarks,
+  document hyperlinks, cross-reference fields and note numbers. Click follows
+  the target; note numbers return to their reference in the body. Internal
+  targets scroll to the top; external addresses open through the system.
+  Shift+click and dragging still select text. Link hit regions are derived
+  from disposable renderer attribution without changing the saved document.
 - **Edit**: typing, deleting, Enter, selection by mouse and keyboard, bold /
   italic / underline / strike / super- and subscript / size / font / colour /
   highlight, alignment, paragraph styles, page and section breaks, tables,

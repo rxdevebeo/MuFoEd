@@ -518,6 +518,9 @@ fn frame_corners(
     palette: Palette,
     corners: egui::CornerRadius,
 ) {
+    if look.enabled && response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
     let active = look.enabled && (response.hovered() || response.is_pointer_button_down_on());
     let fill = if look.enabled && (look.on || response.is_pointer_button_down_on()) {
         palette.pressed
@@ -1943,7 +1946,7 @@ fn bookmark_jump(
             .show_ui(ui, |ui| {
                 ui.set_min_width(200.0);
                 for name in names {
-                    if ui.selectable_label(false, name).clicked() {
+                    if ui.selectable_label(false, name).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                         picked = Some(name.clone());
                     }
                 }

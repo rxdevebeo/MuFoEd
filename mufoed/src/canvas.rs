@@ -718,6 +718,21 @@ pub(crate) fn show(
                         .find(|(_, rect)| rect.contains(pos))
                         .map(|(id, _)| id.clone())
                 };
+                let link_rects: Vec<_> = tab.links.iter().flat_map(|link| {
+                    link.rects.iter().filter_map(|r| {
+                        to_screen(r.page, r.x, r.y, r.width, r.height)
+                            .map(|rect| (link.target.clone(), rect))
+                    })
+                }).collect();
+                let link_hit = |pos: egui::Pos2| {
+                    link_rects.iter().rev().find(|(_, rect)| rect.contains(pos))
+                        .map(|(target, _)| target.clone())
+                };
+                if let Some(r) = tab.navigation_target.take() {
+                    if let Some(rect) = to_screen(r.page, r.x, r.y, r.width, r.height) {
+                        ui.scroll_to_rect(rect, Some(egui::Align::TOP));
+                    }
+                }
                 let column = ui.input(|input| input.modifiers.command);
                 // A handle of the selected drawing resizes it. The drag is
                 // known only once the pointer has moved, so the handle is
@@ -820,7 +835,11 @@ pub(crate) fn show(
                         .filter(|_| response.clicked() && !shift && !column)
                         .and_then(comment_hit);
                     tab.finish_comment();
-                    if let Some(id) = comment {
+                    let link = response.interact_pointer_pos()
+                        .filter(|_| response.clicked() && !shift).and_then(link_hit);
+                    if let Some(target) = link {
+                        tab.send(Request::FollowLink(target));
+                    } else if let Some(id) = comment {
                         tab.ui_actions.push(crate::app::Action::ShowComment(id));
                     } else if let Some(pos) = response.interact_pointer_pos() {
                         if let Some((page, x, y)) = hit(pos) {
@@ -896,6 +915,7 @@ pub(crate) fn show(
                         .is_some_and(|(pos, (frame, _))| frame.contains(pos));
                     ctx.set_cursor_icon(match over_handle {
                         Some(handle) => handle_cursor(handle),
+                        None if pointer.and_then(link_hit).is_some() => egui::CursorIcon::PointingHand,
                         None if over_object => egui::CursorIcon::Grab,
                         None if pointer.and_then(comment_hit).is_some() => {
                             egui::CursorIcon::PointingHand

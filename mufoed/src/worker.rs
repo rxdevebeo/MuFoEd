@@ -46,6 +46,7 @@ use strict_ooxml_core::error::SourceLocation;
 use crate::formats::{self, Kind, Source};
 use crate::nav;
 mod rich_paste;
+pub(crate) mod navigation;
 pub(crate) mod scheme;
 
 /// A recognition result tied to the original drawing and document revision.
@@ -60,6 +61,7 @@ pub(crate) struct FormulaRecognition {
 /// What the interface asks of a document.
 #[derive(Debug)]
 pub(crate) enum Request {
+    FollowLink(navigation::Target),
     SchemeOfObject,
     PutScheme(Box<scheme::Plan>),
     PasteRich {
@@ -1084,6 +1086,9 @@ pub(crate) struct Note {
 
 /// What a document tells the interface.
 pub(crate) enum Reply {
+    Links(Vec<navigation::Link>),
+    OpenLink(String),
+    NavigateTo(VisualRect),
     Scheme(Box<scheme::Plan>),
     FormulaRecognition(Box<FormulaRecognition>),
     CleanupResult(bool),
@@ -1530,6 +1535,7 @@ enum Outcome {
 }
 
 struct Worker<'a, 's> {
+    links: Vec<navigation::Link>,
     scheme_sources: Vec<(strict_ooxml::model::Graphic, diagram_editor::Diagram)>,
     session: Session<'a>,
     options: RenderOptions,
@@ -1596,6 +1602,7 @@ impl<'a, 's> Worker<'a, 's> {
             replies,
             ctx,
             map: None,
+            links: Vec::new(),
             pages: Vec::new(),
             page_sizes: Vec::new(),
             caret: None,
@@ -1820,6 +1827,7 @@ impl<'a, 's> Worker<'a, 's> {
             }
         }
         match request {
+            Request::FollowLink(target) => self.follow_link(target),
             Request::PasteRich { content, fallback } => self.paste_rich(content, &fallback),
             Request::ConfirmFormulaRecognition(plan) => self.confirm_formula_recognition(*plan),
             Request::Shutdown => Outcome::Quit,
@@ -2109,6 +2117,8 @@ impl<'a, 's> Worker<'a, 's> {
 
     /// Sends a placement's pages to the interface.
     fn show(&mut self, placement: Placement) {
+        self.links.clear();
+        self.send(Reply::Links(Vec::new()));
         self.pages = placement
             .pages
             .into_iter()
@@ -2189,6 +2199,8 @@ impl<'a, 's> Worker<'a, 's> {
             Session::View(_) => None,
         };
         crate::trace::log(|| format!("caret map took {} ms", pages_at.elapsed().as_millis()));
+        self.links = self.navigation_links(&options);
+        self.send(Reply::Links(self.links.clone()));
         self.send(Reply::Busy(None));
         let comments = self.comment_views();
         self.send(Reply::Comments(comments));
@@ -4230,6 +4242,7 @@ impl<'a, 's> Worker<'a, 's> {
         self.cells = None;
         self.anchor = (start != end).then_some(start);
         self.caret = Some(end);
+        self.scroll_at_top = true;
         self.send(Reply::CommentFocused(id.to_owned()));
         Outcome::Moved
     }
@@ -4418,6 +4431,7 @@ impl<'a, 's> Worker<'a, 's> {
         self.story = Story::Body;
         self.anchor = None;
         self.caret = Some(Logical { paragraph, offset });
+        self.scroll_at_top = true;
         Outcome::Moved
     }
 
@@ -4551,6 +4565,7 @@ impl<'a, 's> Worker<'a, 's> {
         else {
             return Outcome::Quiet;
         };
+        self.scroll_at_top = true;
         let start = Logical {
             offset: self.offset_of_inline(&at, index),
             paragraph: at,
@@ -4563,8 +4578,8 @@ impl<'a, 's> Worker<'a, 's> {
                 paragraph: end_at,
             };
             if end != start {
-                self.anchor = Some(start);
-                self.caret = Some(end);
+                self.anchor = Some(end);
+                self.caret = Some(start);
                 return Outcome::Moved;
             }
         }

@@ -1043,7 +1043,7 @@ impl App {
                             })
                             .response
                             .interact(egui::Sense::click());
-                        if response.on_hover_text(t("ai.go_to")).clicked() {
+                        if response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(t("ai.go_to")).clicked() {
                             requests.push(Request::GoTo(at.clone()));
                         }
                         ui.add_space(4.0);

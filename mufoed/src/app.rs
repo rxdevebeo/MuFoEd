@@ -1069,6 +1069,27 @@ impl App {
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             for event in tab.poll() {
                 match event {
+                    TabEvent::OpenLink(url) => {
+                        let resolved = if std::path::Path::new(&url).is_absolute() {
+                            url::Url::from_file_path(&url)
+                                .map_err(|()| url::ParseError::RelativeUrlWithoutBase)
+                        } else {
+                            url::Url::parse(&url).or_else(|_| {
+                                tab.path.as_ref().or(tab.source.as_ref())
+                                    .and_then(|p| url::Url::from_file_path(p).ok())
+                                    .ok_or(url::ParseError::RelativeUrlWithoutBase)
+                                    .and_then(|base| base.join(&url))
+                            })
+                        };
+                        match resolved {
+                            Ok(url) if matches!(url.scheme(), "http" | "https" | "mailto" | "file" | "ftp" | "tel") => {
+                                ctx.open_url(egui::OpenUrl::new_tab(url.as_str()));
+                            }
+                            _ => messages.push((
+                                format!("{}: {url}", self.i18n.t("note.link_invalid")), true,
+                            )),
+                        }
+                    }
                     TabEvent::Scheme(plan) => {
                         match scheme_ui::SchemeDialog::new(tab.id, plan, self.i18n.language()) {
                             Ok(dialog) => self.dialog = Some(Dialog::Scheme(Box::new(dialog))),
@@ -2553,6 +2574,7 @@ impl App {
                                 );
                                 if ui
                                     .add(egui::Button::new(text).frame(false).wrap())
+                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
                                     .clicked()
                                 {
                                     tab.send(Request::GoTo(entry.paragraph.clone()));
@@ -2566,7 +2588,7 @@ impl App {
                         for page in 0..tab.pages.len() {
                             let selected = tab.view.current_page == page;
                             let label = self.i18n.tf("nav.page", &[("page", &(page + 1))]);
-                            if ui.selectable_label(selected, label).clicked() {
+                            if ui.selectable_label(selected, label).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                                 tab.view.scroll_to_page = Some(page);
                             }
                         }
@@ -2702,7 +2724,7 @@ impl App {
                     response.scroll_to_me(Some(egui::Align::Center));
                     tab.scroll_comment = None;
                 }
-                if !editing && response.interact(Sense::click()).clicked() {
+                if !editing && response.interact(Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                     requests.push(CommentCommand::Select(comment.id.clone()));
                 }
                 ui.add_space(8.0);
@@ -3070,6 +3092,7 @@ impl App {
                         edit.lost_focus() && ui.input(|input| input.key_pressed(Key::Enter));
                     if ui
                         .button("▲")
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
                         .on_hover_text(self.i18n.t("find.previous"))
                         .clicked()
                     {
@@ -3080,6 +3103,7 @@ impl App {
                     }
                     if ui
                         .button("▼")
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
                         .on_hover_text(self.i18n.t("find.next"))
                         .clicked()
                         || enter
@@ -3586,7 +3610,7 @@ impl App {
                                     }
                                     for (index, existing) in names.iter().enumerate() {
                                         let chosen =
-                                            ui.selectable_label(selected == Some(index), existing);
+                                            ui.selectable_label(selected == Some(index), existing).on_hover_cursor(egui::CursorIcon::PointingHand);
                                         if chosen.clicked() {
                                             selected = Some(index);
                                             name.clone_from(existing);
@@ -3613,6 +3637,7 @@ impl App {
                         }
                         if ui
                             .add_enabled(known, egui::Button::new(t("bookmark.go")))
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
                             .clicked()
                         {
                             request = Some(ReferenceCommand::GoToBookmark(name.trim().to_owned()));

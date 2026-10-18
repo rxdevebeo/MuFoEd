@@ -386,6 +386,8 @@
       "picture_refused": "The picture was not inserted",
       "recognize_failed": "The picture was not recognised",
       "recognized_nothing": "Nothing was recognised in the picture",
+      "link_missing": "Link destination not found",
+      "link_invalid": "Could not open link address",
       "bookmark_name": "A bookmark name: letters, digits and \"_\", starting with a letter",
       "notes_in_body": "Notes go into the body text only",
       "comments_in_body": "Comments go on the body text only",

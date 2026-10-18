@@ -27,6 +27,7 @@ pub(crate) enum Status {
 
 /// What a tab has to tell the application after a poll.
 pub(crate) enum TabEvent {
+    OpenLink(String),
     Scheme(Box<crate::worker::scheme::Plan>),
     FormulaRecognition(Box<crate::worker::FormulaRecognition>),
     CleanupResult(bool),
@@ -227,6 +228,8 @@ pub(crate) struct DocTab {
     pub(crate) busy: Option<Busy>,
     /// The document's comments, in the order of the text.
     pub(crate) comments: Vec<crate::worker::CommentView>,
+    pub(crate) links: Vec<crate::worker::navigation::Link>,
+    pub(crate) navigation_target: Option<strict_ooxml::edit::VisualRect>,
     /// The comment whose text the pane edits, and the text so far.
     pub(crate) editing_comment: Option<(String, String)>,
     pub(crate) focus_comment: bool,
@@ -299,6 +302,8 @@ impl DocTab {
             outline: Vec::new(),
             busy: None,
             comments: Vec::new(),
+            links: Vec::new(),
+            navigation_target: None,
             editing_comment: None,
             focus_comment: false,
             selected_comment: None,
@@ -356,6 +361,9 @@ impl DocTab {
 
     fn apply(&mut self, reply: Reply, events: &mut Vec<TabEvent>) {
         match reply {
+            Reply::Links(links) => self.links = links,
+            Reply::NavigateTo(rect) => self.navigation_target = Some(rect),
+            Reply::OpenLink(url) => events.push(TabEvent::OpenLink(url)),
             Reply::FormulaRecognition(plan) => events.push(TabEvent::FormulaRecognition(plan)),
             Reply::CleanupResult(applied) => events.push(TabEvent::CleanupResult(applied)),
             Reply::Context(context) => self.context = Some(context),
