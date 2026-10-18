@@ -45,8 +45,8 @@ use strict_ooxml_core::error::SourceLocation;
 
 use crate::formats::{self, Kind, Source};
 use crate::nav;
-mod rich_paste;
 pub(crate) mod navigation;
+mod rich_paste;
 pub(crate) mod scheme;
 
 /// A recognition result tied to the original drawing and document revision.

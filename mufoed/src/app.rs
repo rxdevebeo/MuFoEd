@@ -2082,6 +2082,7 @@ impl eframe::App for App {
             actions.append(&mut tab.ui_actions);
         }
         self.dialogs(&ctx, &mut actions);
+        theme::paint_input_focus(&ctx);
         let title = self.active_tab().map_or_else(
             || "MultiFormatEditor".to_owned(),
             |tab| {

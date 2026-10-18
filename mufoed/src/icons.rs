@@ -180,20 +180,8 @@ pub(crate) fn paint_mark(painter: &Painter, rect: Rect, symbol: char, color: Col
         }
         '\u{2717}' => {
             let arm = size * 0.75;
-            painter.line_segment(
-                [
-                    center + vec2(-arm, -arm),
-                    center + vec2(arm, arm),
-                ],
-                stroke,
-            );
-            painter.line_segment(
-                [
-                    center + vec2(arm, -arm),
-                    center + vec2(-arm, arm),
-                ],
-                stroke,
-            );
+            painter.line_segment([center + vec2(-arm, -arm), center + vec2(arm, arm)], stroke);
+            painter.line_segment([center + vec2(arm, -arm), center + vec2(-arm, arm)], stroke);
         }
         _ => {}
     }

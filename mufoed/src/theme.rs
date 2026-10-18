@@ -163,6 +163,37 @@ pub(crate) fn style_buttons(ui: &mut egui::Ui) {
     widgets.open.corner_radius = radius;
 }
 
+/// Draw a dedicated focus ring for text inputs after all panels and dialogs.
+/// egui uses selection.stroke for both the input frame and selected text;
+/// keeping that white preserves readable text selection and button styling.
+pub(crate) fn paint_input_focus(ctx: &egui::Context) {
+    let Some(id) = ctx.memory(|memory| memory.focused()) else {
+        return;
+    };
+    if egui::text_edit::TextEditState::load(ctx, id).is_none() {
+        return;
+    }
+    let Some(response) = ctx
+        .read_response(id)
+        .filter(|r| r.enabled() && r.has_focus() && r.interact_rect.is_positive())
+    else {
+        return;
+    };
+    let color = if ctx.global_style().visuals.dark_mode {
+        Color32::from_rgb(120, 180, 255)
+    } else {
+        ACCENT
+    };
+    ctx.layer_painter(response.layer_id)
+        .with_clip_rect(response.interact_rect.expand(2.0))
+        .rect_stroke(
+            response.rect,
+            4.0,
+            egui::Stroke::new(2.0, color),
+            egui::StrokeKind::Outside,
+        );
+}
+
 /// egui visuals tuned toward the office look.
 pub(crate) fn apply(ctx: &egui::Context, dark: bool) {
     let mut visuals = if dark {
@@ -189,4 +220,61 @@ pub(crate) fn apply(ctx: &egui::Context, dark: bool) {
         style.spacing.button_padding = egui::vec2(6.0, 3.0);
         style.interaction.tooltip_delay = 0.35;
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn focus_ring_marks_text_input_in_both_themes_without_restyling_buttons() {
+        for dark in [false, true] {
+            let ctx = egui::Context::default();
+            apply(&ctx, dark);
+            let selected_text = ctx.global_style().visuals.selection.stroke;
+            let mut value = "Text".to_owned();
+            let mut field_rect = egui::Rect::NOTHING;
+            for focus_input in [true, false] {
+                let mut button_stroke = egui::Stroke::NONE;
+                let mut output = egui::FullOutput::default();
+                for _ in 0..3 {
+                    output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(600.0, 400.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            style_buttons(ui);
+                            button_stroke = ui.visuals().widgets.inactive.bg_stroke;
+                            let input = ui
+                                .add(egui::TextEdit::singleline(&mut value).id_salt("focus-field"));
+                            field_rect = input.rect;
+                            let button = ui.button("Button");
+                            if focus_input {
+                                input.request_focus();
+                            } else {
+                                button.request_focus();
+                            }
+                            paint_input_focus(ui.ctx());
+                            assert_eq!(ui.visuals().widgets.inactive.bg_stroke, button_stroke);
+                        },
+                    );
+                }
+                let color = if dark {
+                    Color32::from_rgb(120, 180, 255)
+                } else {
+                    ACCENT
+                };
+                let marked=output.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Rect(r) if r.rect==field_rect && r.stroke==egui::Stroke::new(2.0,color)));
+                assert_eq!(marked, focus_input);
+                assert_eq!(
+                    button_stroke,
+                    egui::Stroke::new(1.0, palette(dark).button_border)
+                );
+                assert_eq!(ctx.global_style().visuals.selection.stroke, selected_text);
+            }
+        }
+    }
 }

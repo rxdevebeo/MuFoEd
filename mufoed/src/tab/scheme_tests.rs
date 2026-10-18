@@ -66,7 +66,12 @@ fn pointer(pos: egui::Pos2, pressed: bool) -> Vec<egui::Event> {
 
 #[test]
 fn empty_document_scheme_apply_mouse_selection_and_caret() {
-    for (fonts, zoom) in [(false, 1.0), (true, 1.0), (true, 1.079_861_2), (false, 0.75)] {
+    for (fonts, zoom) in [
+        (false, 1.0),
+        (true, 1.0),
+        (true, 1.079_861_2),
+        (false, 0.75),
+    ] {
         let ctx = egui::Context::default();
         let i18n = crate::i18n::I18n::load(&[]);
         let mut tab = DocTab::open(1, Source::New, "empty".into(), zoom, fonts, &ctx);

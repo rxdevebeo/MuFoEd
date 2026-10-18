@@ -64,10 +64,7 @@ pub(crate) fn desk(tab: &DocTab) -> Desk {
             originals.push(Rect::from_min_size(pos2(GAP, y), size));
             pages.push(Rect::from_min_size(pos2(GAP * 2.0 + widest, y), size));
         } else {
-            pages.push(Rect::from_min_size(
-                pos2((column - size.x) / 2.0, y),
-                size,
-            ));
+            pages.push(Rect::from_min_size(pos2((column - size.x) / 2.0, y), size));
         }
         y += size.y + GAP;
     }
@@ -169,11 +166,15 @@ fn request_original(ctx: &egui::Context, tab: &mut DocTab, index: usize) {
     });
 }
 
-fn original_bitmap(source: &crate::formats::OriginalSource, index: usize) -> Result<crate::raster::Bitmap, String> {
+fn original_bitmap(
+    source: &crate::formats::OriginalSource,
+    index: usize,
+) -> Result<crate::raster::Bitmap, String> {
     #[cfg(feature = "ocr")]
     {
         let png = crate::formats::original_png(source, index)?;
-        let pixmap = crate::raster::picture_pixmap(&png).ok_or_else(|| "unreadable page".to_owned())?;
+        let pixmap =
+            crate::raster::picture_pixmap(&png).ok_or_else(|| "unreadable page".to_owned())?;
         return Ok(crate::raster::Bitmap {
             width: pixmap.width() as usize,
             height: pixmap.height() as usize,
@@ -718,14 +719,21 @@ pub(crate) fn show(
                         .find(|(_, rect)| rect.contains(pos))
                         .map(|(id, _)| id.clone())
                 };
-                let link_rects: Vec<_> = tab.links.iter().flat_map(|link| {
-                    link.rects.iter().filter_map(|r| {
-                        to_screen(r.page, r.x, r.y, r.width, r.height)
-                            .map(|rect| (link.target.clone(), rect))
+                let link_rects: Vec<_> = tab
+                    .links
+                    .iter()
+                    .flat_map(|link| {
+                        link.rects.iter().filter_map(|r| {
+                            to_screen(r.page, r.x, r.y, r.width, r.height)
+                                .map(|rect| (link.target.clone(), rect))
+                        })
                     })
-                }).collect();
+                    .collect();
                 let link_hit = |pos: egui::Pos2| {
-                    link_rects.iter().rev().find(|(_, rect)| rect.contains(pos))
+                    link_rects
+                        .iter()
+                        .rev()
+                        .find(|(_, rect)| rect.contains(pos))
                         .map(|(target, _)| target.clone())
                 };
                 if let Some(r) = tab.navigation_target.take() {
@@ -835,8 +843,10 @@ pub(crate) fn show(
                         .filter(|_| response.clicked() && !shift && !column)
                         .and_then(comment_hit);
                     tab.finish_comment();
-                    let link = response.interact_pointer_pos()
-                        .filter(|_| response.clicked() && !shift).and_then(link_hit);
+                    let link = response
+                        .interact_pointer_pos()
+                        .filter(|_| response.clicked() && !shift)
+                        .and_then(link_hit);
                     if let Some(target) = link {
                         tab.send(Request::FollowLink(target));
                     } else if let Some(id) = comment {
@@ -915,7 +925,9 @@ pub(crate) fn show(
                         .is_some_and(|(pos, (frame, _))| frame.contains(pos));
                     ctx.set_cursor_icon(match over_handle {
                         Some(handle) => handle_cursor(handle),
-                        None if pointer.and_then(link_hit).is_some() => egui::CursorIcon::PointingHand,
+                        None if pointer.and_then(link_hit).is_some() => {
+                            egui::CursorIcon::PointingHand
+                        }
                         None if over_object => egui::CursorIcon::Grab,
                         None if pointer.and_then(comment_hit).is_some() => {
                             egui::CursorIcon::PointingHand
@@ -939,7 +951,6 @@ pub(crate) fn show(
 /// The page's context menu: what can replace a misspelt word under the
 /// pointer, then cut and copy.
 fn context_menu(ui: &mut egui::Ui, tab: &mut DocTab, i18n: &crate::i18n::I18n) {
-    crate::theme::style_buttons(ui);
     use crate::app::Action;
     use crate::worker::{ContextObject, TableCommand, WrapStyle};
     // The first frame may contain only a spinner while the worker hit-tests.
@@ -1166,6 +1177,8 @@ mod tests {
                     let (_, response) = ui.allocate_exact_size(vec2(500.0, 500.0), Sense::click());
                     response.context_menu(|ui| {
                         context_menu(ui, &mut tab, &i18n);
+                        assert_eq!(ui.visuals().widgets.inactive.bg_stroke, Stroke::NONE);
+                        assert_eq!(ui.visuals().widgets.hovered.bg_stroke, Stroke::NONE);
                         assert!(ui.min_rect().width() >= 260.0, "{:?}", ui.min_rect());
                         if tab.context.is_some() {
                             populated = true;

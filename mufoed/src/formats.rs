@@ -432,7 +432,10 @@ pub(crate) struct OriginalSource {
 /// The PNG of one source page. `document_page` is zero-based in the opened
 /// document.
 #[cfg(feature = "ocr")]
-pub(crate) fn original_png(source: &OriginalSource, document_page: usize) -> Result<Vec<u8>, String> {
+pub(crate) fn original_png(
+    source: &OriginalSource,
+    document_page: usize,
+) -> Result<Vec<u8>, String> {
     let number = source.first.saturating_add(document_page);
     let bytes = std::fs::read(&source.path).map_err(|error| error.to_string())?;
     match source.kind {
