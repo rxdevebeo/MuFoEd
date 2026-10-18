@@ -408,6 +408,22 @@ pub(crate) struct App {
     frame_events: Option<Vec<egui::Event>>,
 }
 
+/// A stored refusal: a locale key, optionally with a detail after a newline.
+fn explain_note(i18n: &I18n, stored: &str) -> String {
+    let (key, extra) = stored.split_once('\n').unwrap_or((stored, ""));
+    if !key.starts_with("note.") {
+        return stored.to_owned();
+    }
+    let template = i18n.t(key);
+    if extra.is_empty() {
+        template.to_owned()
+    } else if template.contains("{detail}") {
+        template.replace("{detail}", extra)
+    } else {
+        format!("{template}: {extra}")
+    }
+}
+
 impl App {
     pub(crate) fn new(cc: &eframe::CreationContext<'_>, files: Vec<PathBuf>) -> Self {
         let settings = Settings::load();
@@ -501,6 +517,11 @@ impl App {
             error,
             at: now,
         });
+    }
+
+    /// A stored refusal: a locale key, optionally with a detail after a newline.
+    fn explain_stored(&self, stored: &str) -> String {
+        explain_note(&self.i18n, stored)
     }
 
     // ----- opening ------------------------------------------------------
@@ -1059,12 +1080,16 @@ impl App {
                     }
                     TabEvent::CleanupResult(applied) => cleanup_results.push((tab.id, applied)),
                     TabEvent::Note(note) => {
+                        let detail = explain_note(&self.i18n, &note.detail);
                         let mut text = self.i18n.t(note.key).to_owned();
                         if !note.detail.is_empty() {
-                            text = if text.contains("{detail}") {
-                                text.replace("{detail}", &note.detail)
+                            text = if note.detail.starts_with("note.") && !text.contains("{detail}")
+                            {
+                                detail
+                            } else if text.contains("{detail}") {
+                                text.replace("{detail}", &detail)
                             } else {
-                                format!("{text}: {}", note.detail)
+                                format!("{text}: {detail}")
                             };
                         }
                         messages.push((text, note.error));
@@ -2373,9 +2398,9 @@ impl App {
                         ui.label(text(self.t(kind.key()).to_owned()));
                         ui.separator();
                     }
-                    if tab.state.read_only.is_some() {
+                    if let Some(reason) = &tab.state.read_only {
                         ui.label(text(self.t("status.read_only").to_owned()))
-                            .on_hover_text(tab.state.read_only.clone().unwrap_or_default());
+                            .on_hover_text(self.explain_stored(reason));
                         ui.separator();
                     }
                     if !tab.warnings.is_empty() {
@@ -2737,7 +2762,7 @@ impl App {
             text.push_str("\n\n");
             text.push_str(self.t("report.read_only"));
             text.push_str(":\n");
-            text.push_str(reason);
+            text.push_str(&self.explain_stored(reason));
         }
         egui::ScrollArea::both()
             .id_salt(("report", tab.id))

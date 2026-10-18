@@ -21,8 +21,9 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
 use strict_ooxml::edit::{
-    Address, Container, Edit, EditLimits, FormatPatch, OperationLimits, Operations, ReplacePolicy,
-    SavePolicy, SearchQuery, SearchScope, Story, TextPosition, TextQuery, VisualMap, VisualRect,
+    Address, Container, Edit, EditError, EditLimits, FormatPatch, Invariant, OperationError,
+    OperationLimits, Operations, ReplacePolicy, SavePolicy, SearchQuery, SearchScope, Story,
+    TextPosition, TextQuery, Unsupported, VisualError, VisualMap, VisualRect,
 };
 use strict_ooxml::edit::{DrawingPosition, ListLevel, ListPreset};
 use strict_ooxml::model::props::{
@@ -1238,13 +1239,77 @@ fn run(
         }
         Err(error) => {
             send(Reply::Loaded(Box::new(info)));
-            format!("{error:?}")
+            stored_notice(&error)
         }
     };
     let mut worker = Worker::new(Session::View(&document), options, replies, ctx, path);
     worker.system_fonts = system_fonts;
     worker.read_only = Some(read_only);
     worker.serve(requests);
+}
+
+/// A locale key and, when the sentence has a `{detail}` hole, the text that fills it.
+fn edit_notice(error: &EditError) -> (&'static str, String) {
+    match error {
+        EditError::UnsupportedContent(kind) => (unsupported_notice(*kind), String::new()),
+        EditError::StaleRevision => ("note.stale_edit", String::new()),
+        EditError::InvalidParagraph => ("note.invalid_paragraph", String::new()),
+        EditError::InvalidRange => ("note.invalid_range", String::new()),
+        EditError::InvalidText => ("note.invalid_text", String::new()),
+        EditError::UnknownStyle(id) => ("note.unknown_style", id.as_str().to_owned()),
+        EditError::InvalidModel(invariant) => (model_notice(*invariant), String::new()),
+        EditError::LimitExceeded => ("note.edit_limit", String::new()),
+        EditError::EmptyHistory => ("note.empty_history", String::new()),
+        _ => ("note.edit_refused", error.to_string()),
+    }
+}
+
+fn unsupported_notice(kind: Unsupported) -> &'static str {
+    match kind {
+        Unsupported::FieldResult => "note.field_text",
+        Unsupported::TrackedChange => "note.tracked_text",
+        Unsupported::RunContent => "note.mixed_run",
+        Unsupported::Inline => "note.inline_object",
+        Unsupported::OpaqueDrawing => "note.opaque_drawing",
+        Unsupported::Target => "note.wrong_target",
+        Unsupported::Indivisible => "note.indivisible",
+        Unsupported::Import => "note.import_failed",
+        _ => "note.unsupported",
+    }
+}
+
+fn model_notice(invariant: Invariant) -> &'static str {
+    match invariant {
+        Invariant::DuplicateId => "note.model.duplicate_id",
+        Invariant::TextIdWithoutParaId => "note.model.text_id",
+        Invariant::Sections => "note.model.sections",
+        Invariant::SectionBoundary => "note.model.section_boundary",
+        Invariant::Bookmark => "note.model.bookmark",
+        Invariant::Comment => "note.model.comment",
+        Invariant::Field => "note.model.field",
+        Invariant::TableTopology => "note.model.table",
+        Invariant::Numbering => "note.model.numbering",
+        Invariant::StyleChain => "note.model.style_chain",
+        Invariant::HeaderFooterReference => "note.model.header",
+        Invariant::Frame => "note.model.frame",
+        Invariant::Grid => "note.model.grid",
+        Invariant::NoteReference => "note.model.note_ref",
+        Invariant::Drawing => "note.model.drawing",
+        Invariant::DefinitionExists => "note.model.definition_exists",
+        Invariant::DefinitionMissing => "note.model.definition_missing",
+        Invariant::DefinitionInUse => "note.model.definition_in_use",
+        _ => "note.model.other",
+    }
+}
+
+/// The read-only reason stored on the tab: a locale key, and a detail after a newline.
+fn stored_notice(error: &EditError) -> String {
+    let (key, detail) = edit_notice(error);
+    if detail.is_empty() {
+        key.to_owned()
+    } else {
+        format!("{key}\n{detail}")
+    }
 }
 
 /// Includes direct and style formatting added after the font table was read.
@@ -1572,6 +1637,37 @@ impl<'a, 's> Worker<'a, 's> {
             detail: detail.into(),
             error,
         }));
+    }
+
+    /// Tells the user why an edit of the text was refused.
+    fn note_edit(&self, error: &EditError) {
+        let (key, detail) = edit_notice(error);
+        self.note(key, detail, true);
+    }
+
+    /// Tells the user why a search or a whole-document change was refused.
+    fn note_operation(&self, error: &OperationError) {
+        match error {
+            OperationError::Edit(error) => self.note_edit(error),
+            OperationError::InvalidQuery => self.note("note.invalid_query", String::new(), true),
+            OperationError::LimitExceeded => self.note("note.edit_limit", String::new(), true),
+            OperationError::ProtectedContent => self.note("note.protected", String::new(), true),
+            OperationError::UnsupportedMove => {
+                self.note("note.unsupported_move", String::new(), true);
+            }
+        }
+    }
+
+    /// A refusal that arrived as a locale key (`note.…`) or as a loose sentence.
+    fn note_text(&self, error: &str) {
+        match error {
+            "note.cannot_edit_here" => self.note("note.cannot_edit_here", String::new(), true),
+            "note.no_paragraph" => self.note("note.no_paragraph", String::new(), true),
+            "note.selection_structure" => {
+                self.note("note.selection_structure", String::new(), true)
+            }
+            _ => self.note("note.edit_refused", error.to_owned(), true),
+        }
     }
 
     fn serve(&mut self, requests: &Receiver<Request>) {
@@ -2076,7 +2172,15 @@ impl<'a, 's> Worker<'a, 's> {
                     Ok(map) => Some(Arc::new(map)),
                     Err(error) => {
                         if self.read_only.is_none() {
-                            self.note("note.no_caret_map", error.to_string(), true);
+                            match &error {
+                                VisualError::Attribution => {
+                                    self.note("note.no_caret_map", String::new(), true);
+                                }
+                                VisualError::Render(error) => {
+                                    self.note("note.render_failed", error.to_string(), true);
+                                }
+                                VisualError::Edit(error) => self.note_edit(error),
+                            }
                         }
                         None
                     }
@@ -2971,7 +3075,7 @@ impl<'a, 's> Worker<'a, 's> {
                 true
             }
             Err(error) => {
-                self.note("note.edit_refused", format!("{error:?}"), true);
+                self.note_edit(&error);
                 false
             }
         }
@@ -5901,7 +6005,7 @@ impl<'a, 's> Worker<'a, 's> {
         let item = match editor.add_media(bytes) {
             Ok(item) => item,
             Err(error) => {
-                self.note("note.picture_refused", format!("{error:?}"), true);
+                self.note_edit(&error);
                 return Outcome::Quiet;
             }
         };
@@ -6061,7 +6165,7 @@ impl<'a, 's> Worker<'a, 's> {
         let commands = match planned {
             Ok(commands) => commands,
             Err(error) => {
-                self.note("note.edit_refused", error, true);
+                self.note_text(&error);
                 return Outcome::Quiet;
             }
         };
@@ -6206,7 +6310,7 @@ impl<'a, 's> Worker<'a, 's> {
         let item = match editor.add_media(bytes) {
             Ok(item) => item,
             Err(error) => {
-                self.note("note.picture_refused", format!("{error:?}"), true);
+                self.note_edit(&error);
                 return Outcome::Quiet;
             }
         };
@@ -6794,7 +6898,7 @@ impl<'a, 's> Worker<'a, 's> {
                 Outcome::Edited
             }
             Err(failure) => {
-                self.note("note.edit_refused", format!("{:?}", failure.error), true);
+                self.note_edit(&failure.error);
                 Outcome::Quiet
             }
         }
@@ -7125,7 +7229,7 @@ impl<'a, 's> Worker<'a, 's> {
                     self.note("note.imported_text", String::new(), false);
                     return outcome;
                 }
-                self.note("note.import_failed", format!("{error:?}"), true);
+                self.note_edit(&error);
                 Outcome::Quiet
             }
         }
@@ -7180,7 +7284,7 @@ impl<'a, 's> Worker<'a, 's> {
                 Outcome::Edited
             }
             Err(error) => {
-                self.note("note.edit_refused", format!("{error:?}"), true);
+                self.note_edit(&error);
                 Outcome::Quiet
             }
         }
@@ -7547,7 +7651,7 @@ impl<'a, 's> Worker<'a, 's> {
             }
             Ok(_) => Outcome::Quiet,
             Err(error) => {
-                self.note("note.edit_refused", error, true);
+                self.note_text(&error);
                 Outcome::Quiet
             }
         }
@@ -8036,7 +8140,7 @@ impl<'a, 's> Worker<'a, 's> {
                 ) {
                     Ok(result) => result.hits,
                     Err(error) => {
-                        self.note("note.search_failed", format!("{error:?}"), true);
+                        self.note_operation(&error);
                         return Vec::new();
                     }
                 }
@@ -8179,7 +8283,7 @@ impl<'a, 's> Worker<'a, 's> {
                 Outcome::Edited
             }
             Err(error) => {
-                self.note("note.edit_refused", format!("{error:?}"), true);
+                self.note_operation(&error);
                 Outcome::Quiet
             }
         }
@@ -8222,7 +8326,7 @@ impl<'a, 's> Worker<'a, 's> {
                 Outcome::Edited
             }
             Err(error) => {
-                self.note("note.edit_refused", format!("{error:?}"), true);
+                self.note_operation(&error);
                 Outcome::Quiet
             }
         }
@@ -11583,5 +11687,28 @@ mod tests {
         assert_eq!(half_points(10.5).0, 21);
         assert_eq!(half_points(0.0).0, 2);
         assert_eq!(half_points(5000.0).0, 3276);
+    }
+
+    #[test]
+    fn an_edit_refusal_names_the_reason() {
+        use strict_ooxml::edit::{EditError, Invariant, Unsupported};
+        assert_eq!(
+            edit_notice(&EditError::UnsupportedContent(Unsupported::FieldResult)).0,
+            "note.field_text"
+        );
+        assert_eq!(
+            edit_notice(&EditError::UnsupportedContent(Unsupported::TrackedChange)).0,
+            "note.tracked_text"
+        );
+        assert_eq!(
+            edit_notice(&EditError::InvalidModel(Invariant::Field)).0,
+            "note.model.field"
+        );
+        let (key, detail) = edit_notice(&EditError::UnknownStyle(
+            strict_ooxml::model::StyleId::new("Heading1"),
+        ));
+        assert_eq!(key, "note.unknown_style");
+        assert_eq!(detail, "Heading1");
+        assert_eq!(stored_notice(&EditError::LimitExceeded), "note.edit_limit");
     }
 }
