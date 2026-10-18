@@ -2750,6 +2750,7 @@ dependencies = [
 name = "mufoed"
 version = "0.1.0"
 dependencies = [
+ "chem-editor",
  "diagram-editor",
  "eframe",
  "encoding_rs",

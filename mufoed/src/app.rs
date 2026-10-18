@@ -9,6 +9,7 @@ use strict_ooxml::Mode;
 
 mod ai_ui;
 mod chart_ui;
+mod chem_ui;
 pub(crate) mod recognition_ui;
 mod scheme_ui;
 mod settings_ui;
@@ -50,6 +51,7 @@ pub(crate) enum Action {
     /// The chart dialog, for the selected chart or a new one.
     ChartDialog,
     SchemeDialog,
+    ChemistryDialog,
     AiLanguage(String),
     New,
     OpenDialog,
@@ -163,6 +165,7 @@ pub(crate) enum Zoom {
 #[derive(Clone, Debug)]
 pub(crate) enum Dialog {
     Scheme(Box<scheme_ui::SchemeDialog>),
+    Chemistry(Box<chem_ui::ChemDialog>),
     FormulaRecognition(Box<recognition_ui::RecognitionDialog>),
     Cleanup(crate::cleanup::Options),
     Paragraph(Box<crate::paragraph::Dialog>),
@@ -1001,6 +1004,11 @@ impl App {
                     tab.send(Request::SchemeOfObject);
                 }
             }
+            Action::ChemistryDialog => {
+                if let Some(tab) = self.active_tab() {
+                    tab.send(Request::ChemistryOfObject);
+                }
+            }
             Action::FormulaDialog => {
                 if let Some(tab) = self.active_tab() {
                     tab.send(Request::FormulaAtCaret);
@@ -1135,6 +1143,14 @@ impl App {
                     TabEvent::Scheme(plan) => {
                         match scheme_ui::SchemeDialog::new(tab.id, plan, self.i18n.language()) {
                             Ok(dialog) => self.dialog = Some(Dialog::Scheme(Box::new(dialog))),
+                            Err(error) => messages.push((error, true)),
+                        }
+                    }
+                    TabEvent::Chemistry(plan) => {
+                        match chem_ui::ChemDialog::new(tab.id, plan, self.i18n.language()) {
+                            Ok(dialog) => {
+                                self.dialog = Some(Dialog::Chemistry(Box::new(dialog)));
+                            }
                             Err(error) => messages.push((error, true)),
                         }
                     }
@@ -1904,6 +1920,10 @@ impl App {
             "font-pack" => Some(Dialog::FontPack { id: "devanagari" }),
             "scheme" => {
                 actions.push(Action::SchemeDialog);
+                None
+            }
+            "chemistry" => {
+                actions.push(Action::ChemistryDialog);
                 None
             }
             "chart" => {
@@ -3430,6 +3450,19 @@ impl App {
                 }
                 if keep_open {
                     next = Some(Dialog::Scheme(dialog));
+                } else {
+                    keep = false;
+                }
+            }
+            Dialog::Chemistry(mut dialog) => {
+                let (keep_open, apply) = dialog.show(ctx, &self.i18n);
+                if apply {
+                    if let Some(tab) = self.tabs.iter().find(|tab| tab.id == dialog.tab) {
+                        tab.send(Request::PutChemistry(dialog.plan.clone()));
+                    }
+                }
+                if keep_open {
+                    next = Some(Dialog::Chemistry(dialog));
                 } else {
                     keep = false;
                 }

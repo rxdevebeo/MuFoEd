@@ -31,6 +31,7 @@ pub(crate) enum Icon {
     Toc,
     Chart,
     Scheme,
+    Chemistry,
     Columns,
     Spelling,
     Sparkle,
@@ -592,6 +593,15 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                 ],
                 Stroke::new(1.5, color),
             );
+        }
+        Icon::Chemistry => {
+            let center = rect.center();
+            painter.circle_stroke(center, rect.width() * 0.16, Stroke::new(1.5, accent));
+            for (dx, dy) in [(-0.32, -0.30), (0.32, -0.30), (0.0, 0.36)] {
+                let to = center + egui::vec2(dx * rect.width(), dy * rect.height());
+                painter.line_segment([center, to], Stroke::new(1.5, color));
+                painter.circle_filled(to, rect.width() * 0.12, color);
+            }
         }
         Icon::Chart => {
             // Three columns on an axis.

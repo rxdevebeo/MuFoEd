@@ -29,6 +29,7 @@ pub(crate) enum Status {
 pub(crate) enum TabEvent {
     OpenLink(String),
     Scheme(Box<crate::worker::scheme::Plan>),
+    Chemistry(Box<crate::worker::chem::Plan>),
     FormulaRecognition(Box<crate::worker::FormulaRecognition>),
     CleanupResult(bool),
     CommentSelected,
@@ -416,6 +417,7 @@ impl DocTab {
             Reply::Formula(found) => events.push(TabEvent::Formula(found)),
             Reply::Chart(data) => events.push(TabEvent::Chart(data)),
             Reply::Scheme(plan) => events.push(TabEvent::Scheme(plan)),
+            Reply::Chemistry(plan) => events.push(TabEvent::Chemistry(plan)),
             Reply::Spelling { errors, missing } => {
                 self.spelling = errors;
                 if !missing.is_empty() {

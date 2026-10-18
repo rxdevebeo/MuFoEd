@@ -33,6 +33,7 @@ resvg = { workspace = true, optional = true }
 
 [dev-dependencies]
 quick-xml.workspace = true
+strict-ooxml = { path = "../strict-ooxml", default-features = false }
 
 [[bin]]
 name = "chem-editor-demo"

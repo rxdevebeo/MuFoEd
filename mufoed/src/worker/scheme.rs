@@ -42,7 +42,8 @@ pub(crate) fn graphic(drawing: &Drawing) -> Option<&Graphic> {
     }
 }
 pub(crate) fn is_scheme(drawing: &Drawing) -> bool {
-    matches!(graphic(drawing), Some(Graphic::Group(_)))
+    matches!(graphic(drawing), Some(Graphic::Group(g))
+        if g.name.as_deref() != Some(chem_editor::DRAWING_GROUP))
 }
 fn from_drawing(drawing: &Drawing) -> Result<diagram_editor::DocxImport, String> {
     let seed =

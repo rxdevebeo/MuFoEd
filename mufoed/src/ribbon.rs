@@ -1806,6 +1806,21 @@ fn insert(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
         ) {
             actions.push(Action::SchemeDialog);
         }
+        let chemistry_selected = s.object.is_some_and(|o| o.chemistry);
+        if big_clicked(
+            ui,
+            Icon::Chemistry,
+            s.t(if chemistry_selected {
+                "chemistry.edit"
+            } else {
+                "chemistry.insert"
+            }),
+            s.t("chemistry.tip"),
+            editable,
+            p,
+        ) {
+            actions.push(Action::ChemistryDialog);
+        }
     });
 }
 

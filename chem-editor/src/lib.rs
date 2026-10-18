@@ -27,7 +27,7 @@ mod widget;
 mod docx;
 
 #[cfg(feature = "docx")]
-pub use docx::{DocxExport, DocxImport};
+pub use docx::{DocxExport, DocxImport, DRAWING_GROUP};
 
 #[cfg(feature = "raster")]
 mod png;

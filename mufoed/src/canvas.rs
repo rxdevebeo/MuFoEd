@@ -1026,6 +1026,14 @@ fn context_menu(ui: &mut egui::Ui, tab: &mut DocTab, i18n: &crate::i18n::I18n) {
             ContextObject::Scheme => {
                 item(ui, "scheme.edit", context.editable, Action::SchemeDialog);
             }
+            ContextObject::Chemistry => {
+                item(
+                    ui,
+                    "chemistry.edit",
+                    context.editable,
+                    Action::ChemistryDialog,
+                );
+            }
             ContextObject::Chart => {
                 item(ui, "cmd.chart_edit", context.editable, Action::ChartDialog);
             }

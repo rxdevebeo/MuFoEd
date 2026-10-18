@@ -23,6 +23,7 @@ ocr = ["strict-ooxml/ocr-ollama", "strict-ooxml/pdf-raster", "dep:strict-ooxml-p
 
 [dependencies]
 diagram-editor = { path = "../diagram-editor", features = ["docx"] }
+chem-editor = { path = "../chem-editor", features = ["docx"] }
 encoding_rs.workspace = true
 strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write", "pdf", "convert", "rtf", "html", "latex", "djvu-image", "edit", "system-fonts", "font-download"] }
 strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf", optional = true, features = ["raster"] }

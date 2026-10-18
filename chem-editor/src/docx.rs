@@ -269,6 +269,371 @@ impl ChemDocument {
     }
 }
 
+/// Group name that marks a chemistry drawing for the host.
+pub const DRAWING_GROUP: &str = "Chemistry";
+
+impl ChemDocument {
+    /// Builds one inline drawing for the whole document.
+    ///
+    /// Structures become named atom/bond shapes (so [`ChemDocument::from_drawing`]
+    /// can read them back); reactions are drawn as plain shapes. Everything is
+    /// stacked vertically inside one group named [`DRAWING_GROUP`], which the
+    /// host uses to recognize the object and reopen the editor.
+    ///
+    /// # Errors
+    ///
+    /// Returns a diagnostic when the document is empty or invalid.
+    pub fn to_drawing(&self) -> Result<w::Drawing, String> {
+        self.validate()?;
+        let theme = crate::render::Theme::default();
+        let mut next_id = 1_u32;
+        let mut children: Vec<w::drawing::Graphic> = vec![];
+        let mut cursor = 0.0_f32;
+        let mut max_width = 48.0_f32;
+        for object in &self.objects {
+            match object {
+                ChemObject::Structure(structure) if structure.atoms.is_empty() => {}
+                ChemObject::Structure(structure) => {
+                    let (min, max) = structure.bounds();
+                    let size = Point::new((max.x - min.x).max(1.0), (max.y - min.y).max(1.0));
+                    let offset = Point::new(24.0 - min.x, cursor + 24.0 - min.y);
+                    push_structure_shapes(structure, offset, &mut next_id, &mut children);
+                    cursor += size.y + 28.0;
+                    max_width = max_width.max(size.x + 48.0);
+                }
+                ChemObject::Reaction(_) => {
+                    let prims = crate::render::object_prims(object, &theme, false);
+                    let Some((min, max)) = crate::render::prims_bounds(&prims) else {
+                        continue;
+                    };
+                    let delta = Point::new(24.0 - min.x, cursor + 24.0 - min.y);
+                    for prim in &prims {
+                        let shifted = shift_prim(prim, delta);
+                        let shape = prim_shape(&shifted, next_id);
+                        next_id += 1;
+                        children.push(w::drawing::Graphic::Shape(shape));
+                    }
+                    cursor += (max.y - min.y) + 28.0;
+                    max_width = max_width.max(max.x - min.x + 48.0);
+                }
+            }
+        }
+        if children.is_empty() {
+            return Err("There is nothing to draw".into());
+        }
+        let size = Point::new(max_width.max(48.0), (cursor + 24.0).max(48.0));
+        let group_id = next_id;
+        let graphic = w::drawing::Graphic::Group(w::drawing::GroupShape {
+            nv_id: Some(group_id),
+            name: Some(DRAWING_GROUP.into()),
+            descr: None,
+            xfrm: Some(w::drawing::GroupTransform {
+                offset: Some((w::Emu(0), w::Emu(0))),
+                extent: Some(extent(size)),
+                child_offset: Some((w::Emu(0), w::Emu(0))),
+                child_extent: Some(extent(size)),
+                ..Default::default()
+            }),
+            locks: None,
+            bw_mode: None,
+            children,
+            location: loc(),
+        });
+        Ok(inline_drawing(group_id, graphic, size, DRAWING_GROUP))
+    }
+
+    /// Reads structures back from a drawing built by [`ChemDocument::to_drawing`].
+    ///
+    /// Reactions are not encoded in the drawing and are reported in the issue
+    /// list; the host keeps its own source for those.
+    ///
+    /// # Errors
+    ///
+    /// Rejects a drawing that is not a chemistry group.
+    pub fn from_drawing(drawing: &w::Drawing) -> Result<(Self, Vec<String>), String> {
+        let w::DrawingKind::Inline(inline) = &drawing.kind else {
+            return Err("Expected an inline chemistry drawing".into());
+        };
+        let w::drawing::Graphic::Group(group) = inline.graphic.as_ref() else {
+            return Err("Expected a chemistry group".into());
+        };
+        if group.name.as_deref() != Some(DRAWING_GROUP) {
+            return Err("Not a chemistry drawing".into());
+        }
+        let mut per: std::collections::BTreeMap<u64, (Vec<Atom>, Vec<Bond>)> =
+            std::collections::BTreeMap::new();
+        let mut plain = 0_usize;
+        for child in &group.children {
+            let w::drawing::Graphic::Shape(shape) = child else {
+                plain += 1;
+                continue;
+            };
+            let name = shape.name.as_deref().unwrap_or_default();
+            if let Some(rest) = name.strip_prefix("chem:v1:atom:") {
+                let fields: Vec<&str> = rest.split(':').collect();
+                if fields.len() != 5 {
+                    return Err("Malformed atom shape".into());
+                }
+                let structure = fields[0].parse::<u64>().map_err(|e| e.to_string())?;
+                let id = fields[1].parse::<u64>().map_err(|e| e.to_string())?;
+                let element = fields[2].parse::<u8>().map_err(|e| e.to_string())?;
+                let charge = fields[3].parse::<i8>().map_err(|e| e.to_string())?;
+                let hydrogens = if fields[4] == "-" {
+                    None
+                } else {
+                    Some(fields[4].parse::<u8>().map_err(|e| e.to_string())?)
+                };
+                let offset = shape.offset.ok_or("Missing atom position")?;
+                let size = shape.extent.ok_or("Missing atom extent")?;
+                per.entry(structure).or_default().0.push(Atom {
+                    id,
+                    element,
+                    position: Point::new(
+                        px(offset.0) + px(size.cx) / 2.0,
+                        px(offset.1) + px(size.cy) / 2.0,
+                    ),
+                    charge,
+                    hydrogens,
+                });
+            } else if let Some(rest) = name.strip_prefix("chem:v1:bond:") {
+                let fields: Vec<&str> = rest.split(':').collect();
+                if fields.len() != 6 {
+                    return Err("Malformed bond shape".into());
+                }
+                let structure = fields[0].parse::<u64>().map_err(|e| e.to_string())?;
+                per.entry(structure).or_default().1.push(Bond {
+                    id: fields[1].parse::<u64>().map_err(|e| e.to_string())?,
+                    a: fields[2].parse::<u64>().map_err(|e| e.to_string())?,
+                    b: fields[3].parse::<u64>().map_err(|e| e.to_string())?,
+                    order: parse_order(fields[4]),
+                    stereo: parse_stereo(fields[5]),
+                });
+            } else {
+                plain += 1;
+            }
+        }
+        let mut document = ChemDocument::default();
+        for (id, (atoms, bonds)) in per {
+            if atoms.is_empty() {
+                continue;
+            }
+            document.objects.push(ChemObject::Structure(Structure {
+                id,
+                origin: Point::default(),
+                atoms,
+                bonds,
+            }));
+        }
+        document.validate()?;
+        let mut issues = vec![];
+        if plain > 0 {
+            issues.push("Reactions are not stored in the drawing".into());
+        }
+        Ok((document, issues))
+    }
+}
+
+fn push_structure_shapes(
+    structure: &Structure,
+    offset: Point,
+    next_id: &mut u32,
+    out: &mut Vec<w::drawing::Graphic>,
+) {
+    let (min, _) = structure.bounds();
+    let shift = Point::new(min.x - 24.0, min.y - 24.0);
+    for bond in &structure.bonds {
+        let (Some(a), Some(b)) = (
+            structure
+                .atom(bond.a)
+                .map(|atom| atom.position.add(structure.origin)),
+            structure
+                .atom(bond.b)
+                .map(|atom| atom.position.add(structure.origin)),
+        ) else {
+            continue;
+        };
+        let a = a.sub(shift).add(offset);
+        let b = b.sub(shift).add(offset);
+        let id = *next_id;
+        *next_id += 1;
+        out.push(bond_shape(structure.id, bond, a, b, id));
+    }
+    for atom in &structure.atoms {
+        let world = atom.position.add(structure.origin).sub(shift).add(offset);
+        let id = *next_id;
+        *next_id += 1;
+        out.push(atom_shape(structure, atom, world, id));
+    }
+}
+
+fn shift_prim(prim: &crate::render::Prim, delta: Point) -> crate::render::Prim {
+    use crate::render::Prim;
+    match prim {
+        Prim::Line {
+            from,
+            to,
+            width,
+            color,
+        } => Prim::Line {
+            from: from.add(delta),
+            to: to.add(delta),
+            width: *width,
+            color: *color,
+        },
+        Prim::Polygon { points, fill } => Prim::Polygon {
+            points: points.iter().map(|p| p.add(delta)).collect(),
+            fill: *fill,
+        },
+        Prim::Text {
+            pos,
+            text,
+            size,
+            color,
+            align,
+            italic,
+        } => Prim::Text {
+            pos: pos.add(delta),
+            text: text.clone(),
+            size: *size,
+            color: *color,
+            align: *align,
+            italic: *italic,
+        },
+    }
+}
+
+fn prim_shape(prim: &crate::render::Prim, id: u32) -> w::drawing::Shape {
+    use crate::render::{Align, Prim};
+    match prim {
+        Prim::Line {
+            from,
+            to,
+            width,
+            color,
+        } => {
+            let min = Point::new(from.x.min(to.x), from.y.min(to.y));
+            let size = Point::new(
+                (from.x - to.x).abs().max(1.0),
+                (from.y - to.y).abs().max(1.0),
+            );
+            let mut shape = base_shape(id, min, size);
+            shape.geometry = w::drawing::ShapeGeometry::Custom(w::drawing::CustomGeometry {
+                paths: vec![w::drawing::GeometryPath {
+                    width: emu(size.x).0,
+                    height: emu(size.y).0,
+                    fill: Some("none".into()),
+                    stroke: Some(true),
+                    commands: vec![
+                        w::drawing::PathCommand::MoveTo {
+                            x: emu(from.x - min.x).0,
+                            y: emu(from.y - min.y).0,
+                        },
+                        w::drawing::PathCommand::LineTo {
+                            x: emu(to.x - min.x).0,
+                            y: emu(to.y - min.y).0,
+                        },
+                    ],
+                }],
+                ..Default::default()
+            });
+            shape.fill = Some(w::drawing::ShapeFill::None);
+            shape.stroke = Some(w::drawing::ShapeStroke {
+                color: Some(rgb(*color)),
+                width: Some(emu(*width)),
+                ..Default::default()
+            });
+            shape
+        }
+        Prim::Polygon { points, fill } => {
+            let min = points
+                .iter()
+                .fold(Point::new(f32::INFINITY, f32::INFINITY), |min, p| {
+                    Point::new(min.x.min(p.x), min.y.min(p.y))
+                });
+            let max = points.iter().fold(
+                Point::new(f32::NEG_INFINITY, f32::NEG_INFINITY),
+                |max, p| Point::new(max.x.max(p.x), max.y.max(p.y)),
+            );
+            let size = Point::new((max.x - min.x).max(1.0), (max.y - min.y).max(1.0));
+            let mut commands = vec![];
+            for (index, point) in points.iter().enumerate() {
+                let (x, y) = (emu(point.x - min.x).0, emu(point.y - min.y).0);
+                commands.push(if index == 0 {
+                    w::drawing::PathCommand::MoveTo { x, y }
+                } else {
+                    w::drawing::PathCommand::LineTo { x, y }
+                });
+            }
+            commands.push(w::drawing::PathCommand::Close);
+            let mut shape = base_shape(id, min, size);
+            shape.geometry = w::drawing::ShapeGeometry::Custom(w::drawing::CustomGeometry {
+                paths: vec![w::drawing::GeometryPath {
+                    width: emu(size.x).0,
+                    height: emu(size.y).0,
+                    fill: Some("norm".into()),
+                    stroke: Some(false),
+                    commands,
+                }],
+                ..Default::default()
+            });
+            shape.fill = Some(w::drawing::ShapeFill::Solid { color: rgb(*fill) });
+            shape.stroke = Some(w::drawing::ShapeStroke {
+                none: true,
+                ..Default::default()
+            });
+            shape
+        }
+        Prim::Text {
+            pos,
+            text,
+            size,
+            color,
+            align,
+            ..
+        } => {
+            let width = text_width(text, *size) + 2.0;
+            let left = match align {
+                Align::Left => pos.x,
+                Align::Center => pos.x - width / 2.0,
+                Align::Right => pos.x - width,
+            };
+            #[allow(clippy::cast_possible_truncation)]
+            let half_points = (size * 1.5).round() as i32;
+            let mut shape = base_shape(
+                id,
+                Point::new(left, pos.y - size * 0.8),
+                Point::new(width, size * 1.6),
+            );
+            shape.tx_box = Some(true);
+            shape.geometry = w::drawing::ShapeGeometry::Preset("rect".into());
+            shape.fill = Some(w::drawing::ShapeFill::None);
+            shape.stroke = Some(w::drawing::ShapeStroke {
+                none: true,
+                ..Default::default()
+            });
+            shape.text = Some(w::drawing::TextBox {
+                body: Some(w::drawing::TextBoxBody {
+                    anchor: Some(w::drawing::TextAnchor::Center),
+                    wrap: Some("none".into()),
+                    left_inset: Some(w::Emu(0)),
+                    right_inset: Some(w::Emu(0)),
+                    top_inset: Some(w::Emu(0)),
+                    bottom_inset: Some(w::Emu(0)),
+                    ..Default::default()
+                }),
+                blocks: vec![w::Block::Paragraph(paragraph(vec![run(
+                    text,
+                    half_points.max(1),
+                    None,
+                    *color,
+                )]))],
+                location: loc(),
+            });
+            shape
+        }
+    }
+}
+
 fn inline_drawing(id: u32, graphic: w::drawing::Graphic, size: Point, name: &str) -> w::Drawing {
     w::Drawing {
         kind: w::DrawingKind::Inline(w::drawing::InlineDrawing {
@@ -317,7 +682,7 @@ fn structure_graphic(
         let b = b.sub(shift);
         let id = *next_id;
         *next_id += 1;
-        children.push(bond_shape(bond, a, b, id));
+        children.push(bond_shape(structure.id, bond, a, b, id));
     }
     for atom in &structure.atoms {
         let id = *next_id;
@@ -346,14 +711,14 @@ fn structure_graphic(
     (graphic, size, group_id)
 }
 
-fn bond_shape(bond: &Bond, a: Point, b: Point, id: u32) -> w::drawing::Graphic {
+fn bond_shape(structure_id: u64, bond: &Bond, a: Point, b: Point, id: u32) -> w::drawing::Graphic {
     let min = Point::new(a.x.min(b.x), a.y.min(b.y));
     let size = Point::new((a.x - b.x).abs().max(1.0), (a.y - b.y).abs().max(1.0));
     let mut shape = base_shape(id, min, size);
     shape.connector = true;
     shape.name = Some(
         format!(
-            "chem:v1:bond:{}:{}:{}:{}:{}",
+            "chem:v1:bond:{structure_id}:{}:{}:{}:{}:{}",
             bond.id,
             bond.a,
             bond.b,
@@ -484,7 +849,8 @@ fn atom_shape(structure: &Structure, atom: &Atom, world: Point, id: u32) -> w::d
     shape.tx_box = Some(true);
     shape.name = Some(
         format!(
-            "chem:v1:atom:{}:{}:{}:{}",
+            "chem:v1:atom:{}:{}:{}:{}:{}",
+            structure.id,
             atom.id,
             atom.element,
             atom.charge,
@@ -751,16 +1117,16 @@ fn import_structure(drawing: &w::Drawing, next_id: &mut u64) -> Result<Option<St
         let name = shape.name.as_deref().unwrap_or_default();
         if let Some(rest) = name.strip_prefix("chem:v1:atom:") {
             let fields: Vec<&str> = rest.split(':').collect();
-            if fields.len() != 4 {
+            if fields.len() != 5 {
                 return Err("Malformed atom shape".into());
             }
-            let id = fields[0].parse::<u64>().map_err(|e| e.to_string())?;
-            let element = fields[1].parse::<u8>().map_err(|e| e.to_string())?;
-            let charge = fields[2].parse::<i8>().map_err(|e| e.to_string())?;
-            let hydrogens = if fields[3] == "-" {
+            let id = fields[1].parse::<u64>().map_err(|e| e.to_string())?;
+            let element = fields[2].parse::<u8>().map_err(|e| e.to_string())?;
+            let charge = fields[3].parse::<i8>().map_err(|e| e.to_string())?;
+            let hydrogens = if fields[4] == "-" {
                 None
             } else {
-                Some(fields[3].parse::<u8>().map_err(|e| e.to_string())?)
+                Some(fields[4].parse::<u8>().map_err(|e| e.to_string())?)
             };
             let offset = shape.offset.ok_or("Missing atom position")?;
             let size = shape.extent.ok_or("Missing atom extent")?;
@@ -776,15 +1142,15 @@ fn import_structure(drawing: &w::Drawing, next_id: &mut u64) -> Result<Option<St
             });
         } else if let Some(rest) = name.strip_prefix("chem:v1:bond:") {
             let fields: Vec<&str> = rest.split(':').collect();
-            if fields.len() != 5 {
+            if fields.len() != 6 {
                 return Err("Malformed bond shape".into());
             }
             bonds.push(Bond {
-                id: fields[0].parse::<u64>().map_err(|e| e.to_string())?,
-                a: fields[1].parse::<u64>().map_err(|e| e.to_string())?,
-                b: fields[2].parse::<u64>().map_err(|e| e.to_string())?,
-                order: parse_order(fields[3]),
-                stereo: parse_stereo(fields[4]),
+                id: fields[1].parse::<u64>().map_err(|e| e.to_string())?,
+                a: fields[2].parse::<u64>().map_err(|e| e.to_string())?,
+                b: fields[3].parse::<u64>().map_err(|e| e.to_string())?,
+                order: parse_order(fields[4]),
+                stereo: parse_stereo(fields[5]),
             });
         }
     }

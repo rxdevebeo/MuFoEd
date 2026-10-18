@@ -111,3 +111,37 @@ fn oversized_input_is_rejected() {
     let bytes = vec![0_u8; 33 * 1024 * 1024];
     assert!(ChemDocument::from_docx(&bytes).is_err());
 }
+
+#[test]
+fn to_drawing_wraps_the_document_in_a_chemistry_group() {
+    let drawing = document().to_drawing().unwrap();
+    let strict_ooxml::model::DrawingKind::Inline(inline) = &drawing.kind else {
+        panic!("drawing is inline");
+    };
+    let strict_ooxml::model::drawing::Graphic::Group(group) = inline.graphic.as_ref() else {
+        panic!("drawing is a group");
+    };
+    assert_eq!(group.name.as_deref(), Some(chem_editor::DRAWING_GROUP));
+    assert!(!group.children.is_empty());
+}
+
+#[test]
+fn drawing_round_trips_structures() {
+    let drawing = document().to_drawing().unwrap();
+    let (recovered, issues) = ChemDocument::from_drawing(&drawing).unwrap();
+    assert!(!issues.is_empty());
+    let structures: Vec<&Structure> = recovered
+        .objects
+        .iter()
+        .filter_map(|object| match object {
+            ChemObject::Structure(structure) => Some(structure),
+            ChemObject::Reaction(_) => None,
+        })
+        .collect();
+    assert_eq!(structures.len(), 1);
+    assert_eq!(structures[0].molecular_formula(), "C2H4O");
+    assert!(structures[0]
+        .bonds
+        .iter()
+        .any(|bond| bond.stereo == BondStereo::Wedge));
+}

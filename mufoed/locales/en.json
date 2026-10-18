@@ -918,6 +918,18 @@
       "stale": "The document changed. Open the diagram editor again.",
       "applied": "Diagram applied with notes"
     },
+    "chemistry": {
+      "insert": "Chemistry",
+      "edit": "Edit chemistry",
+      "tip": "Insert a chemical structure or reaction, or edit the selected one",
+      "title": "Chemical structure and reaction editor",
+      "storage_note": "Structures stay editable shapes. While the document is open the editor remembers the exact source; after reopening DOCX, structures are restored from the drawing and reactions need re-editing.",
+      "load_json": "Open JSON:",
+      "save_json": "Save JSON:",
+      "failed": "Could not update the chemical formula",
+      "stale": "The document changed. Open the chemistry editor again.",
+      "applied": "Chemistry applied with notes"
+    },
     "chart": {
       "title": "Chart",
       "column": "Column",
@@ -945,3 +957,4 @@
     }
   }
 }
+

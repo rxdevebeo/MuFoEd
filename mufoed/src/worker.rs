@@ -45,6 +45,7 @@ use strict_ooxml_core::error::SourceLocation;
 
 use crate::formats::{self, Kind, Source};
 use crate::nav;
+pub(crate) mod chem;
 pub(crate) mod navigation;
 mod rich_paste;
 pub(crate) mod scheme;
@@ -64,6 +65,8 @@ pub(crate) enum Request {
     FollowLink(navigation::Target),
     SchemeOfObject,
     PutScheme(Box<scheme::Plan>),
+    ChemistryOfObject,
+    PutChemistry(Box<chem::Plan>),
     PasteRich {
         content: crate::clipboard::Rich,
         fallback: String,
@@ -918,6 +921,7 @@ pub(crate) struct CommentView {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ContextObject {
     Scheme,
+    Chemistry,
     Picture,
     Chart,
     Formula,
@@ -1027,6 +1031,7 @@ pub(crate) struct RulerInfo {
 #[derive(Clone, Debug)]
 pub(crate) struct ObjectView {
     pub(crate) scheme: bool,
+    pub(crate) chemistry: bool,
     /// Where it is drawn (more than one rect for a header's repeats).
     pub(crate) rects: Vec<VisualRect>,
     /// Its size, in EMU.
@@ -1090,6 +1095,7 @@ pub(crate) enum Reply {
     OpenLink(String),
     NavigateTo(VisualRect),
     Scheme(Box<scheme::Plan>),
+    Chemistry(Box<chem::Plan>),
     FormulaRecognition(Box<FormulaRecognition>),
     CleanupResult(bool),
     Context(ContextState),
@@ -1537,6 +1543,7 @@ enum Outcome {
 struct Worker<'a, 's> {
     links: Vec<navigation::Link>,
     scheme_sources: Vec<(strict_ooxml::model::Graphic, diagram_editor::Diagram)>,
+    chem_sources: Vec<(strict_ooxml::model::Graphic, chem_editor::ChemDocument)>,
     session: Session<'a>,
     options: RenderOptions,
     system_fonts: bool,
@@ -1596,6 +1603,7 @@ impl<'a, 's> Worker<'a, 's> {
         Self {
             session,
             scheme_sources: vec![],
+            chem_sources: vec![],
             options,
             system_fonts: false,
             font_families: Vec::new(),
@@ -1760,6 +1768,8 @@ impl<'a, 's> Worker<'a, 's> {
                 | Request::ChartOfObject
                 | Request::SchemeOfObject
                 | Request::PutScheme(_)
+                | Request::ChemistryOfObject
+                | Request::PutChemistry(_)
                 | Request::PutChart(_)
                 | Request::Save { .. }
                 | Request::SystemFonts(_)
@@ -1906,6 +1916,14 @@ impl<'a, 's> Worker<'a, 's> {
                 Outcome::Quiet
             }
             Request::PutScheme(plan) => self.put_scheme(*plan),
+            Request::ChemistryOfObject => {
+                match self.chem_plan() {
+                    Ok(plan) => self.send(Reply::Chemistry(Box::new(plan))),
+                    Err(error) => self.note("chem.failed", error, true),
+                }
+                Outcome::Quiet
+            }
+            Request::PutChemistry(plan) => self.put_chemistry(*plan),
             Request::FormulaAtCaret => {
                 let found = self.formula_at_caret().map(Box::new);
                 self.send(Reply::Formula(found));
@@ -2370,7 +2388,7 @@ impl<'a, 's> Worker<'a, 's> {
         let rects = map
             .caret(self.session.revision(), &self.position(caret))
             .unwrap_or_default();
-        self.on_edited_page(self.scheme_carets(rects))
+        self.on_edited_page(self.chem_carets(self.scheme_carets(rects)))
     }
 
     /// Drops copies of an open header or footer that belong to other pages.
@@ -2418,7 +2436,7 @@ impl<'a, 's> Worker<'a, 's> {
             _ => (Vec::new(), Vec::new()),
         };
         let (carets, selection) = (
-            self.on_edited_page(self.scheme_carets(carets)),
+            self.on_edited_page(self.chem_carets(self.scheme_carets(carets))),
             self.on_edited_page(selection),
         );
         // Selected cells show as cells, without a caret.
@@ -2772,6 +2790,8 @@ impl<'a, 's> Worker<'a, 's> {
                 ContextObject::Chart
             } else if o.scheme {
                 ContextObject::Scheme
+            } else if o.chemistry {
+                ContextObject::Chemistry
             } else if o.picture {
                 ContextObject::Picture
             } else {
@@ -2795,6 +2815,14 @@ impl<'a, 's> Worker<'a, 's> {
             match self.scheme_plan() {
                 Ok(plan) => self.send(Reply::Scheme(Box::new(plan))),
                 Err(error) => self.note("scheme.failed", error, true),
+            }
+            return Outcome::Moved;
+        }
+        if self.chem_hit(page, x, y).is_some() {
+            self.click(page, x, y, false, false);
+            match self.chem_plan() {
+                Ok(plan) => self.send(Reply::Chemistry(Box::new(plan))),
+                Err(error) => self.note("chem.failed", error, true),
             }
             return Outcome::Moved;
         }
@@ -3547,6 +3575,7 @@ impl<'a, 's> Worker<'a, 's> {
                 picture: false,
                 chart: false,
                 scheme: false,
+                chemistry: false,
                 formula: true,
                 wrap: WrapStyle::Inline,
             });
@@ -3558,7 +3587,7 @@ impl<'a, 's> Worker<'a, 's> {
             .ok()
             .filter(|rects| !rects.is_empty())?;
         let drawing = self.drawing_at(object)?;
-        if scheme::is_scheme(&drawing) {
+        if scheme::is_scheme(&drawing) || chem::is_chemistry(&drawing) {
             rects = scheme::frame(&drawing, &rects, self.options.scale);
         }
         let (extent, graphic) = match &drawing.kind {
@@ -3573,6 +3602,7 @@ impl<'a, 's> Worker<'a, 's> {
             picture: matches!(graphic, Some(Graphic::Picture(_))),
             chart: matches!(graphic, Some(Graphic::Chart(_))),
             scheme: scheme::is_scheme(&drawing),
+            chemistry: chem::is_chemistry(&drawing),
             formula: false,
             wrap: wrap_style(&drawing),
         })
