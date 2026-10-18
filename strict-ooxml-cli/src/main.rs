@@ -80,8 +80,8 @@ use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
 use strict_ooxml::{
-    CellNoWrap, ConformancePolicy, DefaultPaper, Feature, FeatureStatus, Location, PageSelection,
-    RenderOptions, StrictDocument, TransitionalNormalizer,
+    CellNoWrap, ConformancePolicy, DefaultPaper, Feature, FeatureStatus, Location, OffPageInk,
+    PageSelection, RenderOptions, StrictDocument, TransitionalNormalizer,
 };
 use strict_ooxml_core::error::StrictError;
 use strict_ooxml_core::ns::Conformance;
@@ -175,11 +175,13 @@ fn print_usage() {
     eprintln!(
         "usage: strict-ooxml <inspect|check|report|render|to-pdf|from-pdf|from-djvu|djvu-dump|import-rtf|import-latex|write|normalize|fonts|lexicons> <file> \
          [--json|--text] [--out <path>] [--report-out <path>] [--pages 1-3] [--scale 96] \
-         [--no-floating] [--no-math] [--wps-times] [--cell-nowrap=spec|always] [--transitional] \
+         [--no-floating] [--no-math] [--wps-times] [--cell-nowrap=spec|always] [--off-page=keep|clamp] [--off-page-marks] [--transitional] \
          [--fonts <manifest.json>] [--system-fonts] [--strict-fonts] [--fetch-fonts] [--no-font-packs]"
     );
     eprintln!();
     eprintln!("  --transitional  normalize a Transitional package to Strict on the way in");
+    eprintln!("  --off-page      render/to-pdf: keep text the model places off the sheet, or clamp a tab stop past its box and a floating frame back onto the page (default keep)");
+    eprintln!("  --off-page-marks render/to-pdf: tag off-page text in the output (SVG data-off-page, PDF /<reason> BMC) so a correction can find it");
     eprintln!("  --fonts         render/to-pdf: also use the fonts a strictlib.font-assets.v1 manifest pins");
     eprintln!("  --system-fonts  render/to-pdf: also use the installed fonts the document names (output then depends on the machine)");
     eprintln!("  --strict-fonts  render/to-pdf: refuse to render when a font the document names is unavailable");
@@ -465,6 +467,7 @@ fn compression_name(part: &strict_ooxml_core::part::Part) -> &'static str {
 }
 
 /// Parsed `render` command arguments.
+#[allow(clippy::struct_excessive_bools)]
 struct RenderArgs {
     file: String,
     out: Option<String>,
@@ -474,6 +477,8 @@ struct RenderArgs {
     math: bool,
     wps_times: bool,
     cell_no_wrap: CellNoWrap,
+    off_page: OffPageInk,
+    off_page_marks: bool,
     paper: DefaultPaper,
     fonts: fonts::FontArgs,
 }
@@ -488,6 +493,8 @@ impl RenderArgs {
         let mut math = true;
         let mut wps_times = false;
         let mut cell_no_wrap = CellNoWrap::default();
+        let mut off_page = OffPageInk::default();
+        let mut off_page_marks = false;
         let mut paper = paper::detect();
         let mut fonts = fonts::FontArgs::default();
         let mut index = 0;
@@ -500,8 +507,12 @@ impl RenderArgs {
                 "--no-floating" => floating = false,
                 "--no-math" => math = false,
                 "--wps-times" => wps_times = true,
+                "--off-page-marks" => off_page_marks = true,
                 flag if flag.starts_with("--cell-nowrap=") => {
                     cell_no_wrap = parse_cell_no_wrap(flag)?;
+                }
+                flag if flag.starts_with("--off-page=") => {
+                    off_page = parse_off_page(flag)?;
                 }
                 flag if flag.starts_with("--default-page-size=") => {
                     paper = paper::parse(
@@ -561,6 +572,8 @@ impl RenderArgs {
             math,
             wps_times,
             cell_no_wrap,
+            off_page,
+            off_page_marks,
             paper,
             fonts,
         })
@@ -598,6 +611,13 @@ fn parse_cell_no_wrap(flag: &str) -> Result<CellNoWrap, String> {
         .ok_or_else(|| "'--cell-nowrap' expects 'spec' or 'always'".to_owned())
 }
 
+/// Parses `--off-page=keep|clamp` (`RenderOptions::off_page_ink`).
+fn parse_off_page(flag: &str) -> Result<OffPageInk, String> {
+    flag.strip_prefix("--off-page=")
+        .and_then(OffPageInk::parse)
+        .ok_or_else(|| "'--off-page' expects 'keep' or 'clamp'".to_owned())
+}
+
 /// `to-pdf`: render the document to a PDF (`STAGE-8-TASK.md` §4).
 ///
 /// Exit codes follow `render`: `0` when the PDF is written and nothing was lost,
@@ -617,6 +637,8 @@ fn run_to_pdf(args: &[String]) -> ExitCode {
             .apply(
                 RenderOptions::default()
                     .cell_no_wrap(parsed.cell_no_wrap)
+                    .off_page_ink(parsed.off_page)
+                    .off_page_marks(parsed.off_page_marks)
                     .default_paper(parsed.paper),
                 &document,
             )
@@ -691,6 +713,8 @@ struct WriteArgs {
     transitional: bool,
     report_out: Option<String>,
     cell_no_wrap: CellNoWrap,
+    off_page: OffPageInk,
+    off_page_marks: bool,
     paper: DefaultPaper,
     fonts: fonts::FontArgs,
 }
@@ -702,6 +726,8 @@ impl WriteArgs {
         let mut transitional = false;
         let mut report_out = None;
         let mut cell_no_wrap = CellNoWrap::default();
+        let mut off_page = OffPageInk::default();
+        let mut off_page_marks = false;
         let mut paper = paper::detect();
         let mut fonts = fonts::FontArgs::default();
         let mut index = 0;
@@ -712,8 +738,12 @@ impl WriteArgs {
             }
             match args[index].as_str() {
                 "--transitional" => transitional = true,
+                "--off-page-marks" => off_page_marks = true,
                 flag if flag.starts_with("--cell-nowrap=") => {
                     cell_no_wrap = parse_cell_no_wrap(flag)?;
+                }
+                flag if flag.starts_with("--off-page=") => {
+                    off_page = parse_off_page(flag)?;
                 }
                 flag if flag.starts_with("--default-page-size=") => {
                     paper = paper::parse(
@@ -758,6 +788,8 @@ impl WriteArgs {
             transitional,
             report_out,
             cell_no_wrap,
+            off_page,
+            off_page_marks,
             paper,
             fonts,
         })
@@ -1046,6 +1078,8 @@ fn render_parsed(document: &StrictDocument, parsed: &RenderArgs) -> ExitCode {
     render_options = render_options.math(parsed.math);
     render_options = render_options.wps_times_calibration(parsed.wps_times);
     render_options = render_options.cell_no_wrap(parsed.cell_no_wrap);
+    render_options = render_options.off_page_ink(parsed.off_page);
+    render_options = render_options.off_page_marks(parsed.off_page_marks);
     render_options = render_options.default_paper(parsed.paper);
     render_options = match parsed.fonts.apply(render_options, document) {
         Ok(render_options) => render_options,

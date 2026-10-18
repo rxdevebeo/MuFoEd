@@ -476,6 +476,7 @@ mod tests {
             compress_punctuation: false,
             following_non_space: None,
             plain_space_factor: 1.0,
+            off_page: None,
         }
     }
 

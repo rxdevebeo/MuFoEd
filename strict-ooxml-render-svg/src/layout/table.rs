@@ -1810,7 +1810,11 @@ fn place_cell_paragraph(
                 h,
                 ctx.options.scale,
             );
-            let anchor_items = crate::paint::graphics::anchor_items(ctx, anchor, ax, ay, w, h);
+            let (ax, off_page) = crate::layout::floating::clamp_frame(ctx, &geometry, ax, ay, w, h);
+            let mut anchor_items = crate::paint::graphics::anchor_items(ctx, anchor, ax, ay, w, h);
+            if off_page {
+                crate::layout::floating::mark_floating_items(&mut anchor_items);
+            }
             if anchor.layout_in_cell {
                 CELL_HEIGHT_REQUIRED.with(|stack| {
                     if let Some(required) = stack.borrow_mut().last_mut() {
@@ -2017,14 +2021,13 @@ fn append_row_anchors(
             h,
             ctx.options.scale,
         );
-        items.extend(crate::paint::graphics::anchor_items(
-            ctx,
-            &anchor.anchor,
-            x,
-            y,
-            w,
-            h,
-        ));
+        let (x, off_page) = crate::layout::floating::clamp_frame(ctx, &geometry, x, y, w, h);
+        let mut anchor_items =
+            crate::paint::graphics::anchor_items(ctx, &anchor.anchor, x, y, w, h);
+        if off_page {
+            crate::layout::floating::mark_floating_items(&mut anchor_items);
+        }
+        items.extend(anchor_items);
     }
 }
 

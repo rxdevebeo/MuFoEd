@@ -68,7 +68,8 @@ mod paint;
 mod table_style;
 
 pub use layout::{
-    ImageItem, Item, LineItem, PathItem, PlacedPage, RectItem, TextAdvanceKind, TextItem,
+    ImageItem, Item, LineItem, OffPageMark, OffPageReason, PathItem, PlacedPage, RectItem,
+    TextAdvanceKind, TextItem,
 };
 use strict_ooxml_core::control;
 use strict_ooxml_core::error::Result;
@@ -278,6 +279,15 @@ pub struct RenderOptions {
     pub wps_times_calibration: bool,
     /// How `w:noWrap` on a table cell is honoured. Default [`CellNoWrap::Spec`].
     pub cell_no_wrap: CellNoWrap,
+    /// What to do with text placed outside the sheet. Default
+    /// [`OffPageInk::Keep`] (faithful); [`OffPageInk::Clamp`] pulls a tab stop
+    /// past its box and a floating frame off the page back in.
+    pub off_page_ink: OffPageInk,
+    /// Emit a per-fragment off-page mark into the output: `data-off-page` on the
+    /// SVG `<text>` and a `/tab-stop BMC ... EMC` (or `/floating`, `/overflow`)
+    /// marked-content sequence around the PDF text. The page-level rollup
+    /// (`Page::off_page`) is always computed. Default `false`.
+    pub off_page_marks: bool,
     /// Progress and cancellation handle (default none); see
     /// [`strict_ooxml_core::control`]. Layout reports pages laid out, painting
     /// pages written, and either stops with `StrictError::Cancelled`.
@@ -303,6 +313,8 @@ impl Default for RenderOptions {
             limits: strict_ooxml_core::limits::ResourceLimits::default(),
             wps_times_calibration: false,
             cell_no_wrap: CellNoWrap::Spec,
+            off_page_ink: OffPageInk::Keep,
+            off_page_marks: false,
             control: None,
         }
     }
@@ -394,6 +406,20 @@ impl RenderOptions {
         self.cell_no_wrap = mode;
         self
     }
+
+    /// Sets [`Self::off_page_ink`].
+    #[must_use]
+    pub fn off_page_ink(mut self, mode: OffPageInk) -> Self {
+        self.off_page_ink = mode;
+        self
+    }
+
+    /// Sets [`Self::off_page_marks`].
+    #[must_use]
+    pub fn off_page_marks(mut self, enabled: bool) -> Self {
+        self.off_page_marks = enabled;
+        self
+    }
 }
 
 /// How `w:tcPr/w:noWrap` is honoured (ISO/IEC 29500-1 §17.4.30).
@@ -423,6 +449,37 @@ impl CellNoWrap {
     }
 }
 
+/// What to do with text ink a document places outside the sheet.
+///
+/// The default is faithful: Word/WPS put a right tab into the field and an
+/// anchored frame where its anchor says, even past the edge (WQ-036 for tabs;
+/// the floating-frame cluster where WPS drops the frame and WPS-matching keeps
+/// it). `Clamp` is the opt-in "keep the reader able to see it" correction: a tab
+/// stop past its text box is pulled back to the box, and a floating frame is
+/// pulled onto the page. The off-page marks (`Page::off_page`, `data-off-page`,
+/// the PDF artifact) are produced either way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OffPageInk {
+    /// Draw the ink where the model places it, even off the page (default).
+    #[default]
+    Keep,
+    /// Pull a `TabStop`'s text back to its text box and a `Floating` frame onto
+    /// the page; leave any other `Overflow` as it is.
+    Clamp,
+}
+
+impl OffPageInk {
+    /// Parses a CLI value: `keep` or `clamp`.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "keep" => Some(Self::Keep),
+            "clamp" => Some(Self::Clamp),
+            _ => None,
+        }
+    }
+}
+
 /// One rendered page.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Page {
@@ -439,6 +496,9 @@ pub struct Page {
     /// Document layout warnings are repeated on every returned page; only
     /// paint diagnostics such as invalid XML characters identify this page.
     pub warnings: Vec<String>,
+    /// Text ink placed outside the page, one entry per fragment, with the
+    /// reason it is there. Empty when nothing on the page leaves the sheet.
+    pub off_page: Vec<layout::OffPageMark>,
 }
 
 /// Places pages of a document without painting them.
@@ -596,7 +656,7 @@ pub fn render_with_media(
         if !options.pages.contains(index + 1) {
             continue;
         }
-        let svg = paint::render_page(page, options.background);
+        let svg = paint::render_page(page, options.background, options.off_page_marks);
         if svg_bytes.saturating_add(svg.len()) > options.max_svg_bytes {
             let warning = format!(
                 "render.output-limit: SVG payload exceeds {} bytes; remaining pages omitted",
@@ -625,6 +685,7 @@ pub fn render_with_media(
                 .into_iter()
                 .chain(layout_warnings.iter().cloned())
                 .collect(),
+            off_page: page.off_page.clone(),
         });
     }
     control::advance(laid_out.pages.len() as u64);

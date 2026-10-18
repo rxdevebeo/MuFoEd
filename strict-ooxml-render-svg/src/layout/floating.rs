@@ -9,7 +9,7 @@ use strict_ooxml_wml::model::props::Section;
 use crate::layout::exclusions::{Contour, PageExclusion};
 #[cfg(test)]
 use crate::layout::geometry_for;
-use crate::layout::{Geometry, Item, LayoutContext, PlacedPage};
+use crate::layout::{Geometry, Item, LayoutContext, OffPageReason, PlacedPage, OFF_PAGE_TOLERANCE};
 use crate::units::emu_to_px;
 use std::sync::Arc;
 
@@ -29,6 +29,7 @@ pub(crate) struct PendingAnchor {
 }
 
 /// Resolves pending anchors into paint items and inserts them into their pages.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn resolve(
     ctx: &LayoutContext<'_>,
     pages: &mut [PlacedPage],
@@ -106,9 +107,16 @@ pub(crate) fn resolve(
             }
             y = bottom;
         }
-        let items = crate::paint::graphics::anchor_items(ctx, &pending.anchor, x, y, w, h);
+        // A frame whose box leaves the sheet (cluster 3: a duplicate text box
+        // anchored far left, margin notes). The mark is diagnostic;
+        // `OffPageInk::Clamp` pulls the frame back onto the page horizontally.
+        let (x, off_page) = clamp_frame(ctx, &geometry, x, y, w, h);
+        let mut items = crate::paint::graphics::anchor_items(ctx, &pending.anchor, x, y, w, h);
         if items.is_empty() {
             continue;
+        }
+        if off_page {
+            mark_floating_items(&mut items);
         }
         occupied.push((pending.page, [x, y, w, h], pending.anchor.allow_overlap));
         let order = pending.anchor.relative_height.map_or(0, i64::from);
@@ -344,8 +352,44 @@ pub(crate) fn resolved_extent(
     }
 }
 
+/// Clamps a floating frame's resolved origin onto the page horizontally when
+/// [`crate::OffPageInk::Clamp`] asks for it, and reports whether its box left
+/// the page (so its text can carry [`OffPageReason::Floating`]). The two
+/// anchor placements — the body pass ([`resolve`]) and the cell pass in
+/// `table.rs` — share this so the mark and the correction cannot disagree.
+pub(crate) fn clamp_frame(
+    ctx: &LayoutContext<'_>,
+    geometry: &Geometry,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) -> (f64, bool) {
+    let off = x < -OFF_PAGE_TOLERANCE
+        || x + w > geometry.width + OFF_PAGE_TOLERANCE
+        || y < -OFF_PAGE_TOLERANCE
+        || y + h > geometry.height + OFF_PAGE_TOLERANCE;
+    if off && ctx.options.off_page_ink == crate::OffPageInk::Clamp {
+        (x.clamp(0.0, (geometry.width - w).max(0.0)), off)
+    } else {
+        (x, off)
+    }
+}
+
+/// Tags every text leaf of a frame's items with the [`OffPageReason::Floating`]
+/// origin reason; the layout's off-page pass keeps it only if the box really
+/// leaves the page.
+pub(crate) fn mark_floating_items(items: &mut [Item]) {
+    for item in items {
+        for leaf in item.leaves_mut() {
+            if let Item::Text(text) = leaf {
+                text.off_page = Some(OffPageReason::Floating);
+            }
+        }
+    }
+}
+
 /// Wrap exclusion in absolute page coordinates, or `None` when text is not excluded.
-///
 /// Tight/Through use the source polygon rather than its bounding rectangle.
 pub(crate) fn page_exclusion(
     ctx: &LayoutContext<'_>,

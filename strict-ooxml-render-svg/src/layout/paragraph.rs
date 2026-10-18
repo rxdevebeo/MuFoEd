@@ -11,11 +11,14 @@ use strict_ooxml_wml::model::{
 };
 
 use crate::layout::floating::{wrap_exclusion, WrapExclusion, WrapSide};
-use crate::layout::{Flow, Geometry, ImageItem, Item, LayoutContext, TextItem, TextLine};
+use crate::layout::{
+    Flow, Geometry, ImageItem, Item, LayoutContext, TextItem, TextLine, OFF_PAGE_TOLERANCE,
+};
 use crate::paint::image::layout_inline_image;
 use crate::style::{apply_caps, compute_paragraph, compute_run, ComputedParagraph, ComputedRun};
 use crate::units::{pt_to_px, twips_to_px};
 use crate::RevisionView;
+use crate::{OffPageInk, OffPageReason};
 
 /// Whether a run with the given revision marker is visible under `view` (ADR-0018).
 fn revision_visible(view: RevisionView, revision: Option<&Revision>) -> bool {
@@ -1413,6 +1416,9 @@ struct LineBuilder {
     ink_depth: f64,
     /// Height of the tallest inline drawing on the line, in px.
     object_height: f64,
+    /// Set once a tab stop on this line resolved past the text box, so the
+    /// fragments the stop aligns carry [`OffPageReason::TabStop`].
+    off_page: Option<OffPageReason>,
 }
 
 impl LineBuilder {
@@ -1425,6 +1431,7 @@ impl LineBuilder {
             ink_height: 0.0,
             ink_depth: 0.0,
             object_height: 0.0,
+            off_page: None,
         }
     }
 
@@ -1670,6 +1677,7 @@ fn build_lines(
                     default_tab,
                     scale,
                     content_left,
+                    right_edge,
                 ) {
                     // A right, centre or decimal stop past the right indent
                     // is kept, as Word 2013+ does: the text it aligns may run
@@ -1925,6 +1933,7 @@ fn build_lines(
                         compress_punctuation: false,
                         following_non_space: None,
                         plain_space_factor: 1.0,
+                        off_page: None,
                     },
                 );
             }
@@ -2626,6 +2635,7 @@ fn place_token(
         compress_punctuation: compress,
         following_non_space: following,
         plain_space_factor: plain,
+        off_page: current.off_page,
     });
     *x += width;
 }
@@ -3029,6 +3039,7 @@ fn push_piece(
         compress_punctuation,
         following_non_space: None,
         plain_space_factor,
+        off_page: current.off_page,
     });
 }
 
@@ -3628,6 +3639,7 @@ fn push_note_marker(
         compress_punctuation: false,
         following_non_space: None,
         plain_space_factor: 1.0,
+        off_page: current.off_page,
     });
     *x += width;
 }
@@ -3667,6 +3679,7 @@ fn push_field_marker(
         compress_punctuation: false,
         following_non_space: None,
         plain_space_factor: 1.0,
+        off_page: current.off_page,
     });
     *x += width;
 }
@@ -3986,8 +3999,9 @@ fn place_tab(
     default_tab: i32,
     scale: f64,
     content_left: f64,
+    box_right: f64,
 ) -> Option<f64> {
-    let tab = resolve_tab(*x, computed, default_tab, scale, content_left);
+    let mut tab = resolve_tab(*x, computed, default_tab, scale, content_left);
     if matches!(tab.alignment, TabAlignment::Bar) {
         current.graphics.push(Item::Line(crate::layout::LineItem {
             x1: tab.x,
@@ -3999,6 +4013,24 @@ fn place_tab(
             dashed: false,
         }));
         return None;
+    }
+    // A right/centre/decimal stop past the text box puts the text it aligns
+    // past the box — and, for a narrow column in a wide section, past the
+    // sheet (045/060). Word 2013+ keeps the stop (WQ-036); the reason is
+    // recorded either way, and `OffPageInk::Clamp` pulls the stop back to the
+    // box so the leader shortens and the text stays visible.
+    let past_box = match tab.alignment {
+        TabAlignment::Start => tab.x > box_right + OFF_PAGE_TOLERANCE,
+        TabAlignment::End | TabAlignment::Center | TabAlignment::Decimal | TabAlignment::Num => {
+            tab.x > box_right + OFF_PAGE_TOLERANCE
+        }
+        TabAlignment::Clear | TabAlignment::Bar => false,
+    };
+    if past_box {
+        current.off_page = Some(OffPageReason::TabStop);
+        if ctx.options.off_page_ink == OffPageInk::Clamp {
+            tab.x = box_right;
+        }
     }
     let ink = following_ink(ctx, pending);
     let text_start = match tab.alignment {

@@ -168,8 +168,8 @@ pub use strict_ooxml_render_svg::font::system as system_fonts;
 pub use strict_ooxml_render_svg::font::{FontAsset, FontAssetError, FontAssetLimits, FontAssets};
 #[cfg(feature = "svg")]
 pub use strict_ooxml_render_svg::{
-    CellNoWrap, DefaultPaper, FontPolicy, MediaMode, Page, PageSelection, RenderError,
-    RenderOptions, WrapCoordinates,
+    CellNoWrap, DefaultPaper, FontPolicy, MediaMode, OffPageInk, OffPageMark, OffPageReason, Page,
+    PageSelection, RenderError, RenderOptions, WrapCoordinates,
 };
 #[cfg(feature = "report")]
 pub use strict_ooxml_report::{
