@@ -526,13 +526,31 @@ fn layout_region(
     // (CC0/019: a footer text box drew 15 pt under the page; CC0/020: 740 pt).
     // `height` stays the flow height: the body clears the text, not a stray
     // box that reaches far down, and using the ink here exploded the page count.
+    //
+    // Only ink that is *drawn* counts. An auto-fit VML text box keeps its
+    // declared extent in its invisible rectangle (`fill="none"`, `stroked="f"`);
+    // counting that rectangle lifted a footer whose text was fine right up into
+    // the body (CC0_DOCX_MATH/095: a 144 pt page-number box over a 60 pt text
+    // line, the flow text then overlapping the last body lines).
     let ink_bottom = items
         .iter()
+        .filter(|item| paints_ink(item))
         .map(|item| crate::layout::table::item_vertical_bounds(ctx, item).1)
         .fold(y, f64::max);
     Region {
         items,
         height: y,
         ink_bottom,
+    }
+}
+
+/// Whether an item puts any ink on the page: text, a picture or a line always
+/// does; a shape only with a fill, gradient or stroke; a group as its children.
+fn paints_ink(item: &Item) -> bool {
+    match item {
+        Item::Text(_) | Item::Image(_) | Item::Line(_) => true,
+        Item::Rect(rect) => rect.fill.is_some() || rect.stroke.is_some(),
+        Item::Path(path) => path.fill.is_some() || path.paint.is_some() || path.stroke.is_some(),
+        Item::Group(group) => group.items.iter().any(paints_ink),
     }
 }
