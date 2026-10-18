@@ -1,9 +1,13 @@
-# Передача сессии — 2026-10-18: наложения (overlap), размер страницы и два фикса
+# Передача сессии — 2026-10-18: наложения (overlap), размер страницы, два фикса и текст за листом
 
 **Дата:** 2026-10-18 · **Ветка:** master (ahead of origin, ничего не пушилось)
 **Тулчейн:** `cargo +1.92.0` (ADR-0011; на машине `stable` = 1.91.1)
 **Состояние дерева:** чисто, всё закоммичено. Untracked и не наши: `.claude/`,
 `ucimo-1-5.docx` (не коммитить).
+
+**Продолжение той же сессии:** кластер 3 разобран (§1.5), добавлена опция
+`--off-page` и метки off-page-текста (§1.6), коммит `835dc8f`. Прежний план §3.1
+закрыт; следующие шаги — §6.
 
 ---
 
@@ -14,8 +18,10 @@
 | `xtool/wps-qa/overlap.py` | метрика наложений и инструмент отчёта по классам |
 | `xtool/wps-qa/README.md` §Overlap | как запускать, классы, ограничения |
 | `wps-qa/overlap/bin-df04a53867/report.md` | полный отчёт по корпусу (gitignored) |
-| `docs/WPS-QA-DISCREPANCIES.md` | реестр расхождений с WPS |
-| коммиты сессии | `b3067e9`, `7efcf2d`, `e7ced78`, `e01210c`, `63bd6ee` |
+| `docs/WPS-QA-DISCREPANCIES.md` | реестр расхождений с WPS (WQ-045 — кластер 3) |
+| `strict-ooxml-render-svg/tests/off_page.rs` | тесты опции `--off-page` и меток |
+| `README.md` §CLI | как запускать `--off-page=keep|clamp`, `--off-page-marks` |
+| коммиты сессии | `b3067e9`, `7efcf2d`, `e7ced78`, `e01210c`, `63bd6ee`, `835dc8f` |
 
 Команды:
 
@@ -64,6 +70,37 @@ pdfium (`get_bounds()`), пары через grid-обход, классы:
 Использовать `ink_bottom` и для обтекания тела нельзя — пагинация взрывается
 (020: 62 → 1206), поэтому только позиционирование.
 
+### 1.5 Кластер 3 разобран: текст за листом — это фреймы и правые табы (`835dc8f`)
+`off-page-text` (581) — **обычный текст**, не вектор, и он неоднороден; `--no-floating`
+делит его однозначно:
+- ~440 — **плавающие текстовые фреймы**: `CC0_DOCX_MATH/031` (190) — дубликат
+  «References» внутри `mc:AlternateContent` → `wp:anchor` `positionH
+  relativeFrom="column"` `posOffset=-17705070` EMU = **−1394.1 pt**, `extent
+  cx=32083719` = **2526 pt**; `CC0_DOCX/001_wajiz` (342) — 14 заметок `v:shape`
+  `mso-position-horizontal-relative:text` с `margin-left` −110…−310 pt в RTL-ячейках;
+- ~140 — **поток**: номера страниц оглавления правым табом (`045`, `060`, `033`:
+  таб `w:pos=6566` twips = 328 pt при колонке ≈266 pt в секции `cols num=2` →
+  x≈638 pt при листе 595 pt), длинные/CJK-строки (`CC0/089`).
+
+Три эталона: **WPS** фреймы за листом **не рисует** (в `031` 18 pt-копии нет нигде;
+в `wajiz` слова, уникальные для уехавших заметок, отсутствуют во всём PDF — потеря
+текста), а табы исполняет (номер тоже за листом); **LibreOffice** фреймы **рисует**
+(`031` — 18 pt-блок на x≈−461…+984); **мы** держим на месте модели. Вывод: это
+расхождение **WPS** (WQ-045, статус `wps`), не наш дефект; гипотеза (а)
+RTL-зеркалирование не подтверждается — LTR-`031` и RTL-`wajiz` ведут себя одинаково.
+
+### 1.6 Опция `--off-page` и метки off-page-текста (`835dc8f`)
+`RenderOptions::off_page_ink` = `Keep` (дефолт — как WPS/Word) | `Clamp`
+(таб-стоп подрезается до текстбокса, лидер укорачивается; фрейм прижимается на
+лист по X). `RenderOptions::off_page_marks` + CLI `--off-page-marks`: SVG
+`data-off-page="tab-stop|floating|overflow"`, PDF `/<reason> BMC … EMC`. Метка
+(`Page::off_page`, `OffPageReason` `TabStop`/`Floating`/`Overflow`) считается
+**всегда**, независимо от опции. Результаты: `045/060` `off-page-text 30 → 0`,
+`text-text 6 → 0` при `clamp`; `031` метки 143 → 71 (фрейм шириной 4.2 страницы
+позиционным клампом не ужать); `wajiz` 82 → 58 (остаток — вертикаль и потоковый
+RTL-перелив). Тесты — `strict-ooxml-render-svg/tests/off_page.rs`. Дефолт
+байт-в-байт прежний.
+
 ---
 
 ## 2. Полный прогон корпуса (метка `bin-df04a53867`)
@@ -92,11 +129,18 @@ docx-корпусам. Значения — `text-*`/`off-page-*` (число с
 | CC0_DOCX_MATH | 190 | 190 | `031` |
 | core-docx | 11 | 3 | — |
 
+Дефолт после §1.5 не изменился (это `Keep`). С `--off-page=clamp` (не дефолт)
+`off-page-text` оглавлений `045/060/033` → **0**; см. §1.6.
+
 ---
 
 ## 3. План
 
 ### 3.1 Кластер 3 — `off-page-text` влево/вправо (главное, ~440 из 581)
+**Сделано (§1.5, `835dc8f`).** Разобран: это плавающие фреймы (WPS их отбрасывает,
+LO/мы рисуем) и правые табы оглавления. Добавлена опция `--off-page=clamp` и метки
+(`--off-page-marks`); WQ-045 помечен `wps`. Остатки — в §6.
+
 Текст/объект выходит за оба поля:
 - `CC0_DOCX/001_wajiz` (272) — RTL (арабица), x и влево (−88), и вправо (714 при A4 595);
 - `CC0_DOCX_MATH/031` (166) — один объект уехал до x = −1307 (2× страницы влево) на
@@ -151,6 +195,16 @@ cargo +1.92.0 test  -p strict-ooxml-cli                         exit 0
 cargo +1.92.0 test  -p strict-ooxml-wml --test sections         exit 0
 ```
 
+Продолжение (§1.5–1.6, `835dc8f`) — гейты по затронутым крейтам:
+
+```text
+cargo +1.92.0 clippy -p strict-ooxml-render-svg -p strict-ooxml-render-pdf -p strict-ooxml-cli --all-targets   exit 0
+cargo +1.92.0 test   -p strict-ooxml-render-svg -p strict-ooxml-render-pdf -p strict-ooxml-cli                 exit 0
+cargo +1.92.0 test   -p strict-ooxml --all-features                                                            exit 0
+```
+
+`cargo fmt` применён к затронутым файлам (посторонний реформат откачен).
+
 Прогоны `wps_qa.py` и `overlap.py` — инструменты, не гейты (всегда exit 0 по рендеру).
 
 ---
@@ -160,6 +214,7 @@ cargo +1.92.0 test  -p strict-ooxml-wml --test sections         exit 0
 Чисто, всё закоммичено. Коммиты сессии:
 
 ```
+835dc8f render: off-page text is marked, and --off-page=clamp brings it back
 63bd6ee render: a header/footer of only floating objects is placed by its ink
 e01210c render: a column gap too wide to leave a column is ignored, not obeyed
 e7ced78 wps-qa: overlap report survives non-ASCII names on a redirected stdout
@@ -175,13 +230,18 @@ b3067e9 render: a missing page size follows the machine's locale, not always Let
 
 ## 6. Первый шаг следующей сессии
 
-1. **Кластер 3 (§3.1)**: `overlap.py find wps-qa/ours/bin-df04a53867/CC0_DOCX_MATH/031….pdf 9`
-   и по `wajiz`; найти, откуда x объекта = −1307 (размещённый объект/бокс) и почему
-   RTL-текст уходит за оба поля. После фикса — перерендерить эти два документа и
-   сверить с `refs/…` (off-page-text → 0, страницы не изменились).
-2. Затем **«+» в текстовых классах (§3.2)**, начиная с `text-over-lines`
-   (`CC0_DOCX/065_ldny`: 1018 против 20 у WPS — схлопнутый интерлиньяж).
-3. Прогнать корпус новым бинарём и `wps_qa.py overlap --side both` — ожидание:
-   `off-page-text → ~0`, классы §3.3 на месте.
+1. **Кластер 3 — остатки (§1.5).** `--off-page=clamp` чинит X, но:
+   - `wajiz` — вертикальный перелив заметок (стр. 19: y до 864 при 841.9) и
+     потоковый RTL-перелив вправо (стр. 13: x1 до 714);
+   - `031` — фрейм шириной 4.2 страницы позиционным клампом не ужать: решить,
+     обрезать по ширине листа или отбрасывать фрейм шире листа (как WPS);
+   - `CC0/089` — CJK-строки уезжают вправо до x≈845 (перенос строк CJK / ширина
+     абзаца).
+2. Затем **«+» в текстовых классах (§3.2)** — не начато; начиная с
+   `text-over-lines` (`CC0_DOCX/065_ldny`: 1018 против 20 у WPS — схлопнутый
+   интерлиньяж).
+3. **Полный прогон** новым бинарём: `wps_qa.py run` + `overlap --side both`;
+   сверить дефолт и `--off-page=clamp` (ожидание: `off-page-text` оглавлений → 0,
+   классы §3.3 на месте).
 
 **Конец передачи.**
