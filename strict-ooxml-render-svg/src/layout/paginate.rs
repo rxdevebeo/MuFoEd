@@ -2515,7 +2515,9 @@ impl<'a> Paginator<'a> {
         if *height <= start + budget {
             return Some((start, *height));
         }
-        let points = crate::layout::table::row_split_points(
+        // The note does not fit the area it is being sliced into: it has to be
+        // divided, so a zero-gap line boundary is a break point too (033).
+        let points = crate::layout::table::row_split_points_touching(
             items
                 .iter()
                 .filter(|item| !matches!(item, Item::Rect(_) | Item::Line(_)))
