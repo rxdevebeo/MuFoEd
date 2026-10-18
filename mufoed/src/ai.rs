@@ -67,9 +67,17 @@ pub(crate) fn models(endpoint: &str) -> Result<Vec<String>, String> {
 }
 
 /// Whether a model is for text (not pictures, code or embeddings).
-fn writes_text(name: &str) -> bool {
+pub(crate) fn text_model(name: &str) -> bool {
     let name = name.to_lowercase();
     !["vl", "ocr", "coder", "embed", "vision", "paddle", "intern"]
+        .iter()
+        .any(|word| name.contains(word))
+}
+
+/// Whether a model reads pictures.
+pub(crate) fn vision_model(name: &str) -> bool {
+    let name = name.to_lowercase();
+    ["vl", "ocr", "vision"]
         .iter()
         .any(|word| name.contains(word))
 }
@@ -80,7 +88,7 @@ pub(crate) fn choose(configured: &str, installed: &[String]) -> Option<String> {
     if !configured.is_empty() && installed.iter().any(|name| name == configured) {
         return Some(configured.to_owned());
     }
-    let text: Vec<&String> = installed.iter().filter(|name| writes_text(name)).collect();
+    let text: Vec<&String> = installed.iter().filter(|name| text_model(name)).collect();
     for family in [
         "qwen3.5:9b",
         "qwen3.5",
@@ -775,6 +783,14 @@ mod tests {
             Some("qwen3.5:4b")
         );
         assert_eq!(choose("", &["qwen3-vl:8b".to_owned()]), None);
+    }
+
+    #[test]
+    fn text_and_vision_models_are_told_apart() {
+        assert!(text_model("qwen3.5:4b"));
+        assert!(!text_model("qwen3-vl:8b"));
+        assert!(vision_model("qwen3-vl:8b"));
+        assert!(!vision_model("llama3:latest"));
     }
 
     #[test]

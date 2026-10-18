@@ -58,13 +58,10 @@ use std::path::PathBuf;
 fn main() -> eframe::Result {
     let files: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
     let mut options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("MultiFormatEditor")
-            .with_app_id("mufoed")
-            .with_inner_size([1280.0, 860.0])
-            .with_min_inner_size([720.0, 480.0])
-            .with_drag_and_drop(true)
-            .with_icon(window_icon()),
+        viewport: window_viewport(),
+        // The size lives in the settings file, so the options window can turn
+        // remembering it off. eframe's own copy would ignore that switch.
+        persist_window: false,
         ..eframe::NativeOptions::default()
     };
     restrict_backends(&mut options);
@@ -73,6 +70,40 @@ fn main() -> eframe::Result {
         options,
         Box::new(|cc| Ok(Box::new(app::App::new(cc, files)))),
     )
+}
+
+/// The window: a remembered place when the options ask for one, otherwise
+/// the ordinary size.
+fn window_viewport() -> eframe::egui::ViewportBuilder {
+    let mut viewport = eframe::egui::ViewportBuilder::default()
+        .with_title("MultiFormatEditor")
+        .with_app_id("mufoed")
+        .with_inner_size([settings::DEFAULT_WIDTH, settings::DEFAULT_HEIGHT])
+        .with_min_inner_size([720.0, 480.0])
+        .with_drag_and_drop(true)
+        .with_icon(window_icon());
+    let remembered = settings::Settings::load();
+    if !remembered.remember_window {
+        return viewport;
+    }
+    let Some(window) = remembered.window else {
+        return viewport;
+    };
+    if window.width.is_finite()
+        && window.height.is_finite()
+        && window.width >= 720.0
+        && window.height >= 480.0
+        && window.x.is_finite()
+        && window.y.is_finite()
+    {
+        viewport = viewport
+            .with_inner_size([window.width, window.height])
+            .with_position(eframe::egui::pos2(window.x, window.y));
+        if window.maximized {
+            viewport = viewport.with_maximized(true);
+        }
+    }
+    viewport
 }
 
 /// On Windows, draw with Direct3D 12 only.

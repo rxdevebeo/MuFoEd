@@ -11,6 +11,9 @@ mod ai_ui;
 mod chart_ui;
 pub(crate) mod recognition_ui;
 mod scheme_ui;
+mod settings_ui;
+
+pub(crate) use settings_ui::SettingsPage;
 
 use crate::canvas;
 use crate::formats::{self, ImportOptions, Kind, OcrSettings, Source};
@@ -34,6 +37,8 @@ pub(crate) enum Action {
     ParagraphDialog,
     ToggleSpelling,
     DownloadDictionary(&'static str),
+    /// Delete one fetched dictionary and load the rest again.
+    RemoveDictionary(&'static str),
     DownloadFontPack(&'static str),
     Ai(AiAction),
     AiSetup,
@@ -170,7 +175,8 @@ pub(crate) enum Dialog {
     },
     Symbols,
     WordCount,
-    Settings,
+    /// The options window, opened on one of its pages.
+    Settings(Box<settings_ui::SettingsDialog>),
     About,
     Import(Box<ImportDialog>),
     ConfirmClose {
@@ -213,6 +219,13 @@ pub(crate) enum Dialog {
         name: String,
         selected: Option<usize>,
     },
+}
+
+impl Dialog {
+    /// The options window, opened on `page`.
+    pub(crate) fn settings(page: SettingsPage) -> Self {
+        Self::Settings(Box::new(settings_ui::SettingsDialog::new(page)))
+    }
 }
 
 /// The formula dialog's state.
@@ -443,6 +456,7 @@ impl App {
         crate::stack::remember_interface_thread();
         crate::trace::watchdog(cc.egui_ctx.clone());
         let problems = i18n.problems.join("; ");
+        let report_open = settings.report;
         let mut app = Self {
             i18n,
             settings,
@@ -454,7 +468,7 @@ impl App {
             find: FindState::default(),
             find_open: false,
             find_replace: false,
-            report_open: false,
+            report_open,
             comments_open: false,
             speller: None,
             speller_loading: Some(load_speller(&cc.egui_ctx)),
@@ -880,7 +894,11 @@ impl App {
                     self.dialog = Some(dialog);
                 }
             }
-            Action::ToggleReport => self.report_open = !self.report_open,
+            Action::ToggleReport => {
+                self.report_open = !self.report_open;
+                self.settings.report = self.report_open;
+                self.settings.save();
+            }
             Action::EnterHeaderFooter { header } => {
                 if let Some(tab) = self.active_tab() {
                     tab.send(Request::HeaderFooter(HeaderFooterCommand::Enter {
@@ -943,6 +961,22 @@ impl App {
                 }
             }
             Action::DownloadDictionary(code) => self.download_dictionary(ctx, code, now),
+            Action::RemoveDictionary(code) => {
+                let name = crate::spell::language(code)
+                    .map(|language| self.t(language.name_key).to_owned())
+                    .unwrap_or_default();
+                match crate::spell::remove(code) {
+                    Ok(()) => {
+                        let text = self.i18n.tf("spell.removed", &[("language", &name)]);
+                        self.say(text, false, now);
+                        self.speller_loading = Some(load_speller(ctx));
+                    }
+                    Err(error) => {
+                        let text = self.i18n.tf("spell.remove_failed", &[("error", &error)]);
+                        self.say(text, true, now);
+                    }
+                }
+            }
             Action::DownloadFontPack(id) => self.download_font_pack(ctx, id, now),
             Action::Ai(action) => self.ai_run(ctx, action),
             Action::AiSetup => {
@@ -1075,18 +1109,26 @@ impl App {
                                 .map_err(|()| url::ParseError::RelativeUrlWithoutBase)
                         } else {
                             url::Url::parse(&url).or_else(|_| {
-                                tab.path.as_ref().or(tab.source.as_ref())
+                                tab.path
+                                    .as_ref()
+                                    .or(tab.source.as_ref())
                                     .and_then(|p| url::Url::from_file_path(p).ok())
                                     .ok_or(url::ParseError::RelativeUrlWithoutBase)
                                     .and_then(|base| base.join(&url))
                             })
                         };
                         match resolved {
-                            Ok(url) if matches!(url.scheme(), "http" | "https" | "mailto" | "file" | "ftp" | "tel") => {
+                            Ok(url)
+                                if matches!(
+                                    url.scheme(),
+                                    "http" | "https" | "mailto" | "file" | "ftp" | "tel"
+                                ) =>
+                            {
                                 ctx.open_url(egui::OpenUrl::new_tab(url.as_str()));
                             }
                             _ => messages.push((
-                                format!("{}: {url}", self.i18n.t("note.link_invalid")), true,
+                                format!("{}: {url}", self.i18n.t("note.link_invalid")),
+                                true,
                             )),
                         }
                     }
@@ -1855,7 +1897,7 @@ impl App {
             }),
             "symbols" => Some(Dialog::Symbols),
             "words" => Some(Dialog::WordCount),
-            "settings" => Some(Dialog::Settings),
+            "settings" => Some(Dialog::settings(SettingsPage::View)),
             "about" => Some(Dialog::About),
             "exit" => Some(Dialog::ConfirmExit),
             "dictionary" => Some(Dialog::Dictionary { code: "ru" }),
@@ -2051,6 +2093,7 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
             self.window_title = title;
         }
+        self.note_window(&ctx);
         for action in actions {
             self.run(&ctx, action, now);
         }
@@ -2081,6 +2124,44 @@ impl eframe::App for App {
 }
 
 // ----- parts of the window ----------------------------------------------
+
+impl App {
+    /// Keeps the window's place for the next start, while that is wanted.
+    fn note_window(&mut self, ctx: &egui::Context) {
+        if !self.settings.remember_window {
+            return;
+        }
+        let placed = ctx.input(|input| {
+            let view = input.viewport();
+            if view.minimized == Some(true) || view.fullscreen == Some(true) {
+                return None;
+            }
+            let outer = view.outer_rect?;
+            let inner = view.inner_rect?;
+            let width = inner.width();
+            let height = inner.height();
+            if !width.is_finite()
+                || !height.is_finite()
+                || width < 720.0
+                || height < 480.0
+                || !outer.min.x.is_finite()
+                || !outer.min.y.is_finite()
+            {
+                return None;
+            }
+            Some(crate::settings::WindowPlacement {
+                x: outer.min.x,
+                y: outer.min.y,
+                width,
+                height,
+                maximized: view.maximized.unwrap_or(false),
+            })
+        });
+        if let Some(placed) = placed {
+            self.settings.window = Some(placed);
+        }
+    }
+}
 
 impl App {
     fn title_strip(&mut self, ui: &mut egui::Ui, palette: Palette, actions: &mut Vec<Action>) {
@@ -2288,6 +2369,12 @@ impl App {
                         Action::Doc(Request::Undo),
                     ),
                     (Icon::Save, "tip.save", ready, Action::Save),
+                    (
+                        Icon::Settings,
+                        "tip.settings",
+                        true,
+                        Action::Open(Dialog::settings(SettingsPage::View)),
+                    ),
                 ] {
                     let (rect, response) = ui.allocate_exact_size(vec2(26.0, 24.0), Sense::click());
                     let hovered = enabled && response.hovered();
@@ -2588,7 +2675,11 @@ impl App {
                         for page in 0..tab.pages.len() {
                             let selected = tab.view.current_page == page;
                             let label = self.i18n.tf("nav.page", &[("page", &(page + 1))]);
-                            if ui.selectable_label(selected, label).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                            if ui
+                                .selectable_label(selected, label)
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                .clicked()
+                            {
                                 tab.view.scroll_to_page = Some(page);
                             }
                         }
@@ -2724,7 +2815,12 @@ impl App {
                     response.scroll_to_me(Some(egui::Align::Center));
                     tab.scroll_comment = None;
                 }
-                if !editing && response.interact(Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                if !editing
+                    && response
+                        .interact(Sense::click())
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .clicked()
+                {
                     requests.push(CommentCommand::Select(comment.id.clone()));
                 }
                 ui.add_space(8.0);
@@ -2986,7 +3082,7 @@ impl App {
                 }
                 ui.add_space(8.0);
                 if item(ui, Icon::Settings, self.i18n.t("cmd.settings"), true) {
-                    actions.push(Action::Open(Dialog::Settings));
+                    actions.push(Action::Open(Dialog::settings(SettingsPage::View)));
                 }
                 if item(ui, Icon::About, self.i18n.t("cmd.about"), true) {
                     actions.push(Action::Open(Dialog::About));
@@ -3609,8 +3705,9 @@ impl App {
                                         ui.label(RichText::new(t("bookmark.none")).weak());
                                     }
                                     for (index, existing) in names.iter().enumerate() {
-                                        let chosen =
-                                            ui.selectable_label(selected == Some(index), existing).on_hover_cursor(egui::CursorIcon::PointingHand);
+                                        let chosen = ui
+                                            .selectable_label(selected == Some(index), existing)
+                                            .on_hover_cursor(egui::CursorIcon::PointingHand);
                                         if chosen.clicked() {
                                             selected = Some(index);
                                             name.clone_from(existing);
@@ -3975,77 +4072,12 @@ impl App {
                     next = Some(Dialog::WordCount);
                 }
             }
-            Dialog::Settings => {
-                let mut language = None;
-                let response = modal("settings").show(ctx, |ui| {
-                    ui.set_width(420.0);
-                    crate::dialog::title(ui, &t("settings.title"));
-                    crate::dialog::form("settings-grid").show(ui, |ui| {
-                        ui.label(t("settings.language"));
-                        let current = self.i18n.language().to_owned();
-                        egui::ComboBox::from_id_salt("settings-language")
-                            .selected_text(
-                                self.i18n
-                                    .languages()
-                                    .find(|(code, _)| *code == current)
-                                    .map_or(current.clone(), |(_, name)| name.to_owned()),
-                            )
-                            .show_ui(ui, |ui| {
-                                for (code, name) in self.i18n.languages() {
-                                    if ui.selectable_label(code == current, name).clicked() {
-                                        language = Some(code.to_owned());
-                                    }
-                                }
-                            });
-                        ui.end_row();
-                        ui.label(t("settings.theme"));
-                        ui.checkbox(&mut self.settings.dark, t("settings.dark"));
-                        ui.end_row();
-                        ui.label(t("settings.fonts"));
-                        ui.checkbox(&mut self.settings.system_fonts, t("cmd.system_fonts"));
-                        ui.end_row();
-                        ui.label(t("settings.ocr_endpoint"));
-                        ui.text_edit_singleline(&mut self.settings.ocr_endpoint);
-                        ui.end_row();
-                        ui.label(t("settings.ocr_model"));
-                        ui.text_edit_singleline(&mut self.settings.ocr_model);
-                        ui.end_row();
-                        ui.label(t("settings.author"));
-                        ui.text_edit_singleline(&mut self.settings.author);
-                        ui.end_row();
-                        ui.label(t("settings.ocr_language"));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.settings.ocr_language)
-                                .hint_text("ru, en, de…"),
-                        );
-                        ui.end_row();
-                    });
-                    ui.add_space(4.0);
-                    ui.label(RichText::new(t("settings.locales_hint")).weak().size(11.5));
-                    if let Some(dir) = settings::config_dir() {
-                        ui.label(
-                            RichText::new(dir.join("locales").display().to_string())
-                                .monospace()
-                                .size(11.0),
-                        );
-                    }
-                    crate::dialog::buttons(ui, |ui| {
-                        if crate::dialog::primary(ui, &t("button.ok")).clicked() {
-                            ui.close();
-                        }
-                    });
-                });
-                if let Some(code) = language {
-                    actions.push(Action::Language(code));
-                }
-                keep = !response.should_close();
-                if keep {
-                    next = Some(Dialog::Settings);
-                } else {
+            Dialog::Settings(mut dialog) => {
+                let close = dialog.show(self, ctx, actions);
+                if close {
                     self.settings.save();
-                    for tab in &self.tabs {
-                        tab.send(Request::SystemFonts(self.settings.system_fonts));
-                    }
+                } else {
+                    next = Some(Dialog::Settings(dialog));
                 }
             }
             Dialog::About => {
@@ -4138,7 +4170,7 @@ impl App {
                             ui.close();
                         }
                         if crate::dialog::button(ui, &t("cmd.ocr_settings")).clicked() {
-                            next = Some(Dialog::Settings);
+                            next = Some(Dialog::settings(SettingsPage::Recognition));
                             ui.close();
                         }
                         if crate::dialog::button(ui, &t("button.cancel")).clicked() {

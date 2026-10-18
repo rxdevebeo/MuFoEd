@@ -9,7 +9,7 @@
 use eframe::egui::{self, pos2, vec2, Color32, FontFamily, FontId, Rect, RichText, Sense, Stroke};
 use strict_ooxml::edit::ListPreset;
 
-use crate::app::{Action, Dialog, Zoom};
+use crate::app::{Action, Dialog, SettingsPage, Zoom};
 use crate::i18n::I18n;
 use crate::icons::{self, Icon};
 use crate::theme::{self, Palette};
@@ -1946,7 +1946,11 @@ fn bookmark_jump(
             .show_ui(ui, |ui| {
                 ui.set_min_width(200.0);
                 for name in names {
-                    if ui.selectable_label(false, name).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                    if ui
+                        .selectable_label(false, name)
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .clicked()
+                    {
                         picked = Some(name.clone());
                     }
                 }
@@ -3068,7 +3072,7 @@ fn recognition(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>
             true,
             p,
         ) {
-            actions.push(Action::Open(Dialog::Settings));
+            actions.push(Action::Open(Dialog::settings(SettingsPage::Recognition)));
         }
     });
     group(ui, s.t("group.export"), p, |ui| {

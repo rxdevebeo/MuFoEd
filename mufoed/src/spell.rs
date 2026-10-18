@@ -694,22 +694,62 @@ impl Speller {
         }
     }
 
+    /// The user's own words, in alphabetical order.
+    pub(crate) fn own_words(&self) -> Vec<String> {
+        let Ok(own) = self.own.read() else {
+            return Vec::new();
+        };
+        let mut words: Vec<String> = own.iter().cloned().collect();
+        words.sort();
+        words
+    }
+
     /// Adds the word to the user's dictionary file.
     pub(crate) fn add_own(&self, word: &str) {
         if let Ok(mut own) = self.own.write() {
             own.insert(word.to_owned());
             if let Some(path) = &self.own_path {
-                let mut words: Vec<&String> = own.iter().collect();
-                words.sort();
-                let text: String = words.iter().fold(String::new(), |mut text, w| {
-                    text.push_str(w);
-                    text.push('\n');
-                    text
-                });
-                let _ = std::fs::write(path, text);
+                write_own(path, &own);
             }
         }
     }
+
+    /// Takes the word back out of the user's dictionary file.
+    pub(crate) fn remove_own(&self, word: &str) {
+        if let Ok(mut own) = self.own.write() {
+            own.remove(word);
+            if let Some(path) = &self.own_path {
+                write_own(path, &own);
+            }
+        }
+    }
+}
+
+/// One word per line, in order, so the file is stable.
+fn write_own(path: &Path, own: &HashSet<String>) {
+    let mut words: Vec<&String> = own.iter().collect();
+    words.sort();
+    let mut text = String::new();
+    for word in words {
+        text.push_str(word);
+        text.push('\n');
+    }
+    let _ = std::fs::write(path, text);
+}
+
+/// Deletes a fetched dictionary. Only a known language code is accepted.
+pub(crate) fn remove(code: &str) -> Result<(), String> {
+    if language(code).is_none() {
+        return Err(format!("unknown dictionary {code}"));
+    }
+    let dir = folder().ok_or_else(|| "no configuration folder".to_owned())?;
+    let (aff, dic) = files(&dir, code);
+    for path in [&aff, &dic] {
+        if path.is_file() {
+            std::fs::remove_file(path).map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 /// A word in a paragraph's text, by character offsets.
@@ -880,6 +920,28 @@ mod tests {
         assert_eq!(speller.verdict("коты"), Verdict::Right);
         assert_eq!(speller.verdict("котт"), Verdict::Wrong);
         assert_eq!(speller.verdict("hello"), Verdict::Unknown(Script::Latin));
+    }
+
+    #[test]
+    fn a_personal_word_can_be_taken_back() {
+        let path = std::env::temp_dir().join(format!("mufoed-own-{}.txt", std::process::id()));
+        let speller = Speller::new(Vec::new(), HashSet::new(), Some(path.clone()));
+        speller.add_own("MuFoEd");
+        speller.add_own("кот");
+        assert_eq!(
+            speller.own_words(),
+            vec!["MuFoEd".to_owned(), "кот".to_owned()]
+        );
+        speller.remove_own("MuFoEd");
+        assert_eq!(speller.own_words(), vec!["кот".to_owned()]);
+        let stored = std::fs::read_to_string(&path).unwrap_or_default();
+        assert_eq!(stored, "кот\n");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn an_unknown_dictionary_is_not_removed() {
+        assert!(remove("not-a-language").is_err());
     }
 }
 

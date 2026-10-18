@@ -7,6 +7,30 @@ use serde::{Deserialize, Serialize};
 /// How many recent files the start page remembers.
 const RECENT_LIMIT: usize = 12;
 
+/// The window's size when nothing has been remembered yet.
+pub(crate) const DEFAULT_WIDTH: f32 = 1280.0;
+/// The window's size when nothing has been remembered yet.
+pub(crate) const DEFAULT_HEIGHT: f32 = 860.0;
+
+fn remember_by_default() -> bool {
+    true
+}
+
+/// Where the window was, so the next start can put it back.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct WindowPlacement {
+    /// Outer left edge, in points.
+    pub(crate) x: f32,
+    /// Outer top edge, in points.
+    pub(crate) y: f32,
+    /// Inner width, in points.
+    pub(crate) width: f32,
+    /// Inner height, in points.
+    pub(crate) height: f32,
+    /// The window filled the screen.
+    pub(crate) maximized: bool,
+}
+
 /// Everything the application remembers between runs.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -39,6 +63,13 @@ pub(crate) struct Settings {
     pub(crate) ai_model: String,
     /// The language the AI tab translates into (its English name).
     pub(crate) ai_language: String,
+    /// The fidelity report pane was open.
+    pub(crate) report: bool,
+    /// Put the window back where it was. Missing from an older file means yes.
+    #[serde(default = "remember_by_default")]
+    pub(crate) remember_window: bool,
+    /// The last place the window occupied.
+    pub(crate) window: Option<WindowPlacement>,
 }
 
 impl Default for Settings {
@@ -68,6 +99,9 @@ impl Default for Settings {
             spelling: true,
             ai_model: String::new(),
             ai_language: "English".to_owned(),
+            report: false,
+            remember_window: true,
+            window: None,
             author: std::env::var("USERNAME")
                 .or_else(|_| std::env::var("USER"))
                 .unwrap_or_default(),
@@ -140,4 +174,19 @@ pub(crate) fn locale_dirs() -> Vec<PathBuf> {
         dirs.push(dir.join("locales"));
     }
     dirs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Settings;
+
+    #[test]
+    fn an_older_file_still_remembers_the_window() {
+        let settings: Settings = serde_json::from_str(r#"{"dark":true,"zoom":1.25}"#).unwrap();
+        assert!(settings.dark);
+        assert!((settings.zoom - 1.25).abs() < f32::EPSILON);
+        assert!(settings.remember_window);
+        assert!(settings.window.is_none());
+        assert!(!settings.report);
+    }
 }

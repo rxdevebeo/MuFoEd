@@ -67,6 +67,15 @@ impl AiAction {
     }
 }
 
+/// Which list a model menu shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ModelKind {
+    /// A model that writes text.
+    Text,
+    /// A model that reads a scanned page.
+    Vision,
+}
+
 /// Whether Ollama answers and with which models.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) enum Probe {
@@ -123,6 +132,8 @@ type PictureResult = Result<Vec<u8>, String>;
 #[derive(Default)]
 pub(crate) struct AiState {
     probe: Probe,
+    /// The address the last check used.
+    probed_endpoint: String,
     probe_rx: Option<Receiver<Result<Vec<String>, String>>>,
     /// What waits for the document's text: request id, its tab, the action.
     pending: Option<(u64, u64, AiAction)>,
@@ -167,6 +178,254 @@ impl App {
         })
     }
 
+    /// Checks again when the address field was left with a new value.
+    pub(crate) fn ollama_endpoint_committed(&mut self, ctx: &egui::Context) {
+        if self.settings.ocr_endpoint != self.ai.probed_endpoint {
+            self.ollama_recheck(ctx);
+        }
+    }
+
+    /// Asks Ollama again. A check already running is left to finish.
+    pub(crate) fn ollama_recheck(&mut self, ctx: &egui::Context) {
+        if self.ai.probe == Probe::Checking {
+            return;
+        }
+        self.ai.probe = Probe::Unknown;
+        self.ai_probe(ctx);
+    }
+
+    /// The model menu: the models Ollama has, or an offer to fetch Ollama.
+    pub(crate) fn ollama_model_picker(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        kind: ModelKind,
+    ) {
+        if self.ai.probe == Probe::Unknown {
+            self.ai_probe(ctx);
+        }
+        let label = match kind {
+            ModelKind::Text => self.i18n.t("settings.ai_model").to_owned(),
+            ModelKind::Vision => self.i18n.t("settings.ocr_model").to_owned(),
+        };
+        let empty = match kind {
+            ModelKind::Text => self.i18n.t("ai.no_model").to_owned(),
+            ModelKind::Vision => self.i18n.t("settings.no_vision").to_owned(),
+        };
+        let current = match kind {
+            ModelKind::Text => self.settings.ai_model.clone(),
+            ModelKind::Vision => self.settings.ocr_model.clone(),
+        };
+        match self.ai.probe.clone() {
+            Probe::Unknown | Probe::Checking => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(self.i18n.t("ai.checking"));
+                });
+            }
+            Probe::Absent(error) => self.ollama_absent(ui, ctx, &error),
+            Probe::Ready(models) => {
+                ui.label(label);
+                self.model_menu(ui, ctx, kind, &current, &models);
+                if models.is_empty()
+                    || (kind == ModelKind::Text && !models.iter().any(|name| ai::text_model(name)))
+                    || (kind == ModelKind::Vision
+                        && !models.iter().any(|name| ai::vision_model(name)))
+                {
+                    ui.label(RichText::new(empty).weak().size(12.0));
+                }
+            }
+        }
+        self.ollama_download_bar(ui);
+    }
+
+    /// Models already there, then ones that can be fetched.
+    fn model_menu(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        kind: ModelKind,
+        current: &str,
+        models: &[String],
+    ) {
+        let fits = |name: &str| match kind {
+            ModelKind::Text => ai::text_model(name),
+            ModelKind::Vision => ai::vision_model(name),
+        };
+        let mut offers: Vec<(String, bool, Option<f32>)> = models
+            .iter()
+            .filter(|name| fits(name))
+            .map(|name| (name.clone(), true, None))
+            .collect();
+        if offers.is_empty() {
+            offers.extend(models.iter().map(|name| (name.clone(), true, None)));
+        }
+        if kind == ModelKind::Text {
+            for (name, size) in ai::RECOMMENDED {
+                if !models.iter().any(|have| have == name) {
+                    offers.push(((*name).to_owned(), false, Some(*size)));
+                }
+            }
+        } else if !current.is_empty() && !models.iter().any(|have| have == current) {
+            offers.push((current.to_owned(), false, None));
+        }
+        let download = self.i18n.t("spell.download").to_owned();
+        let auto = self.i18n.t("settings.model_auto").to_owned();
+        let again = self.i18n.t("ai.check_again").to_owned();
+        let shown = if current.is_empty() && kind == ModelKind::Text {
+            auto.clone()
+        } else if offers
+            .iter()
+            .any(|(name, installed, _)| name == current && *installed)
+        {
+            current.to_owned()
+        } else if current.is_empty() {
+            self.i18n.t("settings.model_choose").to_owned()
+        } else {
+            format!("{current} — {download}")
+        };
+        let mut picked = None;
+        let mut fetch = None;
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt(("ollama-model", kind == ModelKind::Vision))
+                .selected_text(shown)
+                .width(280.0)
+                .show_ui(ui, |ui| {
+                    if kind == ModelKind::Text
+                        && ui
+                            .selectable_label(current.is_empty(), auto.clone())
+                            .clicked()
+                    {
+                        picked = Some(String::new());
+                    }
+                    for (name, installed, size) in &offers {
+                        let text = if *installed {
+                            name.clone()
+                        } else if let Some(size) = size {
+                            format!("{name} — {download} (≈{size:.1} GB)")
+                        } else {
+                            format!("{name} — {download}")
+                        };
+                        if ui
+                            .selectable_label(*installed && name == current, text)
+                            .clicked()
+                        {
+                            picked = Some(name.clone());
+                            if !installed {
+                                fetch = Some(name.clone());
+                            }
+                        }
+                    }
+                });
+            if ui.button(again).clicked() {
+                self.ollama_recheck(ctx);
+            }
+        });
+        if let Some(name) = picked {
+            match kind {
+                ModelKind::Text => name.clone_into(&mut self.settings.ai_model),
+                ModelKind::Vision => name.clone_into(&mut self.settings.ocr_model),
+            }
+        }
+        if let Some(name) = fetch {
+            if self.ai.download.is_none() {
+                self.ai_pull(ctx, &name);
+            }
+        }
+    }
+
+    /// Ollama did not answer: fetch it, or open its download page.
+    fn ollama_absent(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, error: &str) {
+        let endpoint = self.settings.ocr_endpoint.clone();
+        ui.label(self.i18n.t("ai.no_ollama"));
+        ui.label(
+            RichText::new(self.i18n.tf(
+                "ai.no_answer",
+                &[("endpoint", &endpoint), ("error", &error)],
+            ))
+            .weak()
+            .size(12.0),
+        );
+        if cfg!(windows) {
+            ui.label(self.i18n.t("ai.install_windows"));
+        } else if cfg!(target_os = "macos") {
+            ui.label(self.i18n.t("ai.install_mac"));
+        } else {
+            ui.label(self.i18n.t("ai.install_linux"));
+            ui.horizontal(|ui| {
+                ui.code(ai::OLLAMA_LINUX);
+                if ui.small_button(self.i18n.t("cmd.copy")).clicked() {
+                    ui.ctx().copy_text(ai::OLLAMA_LINUX.to_owned());
+                }
+            });
+        }
+        ui.label(
+            RichText::new(self.i18n.t("ai.start_hint"))
+                .weak()
+                .size(12.0),
+        );
+        let run = self.i18n.t("ai.run_installer").to_owned();
+        let get = self.i18n.t("ai.get_ollama").to_owned();
+        let open = self.i18n.t("ai.open_page").to_owned();
+        let again = self.i18n.t("ai.check_again").to_owned();
+        let busy = self.ai.download.is_some();
+        let installer = self.ai.installer.clone();
+        ui.horizontal(|ui| {
+            if let Some(installer) = installer {
+                if ui.button(run).clicked() {
+                    self.launch_installer(ctx, &installer);
+                }
+            } else if cfg!(windows) {
+                if ui.add_enabled(!busy, egui::Button::new(get)).clicked() {
+                    self.ai_fetch_installer(ctx);
+                }
+            } else if ui.button(open).clicked() {
+                ui.ctx().open_url(egui::OpenUrl::new_tab(ai::OLLAMA_PAGE));
+            }
+            if ui.button(again).clicked() {
+                self.ollama_recheck(ctx);
+            }
+        });
+    }
+
+    fn launch_installer(&mut self, ctx: &egui::Context, installer: &std::path::Path) {
+        let now = ctx.input(|input| input.time);
+        match std::process::Command::new(installer).spawn() {
+            Ok(_) => {
+                let text = self.t("ai.installer_started").to_owned();
+                self.say(text, false, now);
+            }
+            Err(error) => self.say(error.to_string(), true, now),
+        }
+        self.ai.installer = None;
+    }
+
+    fn ollama_download_bar(&self, ui: &mut egui::Ui) {
+        let Some(download) = &self.ai.download else {
+            return;
+        };
+        ui.add_space(6.0);
+        #[allow(clippy::cast_precision_loss)]
+        let fraction = if download.total > 0 {
+            download.done as f32 / download.total as f32
+        } else {
+            0.0
+        };
+        #[allow(clippy::cast_precision_loss)]
+        let text = format!(
+            "{} {} — {:.0} / {:.0} MB",
+            download.what,
+            download.status,
+            download.done as f64 / 1e6,
+            download.total as f64 / 1e6
+        );
+        ui.add(
+            egui::ProgressBar::new(fraction)
+                .text(text)
+                .desired_width(440.0),
+        );
+    }
+
     /// Asks Ollama what it has, off the interface thread.
     pub(crate) fn ai_probe(&mut self, ctx: &egui::Context) {
         if self.ai.probe == Probe::Checking {
@@ -175,6 +434,7 @@ impl App {
         self.ai.probe = Probe::Checking;
         let (tx, rx) = std::sync::mpsc::channel();
         let endpoint = self.settings.ocr_endpoint.clone();
+        self.ai.probed_endpoint.clone_from(&endpoint);
         let ctx = ctx.clone();
         std::thread::spawn(move || {
             let _ = tx.send(ai::models(&endpoint));
@@ -873,9 +1133,12 @@ impl App {
                 ui.label(t("ai.preparing"));
             });
         }
-        if self.ai.job.as_ref().is_some_and(|job| {
-            Some(job.tab) == here && matches!(job.action, AiAction::Cleanup(_))
-        }) {
+        if self
+            .ai
+            .job
+            .as_ref()
+            .is_some_and(|job| Some(job.tab) == here && matches!(job.action, AiAction::Cleanup(_)))
+        {
             let job = self.ai.job.as_mut().unwrap();
             let tab_id = job.tab;
             if let Some(plan) = cleanup_ui(ui, job, &self.i18n) {
@@ -1043,7 +1306,11 @@ impl App {
                             })
                             .response
                             .interact(egui::Sense::click());
-                        if response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(t("ai.go_to")).clicked() {
+                        if response
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            .on_hover_text(t("ai.go_to"))
+                            .clicked()
+                        {
                             requests.push(Request::GoTo(at.clone()));
                         }
                         ui.add_space(4.0);
