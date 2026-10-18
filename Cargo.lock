@@ -792,6 +792,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "chem-editor"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "png",
+ "quick-xml",
+ "resvg",
+ "rfd",
+ "serde",
+ "serde_json",
+ "strict-ooxml",
+ "strict-ooxml-core",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"

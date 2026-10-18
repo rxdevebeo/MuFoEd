@@ -1,0 +1,43 @@
+[package]
+name = "chem-editor"
+description = "Native egui visual editor for chemical structures, formulas and reactions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["chemistry", "editor", "egui", "smiles", "ooxml"]
+categories = ["gui", "science"]
+
+[features]
+default = []
+# Standalone demo window plus JSON/SVG/DOCX file dialogs and screenshot mode.
+demo = ["dep:eframe", "dep:rfd", "dep:png", "docx", "raster"]
+# Adapter that writes structures and reactions through the StrictLib writer.
+docx = ["dep:strict-ooxml", "dep:strict-ooxml-core"]
+# PNG preview by rasterizing the SVG export.
+raster = ["dep:resvg"]
+
+[dependencies]
+egui = "0.35"
+serde.workspace = true
+serde_json.workspace = true
+eframe = { version = "0.35", optional = true }
+rfd = { version = "0.17", optional = true }
+png = { workspace = true, optional = true }
+strict-ooxml = { path = "../strict-ooxml", optional = true, default-features = false, features = ["rtf", "write"] }
+strict-ooxml-core = { path = "../strict-ooxml-core", optional = true }
+resvg = { workspace = true, optional = true }
+
+[dev-dependencies]
+quick-xml.workspace = true
+
+[[bin]]
+name = "chem-editor-demo"
+path = "src/main.rs"
+required-features = ["demo"]
+
+[lints]
+workspace = true
