@@ -432,16 +432,13 @@ fn style_widgets(ui: &mut egui::Ui, palette: Palette) {
     let style = ui.style_mut();
     style.spacing.interact_size.y = ROW;
     style.spacing.button_padding = vec2(6.0, 2.0);
-    let widgets = &mut style.visuals.widgets;
-    widgets.inactive.weak_bg_fill = palette.button;
-    widgets.inactive.bg_fill = palette.button;
-    widgets.inactive.bg_stroke = Stroke::new(1.0, palette.button_border);
-    widgets.inactive.corner_radius = egui::CornerRadius::same(RADIUS);
-    widgets.hovered.weak_bg_fill = palette.hover;
-    widgets.hovered.bg_stroke = Stroke::new(1.0, theme::ACCENT.gamma_multiply(0.7));
-    widgets.hovered.corner_radius = egui::CornerRadius::same(RADIUS);
-    widgets.active.corner_radius = egui::CornerRadius::same(RADIUS);
-    widgets.open.corner_radius = egui::CornerRadius::same(RADIUS);
+    crate::theme::style_buttons(ui);
+    let widgets = &mut ui.visuals_mut().widgets;
+    let radius = egui::CornerRadius::same(RADIUS);
+    widgets.inactive.corner_radius = radius;
+    widgets.hovered.corner_radius = radius;
+    widgets.active.corner_radius = radius;
+    widgets.open.corner_radius = radius;
     widgets.noninteractive.bg_stroke = Stroke::new(1.0, palette.button_border);
 }
 
@@ -2779,7 +2776,17 @@ fn review(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
                 for language in crate::spell::LANGUAGES {
                     let name = s.t(language.name_key);
                     if crate::spell::installed(language.code) {
-                        ui.add_enabled(false, egui::Button::new(format!("✓ {name}")));
+                        let response =
+                            ui.add_enabled(false, egui::Button::new(format!("   {name}")));
+                        icons::paint_mark(
+                            ui.painter(),
+                            egui::Rect::from_center_size(
+                                response.rect.left_center() + vec2(14.0, 0.0),
+                                egui::vec2(14.0, 14.0),
+                            ),
+                            '\u{2713}',
+                            ui.visuals().text_color(),
+                        );
                     } else if ui
                         .button(format!(
                             "{name} — {} ({:.1} MB)",

@@ -161,6 +161,44 @@ fn arrow_head(painter: &Painter, tip: Pos2, direction: egui::Vec2, size: f32, co
     ));
 }
 
+/// A check or a cross. None of the interface fonts contain U+2713 or U+2717,
+/// so buttons that show those marks paint them here.
+pub(crate) fn paint_mark(painter: &Painter, rect: Rect, symbol: char, color: Color32) {
+    let center = rect.center();
+    let size = rect.height().min(rect.width()) * 0.28;
+    let stroke = Stroke::new((size * 0.22).max(1.4), color);
+    match symbol {
+        '\u{2713}' => {
+            painter.add(Shape::line(
+                vec![
+                    center + vec2(-size, size * 0.05),
+                    center + vec2(-size * 0.15, size * 0.75),
+                    center + vec2(size, -size * 0.85),
+                ],
+                stroke,
+            ));
+        }
+        '\u{2717}' => {
+            let arm = size * 0.75;
+            painter.line_segment(
+                [
+                    center + vec2(-arm, -arm),
+                    center + vec2(arm, arm),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    center + vec2(arm, -arm),
+                    center + vec2(-arm, arm),
+                ],
+                stroke,
+            );
+        }
+        _ => {}
+    }
+}
+
 /// Paints `icon` in `rect` with `color`; `accent` marks the parts Word draws
 /// in colour (the blue of a save disk, the red of a PDF).
 #[allow(clippy::too_many_lines)]

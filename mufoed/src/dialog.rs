@@ -20,14 +20,8 @@ pub(crate) fn title(ui: &mut egui::Ui, text: &str) {
     spacing.item_spacing = vec2(10.0, 10.0);
     spacing.button_padding = vec2(16.0, 5.0);
     spacing.interact_size = vec2(72.0, 26.0);
-    // Fields and boxes with an edge, so they stand out from the dialog.
-    let visuals = ui.visuals_mut();
-    let edge = if visuals.dark_mode {
-        Color32::from_gray(90)
-    } else {
-        Color32::from_gray(190)
-    };
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, edge);
+    // Fields and buttons with an edge, so a control reads as usable at rest.
+    crate::theme::style_buttons(ui);
     if ui.min_rect().width() < MIN_WIDTH {
         ui.set_min_width(MIN_WIDTH);
     }
@@ -81,6 +75,7 @@ pub(crate) fn primary_enabled(ui: &mut egui::Ui, enabled: bool, text: &str) -> e
         enabled,
         egui::Button::new(RichText::new(text).color(Color32::WHITE))
             .fill(fill)
+            .stroke(Stroke::new(1.0, fill))
             .min_size(vec2(88.0, 0.0)),
     )
 }

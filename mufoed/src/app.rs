@@ -2475,6 +2475,7 @@ impl App {
     }
 
     fn navigation_ui(&mut self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+        theme::style_buttons(ui);
         let Some(index) = self.active else {
             return;
         };
@@ -2544,6 +2545,7 @@ impl App {
     /// The comments pane: a card per comment, in the order of the text; the
     /// one being edited has a text box.
     fn comments_ui(&mut self, ui: &mut egui::Ui, palette: Palette) {
+        theme::style_buttons(ui);
         let close = self.t("button.close").to_owned();
         let title = self.t("comments.title").to_owned();
         let empty = self.t("comments.none").to_owned();
@@ -2635,7 +2637,7 @@ impl App {
                                 }
                                 ui.add_space(4.0);
                                 ui.horizontal(|ui| {
-                                    if ui.button(&done_label).clicked()
+                                    if crate::dialog::primary(ui, &done_label).clicked()
                                         || (field.has_focus()
                                             && ui.input(|input| input.key_pressed(Key::Escape)))
                                     {
@@ -2686,6 +2688,7 @@ impl App {
     }
 
     fn report_ui(&mut self, ui: &mut egui::Ui) {
+        theme::style_buttons(ui);
         ui.horizontal(|ui| {
             icons::icon_widget(ui, Icon::Report, 16.0, theme::ACCENT);
             ui.label(
@@ -3015,6 +3018,7 @@ impl App {
             .resizable(false)
             .default_pos(area.right_top() + vec2(-380.0, 12.0))
             .show(ctx, |ui| {
+                theme::style_buttons(ui);
                 let query = |find: &FindState| FindQuery {
                     text: find.text.clone(),
                     case_sensitive: find.case_sensitive,
@@ -3064,7 +3068,7 @@ impl App {
                                 .hint_text(self.i18n.t("find.with"))
                                 .desired_width(200.0),
                         );
-                        if ui.button(self.i18n.t("find.replace")).clicked() {
+                        if crate::dialog::primary(ui, self.i18n.t("find.replace")).clicked() {
                             actions.push(Action::Doc(Request::Replace {
                                 query: query(&self.find),
                                 with: self.find.with.clone(),
@@ -3566,12 +3570,12 @@ impl App {
                     ui.add_space(10.0);
                     crate::dialog::buttons(ui, |ui| {
                         let known = names.iter().any(|n| n.eq_ignore_ascii_case(name.trim()));
-                        if ui
-                            .add_enabled(
-                                crate::worker::valid_bookmark_name(name.trim()),
-                                egui::Button::new(t("bookmark.add")),
-                            )
-                            .clicked()
+                        if crate::dialog::primary_enabled(
+                            ui,
+                            crate::worker::valid_bookmark_name(name.trim()),
+                            &t("bookmark.add"),
+                        )
+                        .clicked()
                         {
                             request = Some(ReferenceCommand::AddBookmark(name.trim().to_owned()));
                         }
@@ -3843,15 +3847,27 @@ impl App {
                         .spacing(vec2(2.0, 2.0))
                         .show(ui, |ui| {
                             for (index, symbol) in SYMBOLS.chars().enumerate() {
-                                if ui
-                                    .add(
-                                        egui::Button::new(
-                                            RichText::new(symbol.to_string()).size(18.0),
-                                        )
-                                        .min_size(vec2(32.0, 32.0)),
+                                let drawn = matches!(symbol, '\u{2713}' | '\u{2717}');
+                                let response = ui.add(
+                                    egui::Button::new(
+                                        RichText::new(if drawn {
+                                            String::new()
+                                        } else {
+                                            symbol.to_string()
+                                        })
+                                        .size(18.0),
                                     )
-                                    .clicked()
-                                {
+                                    .min_size(vec2(32.0, 32.0)),
+                                );
+                                if drawn {
+                                    icons::paint_mark(
+                                        ui.painter(),
+                                        response.rect.shrink(6.0),
+                                        symbol,
+                                        ui.visuals().text_color(),
+                                    );
+                                }
+                                if response.clicked() {
                                     picked = Some(symbol);
                                 }
                                 if index % 12 == 11 {
@@ -3860,7 +3876,7 @@ impl App {
                             }
                         });
                     crate::dialog::buttons(ui, |ui| {
-                        if crate::dialog::button(ui, &t("button.close")).clicked() {
+                        if crate::dialog::primary(ui, &t("button.close")).clicked() {
                             ui.close();
                         }
                     });
@@ -3892,7 +3908,7 @@ impl App {
                         ui.end_row();
                     });
                     crate::dialog::buttons(ui, |ui| {
-                        if crate::dialog::button(ui, &t("button.close")).clicked() {
+                        if crate::dialog::primary(ui, &t("button.close")).clicked() {
                             ui.close();
                         }
                     });
@@ -3989,7 +4005,7 @@ impl App {
                     ui.add_space(6.0);
                     ui.label(RichText::new(t("about.features")).size(12.0));
                     crate::dialog::buttons(ui, |ui| {
-                        if crate::dialog::button(ui, &t("button.close")).clicked() {
+                        if crate::dialog::primary(ui, &t("button.close")).clicked() {
                             ui.close();
                         }
                     });

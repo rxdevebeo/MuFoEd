@@ -770,13 +770,18 @@ impl App {
                         }
                     }
                     Probe::Ready(_) => {
-                        if crate::dialog::button(ui, &t("ai.check_again")).clicked() {
+                        if crate::dialog::primary(ui, &t("ai.check_again")).clicked() {
                             probe = true;
                         }
                     }
                     _ => {}
                 }
-                if crate::dialog::button(ui, &t("button.close")).clicked() {
+                let close_button = if matches!(state.probe, Probe::Absent(_) | Probe::Ready(_)) {
+                    crate::dialog::button(ui, &t("button.close"))
+                } else {
+                    crate::dialog::primary(ui, &t("button.close"))
+                };
+                if close_button.clicked() {
                     close = true;
                 }
             });
@@ -821,6 +826,7 @@ impl App {
 
     /// The pane: the job's progress and its results.
     pub(crate) fn ai_pane(&mut self, ui: &mut egui::Ui, palette: Palette) {
+        crate::theme::style_buttons(ui);
         let t = |key: &str| self.i18n.t(key).to_owned();
         let mut closing = false;
         ui.horizontal(|ui| {
@@ -943,14 +949,12 @@ impl App {
                     ui.add_space(6.0);
                     ui.horizontal_wrapped(|ui| {
                         let selection = job.source.selection.clone();
-                        if let (Some((start, end, old)), true) = (
-                            selection,
-                            matches!(
-                                job.action,
-                                AiAction::TranslateSelection | AiAction::Rewrite(_)
-                            ),
-                        ) {
-                            if ui.button(t("ai.replace_selection")).clicked() {
+                        let replacing = matches!(
+                            job.action,
+                            AiAction::TranslateSelection | AiAction::Rewrite(_)
+                        );
+                        if let (Some((start, end, old)), true) = (selection, replacing) {
+                            if crate::dialog::primary(ui, &t("ai.replace_selection")).clicked() {
                                 requests.push(Request::ReplaceRange {
                                     start,
                                     end,
@@ -960,11 +964,16 @@ impl App {
                                 applied = true;
                             }
                         }
-                        if ui.button(t("ai.insert_at_caret")).clicked() {
+                        let insert = if replacing {
+                            crate::dialog::button(ui, &t("ai.insert_at_caret"))
+                        } else {
+                            crate::dialog::primary(ui, &t("ai.insert_at_caret"))
+                        };
+                        if insert.clicked() {
                             requests.push(Request::Paste(format!("{text}\n")));
                             applied = true;
                         }
-                        if ui.button(t("cmd.copy")).clicked() {
+                        if crate::dialog::button(ui, &t("cmd.copy")).clicked() {
                             copy = Some(text.clone());
                         }
                     });
@@ -1097,12 +1106,12 @@ fn cleanup_ui(
     }
     if !job.applied {
         let selected = plan.changes.iter().any(|c| c.selected);
-        apply = ui
-            .add_enabled(
-                selected && !job.running && !job.cleanup_pending,
-                egui::Button::new(i18n.t("cleanup.apply")),
-            )
-            .clicked();
+        apply = crate::dialog::primary_enabled(
+            ui,
+            selected && !job.running && !job.cleanup_pending,
+            i18n.t("cleanup.apply"),
+        )
+        .clicked();
     }
     egui::ScrollArea::vertical().show(ui, |ui| {
         for change in &mut plan.changes {

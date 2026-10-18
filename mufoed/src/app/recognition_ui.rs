@@ -58,7 +58,7 @@ impl RecognitionDialog {
                         .desired_rows(7),
                 );
             });
-            if ui.button(i18n.t("recognition.copy")).clicked() {
+            if crate::dialog::button(ui, i18n.t("recognition.copy")).clicked() {
                 ctx.copy_text(self.plan.mathml.clone());
             }
             crate::dialog::buttons(ui, |ui| {

@@ -919,6 +919,7 @@ pub(crate) fn show(
 /// The page's context menu: what can replace a misspelt word under the
 /// pointer, then cut and copy.
 fn context_menu(ui: &mut egui::Ui, tab: &mut DocTab, i18n: &crate::i18n::I18n) {
+    crate::theme::style_buttons(ui);
     use crate::app::Action;
     use crate::worker::{ContextObject, TableCommand, WrapStyle};
     // The first frame may contain only a spinner while the worker hit-tests.

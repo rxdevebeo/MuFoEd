@@ -33,6 +33,7 @@ impl SchemeDialog {
         let mut apply = false;
         let mut close = false;
         egui::Modal::new(egui::Id::new("scheme-editor")).show(ctx, |ui| {
+            crate::theme::style_buttons(ui);
             ui.set_width(width);
             ui.spacing_mut().item_spacing = egui::vec2(6.0, 5.0);
             ui.heading(i18n.t("scheme.title"));
@@ -111,7 +112,7 @@ impl SchemeDialog {
                         Err(e) => self.error = Some(e),
                     }
                 }
-                if ui.button(i18n.t("button.cancel")).clicked() {
+                if crate::dialog::button(ui, i18n.t("button.cancel")).clicked() {
                     close = true;
                 }
             });

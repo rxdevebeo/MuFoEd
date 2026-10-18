@@ -78,8 +78,8 @@ pub(crate) const BOLD: &str = "bold";
 pub(crate) const ITALIC: &str = "italic";
 
 /// Interface fonts: Selawik (metric-compatible with Segoe UI, the face Word's
-/// interface uses) from the renderer's own bundle, with egui's defaults behind
-/// it for the symbols it lacks.
+/// interface uses) from the renderer's own bundle, with egui's defaults and
+/// then Arimo behind it for the symbols Selawik lacks.
 pub(crate) fn install_fonts(ctx: &egui::Context) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let mut add = |name: &str, family: &str, bold: bool, italic: bool| -> bool {
@@ -106,12 +106,22 @@ pub(crate) fn install_fonts(ctx: &egui::Context) -> FontDefinitions {
         .cloned()
         .unwrap_or_default();
     families.extend(defaults.iter().cloned());
+    // Arimo carries the geometric marks Selawik and the egui faces lack
+    // (the find arrows, the symbol-dialog arrows). It stays last, so it
+    // only fills those holes.
+    let symbols = add("ui-symbols", "Arimo", false, false);
+    if symbols {
+        families.push("ui-symbols".to_owned());
+    }
     fonts.families.insert(FontFamily::Proportional, families);
     let mut bold_family = Vec::new();
     if bold {
         bold_family.push("ui-bold".to_owned());
     }
     bold_family.extend(defaults.iter().cloned());
+    if symbols {
+        bold_family.push("ui-symbols".to_owned());
+    }
     fonts
         .families
         .insert(FontFamily::Name(BOLD.into()), bold_family);
@@ -120,11 +130,37 @@ pub(crate) fn install_fonts(ctx: &egui::Context) -> FontDefinitions {
         italic_family.push("ui-italic".to_owned());
     }
     italic_family.extend(defaults.iter().cloned());
+    if symbols {
+        italic_family.push("ui-symbols".to_owned());
+    }
     fonts
         .families
         .insert(FontFamily::Name(ITALIC.into()), italic_family);
     ctx.set_fonts(fonts.clone());
     fonts
+}
+
+/// A button at rest uses a face and an outline, the same way a hovered one does.
+///
+/// egui's inactive button has no stroke, so in a dialog or a panel it reads as
+/// disabled until the pointer reaches it.
+pub(crate) fn style_buttons(ui: &mut egui::Ui) {
+    let palette = palette(ui.visuals().dark_mode);
+    let widgets = &mut ui.visuals_mut().widgets;
+    let radius = egui::CornerRadius::same(4);
+    widgets.inactive.weak_bg_fill = palette.button;
+    widgets.inactive.bg_fill = palette.button;
+    widgets.inactive.bg_stroke = egui::Stroke::new(1.0, palette.button_border);
+    widgets.inactive.corner_radius = radius;
+    widgets.hovered.weak_bg_fill = palette.hover;
+    widgets.hovered.bg_fill = palette.hover;
+    widgets.hovered.bg_stroke = egui::Stroke::new(1.0, ACCENT.gamma_multiply(0.7));
+    widgets.hovered.corner_radius = radius;
+    widgets.active.weak_bg_fill = palette.pressed;
+    widgets.active.bg_fill = palette.pressed;
+    widgets.active.bg_stroke = egui::Stroke::new(1.0, ACCENT);
+    widgets.active.corner_radius = radius;
+    widgets.open.corner_radius = radius;
 }
 
 /// egui visuals tuned toward the office look.
