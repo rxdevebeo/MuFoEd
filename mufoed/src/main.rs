@@ -30,6 +30,7 @@
 mod ai;
 mod app;
 mod canvas;
+mod chat;
 mod cleanup;
 mod clipboard;
 mod dialog;

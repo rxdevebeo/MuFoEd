@@ -188,6 +188,27 @@ pub(crate) fn paint_mark(painter: &Painter, rect: Rect, symbol: char, color: Col
     }
 }
 
+/// A page with a short format mark, in the same shape as the PDF icon.
+pub(crate) fn paint_document(
+    painter: &Painter,
+    rect: Rect,
+    mark: &str,
+    fill: Color32,
+    color: Color32,
+) {
+    let r = rect.shrink(rect.width() * 0.08);
+    let paper = if color.r() > 128 {
+        Color32::from_gray(40)
+    } else {
+        Color32::WHITE
+    };
+    let page_rect = Rect::from_center_size(r.center(), vec2(r.width() * 0.68, r.height() * 0.9));
+    page(painter, page_rect, color, paper);
+    if !mark.is_empty() {
+        badge(painter, page_rect, mark, fill);
+    }
+}
+
 /// Paints `icon` in `rect` with `color`; `accent` marks the parts Word draws
 /// in colour (the blue of a save disk, the red of a PDF).
 #[allow(clippy::too_many_lines)]

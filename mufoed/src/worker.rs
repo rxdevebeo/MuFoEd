@@ -45,6 +45,7 @@ use strict_ooxml_core::error::SourceLocation;
 
 use crate::formats::{self, Kind, Source};
 use crate::nav;
+mod chat_apply;
 pub(crate) mod chem;
 pub(crate) mod navigation;
 mod rich_paste;
@@ -200,6 +201,18 @@ pub(crate) enum Request {
     /// Paragraph styles by kind, the styles made when the document lacks
     /// them.
     ApplyKinds(Vec<(Address, crate::ai::Kind)>),
+    /// The document as the chat's tools read it. The caret stays put.
+    ChatSnapshot {
+        /// Comes back with the picture.
+        job: u64,
+    },
+    /// Every occurrence of `query`. The caret stays put and the text is unchanged.
+    ChatFind {
+        /// The text to find.
+        query: String,
+    },
+    /// One chat proposal, applied as a single undo step.
+    ApplyChat(Box<crate::chat::Batch>),
     /// A misspelt word replaced, if it is still there.
     ReplaceWord {
         start: Logical,
@@ -1122,6 +1135,20 @@ pub(crate) enum Reply {
         job: u64,
         source: Box<AiSource>,
     },
+    /// The document as the chat's tools read it.
+    ChatSnapshot {
+        /// The id the request carried.
+        job: u64,
+        /// Paragraphs, formulas, tables and the caret.
+        view: Box<crate::chat::View>,
+    },
+    /// Where `query` occurs. The caret was not moved.
+    ChatFind {
+        /// One entry per occurrence.
+        hits: Vec<crate::chat::Hit>,
+        /// Caret block index and scalar offset, as they were.
+        caret: Option<(usize, usize)>,
+    },
     /// The selected chart's data, or none (a new chart).
     Chart(Option<Box<strict_ooxml::model::chart::ChartData>>),
     /// The formula beside the caret (where it is and what it says), or none.
@@ -1776,6 +1803,8 @@ impl<'a, 's> Worker<'a, 's> {
                 | Request::Speller(_)
                 | Request::Respell
                 | Request::ContextClick { .. }
+                | Request::ChatSnapshot { .. }
+                | Request::ChatFind { .. }
         );
         if !keeps_object {
             self.object = None;
@@ -1797,6 +1826,8 @@ impl<'a, 's> Worker<'a, 's> {
                 | Request::Speller(_)
                 | Request::Respell
                 | Request::ContextClick { .. }
+                | Request::ChatSnapshot { .. }
+                | Request::ChatFind { .. }
         ) {
             self.formula = None;
         }
@@ -1944,10 +1975,9 @@ impl<'a, 's> Worker<'a, 's> {
                     .entries
                     .iter()
                     .map(|entry| {
-                        (
-                            Address::body(entry.block),
-                            crate::cleanup::text(&entry.paragraph),
-                        )
+                        let text = crate::ai::expose(&entry.paragraph)
+                            .unwrap_or_else(|| crate::cleanup::text(&entry.paragraph));
+                        (Address::body(entry.block), text)
                     })
                     .collect();
                 self.send(Reply::AiSource {
@@ -2011,6 +2041,16 @@ impl<'a, 's> Worker<'a, 's> {
             }
             Request::Type(text) => self.type_text(&text),
             Request::SetParagraphText { at, old, new } => {
+                if let Some(paragraph) = self.paragraph(&at).cloned() {
+                    if crate::ai::expose(&paragraph).as_deref() == Some(old.as_str())
+                        && crate::ai::protected(&old)
+                    {
+                        let Some(inlines) = crate::ai::restore(&paragraph, &new) else {
+                            return Outcome::Quiet;
+                        };
+                        return self.replace_paragraph_inlines(at, inlines);
+                    }
+                }
                 let text = self.text_of(&at);
                 if text != old || text.contains(nav::OBJECT) {
                     return Outcome::Quiet;
@@ -2043,6 +2083,15 @@ impl<'a, 's> Worker<'a, 's> {
                 self.paste(&new)
             }
             Request::ApplyKinds(kinds) => self.apply_kinds(&kinds),
+            Request::ChatSnapshot { job } => {
+                self.chat_snapshot(job);
+                Outcome::Quiet
+            }
+            Request::ChatFind { query } => {
+                self.chat_find(query);
+                Outcome::Quiet
+            }
+            Request::ApplyChat(batch) => self.apply_chat(&batch),
             Request::PutChart(data) => self.put_chart(*data),
             Request::PutFormula {
                 expression,
@@ -3313,6 +3362,46 @@ impl<'a, 's> Worker<'a, 's> {
         }
     }
 
+    /// Puts `inlines` in place of the paragraph's, keeping the paragraph.
+    fn replace_paragraph_inlines(
+        &mut self,
+        at: Address,
+        inlines: Vec<strict_ooxml::model::Inline>,
+    ) -> Outcome {
+        let Some(paragraph) = self.paragraph(&at) else {
+            return Outcome::Quiet;
+        };
+        let mut commands = Vec::new();
+        for index in (0..paragraph.inlines.len()).rev() {
+            commands.push(Edit::DeleteInline {
+                at: at.clone(),
+                index,
+            });
+        }
+        for (index, inline) in inlines.into_iter().enumerate() {
+            commands.push(Edit::InsertInline {
+                at: at.clone(),
+                index,
+                inline: Box::new(inline),
+            });
+        }
+        if commands.is_empty() || self.transact(&commands) {
+            self.story = Story::Body;
+            self.cells = None;
+            self.anchor = None;
+            self.object = None;
+            self.formula = None;
+            let offset = self.text_of(&at).chars().count();
+            self.caret = Some(Logical {
+                paragraph: at,
+                offset,
+            });
+            Outcome::Edited
+        } else {
+            Outcome::Quiet
+        }
+    }
+
     fn type_text(&mut self, text: &str) -> Outcome {
         let clean: String = text.chars().filter(|c| !c.is_control()).collect();
         if clean.is_empty() {
@@ -3836,7 +3925,10 @@ impl<'a, 's> Worker<'a, 's> {
         let paragraphs = addresses
             .into_iter()
             .map(|at| {
-                let text = self.text_of(&at);
+                let text = self
+                    .paragraph(&at)
+                    .and_then(crate::ai::expose)
+                    .unwrap_or_else(|| self.text_of(&at));
                 (at, text)
             })
             .collect();
@@ -3850,6 +3942,18 @@ impl<'a, 's> Worker<'a, 's> {
     /// Sets each paragraph's style from its kind, making the styles a
     /// document lacks from its default paragraph style.
     fn apply_kinds(&mut self, kinds: &[(Address, crate::ai::Kind)]) -> Outcome {
+        let (definitions, commands) = self.kind_plan(kinds);
+        if commands.is_empty() {
+            return Outcome::Quiet;
+        }
+        self.define_and_transact(&definitions, &commands)
+    }
+
+    /// Style definitions and paragraph commands for `kinds`, without applying them.
+    fn kind_plan(
+        &self,
+        kinds: &[(Address, crate::ai::Kind)],
+    ) -> (Vec<strict_ooxml::edit::Definition>, Vec<Edit>) {
         use crate::ai::Kind;
         use strict_ooxml::model::values::StyleType;
         let document = self.session.document();
@@ -3966,10 +4070,7 @@ impl<'a, 's> Worker<'a, 's> {
                 properties: Box::new(properties),
             });
         }
-        if commands.is_empty() {
-            return Outcome::Quiet;
-        }
-        self.define_and_transact(&definitions, &commands)
+        (definitions, commands)
     }
 
     // ----- spelling -----------------------------------------------------
@@ -5480,37 +5581,37 @@ impl<'a, 's> Worker<'a, 's> {
         for piece in self.pieces(&caret.paragraph) {
             let end = before + piece.len();
             if piece.text.starts_with(nav::OBJECT) && end == caret.offset {
-            let object = DrawingPosition {
-                paragraph: caret.paragraph.clone(),
-                inline: piece.inline.clone(),
-                content: (piece.kind == nav::PieceKind::RunAtom).then_some(piece.content),
-            };
-            let rects = map
-                .drawing_rects(self.session.revision(), &object)
-                .unwrap_or_default();
-            // A grouped drawing has one rect per shape; the caret sits after the
-            // whole drawing, so merge them into one frame per page first.
-            let mut merged: Vec<VisualRect> = Vec::new();
-            for rect in rects {
-                if let Some(old) = merged.iter_mut().find(|r| r.page == rect.page) {
-                    let right = (old.x + old.width).max(rect.x + rect.width);
-                    let bottom = (old.y + old.height).max(rect.y + rect.height);
-                    old.x = old.x.min(rect.x);
-                    old.y = old.y.min(rect.y);
-                    old.width = right - old.x;
-                    old.height = bottom - old.y;
-                } else {
-                    merged.push(rect);
+                let object = DrawingPosition {
+                    paragraph: caret.paragraph.clone(),
+                    inline: piece.inline.clone(),
+                    content: (piece.kind == nav::PieceKind::RunAtom).then_some(piece.content),
+                };
+                let rects = map
+                    .drawing_rects(self.session.revision(), &object)
+                    .unwrap_or_default();
+                // A grouped drawing has one rect per shape; the caret sits after the
+                // whole drawing, so merge them into one frame per page first.
+                let mut merged: Vec<VisualRect> = Vec::new();
+                for rect in rects {
+                    if let Some(old) = merged.iter_mut().find(|r| r.page == rect.page) {
+                        let right = (old.x + old.width).max(rect.x + rect.width);
+                        let bottom = (old.y + old.height).max(rect.y + rect.height);
+                        old.x = old.x.min(rect.x);
+                        old.y = old.y.min(rect.y);
+                        old.width = right - old.x;
+                        old.height = bottom - old.y;
+                    } else {
+                        merged.push(rect);
+                    }
                 }
-            }
-            return merged
-                .into_iter()
-                .map(|rect| VisualRect {
-                    x: rect.x + rect.width,
-                    width: 1.0,
-                    ..rect
-                })
-                .collect();
+                return merged
+                    .into_iter()
+                    .map(|rect| VisualRect {
+                        x: rect.x + rect.width,
+                        width: 1.0,
+                        ..rect
+                    })
+                    .collect();
             }
             before = end;
         }
@@ -9522,18 +9623,28 @@ mod tests {
             \begin{thebibliography}{2}\bibitem{one}First\bibitem{two}Second\end{thebibliography}
             \end{document}",
             &strict_ooxml::LatexOptions::default(),
-        ).unwrap();
+        )
+        .unwrap();
         let editor = loaded.document.edit(EditLimits::default()).unwrap();
         let (tx, rx) = std::sync::mpsc::channel();
         let ctx = eframe::egui::Context::default();
-        let mut worker = Worker::new(Session::Edit(editor), RenderOptions::default(), &tx, &ctx, None);
+        let mut worker = Worker::new(
+            Session::Edit(editor),
+            RenderOptions::default(),
+            &tx,
+            &ctx,
+            None,
+        );
         worker.relayout();
         worker.handle(Request::SelectAll);
         worker.copy(false);
-        let text = rx.try_iter().find_map(|reply| match reply {
-            Reply::Clipboard(text) => Some(text),
-            _ => None,
-        }).expect("copied text");
+        let text = rx
+            .try_iter()
+            .find_map(|reply| match reply {
+                Reply::Clipboard(text) => Some(text),
+                _ => None,
+            })
+            .expect("copied text");
         assert!(text.contains("Before [??], [1, 2] after."), "{text}");
         let paragraph = worker.paragraph(&Address::body(0)).unwrap();
         let pieces = nav::pieces(paragraph);
@@ -11477,6 +11588,81 @@ mod tests {
         requests.send(Request::Shutdown).unwrap();
     }
 
+    /// A paragraph of words and an inline formula is sent with the formula
+    /// as a fragment, and a rewrite that keeps the fragment keeps the formula.
+    #[test]
+    fn a_mixed_paragraph_keeps_its_formula_when_the_words_change() {
+        let (requests, replies) = new_document();
+        send_all(&requests, typed("энергия  достаточна"));
+        for _ in 0.." достаточна".chars().count() {
+            requests
+                .send(Request::Move {
+                    motion: Motion::Left,
+                    extend: false,
+                })
+                .unwrap();
+        }
+        requests
+            .send(Request::PutFormula {
+                expression: Box::new(crate::formula::from_latex("E=mc^2").unwrap()),
+                replace: None,
+            })
+            .unwrap();
+        requests
+            .send(Request::AiSource {
+                whole: true,
+                job: 4,
+            })
+            .unwrap();
+        let source = wait(&replies, |reply| match reply {
+            Reply::AiSource { job: 4, source } => Some(source),
+            _ => None,
+        });
+        let (at, text) = source
+            .paragraphs
+            .iter()
+            .find(|(_, text)| text.contains("энергия") && text.contains('⟦'))
+            .unwrap()
+            .clone();
+        assert!(text.contains("достаточна"), "{text}");
+        assert!(!text.contains(nav::OBJECT), "{text}");
+        let rewritten = text
+            .replace("энергия", "energy")
+            .replace("достаточна", "enough");
+        requests
+            .send(Request::SetParagraphText {
+                at: at.clone(),
+                old: text.clone(),
+                new: rewritten.clone(),
+            })
+            .unwrap();
+        requests
+            .send(Request::SetParagraphText {
+                at: at.clone(),
+                old: rewritten.clone(),
+                new: "gone".to_owned(),
+            })
+            .unwrap();
+        requests
+            .send(Request::AiSource {
+                whole: true,
+                job: 5,
+            })
+            .unwrap();
+        let again = wait(&replies, |reply| match reply {
+            Reply::AiSource { job: 5, source } => Some(source),
+            _ => None,
+        });
+        let kept = again
+            .paragraphs
+            .iter()
+            .find(|(address, _)| *address == at)
+            .map(|(_, text)| text.as_str())
+            .unwrap();
+        assert_eq!(kept, rewritten);
+        requests.send(Request::Shutdown).unwrap();
+    }
+
     /// The AI tab's text comes back by paragraph; a paragraph's text and
     /// its style are set from what the model answered.
     #[test]
@@ -11808,5 +11994,515 @@ mod tests {
         assert_eq!(key, "note.unknown_style");
         assert_eq!(detail, "Heading1");
         assert_eq!(stored_notice(&EditError::LimitExceeded), "note.edit_limit");
+    }
+
+    fn take_view(
+        worker: &mut Worker<'_, '_>,
+        replies: &Receiver<Reply>,
+        job: u64,
+    ) -> crate::chat::View {
+        while replies.try_recv().is_ok() {}
+        worker.handle(Request::ChatSnapshot { job });
+        replies
+            .try_iter()
+            .find_map(|reply| match reply {
+                Reply::ChatSnapshot { view, .. } => Some(*view),
+                Reply::Note(note) if note.error => panic!("{}: {}", note.key, note.detail),
+                _ => None,
+            })
+            .expect("chat snapshot")
+    }
+
+    fn texts_of(view: &crate::chat::View) -> Vec<&str> {
+        view.paragraphs
+            .iter()
+            .map(|paragraph| paragraph.text.as_str())
+            .filter(|text| !text.is_empty())
+            .collect()
+    }
+
+    /// Search through the worker finds both occurrences and does not move the caret.
+    #[test]
+    fn chat_find_locates_both_occurrences_and_leaves_the_document() {
+        with_worker_replies(|worker, replies| {
+            worker.handle(Request::Type("alpha here".into()));
+            worker.handle(Request::Enter);
+            worker.handle(Request::Type("and alpha again".into()));
+            let before = take_view(worker, replies, 1);
+            worker.handle(Request::ChatFind {
+                query: "alpha".into(),
+            });
+            let (hits, caret) = replies
+                .try_iter()
+                .find_map(|reply| match reply {
+                    Reply::ChatFind { hits, caret } => Some((hits, caret)),
+                    Reply::Note(note) if note.error => panic!("{}: {}", note.key, note.detail),
+                    _ => None,
+                })
+                .expect("hits");
+            assert_eq!(hits.len(), 2);
+            assert_eq!(caret, before.caret);
+            let after = take_view(worker, replies, 2);
+            assert_eq!(texts_of(&after), texts_of(&before));
+        });
+    }
+
+    /// A stale `old` is skipped. One undo restores every paragraph the batch changed.
+    #[test]
+    fn a_chat_batch_skips_a_stale_paragraph_and_undoes_as_one_step() {
+        use crate::chat::{Batch, Op};
+        with_worker_replies(|worker, replies| {
+            worker.handle(Request::Type("One".into()));
+            worker.handle(Request::Enter);
+            worker.handle(Request::Type("Two".into()));
+            let view = take_view(worker, replies, 1);
+            let one = view
+                .paragraphs
+                .iter()
+                .find(|paragraph| paragraph.text == "One")
+                .unwrap();
+            let two = view
+                .paragraphs
+                .iter()
+                .find(|paragraph| paragraph.text == "Two")
+                .unwrap();
+            let depth = worker.undo_depth;
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "replace".into(),
+                lines: Vec::new(),
+                ops: vec![
+                    Op::Replace {
+                        index: one.index,
+                        old: "Nope".into(),
+                        new: "No".into(),
+                    },
+                    Op::Replace {
+                        index: two.index,
+                        old: "Two".into(),
+                        new: "Dos".into(),
+                    },
+                ],
+            })));
+            assert_eq!(worker.undo_depth, depth + 1);
+            let changed = take_view(worker, replies, 2);
+            assert!(texts_of(&changed).contains(&"One"));
+            assert!(texts_of(&changed).contains(&"Dos"));
+            assert!(!texts_of(&changed).contains(&"No"));
+            worker.handle(Request::Undo);
+            assert_eq!(worker.undo_depth, depth);
+            let restored = take_view(worker, replies, 3);
+            assert!(texts_of(&restored).contains(&"Two"));
+            assert!(!texts_of(&restored).contains(&"Dos"));
+        });
+    }
+
+    /// Underline lands on the named words only. One undo clears the whole batch.
+    #[test]
+    fn chat_underlines_the_named_spans_and_one_undo_clears_them() {
+        use crate::chat::{Batch, Op};
+        with_worker_replies(|worker, replies| {
+            worker.handle(Request::Type("alpha BRAVO tail".into()));
+            let bold = worker.caret.clone().unwrap();
+            worker.anchor = Some(Logical {
+                paragraph: bold.paragraph.clone(),
+                offset: 6,
+            });
+            worker.caret = Some(Logical {
+                paragraph: bold.paragraph,
+                offset: 11,
+            });
+            worker.handle(Request::Format(FormatChange::Bold));
+            worker.anchor = None;
+            worker.handle(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            });
+            worker.handle(Request::Enter);
+            worker.handle(Request::Type("alpha alpha".into()));
+            worker.handle(Request::Enter);
+            worker.handle(Request::Type("штатный штат".into()));
+            worker.handle(Request::Enter);
+            worker.handle(Request::Type("alpha".into()));
+            let view = take_view(worker, replies, 1);
+            let at = |text: &str| {
+                view.paragraphs
+                    .iter()
+                    .find(|paragraph| paragraph.text == text)
+                    .unwrap()
+                    .index
+            };
+            let depth = worker.undo_depth;
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "underline".into(),
+                lines: Vec::new(),
+                ops: vec![
+                    Op::Underline {
+                        index: at("alpha BRAVO tail"),
+                        old: "alpha BRAVO tail".into(),
+                        spans: vec![(0, 5)],
+                    },
+                    Op::Underline {
+                        index: at("alpha alpha"),
+                        old: "alpha alpha".into(),
+                        spans: vec![(0, 5), (6, 11)],
+                    },
+                    Op::Underline {
+                        index: at("штатный штат"),
+                        old: "штатный штат".into(),
+                        spans: vec![(8, 12)],
+                    },
+                    Op::Underline {
+                        index: at("alpha"),
+                        old: "gone".into(),
+                        spans: vec![(0, 5)],
+                    },
+                ],
+            })));
+            assert_eq!(worker.undo_depth, depth + 1);
+            let marked = take_view(worker, replies, 2);
+            let runs = |text: &str| {
+                let index = marked
+                    .paragraphs
+                    .iter()
+                    .find(|paragraph| paragraph.text == text)
+                    .unwrap()
+                    .index;
+                marked
+                    .runs
+                    .get(
+                        marked
+                            .paragraphs
+                            .iter()
+                            .position(|p| p.index == index)
+                            .unwrap(),
+                    )
+                    .unwrap()
+                    .clone()
+            };
+            let mixed = runs("alpha BRAVO tail");
+            assert!(mixed
+                .iter()
+                .any(|run| run.text == "alpha" && run.underline && !run.bold));
+            assert!(mixed
+                .iter()
+                .any(|run| run.text == "BRAVO" && run.bold && !run.underline));
+            let both = runs("alpha alpha");
+            assert_eq!(
+                both.iter()
+                    .filter(|run| run.text == "alpha" && run.underline)
+                    .count(),
+                2
+            );
+            let inside = runs("штатный штат");
+            assert!(inside
+                .iter()
+                .any(|run| run.text.starts_with("штатн") && !run.underline));
+            assert!(inside.iter().any(|run| run.text == "штат" && run.underline));
+            let stale = runs("alpha");
+            assert!(stale.iter().all(|run| !run.underline));
+            worker.handle(Request::Undo);
+            let cleared = take_view(worker, replies, 3);
+            assert!(cleared.runs.iter().flatten().all(|run| !run.underline));
+            let bravo = cleared
+                .runs
+                .iter()
+                .flatten()
+                .find(|run| run.text == "BRAVO")
+                .unwrap();
+            assert!(bravo.bold);
+        });
+    }
+
+    /// Confirmed forms are replaced with the case the model supplied. A longer word stays.
+    #[test]
+    fn chat_replaces_confirmed_forms_and_keeps_a_longer_word() {
+        use crate::chat::{Batch, Op};
+        with_worker_replies(|worker, replies| {
+            worker.handle(Request::Type("Штате и штате и штатный".into()));
+            let view = take_view(worker, replies, 1);
+            let index = view.paragraphs[0].index;
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "forms".into(),
+                lines: Vec::new(),
+                ops: vec![Op::Forms {
+                    index,
+                    old: "Штате и штате и штатный".into(),
+                    pairs: vec![
+                        ("штате".into(), "регионе".into()),
+                        ("Штате".into(), "Регионе".into()),
+                    ],
+                }],
+            })));
+            let after = take_view(worker, replies, 2);
+            assert_eq!(texts_of(&after), vec!["Регионе и регионе и штатный"]);
+        });
+    }
+
+    /// A comment is anchored to the span. The paragraph's words stay.
+    #[test]
+    fn a_chat_comment_is_anchored_and_the_words_stay() {
+        use crate::chat::{Batch, Op};
+        with_worker_replies(|worker, replies| {
+            let sentence = "see California now";
+            worker.handle(Request::Type(sentence.into()));
+            let view = take_view(worker, replies, 1);
+            let index = view.paragraphs[0].index;
+            let start = sentence.find("California").unwrap();
+            let start = sentence[..start].chars().count();
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "comment".into(),
+                lines: Vec::new(),
+                ops: vec![Op::Comment {
+                    index,
+                    old: sentence.into(),
+                    start,
+                    end: start + "California".chars().count(),
+                    text: "check the name".into(),
+                }],
+            })));
+            let after = take_view(worker, replies, 2);
+            assert_eq!(texts_of(&after), vec![sentence]);
+            assert_eq!(after.comments.len(), 1);
+            assert_eq!(after.comments[0].text, "check the name");
+            assert_eq!(after.comments[0].paragraph, index);
+        });
+    }
+
+    /// Moving a section keeps the words and changes their order and the heading style.
+    #[test]
+    fn chat_moves_a_section_and_restyles_its_heading() {
+        use crate::chat::{Batch, Op};
+        with_worker_replies(|worker, replies| {
+            for text in ["Alpha", "body a", "Beta", "body b", "End"] {
+                worker.handle(Request::Type(text.into()));
+                worker.handle(Request::Enter);
+            }
+            let before = take_view(worker, replies, 1);
+            assert_eq!(
+                texts_of(&before),
+                vec!["Alpha", "body a", "Beta", "body b", "End"]
+            );
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "move".into(),
+                lines: Vec::new(),
+                ops: vec![Op::Move {
+                    start: before.paragraphs[0].index,
+                    count: 2,
+                    to: before.paragraphs[4].index,
+                    level: Some(2),
+                }],
+            })));
+            let after = take_view(worker, replies, 2);
+            assert_eq!(
+                texts_of(&after),
+                vec!["Beta", "body b", "Alpha", "body a", "End"]
+            );
+            let alpha = after
+                .paragraphs
+                .iter()
+                .find(|paragraph| paragraph.text == "Alpha")
+                .unwrap();
+            assert_eq!(alpha.style, "Heading2");
+        });
+    }
+
+    /// Chosen display formulas are numbered in document order. An inline formula is not.
+    #[test]
+    fn chat_numbers_displayed_formulas_and_a_reference_field() {
+        use crate::chat::{Batch, Op};
+        with_worker_replies(|worker, replies| {
+            assert!(worker.insert_display("a=1"));
+            worker.handle(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            });
+            worker.handle(Request::Enter);
+            worker.handle(Request::Type("Between".into()));
+            worker.handle(Request::Enter);
+            assert!(worker.insert_display("b=2"));
+            worker.handle(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            });
+            worker.handle(Request::Enter);
+            worker.handle(Request::Type("and ".into()));
+            worker.handle(Request::PutFormula {
+                expression: Box::new(crate::formula::from_latex("c=3").unwrap()),
+                replace: None,
+            });
+            worker.handle(Request::Move {
+                motion: Motion::DocEnd,
+                extend: false,
+            });
+            worker.handle(Request::Enter);
+            assert!(worker.insert_display("d=4"));
+            let before = take_view(worker, replies, 1);
+            let displayed: Vec<_> = before
+                .formulas
+                .iter()
+                .filter(|formula| formula.display)
+                .collect();
+            assert_eq!(displayed.len(), 3, "{:?}", texts_of(&before));
+            let bodies: Vec<String> = displayed
+                .iter()
+                .map(|formula| formula.latex.clone())
+                .collect();
+            assert!(before.formulas.iter().any(|formula| !formula.display));
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "numbers".into(),
+                lines: Vec::new(),
+                ops: vec![Op::Number {
+                    ids: vec!["f2".into()],
+                }],
+            })));
+            let numbered = take_view(worker, replies, 2);
+            let f2 = numbered
+                .formulas
+                .iter()
+                .find(|formula| formula.id == "f2")
+                .unwrap();
+            assert_eq!(f2.number.as_deref(), Some("1"));
+            let between = numbered
+                .paragraphs
+                .iter()
+                .find(|paragraph| paragraph.text == "Between")
+                .unwrap();
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "cite".into(),
+                lines: Vec::new(),
+                ops: vec![Op::Cite {
+                    index: between.index,
+                    old: between.text.clone(),
+                    formula: "f2".into(),
+                }],
+            })));
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "renumber".into(),
+                lines: Vec::new(),
+                ops: vec![Op::Number {
+                    ids: vec!["f2".into(), "f1".into()],
+                }],
+            })));
+            let after = take_view(worker, replies, 3);
+            let number = |id: &str| {
+                after
+                    .formulas
+                    .iter()
+                    .find(|formula| formula.id == id)
+                    .and_then(|formula| formula.number.clone())
+            };
+            assert_eq!(number("f1").as_deref(), Some("1"));
+            assert_eq!(number("f2").as_deref(), Some("2"));
+            assert_eq!(number("f3"), None);
+            assert!(after
+                .formulas
+                .iter()
+                .filter(|formula| !formula.display)
+                .all(|formula| formula.number.is_none()));
+            let after_bodies: Vec<String> = after
+                .formulas
+                .iter()
+                .filter(|formula| formula.display)
+                .map(|formula| formula.latex.clone())
+                .collect();
+            assert_eq!(after_bodies, bodies);
+            assert!(
+                after.fields.iter().any(|field| {
+                    field
+                        .instruction
+                        .split_whitespace()
+                        .any(|word| word == "eqf2")
+                        && field.text == "2"
+                }),
+                "{:?}",
+                after.fields
+            );
+        });
+    }
+
+    /// The first table row becomes a repeating header.
+    #[test]
+    fn chat_marks_the_first_table_row_as_a_header() {
+        use crate::chat::{Batch, Op};
+        with_worker_replies(|worker, replies| {
+            worker.handle(Request::Insert(Insert::Table {
+                rows: 2,
+                columns: 2,
+            }));
+            let before = take_view(worker, replies, 1);
+            assert_eq!(before.tables.len(), 1);
+            assert!(!before.tables[0].header);
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "table_header".into(),
+                lines: Vec::new(),
+                ops: vec![Op::TableHeader],
+            })));
+            let after = take_view(worker, replies, 2);
+            assert!(after.tables[0].header);
+        });
+    }
+
+    /// A chart is built from the numbers in the table.
+    #[test]
+    fn chat_charts_the_numbers_in_a_table() {
+        use crate::chat::{Batch, Op};
+        with_worker_replies(|worker, replies| {
+            worker.handle(Request::Insert(Insert::Table {
+                rows: 1,
+                columns: 2,
+            }));
+            worker.handle(Request::Type("10".into()));
+            worker.handle(Request::Tab { back: false });
+            worker.handle(Request::Type("20".into()));
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "chart".into(),
+                lines: Vec::new(),
+                ops: vec![Op::Chart {
+                    title: "Results".into(),
+                }],
+            })));
+            let after = take_view(worker, replies, 1);
+            assert!(after.charts >= 1, "charts {}", after.charts);
+        });
+    }
+
+    /// A caption paragraph is inserted after a picture.
+    #[test]
+    fn chat_captions_a_picture() {
+        use crate::chat::{Batch, Op};
+        with_worker_replies(|worker, replies| {
+            worker.handle(Request::Type("Above".into()));
+            worker.handle(Request::Object(ObjectCommand::InsertPicture {
+                bytes: png(8, 8),
+                name: "dot.png".into(),
+            }));
+            let before = take_view(worker, replies, 1);
+            let index = *before.pictures.first().expect("picture");
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "caption".into(),
+                lines: Vec::new(),
+                ops: vec![Op::Caption {
+                    index,
+                    text: "Figure 1".into(),
+                }],
+            })));
+            let after = take_view(worker, replies, 2);
+            assert!(
+                after
+                    .paragraphs
+                    .iter()
+                    .any(|paragraph| paragraph.text == "Figure 1"),
+                "{:?}",
+                texts_of(&after)
+            );
+            assert!(
+                after
+                    .paragraphs
+                    .iter()
+                    .any(|paragraph| paragraph.text.contains("Above")),
+                "{:?}",
+                texts_of(&after)
+            );
+        });
     }
 }

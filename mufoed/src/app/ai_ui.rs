@@ -152,6 +152,28 @@ pub(crate) struct AiState {
     need_vision: bool,
     /// A picture being translated: its tab and drawing, and the result.
     picture: Option<(u64, u32, Receiver<PictureResult>)>,
+    /// The chat draft.
+    chat_input: String,
+    /// The conversation of the open pane.
+    chat_history: Vec<crate::chat::Turn>,
+    /// Proposals waiting for Apply or Skip.
+    chat_batches: Vec<crate::chat::Batch>,
+    /// A consistency report. It changes nothing until a row is chosen.
+    chat_report: Vec<crate::chat::ReportItem>,
+    /// The turn running now.
+    chat_rx: Option<Receiver<ChatDone>>,
+    /// Cancels `chat_rx`.
+    chat_cancel: Option<Arc<AtomicBool>>,
+    /// A prompt waiting for the document picture: job, tab, text.
+    chat_wait: Option<(u64, u64, String)>,
+}
+
+/// What one chat turn finished with.
+struct ChatDone {
+    stop: crate::chat::Stop,
+    history: Vec<crate::chat::Turn>,
+    batches: Vec<crate::chat::Batch>,
+    report: Vec<crate::chat::ReportItem>,
 }
 
 impl App {
@@ -651,8 +673,9 @@ impl App {
         self.say(note, false, now);
     }
 
-    /// Takes what the job, the probe and a download report.
+    /// Takes what the job, the probe, a download and the chat report.
     pub(crate) fn ai_poll(&mut self, ctx: &egui::Context) {
+        self.chat_poll(ctx);
         if let Some((tab, id, result)) = self
             .ai
             .picture
@@ -1084,9 +1107,230 @@ impl App {
         true
     }
 
+    /// The chat, above the one-shot jobs: history, proposals, a report and a draft.
+    fn chat_pane(&mut self, ui: &mut egui::Ui) {
+        let title = self.i18n.t("ai.chat").to_owned();
+        let hint = self.i18n.t("ai.chat_hint").to_owned();
+        let send = self.i18n.t("ai.chat_send").to_owned();
+        let apply = self.i18n.t("ai.chat_apply").to_owned();
+        let skip = self.i18n.t("ai.chat_skip").to_owned();
+        let was = self.i18n.t("ai.chat_was").to_owned();
+        let now = self.i18n.t("ai.chat_now").to_owned();
+        let cancel = self.i18n.t("ai.chat_cancel").to_owned();
+        let comment = self.i18n.t("ai.chat_comment").to_owned();
+        let edit = self.i18n.t("ai.chat_edit").to_owned();
+        let Some(tab_id) = self.active_tab().map(|tab| tab.id) else {
+            return;
+        };
+        ui.label(RichText::new(title).strong());
+        let lines: Vec<(bool, String)> = self
+            .ai
+            .chat_history
+            .iter()
+            .filter_map(|turn| match turn.role {
+                crate::chat::Role::User => Some((true, turn.content.clone())),
+                crate::chat::Role::Assistant if !turn.content.is_empty() => {
+                    Some((false, turn.content.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        for (user, text) in &lines {
+            let shown = if *user {
+                RichText::new(text.as_str())
+            } else {
+                RichText::new(text.as_str()).weak()
+            };
+            ui.label(shown);
+        }
+        let mut decided = Vec::new();
+        for (index, batch) in self.ai.chat_batches.iter().enumerate() {
+            let lines: Vec<crate::chat::Line> = batch
+                .lines
+                .iter()
+                .map(|line| crate::chat::Line {
+                    before: format!("{was}: {}", line.before),
+                    after: format!("{now}: {}", line.after),
+                })
+                .collect();
+            let (choice, _) = crate::chat::batch_controls(ui, &batch.title, &lines, &apply, &skip);
+            if let Some(clicked) = choice {
+                decided.push((index, clicked));
+            }
+        }
+        let mut chosen = Vec::new();
+        for (index, item) in self.ai.chat_report.iter().enumerate() {
+            if let Some(choice) = crate::chat::report_controls(ui, item, &comment, &edit) {
+                chosen.push((index, choice));
+            }
+        }
+        if self.ai.chat_rx.is_some() {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                if ui.button(&cancel).clicked() {
+                    if let Some(flag) = &self.ai.chat_cancel {
+                        flag.store(true, Ordering::Relaxed);
+                    }
+                }
+            });
+        }
+        let mut submitted = false;
+        ui.horizontal(|ui| {
+            let width = (ui.available_width() - 110.0).max(40.0);
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut self.ai.chat_input)
+                    .hint_text(&hint)
+                    .desired_width(width),
+            );
+            submitted =
+                response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+            if ui.button(&send).clicked() {
+                submitted = true;
+            }
+        });
+        decided.sort_by_key(|(index, _)| std::cmp::Reverse(*index));
+        for (index, clicked) in decided {
+            let Some(batch) = self.ai.chat_batches.get(index).cloned() else {
+                continue;
+            };
+            self.ai.chat_batches.remove(index);
+            let batches = crate::chat::apply_action(batch, Some(clicked));
+            for batch in batches {
+                if let Some(tab) = self.tabs.iter().find(|tab| tab.id == tab_id) {
+                    tab.send(Request::ApplyChat(Box::new(batch)));
+                }
+            }
+        }
+        chosen.sort_by_key(|(index, _)| std::cmp::Reverse(*index));
+        for (index, choice) in chosen {
+            let Some(item) = self.ai.chat_report.get(index).cloned() else {
+                continue;
+            };
+            self.ai.chat_report.remove(index);
+            for batch in crate::chat::report_action(&item, Some(choice)) {
+                if let Some(tab) = self.tabs.iter().find(|tab| tab.id == tab_id) {
+                    tab.send(Request::ApplyChat(Box::new(batch)));
+                }
+            }
+        }
+        if submitted {
+            self.chat_send();
+        }
+        ui.add_space(8.0);
+    }
+
+    /// Asks the worker for a picture of the document, then starts the turn.
+    fn chat_send(&mut self) {
+        let prompt = self.ai.chat_input.trim().to_owned();
+        if prompt.is_empty() || self.ai.chat_rx.is_some() || self.ai.chat_wait.is_some() {
+            return;
+        }
+        let Some(tab_id) = self.active_tab().map(|tab| tab.id) else {
+            return;
+        };
+        let job = self.ai.next_id;
+        self.ai.next_id += 1;
+        self.ai.chat_input.clear();
+        self.ai.chat_wait = Some((job, tab_id, prompt));
+        if let Some(tab) = self.tabs.iter().find(|tab| tab.id == tab_id) {
+            tab.send(Request::ChatSnapshot { job });
+        }
+    }
+
+    /// The worker's picture of the document: the turn can start.
+    pub(crate) fn chat_snapshot(
+        &mut self,
+        ctx: &egui::Context,
+        tab: u64,
+        job: u64,
+        view: crate::chat::View,
+    ) {
+        let Some((pending, pending_tab, prompt)) = self.ai.chat_wait.take() else {
+            return;
+        };
+        if pending != job || pending_tab != tab {
+            self.ai.chat_wait = Some((pending, pending_tab, prompt));
+            return;
+        }
+        let Some(config) = self.ai_config() else {
+            self.ai.chat_history.push(crate::chat::Turn::user(prompt));
+            self.ai.chat_history.push(crate::chat::Turn::assistant(
+                self.i18n.t("ai.no_model").to_owned(),
+            ));
+            return;
+        };
+        let language = self.i18n.language().to_owned();
+        let mut history = self.ai.chat_history.clone();
+        history.push(crate::chat::Turn::user(prompt));
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (sender, receiver) = std::sync::mpsc::channel();
+        self.ai.chat_cancel = Some(Arc::clone(&cancel));
+        self.ai.chat_rx = Some(receiver);
+        ctx.request_repaint();
+        std::thread::spawn(move || {
+            if !history
+                .iter()
+                .any(|turn| turn.role == crate::chat::Role::System)
+            {
+                history.insert(
+                    0,
+                    crate::chat::Turn::system(crate::chat::system_prompt(&language)),
+                );
+            }
+            let mut remote = crate::chat::Remote {
+                endpoint: config.endpoint,
+                model: config.model,
+            };
+            let mut book = crate::chat::Book::default();
+            let stop = crate::chat::run(
+                &mut remote,
+                &mut history,
+                |name, args| crate::chat::tool(&view, &mut book, name, args),
+                &cancel,
+            );
+            let _ = sender.send(ChatDone {
+                stop,
+                history,
+                batches: book.batches,
+                report: book.report,
+            });
+        });
+    }
+
+    /// Takes a finished turn.
+    fn chat_poll(&mut self, ctx: &egui::Context) {
+        if self.ai.chat_rx.is_some() {
+            ctx.request_repaint();
+        }
+        let Some(mut done) = self.ai.chat_rx.as_ref().and_then(|rx| rx.try_recv().ok()) else {
+            return;
+        };
+        let limited = self.i18n.t("ai.chat_limited").to_owned();
+        let cancelled = self.i18n.t("ai.chat_cancel").to_owned();
+        match &done.stop {
+            crate::chat::Stop::Limited => {
+                if let Some(turn) = done.history.last_mut() {
+                    if turn.content == "step limit" {
+                        turn.content = limited;
+                    }
+                }
+            }
+            crate::chat::Stop::Cancelled => {
+                done.history.push(crate::chat::Turn::assistant(cancelled));
+            }
+            crate::chat::Stop::Answer | crate::chat::Stop::Failed(_) => {}
+        }
+        self.ai.chat_rx = None;
+        self.ai.chat_cancel = None;
+        self.ai.chat_history = done.history;
+        self.ai.chat_batches.extend(done.batches);
+        self.ai.chat_report.extend(done.report);
+    }
+
     /// The pane: the job's progress and its results.
     pub(crate) fn ai_pane(&mut self, ui: &mut egui::Ui, palette: Palette) {
         crate::theme::style_buttons(ui);
+        self.chat_pane(ui);
         let t = |key: &str| self.i18n.t(key).to_owned();
         let mut closing = false;
         ui.horizontal(|ui| {

@@ -196,12 +196,16 @@ pub(crate) fn snapshot(document: &Document, revision: u64) -> Snapshot {
             && p.inlines.iter().all(|inline| match inline {
                 Inline::Run(run) => {
                     run.revision.is_none()
-                        && run
-                            .content
-                            .iter()
-                            .all(|c| matches!(c, RunContent::Text(_) | RunContent::Tab))
+                        && run.content.iter().all(|c| {
+                            matches!(
+                                c,
+                                RunContent::Text(_) | RunContent::Tab | RunContent::Drawing(_)
+                            )
+                        })
                 }
-                Inline::Tab => true,
+                Inline::Tab | Inline::Math(_) | Inline::MathParagraph(_) | Inline::Drawing(_) => {
+                    true
+                }
                 _ => false,
             });
         if !safe {
@@ -235,11 +239,15 @@ fn clean(p: &Paragraph, options: &Options) -> Paragraph {
                     match content {
                         RunContent::Text(t) => chars.extend(t.text.chars().map(|c| (c, index))),
                         RunContent::Tab => chars.push(('\t', index)),
+                        RunContent::Drawing(_) => chars.push((crate::nav::OBJECT, index)),
                         _ => {}
                     }
                 }
             }
             Inline::Tab => chars.push(('\t', index)),
+            Inline::Math(_) | Inline::MathParagraph(_) | Inline::Drawing(_) => {
+                chars.push((crate::nav::OBJECT, index));
+            }
             _ => {}
         }
     }
@@ -307,10 +315,28 @@ fn clean(p: &Paragraph, options: &Options) -> Paragraph {
             .map(|(c, _)| *c)
             .collect();
         if let Inline::Run(run) = inline {
+            let drawings: Vec<_> = run
+                .content
+                .iter()
+                .filter(|content| matches!(content, RunContent::Drawing(_)))
+                .cloned()
+                .collect();
+            let mut drawn = 0;
             let mut content = Vec::new();
             let mut buffer = String::new();
             for c in chars {
-                if c == '\t' {
+                if c == crate::nav::OBJECT {
+                    if !buffer.is_empty() {
+                        content.push(RunContent::Text(TextNode {
+                            text: std::mem::take(&mut buffer),
+                            space: Space::Preserve,
+                        }));
+                    }
+                    if let Some(drawing) = drawings.get(drawn) {
+                        content.push(drawing.clone());
+                        drawn += 1;
+                    }
+                } else if c == '\t' {
                     if !buffer.is_empty() {
                         content.push(RunContent::Text(TextNode {
                             text: std::mem::take(&mut buffer),
@@ -658,14 +684,30 @@ mod tests {
         let mut math = paragraph("");
         math.inlines
             .push(Inline::Math(crate::formula::from_latex("x").unwrap()));
+        let mut mixed = paragraph("See ");
+        mixed
+            .inlines
+            .push(Inline::Math(crate::formula::from_latex("E=mc^2").unwrap()));
+        mixed.inlines.push(paragraph(" now").inlines.remove(0));
         document.body.blocks = vec![
             Block::Paragraph(paragraph("Plain")),
             Block::Paragraph(page),
             Block::Paragraph(math),
+            Block::Paragraph(mixed),
         ];
         let source = snapshot(&document, 9);
-        assert_eq!(source.entries.len(), 1);
-        assert_eq!(source.skipped, 2);
+        assert_eq!(source.entries.len(), 3);
+        assert_eq!(source.skipped, 1);
         assert_eq!(source.revision, 9);
+        let shown = crate::ai::expose(&source.entries[2].paragraph).unwrap();
+        assert!(shown.starts_with("See "));
+        assert!(shown.ends_with(" now"));
+        assert!(shown.contains("⟦f1:"));
+        let rewritten = shown.replace("See", "См.");
+        let restored = crate::ai::restore(&source.entries[2].paragraph, &rewritten).unwrap();
+        assert!(restored
+            .iter()
+            .any(|inline| matches!(inline, Inline::Math(_))));
+        assert!(crate::ai::restore(&source.entries[2].paragraph, "См. now").is_none());
     }
 }

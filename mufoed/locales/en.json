@@ -436,6 +436,7 @@
       "recognize": "Recognize a scan",
       "recent": "Recent documents",
       "no_recent": "Recently opened files appear here",
+      "missing": "This file is no longer there",
       "hint": "Files can be dropped onto the window. Ctrl+Tab - next tab, Ctrl+W - close the tab."
     },
     "backstage": {
@@ -804,7 +805,18 @@
       "picture_working": "Translating the picture's text…",
       "picture_done": "The picture's text is translated (Ctrl+Z undoes it)",
       "picture_failed": "Could not translate the text: {error}",
-      "need_vision": "Pictures need the recognition model {model}."
+      "need_vision": "Pictures need the recognition model {model}.",
+      "chat": "Chat",
+      "chat_hint": "What should be done with the document?",
+      "chat_send": "Send",
+      "chat_apply": "Apply",
+      "chat_skip": "Skip",
+      "chat_was": "Was",
+      "chat_now": "Now",
+      "chat_limited": "Stopped at the step limit",
+      "chat_cancel": "Cancel",
+      "chat_comment": "As a comment",
+      "chat_edit": "As an edit"
     },
     "formula": {
       "title": "Equation",
@@ -829,7 +841,7 @@
       "indent_tab": "Replace with one tab",
       "indent_paragraph": "Replace with first-line indent",
       "joins": "AI: find sentences accidentally split into paragraphs",
-      "protected": "Tables, fields, links, comments, objects, page breaks, revisions and recognized code blocks are skipped. Non-breaking spaces are preserved.",
+      "protected": "Tables, fields, links, comments, page breaks, revisions and recognized code blocks are skipped. Formulas and pictures stay where they are. Non-breaking spaces are preserved.",
       "analyze": "Find improvements",
       "ai_failed": "AI analysis did not finish. Technical cleanup is available without paragraph joins.",
       "details": "Details",

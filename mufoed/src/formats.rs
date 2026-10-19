@@ -139,6 +139,11 @@ pub(crate) fn detect(path: &Path) -> Option<Kind> {
             return Some(Kind::Djvu);
         }
     }
+    kind_by_extension(path)
+}
+
+/// The kind implied by the file name alone, without opening the file.
+pub(crate) fn kind_by_extension(path: &Path) -> Option<Kind> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     match extension.as_str() {
         "docx" | "docm" | "dotx" => Some(Kind::Docx),

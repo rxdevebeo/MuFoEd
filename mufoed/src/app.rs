@@ -1105,6 +1105,7 @@ impl App {
         let mut missing_scripts = Vec::new();
         let mut missing_fonts = Vec::new();
         let mut ai_sources = Vec::new();
+        let mut chat_views = Vec::new();
         let mut cleanup_results = Vec::new();
         let mut formula_found = None;
         let mut chart_found = None;
@@ -1235,6 +1236,9 @@ impl App {
                     TabEvent::SpellingMissing(scripts) => missing_scripts.extend(scripts),
                     TabEvent::FontsMissing(packs) => missing_fonts.extend(packs),
                     TabEvent::AiSource { job, source } => ai_sources.push((tab.id, job, source)),
+                    TabEvent::ChatSnapshot { job, view } => {
+                        chat_views.push((tab.id, job, view));
+                    }
                     TabEvent::Formula(found) => formula_found = Some(found),
                     TabEvent::Chart(data) => chart_found = Some(data),
                     TabEvent::Loaded => {
@@ -1285,6 +1289,9 @@ impl App {
         }
         for (tab, job, source) in ai_sources {
             self.ai_source(ctx, tab, job, *source);
+        }
+        for (tab, job, view) in chat_views {
+            self.chat_snapshot(ctx, tab, job, *view);
         }
         for (tab, applied) in cleanup_results {
             self.ai_cleanup_result(tab, applied);
@@ -2970,36 +2977,24 @@ impl App {
                         .stroke(Stroke::new(1.0, palette.ribbon_line))
                         .show(ui, |ui| {
                             ui.set_width(width);
-                            ui.label(
-                                RichText::new(self.t("start.recent"))
-                                    .size(15.0)
-                                    .family(FontFamily::Name(theme::BOLD.into())),
-                            );
-                            ui.add_space(6.0);
-                            if self.settings.recent.is_empty() {
-                                ui.label(RichText::new(self.t("start.no_recent")).weak());
-                            }
-                            for path in self.settings.recent.clone() {
-                                let exists = path.exists();
-                                let name = file_name(&path);
-                                let response = ui.add_enabled(
-                                    exists,
-                                    egui::Button::new(
-                                        RichText::new(format!(
-                                            "{name}\n{}",
-                                            path.parent()
-                                                .map(|p| p.display().to_string())
-                                                .unwrap_or_default()
-                                        ))
-                                        .size(12.5),
-                                    )
-                                    .frame(false)
-                                    .wrap(),
+                            ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
+                                ui.set_min_width(ui.available_width());
+                                ui.label(
+                                    RichText::new(self.t("start.recent"))
+                                        .size(15.0)
+                                        .family(FontFamily::Name(theme::BOLD.into())),
                                 );
-                                if response.clicked() {
-                                    actions.push(Action::OpenPath(path.clone()));
+                                ui.add_space(6.0);
+                                if self.settings.recent.is_empty() {
+                                    ui.label(RichText::new(self.t("start.no_recent")).weak());
+                                } else if let Some(path) = recent_list(
+                                    ui,
+                                    &self.settings.recent,
+                                    self.i18n.t("start.missing"),
+                                ) {
+                                    actions.push(Action::OpenPath(path));
                                 }
-                            }
+                            });
                         });
                     ui.add_space(16.0);
                     ui.label(RichText::new(self.t("start.hint")).weak().size(12.0));
@@ -3159,16 +3154,12 @@ impl App {
                     ui.add_space(24.0);
                     ui.label(RichText::new(self.t("start.recent")).size(18.0));
                     ui.add_space(6.0);
-                    for path in self.settings.recent.clone() {
-                        if ui
-                            .add_enabled(
-                                path.exists(),
-                                egui::Button::new(path.display().to_string()).frame(false),
-                            )
-                            .clicked()
-                        {
-                            actions.push(Action::OpenPath(path.clone()));
-                        }
+                    if self.settings.recent.is_empty() {
+                        ui.label(RichText::new(self.t("start.no_recent")).weak());
+                    } else if let Some(path) =
+                        recent_list(ui, &self.settings.recent, self.i18n.t("start.missing"))
+                    {
+                        actions.push(Action::OpenPath(path));
                     }
                 });
         });
@@ -4498,6 +4489,145 @@ fn failed_ui(ui: &mut egui::Ui, error: &str, i18n: &I18n, palette: Palette) {
 /// Symbols the Insert ▸ Symbol dialog offers.
 const SYMBOLS: &str = "©®™§¶°±×÷≈≠≤≥∞€£¥₽¢—–«»„“”‘’…•·→←↑↓↔✓✗αβγδεθλμπσφωΣΩΔ√∑∫∂½¼¾¹²³№†‡";
 
+/// One row per recent file: a format icon, the name as a link, the folder
+/// underneath in a quieter face. The hand cursor follows the name.
+fn recent_list(ui: &mut egui::Ui, paths: &[PathBuf], missing: &str) -> Option<PathBuf> {
+    let mut opened = None;
+    let link = ui.visuals().hyperlink_color;
+    let quiet = ui.visuals().weak_text_color();
+    for path in paths {
+        let exists = path.exists();
+        let width = ui.available_width();
+        let (rect, response) = ui.allocate_exact_size(vec2(width, 44.0), Sense::click());
+        let response = if exists && response.hovered() {
+            ui.painter()
+                .rect_filled(rect, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
+            response
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .on_hover_text(path.display().to_string())
+        } else if exists {
+            response.on_hover_text(path.display().to_string())
+        } else {
+            response.on_hover_text(format!("{}\n{missing}", path.display()))
+        };
+        let (mark, fill) = format_mark(path);
+        let icon = egui::Rect::from_center_size(
+            egui::pos2(rect.left() + 18.0, rect.center().y),
+            vec2(22.0, 22.0),
+        );
+        icons::paint_document(ui.painter(), icon, &mark, fill, ui.visuals().text_color());
+        let text_left = icon.right() + 8.0;
+        let text_width = (rect.right() - 8.0 - text_left).max(24.0);
+        let name = file_name(path);
+        let name_color = if exists { link } else { quiet };
+        let name_galley = fitted_line(
+            ui,
+            &name,
+            FontId::proportional(14.0),
+            name_color,
+            text_width,
+        );
+        let folder = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .map(|parent| parent.display().to_string())
+            .unwrap_or_default();
+        let folder_galley = if folder.is_empty() {
+            None
+        } else {
+            Some(fitted_line(
+                ui,
+                &folder,
+                FontId::proportional(11.0),
+                quiet,
+                text_width,
+            ))
+        };
+        let name_y = if folder_galley.is_some() {
+            rect.center().y - name_galley.size().y - 1.0
+        } else {
+            rect.center().y - name_galley.size().y / 2.0
+        };
+        if exists && response.hovered() {
+            let baseline = name_y + name_galley.size().y;
+            ui.painter().line_segment(
+                [
+                    egui::pos2(text_left, baseline),
+                    egui::pos2(text_left + name_galley.size().x, baseline),
+                ],
+                Stroke::new(1.0, link),
+            );
+        }
+        ui.painter()
+            .galley(egui::pos2(text_left, name_y), name_galley, name_color);
+        if let Some(folder_galley) = folder_galley {
+            ui.painter().galley(
+                egui::pos2(text_left, rect.center().y + 1.0),
+                folder_galley,
+                quiet,
+            );
+        }
+        if exists && response.clicked() {
+            opened = Some(path.clone());
+        }
+    }
+    opened
+}
+
+/// Three-letter mark and the colour already used on document tabs.
+fn format_mark(path: &std::path::Path) -> (String, Color32) {
+    let (label, color) = match formats::kind_by_extension(path) {
+        Some(Kind::Pdf) => ("PDF", Color32::from_rgb(200, 40, 40)),
+        Some(Kind::Djvu) => ("DJV", Color32::from_rgb(120, 80, 160)),
+        Some(Kind::Rtf) => ("RTF", Color32::from_rgb(40, 140, 120)),
+        Some(Kind::Html) => ("HTM", Color32::from_rgb(30, 110, 180)),
+        Some(Kind::Latex) => ("TEX", Color32::from_rgb(180, 90, 20)),
+        Some(Kind::Docx | Kind::DocxTransitional | Kind::New) => ("DOC", theme::ACCENT),
+        None => ("", Color32::from_gray(110)),
+    };
+    if !label.is_empty() {
+        return (label.to_owned(), color);
+    }
+    let fallback = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| {
+            ext.chars()
+                .take(3)
+                .flat_map(char::to_uppercase)
+                .collect::<String>()
+        })
+        .filter(|label| !label.is_empty());
+    (fallback.unwrap_or_default(), color)
+}
+
+/// One line, cut with an ellipsis when it will not fit.
+fn fitted_line(
+    ui: &egui::Ui,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    max_width: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let full = ui
+        .painter()
+        .layout_no_wrap(text.to_owned(), font.clone(), color);
+    if full.size().x <= max_width {
+        return full;
+    }
+    let mut end = text.chars().count();
+    while end > 0 {
+        end -= 1;
+        let mut cut: String = text.chars().take(end).collect();
+        cut.push('…');
+        let galley = ui.painter().layout_no_wrap(cut, font.clone(), color);
+        if galley.size().x <= max_width {
+            return galley;
+        }
+    }
+    ui.painter().layout_no_wrap("…".to_owned(), font, color)
+}
+
 fn file_name(path: &std::path::Path) -> String {
     path.file_name()
         .and_then(|name| name.to_str())
@@ -4583,6 +4713,101 @@ mod tests {
         assert!((next_zoom(1.0, true) - 1.1).abs() < 1e-6);
         assert!((next_zoom(1.0, false) - 0.9).abs() < 1e-6);
         assert!((next_zoom(5.0, true) - 5.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_recent_row_is_a_named_link_with_a_format_mark() {
+        let dir = std::env::temp_dir().join(format!("mufoed-recent-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("report.docx");
+        std::fs::write(&path, b"x").unwrap();
+        let missing = dir.join("gone.pdf");
+        let ctx = egui::Context::default();
+        theme::apply(&ctx, false);
+        let mut name_at = None;
+        let mut pdf_at = None;
+        let mut picked = None;
+        let mut saw_name = false;
+        let mut saw_folder = false;
+        let mut saw_pdf_mark = false;
+        let full = path.display().to_string();
+        for frame in 0..10 {
+            let pointer = if frame >= 8 {
+                pdf_at.unwrap_or(egui::pos2(880.0, 680.0))
+            } else if frame >= 4 {
+                name_at.unwrap_or(egui::Pos2::ZERO)
+            } else {
+                egui::pos2(880.0, 680.0)
+            };
+            let mut events = vec![egui::Event::PointerMoved(pointer)];
+            if matches!(frame, 5 | 6) {
+                events.push(egui::Event::PointerButton {
+                    pos: pointer,
+                    button: egui::PointerButton::Primary,
+                    pressed: frame == 5,
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+            let output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        vec2(900.0, 700.0),
+                    )),
+                    events,
+                    time: Some(f64::from(frame) * 0.1),
+                    ..Default::default()
+                },
+                |ui| {
+                    if let Some(opened) =
+                        recent_list(ui, &[path.clone(), missing.clone()], "missing")
+                    {
+                        picked = Some(opened);
+                    }
+                },
+            );
+            if (4..8).contains(&frame) {
+                assert_eq!(
+                    output.platform_output.cursor_icon,
+                    egui::CursorIcon::PointingHand
+                );
+            }
+            if frame >= 8 {
+                assert_ne!(
+                    output.platform_output.cursor_icon,
+                    egui::CursorIcon::PointingHand
+                );
+            }
+            for shape in output.shapes {
+                match shape.shape {
+                    egui::Shape::Text(text) => {
+                        if text.galley.text() == "report.docx" {
+                            saw_name = true;
+                            name_at = Some(text.pos + text.galley.rect.center().to_vec2());
+                        }
+                        if text.galley.text() == "gone.pdf" {
+                            pdf_at = Some(text.pos + text.galley.rect.center().to_vec2());
+                        }
+                        if text.galley.text() == dir.display().to_string() {
+                            saw_folder = true;
+                        }
+                        if frame < 4 {
+                            assert_ne!(text.galley.text(), full);
+                        }
+                    }
+                    egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(200, 40, 40) => {
+                        saw_pdf_mark = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert!(saw_name);
+        assert!(saw_folder);
+        assert!(saw_pdf_mark);
+        assert_eq!(picked.as_deref(), Some(path.as_path()));
+        assert!(pdf_at.is_some());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -72,6 +72,13 @@ pub(crate) enum TabEvent {
         job: u64,
         source: Box<crate::worker::AiSource>,
     },
+    /// The document as the chat's tools read it.
+    ChatSnapshot {
+        /// The id the request carried.
+        job: u64,
+        /// Paragraphs, formulas, tables and the caret.
+        view: Box<crate::chat::View>,
+    },
 }
 
 /// What happens once a pending save finishes.
@@ -414,6 +421,10 @@ impl DocTab {
             }
             Reply::FontsMissing(packs) => events.push(TabEvent::FontsMissing(packs)),
             Reply::AiSource { job, source } => events.push(TabEvent::AiSource { job, source }),
+            Reply::ChatSnapshot { job, view } => {
+                events.push(TabEvent::ChatSnapshot { job, view });
+            }
+            Reply::ChatFind { .. } => {}
             Reply::Formula(found) => events.push(TabEvent::Formula(found)),
             Reply::Chart(data) => events.push(TabEvent::Chart(data)),
             Reply::Scheme(plan) => events.push(TabEvent::Scheme(plan)),
