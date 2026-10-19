@@ -684,20 +684,20 @@ const BRITISH: &[&str] = &[
     "practise",
 ];
 
-/// The dictionary the words most resemble, when one language leads clearly.
-/// At most the first 400 words are read. `None` when the sample is too small
-/// or two languages stay close.
-pub(crate) fn detect_language<'a>(
-    words: impl IntoIterator<Item = &'a str>,
-) -> Option<&'static str> {
+struct ProbeScore {
+    code: &'static str,
+    best: u32,
+    second: u32,
+    british: u32,
+}
+
+fn probe_score<'a>(words: impl IntoIterator<Item = &'a str>) -> ProbeScore {
     let mut scores = [0u32; PROBES.len()];
     let mut british = 0u32;
-    let mut seen = 0u32;
-    for word in words {
+    for (seen, word) in words.into_iter().enumerate() {
         if seen >= 400 {
             break;
         }
-        seen += 1;
         let lower = word.to_lowercase();
         if BRITISH.contains(&lower.as_str()) {
             british += 1;
@@ -723,15 +723,40 @@ pub(crate) fn detect_language<'a>(
             second = score;
         }
     }
-    if best < 6 || best < second + 4 {
+    ProbeScore {
+        code: PROBES[best_at].code,
+        best,
+        second,
+        british,
+    }
+}
+
+fn pick(score: &ProbeScore, minimum: u32, lead: u32) -> Option<&'static str> {
+    if score.best < minimum || score.best < score.second.saturating_add(lead) {
         return None;
     }
-    let code = PROBES[best_at].code;
-    if code == "en" && british >= 2 {
+    if score.code == "en" && score.british >= 2 {
         Some("en-GB")
     } else {
-        Some(code)
+        Some(score.code)
     }
+}
+
+/// The dictionary the words most resemble, when one language leads clearly.
+/// At most the first 400 words are read. `None` when the sample is too small
+/// or two languages stay close.
+pub(crate) fn detect_language<'a>(
+    words: impl IntoIterator<Item = &'a str>,
+) -> Option<&'static str> {
+    pick(&probe_score(words), 6, 4)
+}
+
+/// A weaker reading, used only to offer a dictionary.
+///
+/// A short paragraph can lead by a couple of function words. That is enough
+/// to offer its dictionary, and not enough to treat the language as known.
+pub(crate) fn language_hint<'a>(words: impl IntoIterator<Item = &'a str>) -> Option<&'static str> {
+    pick(&probe_score(words), 2, 1)
 }
 
 pub(crate) fn language(code: &str) -> Option<&'static Language> {
@@ -1108,6 +1133,9 @@ mod tests {
             Some("uk")
         );
         assert_eq!(guess("кот котт"), None);
+        assert_eq!(language_hint(["und", "der"]), Some("de"));
+        assert_eq!(detect_language(["und", "der"]), None);
+        assert_eq!(language_hint(["кот", "котт"]), None);
     }
 
     #[test]

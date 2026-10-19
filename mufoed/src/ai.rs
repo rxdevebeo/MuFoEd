@@ -849,41 +849,65 @@ mod cleanup_tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
-                .unwrap();
-            let mut request = Vec::new();
-            let body = loop {
-                let mut buffer = [0; 4096];
-                let read = stream.read(&mut buffer).unwrap();
-                assert_ne!(read, 0);
-                request.extend_from_slice(&buffer[..read]);
-                if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
-                    let headers = String::from_utf8_lossy(&request[..end]).to_lowercase();
-                    let length: usize = headers
+            let read_http = |stream: &mut std::net::TcpStream| -> (String, Vec<u8>) {
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .unwrap();
+                let mut request = Vec::new();
+                loop {
+                    let mut buffer = [0; 4096];
+                    let read = stream.read(&mut buffer).unwrap();
+                    assert_ne!(read, 0);
+                    request.extend_from_slice(&buffer[..read]);
+                    let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") else {
+                        continue;
+                    };
+                    let headers = String::from_utf8_lossy(&request[..end]).to_string();
+                    let length = headers
                         .lines()
-                        .find_map(|line| line.strip_prefix("content-length:"))
-                        .unwrap()
-                        .trim()
-                        .parse()
-                        .unwrap();
+                        .find_map(|line| {
+                            let lower = line.to_ascii_lowercase();
+                            let value = lower.strip_prefix("content-length:")?;
+                            value.trim().parse::<usize>().ok()
+                        })
+                        .unwrap_or(0);
                     if request.len() >= end + 4 + length {
-                        break request[end + 4..end + 4 + length].to_vec();
+                        let body = request[end + 4..end + 4 + length].to_vec();
+                        let path = headers.lines().next().unwrap_or("").to_owned();
+                        return (path, body);
                     }
                 }
             };
-            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-            assert_eq!(json["model"], "test-model");
-            let data: serde_json::Value =
-                serde_json::from_str(json["messages"][1]["content"].as_str().unwrap()).unwrap();
-            assert!(data[0]["left_tail"]
-                .as_str()
-                .unwrap()
-                .ends_with("the actual end"));
-            assert_eq!(data[0]["right_head"], "continues here");
-            let response = serde_json::json!({"message": {"content": "[0,999]"}}).to_string();
-            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).unwrap();
+            let reply = |stream: &mut std::net::TcpStream, response: &str| {
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
+            };
+            loop {
+                let (mut stream, _) = listener.accept().unwrap();
+                let (path, body) = read_http(&mut stream);
+                if path.contains("/api/chat") {
+                    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    assert_eq!(json["model"], "test-model");
+                    let data: serde_json::Value =
+                        serde_json::from_str(json["messages"][1]["content"].as_str().unwrap())
+                            .unwrap();
+                    assert!(data[0]["left_tail"]
+                        .as_str()
+                        .unwrap()
+                        .ends_with("the actual end"));
+                    assert_eq!(data[0]["right_head"], "continues here");
+                    reply(
+                        &mut stream,
+                        &serde_json::json!({"message": {"content": "[0,999]"}}).to_string(),
+                    );
+                    break;
+                }
+                let response = if path.contains("/api/tags") {
+                    r#"{"models":[]}"#
+                } else {
+                    "{}"
+                };
+                reply(&mut stream, response);
+            }
         });
         let events = std::cell::RefCell::new(Vec::new());
         run(

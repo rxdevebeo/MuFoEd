@@ -310,10 +310,16 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     ("strict-stage5b", 0, -1.0, 2.0),
     // Compact inline fractions and real math faces bring +3 px down to zero.
     ("05-strict-math-simple", 0, 0.0, 0.0),
-    ("06-strict-math-display", 0, 0.0, 6.0),
+    // 6 -> -7 (2026-10-19): fraction and radical boxes follow the glyph ink,
+    // so the formulas are shorter and the page ends 7 px above the reference.
+    // The class bound still holds; the SVG gate measures -8 on the same page.
+    ("06-strict-math-display", 0, 0.0, -7.0),
     ("07-strict-drawingml-shapes", 0, 0.0, 1.0),
     // 7 -> 2 (2026-10-12): display grids centred on the math axis.
-    ("10-strict-math-eqarr", 0, 0.0, 2.0),
+    // 2 -> 7 (2026-10-19): ordinary equation lines keep the glyph depth that
+    // exceeds the nominal pitch, without a second 0.3 em gap. Same pin as the
+    // SVG gate; the class bound is 18 px.
+    ("10-strict-math-eqarr", 0, 0.0, 7.0),
     // Correct delimiter centring above the baseline reduces 12 -> 5 px.
     // 5 -> -4 (2026-10-12): inline formula lines reserve glyph ink, inline
     // n-ary limits at the side, groupChr base on the baseline (as the SVG gate).
@@ -340,7 +346,9 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // bottom drift from +193 px to +23 px on the PDF path (WPS probe verified).
     // 23 -> 25 (2026-10-12): display grids centred on the math axis; the `{`
     // around the equation array was 58 px off after 55f1584.
-    ("strict-stage5c", 1, 1.0, 25.0),
+    // 25 -> 20 (2026-10-19): a row that already fills the nominal pitch no
+    // longer takes another 0.3 em of clearance. Same pin as the SVG gate.
+    ("strict-stage5c", 1, 1.0, 20.0),
 ];
 
 /// SC-6 criteria 2–4: every gated page, compared the way the SVG gate compares.

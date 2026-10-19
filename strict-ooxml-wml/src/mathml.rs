@@ -147,6 +147,10 @@ pub fn math_from_mathml(source: &str) -> Result<MathExpression, MathMlReadError>
     })
 }
 
+/// Reads one MathML fragment. The fragment is the whole input, so reaching
+/// the end of the reader is a complete formula.
+///
+/// lint-eof: this arm is the success case
 fn parse(fragment: &str) -> Result<Element, MathMlReadError> {
     let limits = ResourceLimits::default();
     let mut reader = XmlReader::new(fragment.as_bytes(), PartId::new("/mathml.xml"), &limits)
@@ -180,7 +184,12 @@ fn parse(fragment: &str) -> Result<Element, MathMlReadError> {
                     top.children.push(Item::Text(text));
                 }
             }
-            XmlEvent::Eof => break,
+            XmlEvent::Eof => {
+                if stack.len() != 1 {
+                    return Err(MathMlReadError::Xml("unexpected end of mathml".to_owned()));
+                }
+                break;
+            }
         }
     }
     let document = stack.pop().ok_or(MathMlReadError::NoMath)?;

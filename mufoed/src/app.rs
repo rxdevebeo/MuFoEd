@@ -1863,7 +1863,10 @@ impl App {
             return;
         }
         for code in codes {
-            if self.dictionaries_offered.contains(code) || crate::spell::installed(code) {
+            let covered = self.dictionaries_offered.contains(code)
+                || crate::spell::installed(code)
+                || (*code == "en-GB" && crate::spell::installed("en"));
+            if covered {
                 continue;
             }
             self.dictionaries_offered.push(code);

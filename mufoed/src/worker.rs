@@ -843,10 +843,19 @@ fn spell_document(
         }
     }
     let mut missing = Vec::new();
-    if let Some(code) = crate::spell::detect_language(sample.iter().map(String::as_str)) {
+    let words: Vec<&str> = sample.iter().map(String::as_str).collect();
+    let detected = crate::spell::detect_language(words.iter().copied())
+        .or_else(|| crate::spell::language_hint(words.iter().copied()));
+    if let Some(code) = detected {
         missing.push(code);
     }
+    let covered = detected
+        .and_then(crate::spell::language)
+        .map(|language| language.script);
     for script in unchecked {
+        if covered == Some(script) {
+            continue;
+        }
         let code = crate::spell::language_for(script);
         if !missing.contains(&code) {
             missing.push(code);

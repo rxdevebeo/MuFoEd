@@ -1230,13 +1230,63 @@ pub(crate) fn layout_display(
     };
     let left = crate::units::finite(content_left) + left_margin;
     let formula_right = left + shift + boxed.size.width;
+    // The number shares the formula's text baseline. A grid recentred on the
+    // math axis leaves that baseline off the box origin (WQ-014).
+    let number_y = dominant_baseline(&boxed.items).unwrap_or(0.0);
     let mut out = boxed.shifted(left + shift, 0.0);
     if let Some(number) = number {
         // At the right margin, or just after a formula that reaches it.
         let x = (left + available - number.size.width).max(formula_right + frame.em());
-        out.place(number, x, 0.0);
+        out.place(number, x, number_y);
     }
     out
+}
+
+/// The baseline that carries the most text, in this box's coordinates.
+fn dominant_baseline(items: &[Item]) -> Option<f64> {
+    let mut bands: Vec<(f64, f64)> = Vec::new();
+    accumulate_baselines(items, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0], &mut bands);
+    bands
+        .into_iter()
+        .max_by(|left, right| left.1.total_cmp(&right.1))
+        .map(|(baseline, _)| baseline)
+}
+
+fn accumulate_baselines(items: &[Item], matrix: [f64; 6], bands: &mut Vec<(f64, f64)>) {
+    for item in items {
+        match item {
+            Item::Text(text) if !text.text.trim().is_empty() => {
+                let y = matrix[1] * text.x + matrix[3] * text.baseline + matrix[5];
+                if let Some(band) = bands
+                    .iter_mut()
+                    .find(|(baseline, _)| (*baseline - y).abs() < 0.25)
+                {
+                    band.1 += text.width.max(0.0);
+                } else {
+                    bands.push((y, text.width.max(0.0)));
+                }
+            }
+            Item::Group(group) => {
+                accumulate_baselines(&group.items, compose_matrix(matrix, group.matrix), bands);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// `outer × inner` for SVG matrices `[a, b, c, d, e, f]`.
+#[allow(clippy::many_single_char_names)] // The six SVG matrix coefficients.
+fn compose_matrix(outer: [f64; 6], inner: [f64; 6]) -> [f64; 6] {
+    let [a, b, c, d, e, f] = outer;
+    let [ia, ib, ic, id, ie, inner_f] = inner;
+    [
+        a * ia + c * ib,
+        b * ia + d * ib,
+        a * ic + c * id,
+        b * ic + d * id,
+        a * ie + c * inner_f + e,
+        b * ie + d * inner_f + f,
+    ]
 }
 
 /// Splits a formula at Word's equation-number marker: a `#` in a top-level run,
@@ -2211,6 +2261,25 @@ fn automatic_row_gap(frame: &Frame<'_, '_>, rule: Option<&str>) -> f64 {
     }
 }
 
+/// Distance from one row baseline to the next.
+///
+/// The nominal pitch already separates ordinary rows. The clearance is a
+/// floor for a row whose ink is taller than that pitch, not an extra gap
+/// added on top of every row.
+fn row_advance(pitch: f64, depth: f64, next_height: f64, gap: f64) -> f64 {
+    let ink = depth + next_height;
+    // A row that already fits in the pitch, or only barely exceeds it, keeps
+    // that pitch. Adding the clearance on top of a fitted row opened an extra
+    // gap between ordinary equation-array lines. A cell that is taller than
+    // the pitch by more than the clearance grows so the next baseline clears
+    // its ink.
+    if ink <= pitch + gap {
+        pitch.max(ink)
+    } else {
+        ink + gap
+    }
+}
+
 fn audit_vertical_clearance(
     frame: &Frame<'_, '_>,
     role: &str,
@@ -2494,10 +2563,11 @@ impl Grid {
                 }
                 previous_bottom = Some(bottom);
             }
-            baseline += (self.row_pitch + gap).max(
-                self.row_depths.get(index).copied().unwrap_or(0.0)
-                    + self.row_heights.get(index + 1).copied().unwrap_or(0.0)
-                    + gap,
+            baseline += row_advance(
+                self.row_pitch,
+                self.row_depths.get(index).copied().unwrap_or(0.0),
+                self.row_heights.get(index + 1).copied().unwrap_or(0.0),
+                gap,
             );
         }
     }
@@ -2528,7 +2598,7 @@ impl Grid {
             // Baseline distance must clear the previous descent AND the next
             // ascent, which may differ greatly (fractions, roots, limits).
             let next_height = self.row_heights.get(row_index + 1).copied().unwrap_or(0.0);
-            top += (self.row_pitch + minimum_gap).max(row_depth + next_height + minimum_gap);
+            top += row_advance(self.row_pitch, row_depth, next_height, minimum_gap);
         }
         let first_baseline = self.row_heights.first().copied().unwrap_or(0.0);
         out.size.width = widest.max(out.size.width);

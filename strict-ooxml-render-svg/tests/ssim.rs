@@ -109,7 +109,10 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // the bottom drift from +193 px to +24 px, while preserving separate objects.
     // 24 -> 25 (2026-10-12): display grids are centred on the math axis, which
     // halves the `{` around the equation array (58 px after 55f1584).
-    ("strict-stage5c", 1, 1.0, 25.0),
+    // 25 -> 20 (2026-10-19): a row that already fills the nominal pitch no
+    // longer takes another 0.3 em of clearance, so this equation array sits
+    // 5 px closer to the reference.
+    ("strict-stage5c", 1, 1.0, 20.0),
     // -2 -> 4: the same trade on the simplest formula page, where one fraction gets
     // 6 px taller. The page's SSIM went from 0.9632 to 0.9747.
     // Compact inline fraction parts bring the former +4 px bottom drift to zero.
@@ -118,11 +121,17 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // change here — 15 px, because three stacked fractions each get taller. The
     // page's SSIM went from 0.9496 (below the threshold) to 0.9762, and its
     // structural failures are gone.
-    ("06-strict-math-display", 0, 0.0, 5.0),
+    // 5 -> -8 (2026-10-19): fraction and radical boxes follow the glyph ink,
+    // so the formulas are shorter and the page ends 8 px above the reference.
+    // SSIM stays at 0.9735, inside the class bound.
+    ("06-strict-math-display", 0, 0.0, -8.0),
     ("07-strict-drawingml-shapes", 0, 0.0, 1.0),
     // -3 -> 7: the same trade on the equation-array page. SSIM 0.9573 -> 0.9695.
     // 7 -> 2 (2026-10-12): display grids centred on the math axis. SSIM -> 0.9715.
-    ("10-strict-math-eqarr", 0, 0.0, 2.0),
+    // 2 -> 7 (2026-10-19): ordinary equation lines keep the glyph depth that
+    // exceeds the nominal pitch, without a second 0.3 em gap. The page is
+    // inside the 18 px class bound; SSIM 0.9605.
+    ("10-strict-math-eqarr", 0, 0.0, 7.0),
 ];
 
 /// Repository path to the real Strict corpus (`tests/strict/`).

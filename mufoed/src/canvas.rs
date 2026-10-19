@@ -44,36 +44,22 @@ pub(crate) struct Desk {
 pub(crate) fn desk(tab: &DocTab) -> Desk {
     let zoom = tab.zoom;
     #[allow(clippy::cast_possible_truncation)]
-    let widest = tab
-        .pages
-        .iter()
-        .map(|page| page.width as f32 * zoom)
-        .fold(0.0_f32, f32::max);
-    let pair = tab.original.is_some() && tab.view.viewport.x >= widest * 2.0 + GAP * 3.0;
-    if pair {
-        let column = widest * 2.0 + GAP * 3.0;
-        let mut y = GAP;
-        let mut pages = Vec::with_capacity(tab.pages.len());
-        let mut originals = Vec::new();
-        for page in &tab.pages {
-            #[allow(clippy::cast_possible_truncation)]
-            let size = vec2(page.width as f32 * zoom, page.height as f32 * zoom);
-            originals.push(Rect::from_min_size(pos2(GAP, y), size));
-            pages.push(Rect::from_min_size(pos2(GAP * 2.0 + widest, y), size));
-            y += size.y + GAP;
-        }
-        return Desk {
-            pages,
-            originals,
-            content: vec2(column, y),
-        };
-    }
-    #[allow(clippy::cast_possible_truncation)]
     let sheets: Vec<(f32, f32)> = tab
         .pages
         .iter()
         .map(|page| (page.width as f32 * zoom, page.height as f32 * zoom))
         .collect();
+    if tab.original.is_some() {
+        if let Some((pages, originals, content)) =
+            arrange_pairs(&sheets, tab.view.viewport.x, tab.view.pages_across)
+        {
+            return Desk {
+                pages,
+                originals,
+                content,
+            };
+        }
+    }
     let (pages, content) = arrange(&sheets, tab.view.viewport.x, tab.view.pages_across);
     Desk {
         pages,
@@ -95,6 +81,53 @@ fn columns_across(viewport_w: f32, page_w: f32, count: usize) -> usize {
         1
     };
     fit.clamp(1, count)
+}
+
+/// Recognition pairs. Each cell is the source page and the recognized page.
+///
+/// `None` when one pair does not fit: the caller then shows the recognized
+/// pages alone. `multi` puts as many pairs in a row as the width holds.
+fn arrange_pairs(
+    sheets: &[(f32, f32)],
+    viewport_w: f32,
+    multi: bool,
+) -> Option<(Vec<Rect>, Vec<Rect>, egui::Vec2)> {
+    if sheets.is_empty() {
+        return None;
+    }
+    let widest = sheets.iter().map(|sheet| sheet.0).fold(0.0_f32, f32::max);
+    if widest <= 0.0 || viewport_w < widest * 2.0 + GAP * 3.0 {
+        return None;
+    }
+    let pair_w = widest * 2.0 + GAP;
+    let columns = if multi {
+        columns_across(viewport_w, pair_w, sheets.len())
+    } else {
+        1
+    };
+    #[allow(clippy::cast_precision_loss)]
+    let content_w = columns as f32 * pair_w + (columns as f32 + 1.0) * GAP;
+    let mut y = GAP;
+    let mut pages = Vec::with_capacity(sheets.len());
+    let mut originals = Vec::with_capacity(sheets.len());
+    let mut index = 0;
+    while index < sheets.len() {
+        let end = (index + columns).min(sheets.len());
+        let row_h = sheets[index..end]
+            .iter()
+            .map(|sheet| sheet.1)
+            .fold(0.0_f32, f32::max);
+        for (col, sheet) in sheets[index..end].iter().enumerate() {
+            #[allow(clippy::cast_precision_loss)]
+            let x = GAP + col as f32 * (pair_w + GAP);
+            let size = vec2(sheet.0, sheet.1);
+            originals.push(Rect::from_min_size(pos2(x, y), size));
+            pages.push(Rect::from_min_size(pos2(x + widest + GAP, y), size));
+        }
+        y += row_h + GAP;
+        index = end;
+    }
+    Some((pages, originals, vec2(content_w, y)))
 }
 
 /// Page rectangles in content coordinates. Sizes are already scaled by zoom.
@@ -1310,5 +1343,18 @@ mod tests {
             true,
         );
         assert!((next[2].top() - (18.0 + 900.0 + 18.0)).abs() < 0.1);
+    }
+
+    #[test]
+    fn recognized_pages_share_the_row_when_the_mode_is_on() {
+        let sheets = [(600.0, 800.0), (600.0, 800.0)];
+        let (pages, originals, _) = arrange_pairs(&sheets, 3000.0, true).expect("two pairs");
+        assert!((originals[0].left() - 18.0).abs() < 0.1);
+        assert!((pages[0].left() - 636.0).abs() < 0.1);
+        assert!((originals[1].top() - originals[0].top()).abs() < 0.1);
+        assert!(originals[1].left() > pages[0].right());
+        let (stacked, _, _) = arrange_pairs(&sheets, 3000.0, false).expect("one column");
+        assert!(stacked[1].top() > stacked[0].bottom());
+        assert!(arrange_pairs(&sheets, 800.0, true).is_none());
     }
 }
