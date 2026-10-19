@@ -953,7 +953,10 @@ fn glyph_name_to_char(name: &str) -> Option<char> {
         "plusminus" => '\u{b1}',
         "multiply" => '\u{d7}',
         "divide" => '\u{f7}',
-        _ => return None,
+        // Everything else the Adobe Glyph List names: ligatures (`fi`, `fl`),
+        // accented capitals, dashes and the rest of a producer's
+        // `/Differences` (R3: `/fi` fell back to WinAnsi and read `Œ`).
+        _ => return read_fonts::ps::agl::name_to_char(name),
     })
 }
 
@@ -1272,6 +1275,16 @@ endcmap";
         assert_eq!(glyph_name_to_char("u1F600"), Some('\u{1F600}'));
         assert_eq!(glyph_name_to_char("bullet"), Some('\u{2022}'));
         assert_eq!(glyph_name_to_char("nonesuch"), None);
+    }
+
+    /// R3: `/Differences` naming `/fi` fell back to WinAnsi and read `Œ`; the
+    /// names the hand-written table lacks come from the Adobe Glyph List.
+    #[test]
+    fn glyph_names_beyond_the_table_come_from_the_glyph_list() {
+        assert_eq!(glyph_name_to_char("fi"), Some('\u{FB01}'));
+        assert_eq!(glyph_name_to_char("fl"), Some('\u{FB02}'));
+        assert_eq!(glyph_name_to_char("Lslash"), Some('Ł'));
+        assert_eq!(glyph_name_to_char("emdash"), Some('—'));
     }
 
     #[test]

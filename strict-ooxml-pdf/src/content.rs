@@ -1752,6 +1752,32 @@ fn spacing_is_word_space(font: &PdfFont, state: &State, glyphs: usize) -> bool {
     })
 }
 
+/// The letters a Latin ligature stands for: `ﬁ` is `fi`.
+///
+/// A converted document is text to edit and search, and a renderer draws the
+/// ligature again from the letters where the font has one; the presentation
+/// form left `ﬁle` unfindable as `file`, and a face without it drew a box.
+fn spell_ligatures(text: String) -> String {
+    if !text
+        .chars()
+        .any(|ch| ('\u{FB00}'..='\u{FB06}').contains(&ch))
+    {
+        return text;
+    }
+    text.chars()
+        .map(|ch| match ch {
+            '\u{FB00}' => "ff".to_owned(),
+            '\u{FB01}' => "fi".to_owned(),
+            '\u{FB02}' => "fl".to_owned(),
+            '\u{FB03}' => "ffi".to_owned(),
+            '\u{FB04}' => "ffl".to_owned(),
+            '\u{FB05}' => "\u{17F}t".to_owned(),
+            '\u{FB06}' => "st".to_owned(),
+            other => other.to_string(),
+        })
+        .collect()
+}
+
 /// Builds the glyph at the current text position, or `None` when it is not drawn.
 fn render_glyph(
     code: u32,
@@ -1809,7 +1835,7 @@ fn render_glyph(
     if character.is_none() {
         out.unmapped_glyphs = out.unmapped_glyphs.saturating_add(1);
     }
-    let ch = character.unwrap_or_else(|| "\u{fffd}".to_owned());
+    let ch = spell_ligatures(character.unwrap_or_else(|| "\u{fffd}".to_owned()));
     let (ascent, descent) = font.vertical_metrics();
     let measured = font.width(code);
     let estimated = measured.is_estimated();
@@ -1964,6 +1990,13 @@ pub fn decode_image(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_ligature_is_spelled_as_its_letters() {
+        assert_eq!(super::spell_ligatures("\u{FB01}le".to_owned()), "file");
+        assert_eq!(super::spell_ligatures("o\u{FB03}ce".to_owned()), "office");
+        assert_eq!(super::spell_ligatures("plain".to_owned()), "plain");
+    }
     use super::flatten_cubic;
 
     /// The exact value of the cubic at `t`, computed independently of the
