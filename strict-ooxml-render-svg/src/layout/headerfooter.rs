@@ -64,7 +64,7 @@ pub(crate) fn decorate_pages(
         return Ok(());
     }
     let even_and_odd = ctx.document.settings.even_and_odd_headers;
-    let mut cache: HashMap<PartId, CachedRegion> = HashMap::new();
+    let mut cache: HashMap<(PartId, u64), CachedRegion> = HashMap::new();
     let mut dynamic: HashMap<PartId, bool> = HashMap::new();
     let mut section_page_counts = vec![0usize; sections.len().max(1)];
     for page in pages.iter() {
@@ -165,7 +165,10 @@ pub(crate) fn decorate_pages(
                 title_page,
                 even_and_odd,
             );
-            if let Some(region) = header.and_then(|part| {
+            // Page- and margin-relative pictures are resolved while this is
+            // set, then stored minus the shift `offset_item` adds below.
+            ctx.region_shift.set(Some(header_offset));
+            let region = header.and_then(|part| {
                 region_for(
                     ctx,
                     part,
@@ -175,7 +178,9 @@ pub(crate) fn decorate_pages(
                     &mut cache,
                     &mut dynamic,
                 )
-            }) {
+            });
+            ctx.region_shift.set(None);
+            if let Some(region) = region {
                 ctx.charge_items(region.items.iter().map(|item| item.leaves().count()).sum())?;
                 for item in &region.items {
                     decorated.push(offset_item(item, 0.0, header_offset));
@@ -458,13 +463,17 @@ fn region_for(
     left: f64,
     width: f64,
     env: FieldEnv,
-    cache: &mut HashMap<PartId, CachedRegion>,
+    cache: &mut HashMap<(PartId, u64), CachedRegion>,
     dynamic: &mut HashMap<PartId, bool>,
 ) -> Option<Region> {
     let header_footer = ctx.document.header_footer(part)?;
     let is_dynamic = *dynamic
         .entry(part.clone())
         .or_insert_with(|| blocks_have_dynamic_fields(&header_footer.blocks));
+    let key = (
+        part.clone(),
+        ctx.region_shift.get().unwrap_or(0.0).to_bits(),
+    );
     if is_dynamic {
         Some(layout_region(
             ctx,
@@ -473,7 +482,7 @@ fn region_for(
             width,
             Some(env),
         ))
-    } else if let Some(cached) = cache.get(part) {
+    } else if let Some(cached) = cache.get(&key) {
         Some(Region {
             items: cached.region.items.clone(),
             height: cached.region.height,
@@ -482,7 +491,7 @@ fn region_for(
     } else {
         let region = layout_region(ctx, &header_footer.blocks, left, width, None);
         cache.insert(
-            part.clone(),
+            key,
             CachedRegion {
                 region: Region {
                     items: region.items.clone(),

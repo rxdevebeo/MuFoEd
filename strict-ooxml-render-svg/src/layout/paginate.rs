@@ -790,8 +790,11 @@ fn place_body_paragraph(
     {
         // An object placed from this paragraph that would end below the page
         // takes the paragraph to the next page with it, as WPS lays it out
-        // (WQ-013: the figure was drawn past the sheet and lost).
+        // (WQ-013: the figure was drawn past the sheet and lost). The page is
+        // kept even when the paragraph is only the object: otherwise the empty
+        // page is dropped and the object with it (031).
         paginator.overflow_break()?;
+        paginator.keep_empty_page = true;
         if paginator.selection_exhausted() {
             return Ok(0.0);
         }
@@ -868,7 +871,6 @@ fn anchor_passes_page_bottom(
             return false;
         };
         if anchor.simple_pos
-            || position.align.is_some()
             || !matches!(
                 position.relative_from.as_deref(),
                 Some("paragraph" | "line")
@@ -876,9 +878,17 @@ fn anchor_passes_page_bottom(
         {
             return false;
         }
-        let offset = position
-            .offset
-            .map_or(0.0, |offset| crate::units::emu_to_px(offset.value(), scale));
+        // `align="top"` puts the object on the anchor line, the same place an
+        // omitted offset does. `center`/`bottom` use another origin.
+        let offset = if position.align.as_deref() == Some("top") {
+            0.0
+        } else if position.align.is_some() {
+            return false;
+        } else {
+            position
+                .offset
+                .map_or(0.0, |offset| crate::units::emu_to_px(offset.value(), scale))
+        };
         let height = anchor.extent.map_or(0.0, |extent| {
             crate::units::emu_to_px(extent.cy.value(), scale)
         });

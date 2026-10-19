@@ -1023,6 +1023,14 @@ pub(crate) struct LayoutContext<'a> {
     /// is being laid out; `None` during body pagination (body fields resolve in
     /// `Paginator::resolve_fields`).
     pub(crate) field_env: std::cell::Cell<Option<crate::fields::FieldEnv>>,
+    /// Page y added to every header item after the header is laid out.
+    ///
+    /// `Some` only while a header region is being measured. A picture positioned
+    /// from the page or the margin is stored in header-local coordinates
+    /// (`page y − shift`), so the later translation lands it on the page margin
+    /// rather than on the header distance (`021`: the logo sat 10 pt above the
+    /// sheet). `None` everywhere else, including footers and table cells.
+    pub(crate) region_shift: std::cell::Cell<Option<f64>>,
     /// Section whose body is currently being measured, including nested cells.
     pub(crate) current_section: std::cell::Cell<usize>,
     /// Numbered headings active on each page, carried between layout passes.

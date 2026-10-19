@@ -12,7 +12,7 @@
 
 mod common;
 
-use common::{build_docx, content_types, document, open_bytes, root_rels, A, W, WPS, WP};
+use common::{build_docx, content_types, document, open_bytes, root_rels, A, W, WP, WPS};
 use strict_ooxml_render_svg::{render, Page, RenderOptions};
 
 const HEADER_REL: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/header";
@@ -394,4 +394,54 @@ fn footer_sits_below_the_body_margin() {
         "footer should be in the lower half: y={y}"
     );
     assert!(y < page.height_px, "footer must stay on the page: y={y}");
+}
+
+/// A header picture positioned from the page margin keeps that position when
+/// the header distance changes. The distance only slides the header's own
+/// lines (`021_Ljudi`: the logo was measured from `w:header` and left the page).
+#[test]
+fn a_margin_anchored_header_picture_ignores_the_header_distance() {
+    let logo = header_margin_logo();
+    let y_at = |header: i32| {
+        let body = format!(
+            "<w:p><w:r><w:t>Body</w:t></w:r></w:p>\
+<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1417\" w:right=\"1417\" w:bottom=\"1417\" w:left=\"1417\" w:header=\"{header}\" w:footer=\"708\"/>\
+<w:headerReference w:type=\"default\" r:id=\"rIdH\"/></w:sectPr>"
+        );
+        let rels = doc_rels(&[("rIdH", HEADER_REL, "header1.xml")]);
+        let pages = build(&body, &rels, None, &[("word/header1.xml", logo.clone())]);
+        text_y(&pages[0].svg, "LOGO").expect("logo")
+    };
+    let near = y_at(708);
+    let far = y_at(1440);
+    assert!(
+        (near - far).abs() < 0.6,
+        "the header distance moved the logo: {near} vs {far}"
+    );
+    // Top margin 1417 twips is 94.5 px; the offset −578485 EMU is −60.7 px.
+    // The label sits one line inside a box whose top is about 33.7 px.
+    assert!(
+        (30.0..70.0).contains(&near),
+        "logo baseline {near} is not on the page margin"
+    );
+}
+
+/// Header picture from `021`: `positionV` is the page margin, not the header box.
+fn header_margin_logo() -> Vec<u8> {
+    format!(
+        "<?xml version=\"1.0\"?><w:hdr xmlns:w=\"{W}\" xmlns:wp=\"{WP}\" xmlns:a=\"{A}\" xmlns:wps=\"{WPS}\">\
+<w:p><w:r><w:drawing>\
+<wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">\
+<wp:simplePos x=\"0\" y=\"0\"/>\
+<wp:positionH relativeFrom=\"margin\"><wp:posOffset>0</wp:posOffset></wp:positionH>\
+<wp:positionV relativeFrom=\"margin\"><wp:posOffset>-578485</wp:posOffset></wp:positionV>\
+<wp:extent cx=\"1828800\" cy=\"533400\"/><wp:docPr id=\"1\" name=\"logo\"/>\
+<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/wordprocessingShape\">\
+<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"533400\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></wps:spPr>\
+<wps:txbx><w:txbxContent><w:p><w:r><w:t>LOGO</w:t></w:r></w:p></w:txbxContent></wps:txbx>\
+<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p></w:hdr>"
+    )
+    .into_bytes()
 }

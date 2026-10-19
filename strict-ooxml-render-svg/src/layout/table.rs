@@ -1755,6 +1755,21 @@ pub(crate) fn layout_blocks_inline(
 /// Its own frame, so the paragraph flow and its line items are not part of
 /// [`layout_blocks_inline`], which recurses once per nested table.
 #[inline(never)]
+/// A header picture positioned from the page (or its margin) rather than from
+/// the header's own paragraphs. Inside a table cell the cell stays the origin.
+fn header_picture_on_page(anchor: &strict_ooxml_wml::model::drawing::AnchorDrawing) -> bool {
+    if anchor.simple_pos || CELL_ANCHORS.with(|stack| !stack.borrow().is_empty()) {
+        return false;
+    }
+    matches!(
+        anchor
+            .position_v
+            .as_ref()
+            .and_then(|position| position.relative_from.as_deref()),
+        Some("page" | "margin" | "topMargin" | "bottomMargin" | "insideMargin" | "outsideMargin")
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_lines)]
 fn place_cell_paragraph(
@@ -1828,7 +1843,8 @@ fn place_cell_paragraph(
     let mut anchor_bottom = host_y;
     if ctx.options.floating {
         for anchor in &flow.anchors {
-            let geometry = if anchor.layout_in_cell {
+            let on_page = ctx.region_shift.get().is_some() && header_picture_on_page(anchor);
+            let geometry = if anchor.layout_in_cell && !on_page {
                 geometry
             } else {
                 let index = ctx.current_section.get();
@@ -1857,16 +1873,24 @@ fn place_cell_paragraph(
                 ctx.options.scale,
             );
             let placement = crate::layout::floating::clamp_frame(ctx, &geometry, ax, ay, w, h);
+            // Header items are translated by `region_shift` afterwards. A
+            // page-absolute picture is resolved on the page, then stored in
+            // the header's local coordinates so that translation restores it.
+            let paint_y = if on_page {
+                placement.y - ctx.region_shift.get().unwrap_or(0.0)
+            } else {
+                placement.y
+            };
             if anchor.layout_in_cell {
                 // The picture hangs from this paragraph. A later row must start
                 // below it, or its text runs through the picture (082).
-                anchor_bottom = anchor_bottom.max(placement.y + placement.h);
+                anchor_bottom = anchor_bottom.max(paint_y + placement.h);
             }
             let mut anchor_items = crate::paint::graphics::anchor_items(
                 ctx,
                 anchor,
                 placement.x,
-                placement.y,
+                paint_y,
                 placement.w,
                 placement.h,
             );
@@ -1877,7 +1901,7 @@ fn place_cell_paragraph(
                 anchor_items = crate::layout::floating::clip_frame_items(
                     anchor_items,
                     clip,
-                    [placement.x, placement.y, placement.w, placement.h],
+                    [placement.x, paint_y, placement.w, placement.h],
                 );
             }
             if anchor.layout_in_cell {
@@ -1895,6 +1919,11 @@ fn place_cell_paragraph(
                     if let Some(exclusion) = crate::layout::floating::page_exclusion(
                         ctx, anchor, &geometry, left, host_y,
                     ) {
+                        let exclusion = if on_page {
+                            exclusion.shifted(0.0, -ctx.region_shift.get().unwrap_or(0.0))
+                        } else {
+                            exclusion
+                        };
                         exclusions.push(exclusion);
                     }
                 }

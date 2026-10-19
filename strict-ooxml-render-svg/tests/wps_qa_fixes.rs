@@ -810,3 +810,39 @@ fn wq050_a_table_below_a_top_and_bottom_picture_starts_under_it() {
         "table inside the top-and-bottom picture (box top {box_top}): {inside:?}"
     );
 }
+
+/// A `wrapTopAndBottom` picture aligned to its line moves to the next page
+/// when it does not fit the space left on this one (`031_Better_English`:
+/// a 572 pt figure started at the bottom of the page and ran off the sheet).
+#[test]
+fn wq055_a_line_aligned_picture_that_does_not_fit_moves_to_the_next_page() {
+    let anchor = anchored_at(
+        "<wp:wrapTopAndBottom/>",
+        "<wp:positionH relativeFrom=\"margin\"><wp:align>left</wp:align></wp:positionH>",
+        "<wp:positionV relativeFrom=\"line\"><wp:align>top</wp:align></wp:positionV>",
+        "Tall",
+    );
+    // Two exact lines of 160 px, then a 192 px picture: it fits an empty page
+    // and does not fit under those lines.
+    let line = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"2400\" w:lineRule=\"exact\"/></w:pPr>\
+<w:r><w:t>Before</w:t></w:r></w:p>";
+    let body = format!("{line}{line}<w:p>{anchor}</w:p>{NARROW}");
+    let placed = pages(&body, &RenderOptions::default());
+    assert!(placed.len() > 1, "the picture must open another page");
+    let on_first: Vec<_> = texts(&placed[0])
+        .into_iter()
+        .filter(|(_, _, text)| text == "Tall")
+        .collect();
+    assert!(
+        on_first.is_empty(),
+        "the picture stayed on the page it does not fit: {on_first:?}"
+    );
+    let top = texts(&placed[1])
+        .into_iter()
+        .find(|(_, _, text)| text == "Tall")
+        .map(|(_, y, _)| y);
+    assert!(
+        top.is_some_and(|y| y < 120.0),
+        "on the next page the picture starts at the top, got {top:?}"
+    );
+}

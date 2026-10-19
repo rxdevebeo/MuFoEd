@@ -1168,6 +1168,31 @@ Image.fromarray((img*255).astype(np.uint8)).save('diff.png')"
   `clipfix` без этого класса). `007_Valoracion`: было 67–70, в `clipfix`
   **0** (колонтитульные картинки больше не дают `text-image`).
 
+### WQ-054 · Картинка колонтитула от поля страницы считалась от отступа колонтитула — `fixed`
+
+- **2026-10-19:** `positionV relativeFrom="margin"` в колонтитуле — это поле
+  страницы. Вёрстка колонтитула живёт в своих координатах (ноль у отступа
+  `w:header`) и потом сдвигается на этот отступ, поэтому картинка уезжала
+  вверх на разницу поля и отступа. У `021_Ljudi` поле 70,85 pt, отступ
+  колонтитула 35,4 pt, `posOffset` −45,55 pt: верх получался −10,2 pt, у WPS
+  25,3 pt. Теперь такая картинка считается на странице и хранится уже без
+  будущего сдвига. Регрессия
+  `headers.rs::a_margin_anchored_header_picture_ignores_the_header_distance`.
+- **Документ:** `CC0_DOCX/021_Ljudi_Vole_SliAne_Sebi_RAPORT`, 22 `off-page-image`.
+
+### WQ-055 · Рисунок `align="top"` по строке не переносился на следующую страницу — `fixed`
+
+- **2026-10-19:** проверка «якорь не влезает в остаток страницы» смотрела только
+  смещение и пропускала `wp:align`. У `031_Better_English` рисунок
+  `wrapTopAndBottom` стоит `relativeFrom="line"` `align="top"`: верх на строке
+  якоря, высота 572 pt. Строка была у низа листа, кадр уходил до y = 1233 при
+  листе 792. WPS ставит тот же кадр на следующую страницу в y = 72. Перенос
+  теперь берёт и выравнивание по верху строки. Страница, на которую уехал
+  один только рисунок, больше не выбрасывается как пустая. Регрессия
+  `wps_qa_fixes.rs::wq055_a_line_aligned_picture_that_does_not_fit_moves_to_the_next_page`.
+- **Документ:** `CC0_DOCX_1/031_Better_English_Pronunciation_J_D_O_Connor`,
+  23 `off-page-image`.
+
 ### WQ-007 · WPS не снял эталон — `wps`
 
 - `core-samples/sample-docx-200kb`, `CC0_DOCX/035_Scarlat_Demetrescu_…`,
