@@ -71,6 +71,7 @@ pub use djvu::{convert_djvu, DjvuOptions};
 
 mod columns;
 mod designed;
+mod fonts;
 mod geometry;
 mod lists;
 mod media;
@@ -538,6 +539,9 @@ pub fn convert(pdf: &mut PdfDocument, options: &PdfOptions) -> Result<Converted,
     // them from every `w:t` before the writer sees the model, and name the loss
     // here so a conversion report does not depend on the writer being asked.
     sanitize_xml_text(&mut document, &mut report);
+    // W1: the families the runs name, with what their descriptors state, so a
+    // renderer without the face substitutes a similar one.
+    document.font_table = fonts::table(&pdf.font_faces());
     Ok(Converted {
         document,
         report,

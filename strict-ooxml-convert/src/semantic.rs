@@ -505,6 +505,12 @@ fn paragraphs_of(
                     gap > pitch * options.paragraphs.paragraph_gap_ratio
                         || moved > body * options.paragraphs.indent_ratio
                         || !same_format(previous, line)
+                        // An empty line is the empty paragraph a producer typed
+                        // between two others: it ends the one above and is not
+                        // the start of the one below.
+                        || is_blank(previous)
+                        || is_blank(line)
+                        || ended_short(previous, line, edges)
                 }));
         if starts_new || paragraph.is_none() {
             if let Some(mut finished) = paragraph.take() {
@@ -586,6 +592,48 @@ fn paragraphs_of(
         out.push(finished);
     }
     out
+}
+
+/// A line with no ink.
+fn is_blank(line: &GlyphLine) -> bool {
+    line.text().trim().is_empty()
+}
+
+/// Whether `previous` ended its paragraph: the first word of `line` would have
+/// fitted in the room left at its end, so a producer that wrapped there was
+/// not wrapping.
+///
+/// The gap and indent rules cannot see this. A letter's signature block, the
+/// name, title and department lines of a contact, a list of short entries one
+/// line pitch apart all have ordinary gaps and one left edge, and joined they
+/// became one run-on paragraph as soon as the pitch was measured right (P1,
+/// `PDF-IMPORT-COMPARISON-2026-10-19.md`). One and a half sizes are allowed
+/// for the space between the words and the slack of a ragged right edge, so a
+/// short ragged block measured against its own longest line still runs on.
+fn ended_short(previous: &GlyphLine, line: &GlyphLine, edges: Option<(f64, f64)>) -> bool {
+    let Some((_, right)) = edges else {
+        return false;
+    };
+    let Some(end) = previous
+        .glyphs
+        .iter()
+        .rev()
+        .find(|glyph| !glyph.text.trim().is_empty())
+        .map(|glyph| glyph.x + glyph.width)
+    else {
+        return false;
+    };
+    let mut word = line
+        .glyphs
+        .iter()
+        .skip_while(|glyph| glyph.text.trim().is_empty())
+        .take_while(|glyph| !glyph.text.trim().is_empty());
+    let Some(first) = word.next() else {
+        return false;
+    };
+    let word_end = word.last().unwrap_or(first);
+    let word_width = word_end.x + word_end.width - first.x;
+    right - end > word_width + line.size * 1.5
 }
 
 /// Adds a tab stop at a piece's place on its line (at its end when it ends
@@ -905,22 +953,53 @@ fn is_marker(line: &GlyphLine) -> bool {
     digits || letter || roman
 }
 
-/// The distance between consecutive baselines, in points.
+/// The distance between consecutive baselines of the body text, in points.
+///
+/// Measured between lines **of the body size** only, as the smallest gap that
+/// occurs more than once. It used to be the smallest gap between any two
+/// baselines on the page, and a footer's two 9-point lines 5 pt apart made the
+/// pitch of a 10.6-point page 5.3 pt: every ordinary line break then looked
+/// like a paragraph break, and each line of the page became a paragraph of its
+/// own, which reflowed into a line and a stray word as soon as the face was a
+/// little wider (P1, `PDF-IMPORT-COMPARISON-2026-10-19.md`). Gaps under 0.8 of
+/// the size are not line pitch at all — a superscript, two columns' lines
+/// interleaved by baseline — and are left out; a gap that occurs once is a
+/// paragraph's spacing as often as a line's.
 #[must_use]
 fn body_pitch(lines: &[GlyphLine]) -> f64 {
-    if lines.len() < 2 {
-        return lines.first().map_or(12.0, |line| line.size * 1.2);
-    }
-    let mut sorted: Vec<f64> = lines.iter().map(|line| line.baseline).collect();
-    sorted.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
-    let mut gaps: Vec<f64> = sorted
+    let body = body_size(lines);
+    let fallback = lines.first().map_or(12.0, |_| body * 1.2);
+    let mut baselines: Vec<f64> = lines
         .iter()
-        .zip(sorted.iter().skip(1))
-        .map(|(previous, next)| next - previous)
-        .filter(|gap| *gap > 0.1)
+        .filter(|line| (line.size - body).abs() <= body * 0.05)
+        .map(|line| line.baseline)
         .collect();
-    gaps.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
-    gaps.first().copied().unwrap_or(12.0)
+    baselines.sort_by(f64::total_cmp);
+    baselines.dedup_by(|next, previous| (*next - *previous).abs() <= 0.1);
+    // Gaps bucketed to a quarter point, so 12.72 and 12.96 of one paragraph's
+    // rounding count as the same pitch.
+    let mut buckets: std::collections::BTreeMap<i64, (usize, f64)> =
+        std::collections::BTreeMap::new();
+    for (previous, next) in baselines.iter().zip(baselines.iter().skip(1)) {
+        let gap = next - previous;
+        if gap < body * 0.8 {
+            continue;
+        }
+        let entry = buckets
+            .entry((gap * 4.0).round() as i64)
+            .or_insert((0, gap));
+        entry.0 += 1;
+        entry.1 = entry.1.min(gap);
+    }
+    // Neighbouring buckets are one pitch split by rounding: count them together.
+    let keys: Vec<i64> = buckets.keys().copied().collect();
+    keys.iter()
+        .find_map(|key| {
+            let (count, gap) = buckets.get(key).copied()?;
+            let neighbour = buckets.get(&(key + 1)).map_or(0, |(count, _)| *count);
+            (count + neighbour >= 2).then_some(gap)
+        })
+        .unwrap_or(fallback)
 }
 
 /// Whether two lines are set the same way, which is a paragraph boundary when
@@ -1148,14 +1227,14 @@ fn run_properties(glyph: &Glyph) -> RunProperties {
 /// family Amalia, bold: the six letters and `+` name a subset, and the style
 /// is a suffix. Kept whole, the name was a font nobody has, drawn in a
 /// regular substitute - every bold word of a Word PDF lost its weight.
-struct FontName {
-    family: String,
-    bold: bool,
-    italic: bool,
+pub(crate) struct FontName {
+    pub(crate) family: String,
+    pub(crate) bold: bool,
+    pub(crate) italic: bool,
 }
 
 impl FontName {
-    fn of(name: &str) -> Self {
+    pub(crate) fn of(name: &str) -> Self {
         let name = name.trim();
         // A subset tag: six capitals and `+`.
         let name = match name.split_once('+') {
@@ -2160,6 +2239,35 @@ mod fragment_tests {
             width,
             glyphs: vec![glyph],
         }
+    }
+
+    fn line_at(baseline: f64, size: f64) -> GlyphLine {
+        let mut line = run("text", 36.0, 300.0);
+        line.baseline = baseline;
+        line.size = size;
+        line
+    }
+
+    /// P1: a footer's two small lines 5 pt apart set the pitch of the whole
+    /// page, and every line of its body became a paragraph.
+    #[test]
+    fn the_pitch_is_the_body_texts_not_a_footers() {
+        let mut lines: Vec<GlyphLine> = [215.8, 228.7, 241.4, 267.1, 279.8, 292.6, 305.5]
+            .into_iter()
+            .map(|baseline| line_at(baseline, 10.86))
+            .collect();
+        lines.push(line_at(771.4, 9.12));
+        lines.push(line_at(776.6, 9.12));
+        let pitch = super::body_pitch(&lines);
+        assert!((12.5..13.1).contains(&pitch), "pitch {pitch}");
+    }
+
+    /// A gap that occurs once is not a pitch, and with none repeated the
+    /// estimate is the size's ordinary leading.
+    #[test]
+    fn a_single_gap_is_not_a_pitch() {
+        let lines = [line_at(100.0, 10.0), line_at(130.0, 10.0)];
+        assert!((super::body_pitch(&lines) - 12.0).abs() < 1e-9);
     }
 
     #[test]

@@ -183,3 +183,54 @@ fn lines_that_run_on_are_a_word_apart() {
         "the first line ends and the second runs on with a hyphen- ated word"
     );
 }
+
+/// groff sets two words in one string and the space between them as character
+/// spacing equal to the space's width (`(yn)Tj` at `Tc` = space + `Tw`). Read
+/// as tracking, the gap was part of each letter: `any number` came out as
+/// `anyn` and `umber`, the halves of a line broken mid-word (L1).
+#[test]
+fn character_spacing_the_width_of_a_space_is_a_space() {
+    let mut pdf = PdfBuilder::new();
+    let widths = vec!["500"; 95].join(" ");
+    let font = pdf.object(format!(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding \
+         /FirstChar 32 /LastChar 126 /Widths [{widths}] >>"
+    ));
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+    // A character is 5 pt and so is the space; `Tw 1` makes a word space 6 pt.
+    // "collects an" is 55 pt, "y", a 6 pt space and "n" 16 pt more.
+    let stream = "BT /F1 10 Tf 1 Tw 72 700 Td (collects an)Tj \
+                  6 Tc 55 0 Td (yn)Tj 0 Tc 16 0 Td (umber of files)Tj ET";
+    pdf.page_with(stream.as_bytes(), &resources);
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let paragraphs: Vec<String> = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        })
+        .map(|paragraph| {
+            paragraph
+                .inlines
+                .iter()
+                .filter_map(|inline| match inline {
+                    Inline::Run(run) => Some(run),
+                    _ => None,
+                })
+                .flat_map(|run| run.content.iter())
+                .filter_map(|content| match content {
+                    RunContent::Text(node) => Some(node.text.as_str()),
+                    _ => None,
+                })
+                .collect()
+        })
+        .collect();
+    assert_eq!(paragraphs, ["collects any number of files"]);
+}

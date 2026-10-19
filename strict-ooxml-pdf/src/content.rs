@@ -1669,7 +1669,9 @@ fn show_text(
         return;
     };
     let codes = font.codes(bytes);
-    for code in codes {
+    let spaced = spacing_is_word_space(font, state, codes.len());
+    let last = codes.len().saturating_sub(1);
+    for (index, code) in codes.into_iter().enumerate() {
         if budget.stopped.is_some() {
             return;
         }
@@ -1679,6 +1681,14 @@ fn show_text(
         // already done.
         let advance = glyph_advance(code, font, state);
         let mut glyph = render_glyph(code, font, state, text, geometry, out);
+        // Where the spacing is a word space, the glyph is its own width and the
+        // spacing is the space after it, written out below.
+        let own = if spaced {
+            advance - state.char_spacing * state.hscale
+        } else {
+            advance
+        };
+        let scale = Matrix::chain(text.matrix, state.ctm).scale_factor();
         if let Some(glyph) = glyph.as_mut() {
             // `glyph_advance` is already in text space, where one unit is one em
             // scaled by `Tfs`, so on an identity CTM it is the device distance.
@@ -1687,16 +1697,59 @@ fn show_text(
             // `1 Tf` with `72 0 0 72 x y Tm` (how Google Docs and Chrome set
             // text) is a 72 pt glyph a fraction of a point wide, and every
             // letter of a word read as a word of its own.
-            glyph.width = advance.abs() * Matrix::chain(text.matrix, state.ctm).scale_factor();
+            glyph.width = own.abs() * scale;
         }
         adjust_text(advance, text, state, geometry);
         if let Some(glyph) = glyph {
             if !budget.charge_glyph(&limits) {
                 return;
             }
+            let space = (spaced && index < last && code != 32).then(|| Glyph {
+                text: " ".to_owned(),
+                x: glyph.x + glyph.width,
+                width: state.char_spacing * state.hscale * scale,
+                ..glyph.clone()
+            });
             out.items.push(Item::Glyph(glyph));
+            if let Some(space) = space {
+                if !budget.charge_glyph(&limits) {
+                    return;
+                }
+                out.items.push(Item::Glyph(space));
+            }
         }
     }
+}
+
+/// Whether the character spacing `Tc` is a word space in disguise.
+///
+/// groff justifies a line by setting two words in one string, `(yn)Tj`, with
+/// `Tc` exactly the font's space (two after a full stop) plus the line's `Tw`:
+/// the gap after every glyph is the space between two words, and no space
+/// character is drawn. Read as tracking, the gap was part of each glyph's width - `any number` came out
+/// as `anyn` and `umber`, two pieces of a broken line (L1,
+/// `PDF-IMPORT-COMPARISON-2026-10-19.md`). Real tracking, a heading set wide,
+/// is not set two letters at a time, and does not land on the space's width
+/// to a hundredth of a point.
+fn spacing_is_word_space(font: &PdfFont, state: &State, glyphs: usize) -> bool {
+    if font.two_byte || state.char_spacing <= 0.0 {
+        return false;
+    }
+    let crate::fonts::Width::Stated(space) = font.width(32) else {
+        return false;
+    };
+    let space = space / 1000.0 * state.font_size;
+    // The string is the last letter of one word and the first of the next, and
+    // the spacing is that line's justified word gap - at least a space, and
+    // not otherwise tied to `Tw` (`(si)Tj` at `2.5 Tc` under `0.3 Tw`).
+    if glyphs == 2 && state.char_spacing >= space * 0.9 {
+        return true;
+    }
+    // A longer string is a word space only at exactly the space plus `Tw`, or
+    // two spaces after a full stop (`(.T)Tj`); three is the most groff uses.
+    (1..=3).any(|count| {
+        (state.char_spacing - (f64::from(count) * space + state.word_spacing)).abs() < 0.01
+    })
 }
 
 /// Builds the glyph at the current text position, or `None` when it is not drawn.

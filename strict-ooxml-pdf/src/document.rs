@@ -368,6 +368,30 @@ impl PdfDocument {
         Ok(page)
     }
 
+    /// What every font decoded so far states about its look, sorted by
+    /// `/BaseFont` and without duplicates.
+    ///
+    /// Fonts are decoded as pages are read, so this answers for the pages read
+    /// before it is called.
+    #[must_use]
+    pub fn font_faces(&self) -> Vec<crate::fonts::FontFace> {
+        let mut faces: Vec<crate::fonts::FontFace> = self
+            .fonts
+            .entries
+            .borrow()
+            .values()
+            .map(|font| font.face())
+            .collect();
+        faces.sort_by(|a, b| {
+            a.base_font
+                .cmp(&b.base_font)
+                .then_with(|| a.flags.cmp(&b.flags))
+                .then_with(|| a.panose.cmp(&b.panose))
+        });
+        faces.dedup();
+        faces
+    }
+
     /// Reads every page, bounded by `PdfLimits::max_pages`.
     ///
     /// # Errors
