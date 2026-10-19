@@ -8,6 +8,7 @@ license.workspace = true
 
 [features]
 default = []
+ollama = ["mufoed-model-runtime/ollama"]
 demo = ["dep:eframe", "dep:rfd"]
 plakat = ["dep:plakat", "dep:tokio", "dep:candle-core"]
 plakat-cuda = ["plakat", "plakat/cuda"]

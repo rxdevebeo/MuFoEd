@@ -56,6 +56,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         request.mask_feather = 8;
     }
     let manager = mufoed_model_runtime::Runtime::new(mufoed_model_runtime::Policy::default());
+    #[cfg(feature = "ollama")]
+    managed_text_if_enabled(&manager)?;
     let mut job = check_queue_and_start(request, &doc, &manager)?;
     let start = std::time::Instant::now();
     loop {
@@ -84,6 +86,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "In-process Plakat completed in {:.1}s",
                 start.elapsed().as_secs_f64()
             );
+            #[cfg(feature = "ollama")]
+            managed_text_if_enabled(&manager)?;
             return Ok(());
         }
         if start.elapsed().as_secs() > 600 {
@@ -124,4 +128,50 @@ fn check_queue_and_start(
     assert!(job.poll()?.is_none());
     drop(text_lease);
     Ok(job)
+}
+
+#[cfg(feature = "ollama")]
+fn managed_text_if_enabled(
+    manager: &mufoed_model_runtime::Runtime,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Ok(model) = std::env::var("IMAGE_STUDIO_SMOKE_OLLAMA") else {
+        return Ok(());
+    };
+    let started = std::time::Instant::now();
+    let endpoint = "http://127.0.0.1:11434";
+    let client = mufoed_model_runtime::ollama::Client::new(endpoint, &model, manager)?;
+    let reply = client.run("text", &std::sync::atomic::AtomicBool::new(false), || {
+        let http = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(180))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let response = http
+            .post(format!("{endpoint}/api/chat"))
+            .json(&serde_json::json!({
+                "model": model, "stream": false, "keep_alive": 0, "think": false,
+                "messages": [{"role": "user", "content": "Reply with the single word READY."}],
+                "options": {"num_ctx": 4096, "num_predict": 16}
+            }))
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|e| e.to_string())?;
+        let value: serde_json::Value = response.json().map_err(|e| e.to_string())?;
+        if value["done"] != true {
+            return Err("Non-terminal Ollama response".into());
+        }
+        Ok(value["message"]["content"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned())
+    })?;
+    if reply.trim().is_empty() {
+        return Err("Empty text response".into());
+    }
+    assert!(manager.snapshot().active.is_none());
+    println!(
+        "Managed text completed and unload confirmed in {:.1}s: {}",
+        started.elapsed().as_secs_f64(),
+        reply.trim()
+    );
+    Ok(())
 }

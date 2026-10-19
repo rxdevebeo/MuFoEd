@@ -4268,6 +4268,7 @@ dependencies = [
  "diagram-editor",
  "eframe",
  "encoding_rs",
+ "mufoed-model-runtime",
  "png 0.18.1",
  "pulldown-latex",
  "rayon",
@@ -4277,6 +4278,7 @@ dependencies = [
  "serde_json",
  "strict-ooxml",
  "strict-ooxml-core",
+ "strict-ooxml-ocr",
  "strict-ooxml-pdf",
  "strict-ooxml-render-svg",
  "sys-locale",
@@ -4289,6 +4291,11 @@ dependencies = [
 [[package]]
 name = "mufoed-model-runtime"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "ureq",
+ "url",
+]
 
 [[package]]
 name = "multiversion_no_op"

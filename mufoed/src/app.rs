@@ -2591,6 +2591,19 @@ impl App {
                     }
                 }
             }
+            let models = mufoed_model_runtime::Runtime::global().snapshot();
+            if let Some(task) = models.active {
+                let key = match models.phase {
+                    Some(mufoed_model_runtime::Phase::Unknown) => "status.model_unknown",
+                    Some(mufoed_model_runtime::Phase::Releasing) => "status.model_releasing",
+                    _ => "status.model_running",
+                };
+                ui.separator();
+                ui.label(text(self.t(key).to_owned()))
+                    .on_hover_text(format!("{} · {}", task.model, models.queued.len()));
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(100));
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let Some(index) = self.active else {
                     return;

@@ -3,6 +3,8 @@
 //! Clone one [`Runtime`] into text, vision and image adapters. Hold a [`Lease`] until
 //! inference and resource destruction actually finish, even after UI cancellation.
 //! Admission reservations are estimates, not measurements of an allocator or free VRAM.
+#[cfg(feature = "ollama")]
+pub mod ollama;
 use std::{
     collections::VecDeque,
     fmt,
@@ -103,6 +105,19 @@ pub struct Snapshot {
     pub active: Option<Task>,
     /// Waiting tasks in FIFO order.
     pub queued: Vec<Task>,
+    /// Current lifecycle stage of the active operation.
+    pub phase: Option<Phase>,
+}
+
+/// Backend lifecycle stage; uncertain release continues to hold admission.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Phase {
+    /// Model loading or inference is in progress.
+    Running,
+    /// Waiting for confirmed model release.
+    Releasing,
+    /// Release could not be confirmed; the recovery worker retains admission.
+    Unknown,
 }
 
 #[derive(Default)]
@@ -110,6 +125,7 @@ struct State {
     next_id: u64,
     active: Option<(u64, Task)>,
     queued: VecDeque<(u64, Task)>,
+    phase: Option<Phase>,
 }
 struct Inner {
     policy: Policy,
@@ -181,6 +197,7 @@ impl Runtime {
         Snapshot {
             active: state.active.as_ref().map(|(_, task)| task.clone()),
             queued: state.queued.iter().map(|(_, task)| task.clone()).collect(),
+            phase: state.phase,
         }
     }
 }
@@ -204,6 +221,7 @@ impl Ticket {
             return Ok(None);
         }
         state.active = state.queued.pop_front();
+        state.phase = Some(Phase::Running);
         self.id = None;
         Ok(Some(Lease {
             runtime: self.runtime.clone(),
@@ -262,6 +280,20 @@ pub struct Lease {
     runtime: Runtime,
     id: u64,
 }
+impl Lease {
+    /// Publish a lifecycle transition without releasing admission.
+    pub fn set_phase(&self, phase: Phase) {
+        let mut state = self
+            .runtime
+            .0
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.active.as_ref().map(|(id, _)| *id) == Some(self.id) {
+            state.phase = Some(phase);
+        }
+    }
+}
 impl Drop for Lease {
     fn drop(&mut self) {
         let mut state = self
@@ -272,6 +304,7 @@ impl Drop for Lease {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if state.active.as_ref().map(|(id, _)| *id) == Some(self.id) {
             state.active = None;
+            state.phase = None;
         }
         self.runtime.0.changed.notify_all();
     }

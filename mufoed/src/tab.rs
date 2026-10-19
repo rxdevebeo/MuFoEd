@@ -668,6 +668,7 @@ mod tests {
                 height_px: 1100.0,
                 items: vec![],
                 section_index: 0,
+                off_page: Vec::new(),
             },
         })];
         tab.cursor = Some(Box::new(Cursor {
@@ -727,6 +728,7 @@ mod tests {
                 height_px: 1100.0,
                 items: vec![],
                 section_index: 0,
+                off_page: Vec::new(),
             },
         })];
         tab.comments = vec![crate::worker::CommentView {

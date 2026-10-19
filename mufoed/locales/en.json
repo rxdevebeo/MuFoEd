@@ -312,6 +312,9 @@
       "wide": "Wide (2.54 / 5.08 cm)"
     },
     "status": {
+      "model_running": "Running AI",
+      "model_releasing": "Releasing model…",
+      "model_unknown": "Waiting for model release confirmation…",
       "page": "Page {page} of {pages}",
       "words": "{words} words",
       "read_only": "Read-only",

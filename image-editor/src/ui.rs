@@ -401,8 +401,15 @@ impl ImageEditor {
                     .on_hover_text(&self.status);
                 let state = self.runtime.snapshot();
                 if let Some(task) = state.active {
+                    let phase = match state.phase {
+                        Some(mufoed_model_runtime::Phase::Unknown) => {
+                            "ожидание подтверждения выгрузки"
+                        }
+                        Some(mufoed_model_runtime::Phase::Releasing) => "освобождение модели",
+                        _ => "выполнение",
+                    };
                     ui.small(format!(
-                        "Модели: {} · {} · в очереди: {}",
+                        "Модели: {} · {} · {phase} · в очереди: {}",
                         task.owner,
                         task.model,
                         state.queued.len()

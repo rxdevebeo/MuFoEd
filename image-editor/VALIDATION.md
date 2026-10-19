@@ -1,5 +1,14 @@
 # Проверки Image Studio — 2026-10-19
 
+## Общий runtime — R02
+
+Текст/чат/OCR MuFoEd подключены к тому же process-global runtime, что используется
+графическими backend. Проверены владение моделью, подтверждение unload и recovery
+при неизвестном результате HTTP, отдельные remote domains, 189 обычных тестов и
+реальный переход Ollama → SDXL → Ollama; отдельно выполнена live formula recovery.
+Подробные команды, результаты и ограничения: [R02_VALIDATION.md](../model-runtime/R02_VALIDATION.md).
+Кэш резидентных моделей, offload и автоматический контроль VRAM остаются R03–R05.
+
 ## Общий runtime — R01
 
 - PASS: `cargo +1.92.0 test -p mufoed-model-runtime -p image-editor`: 37 тестов
