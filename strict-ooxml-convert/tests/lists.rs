@@ -88,8 +88,10 @@ fn bulleted(items: &[&str], marker_x: f64, text_x: f64) -> Vec<u8> {
         .flat_map(|(index, item)| {
             // Integer baselines, and no cast: the fixture's numbers are whole points
             // and a fixture that had to convert one to the other would be the second
-            // place in this file where a number is quietly rounded.
-            let baseline = 40.0 + 14.0 * f64::from(u8::try_from(index).unwrap_or(u8::MAX));
+            // place in this file where a number is quietly rounded. PDF's y runs
+            // up, so the first item is the highest: drawn the other way round,
+            // the page reads third item first.
+            let baseline = 160.0 - 14.0 * f64::from(u8::try_from(index).unwrap_or(u8::MAX));
             [
                 Piece::bullet(marker_x, baseline),
                 Piece::at(item, text_x, baseline),
@@ -112,8 +114,10 @@ fn numbered_items(items: &[&str], numbers: &[&str], marker_x: f64, text_x: f64) 
         .flat_map(|(index, (item, number))| {
             // Integer baselines, and no cast: the fixture's numbers are whole points
             // and a fixture that had to convert one to the other would be the second
-            // place in this file where a number is quietly rounded.
-            let baseline = 40.0 + 14.0 * f64::from(u8::try_from(index).unwrap_or(u8::MAX));
+            // place in this file where a number is quietly rounded. PDF's y runs
+            // up, so the first item is the highest: drawn the other way round,
+            // the page reads third item first.
+            let baseline = 160.0 - 14.0 * f64::from(u8::try_from(index).unwrap_or(u8::MAX));
             [
                 Piece::at(number, marker_x, baseline),
                 Piece::at(item, text_x, baseline),

@@ -3,7 +3,9 @@
 //! A PDF has no column markers. The only honest signal is a **measured gutter**:
 //! a horizontal band of empty page between two clusters of lines that overlap
 //! vertically. Without that gap the page stays in draw order — inventing a
-//! split from line spacing alone would shatter ordinary single-column pages.
+//! split from line spacing alone would shatter ordinary single-column pages —
+//! except for a run of lines drawn later that stands wholly above the rest
+//! ([`single_order`]).
 
 use strict_ooxml_pdf::text::GlyphLine;
 use strict_ooxml_pdf::{Item, PdfPage};
@@ -158,7 +160,11 @@ pub(crate) fn plan(
 #[must_use]
 pub(crate) fn apply(lines: Vec<GlyphLine>, column_plan: &ColumnPlan) -> Vec<GlyphLine> {
     match column_plan {
-        ColumnPlan::Single | ColumnPlan::Unsupported => lines,
+        // A page whose columns are not read here keeps its draw order too,
+        // except for what stands wholly above the rest: a contents page's
+        // numbers made it "two uneven columns", and its title, drawn last,
+        // came after its entries.
+        ColumnPlan::Single | ColumnPlan::Unsupported => single_order(lines),
         ColumnPlan::Two {
             left,
             right,
@@ -346,9 +352,100 @@ fn page_has_floating_image(page: &PdfPage, gutter_start: f64, gutter_end: f64) -
     false
 }
 
+/// A page's lines in draw order, with what was drawn later but stands wholly
+/// above moved up to where it is read: a one-column page's, or a page whose
+/// columns this module does not reorder.
+///
+/// The draw order is cut into runs that go down the page; a run starts where a
+/// line stands more than a line above the one drawn before it. A run is moved
+/// before the runs it lies **entirely** above - a title drawn after the table
+/// of contents under it, a heading Google Docs drew last - and is otherwise
+/// left in draw order: runs that share a height are blocks side by side that
+/// the column pass did not split, and draw order is how they are read.
+fn single_order(lines: Vec<GlyphLine>) -> Vec<GlyphLine> {
+    let mut runs: Vec<Vec<GlyphLine>> = Vec::new();
+    for line in lines {
+        let climbs = runs
+            .last()
+            .and_then(|run| run.last())
+            .is_some_and(|previous| {
+                previous.baseline - line.baseline > line.size.max(previous.size)
+            });
+        match runs.last_mut() {
+            Some(run) if !climbs => run.push(line),
+            _ => runs.push(vec![line]),
+        }
+    }
+    if runs.len() < 2 {
+        return runs.into_iter().flatten().collect();
+    }
+    // (top, bottom) of a run, in points from the page's top.
+    let extent = |run: &[GlyphLine]| {
+        run.iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(top, bottom), line| {
+                (
+                    top.min(line.baseline - line.ascent),
+                    bottom.max(line.baseline),
+                )
+            })
+    };
+    let mut placed: Vec<(f64, f64, Vec<GlyphLine>)> = Vec::with_capacity(runs.len());
+    for run in runs {
+        let (top, bottom) = extent(&run);
+        // Before the first placed run that lies wholly below this one, when
+        // every run after that point does too: one that shares its height
+        // keeps the draw order.
+        let at = placed
+            .iter()
+            .position(|(other_top, _, _)| *other_top > bottom)
+            .filter(|&from| {
+                placed
+                    .get(from..)
+                    .is_some_and(|rest| rest.iter().all(|(other_top, _, _)| *other_top > bottom))
+            })
+            .unwrap_or(placed.len());
+        placed.insert(at, (top, bottom, run));
+    }
+    placed.into_iter().flat_map(|(_, _, run)| run).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A title drawn after the list under it is read first; blocks side by
+    /// side keep the order they were drawn in.
+    #[test]
+    fn a_line_drawn_last_but_standing_above_is_read_first() {
+        let order = |lines: Vec<GlyphLine>| -> Vec<f64> {
+            single_order(lines)
+                .iter()
+                .map(|line| line.baseline)
+                .collect()
+        };
+        // Contents entries at 200..260, then their title at 150.
+        let toc = vec![
+            line(72.0, 300.0, 200.0),
+            line(72.0, 300.0, 220.0),
+            line(72.0, 300.0, 240.0),
+            line(72.0, 300.0, 260.0),
+            line(72.0, 200.0, 150.0),
+        ];
+        assert_eq!(order(toc), [150.0, 200.0, 220.0, 240.0, 260.0]);
+        // A left block 100..140 drawn before a right block 100..140.
+        let blocks = vec![
+            line(50.0, 200.0, 100.0),
+            line(50.0, 200.0, 120.0),
+            line(50.0, 200.0, 140.0),
+            line(300.0, 200.0, 100.0),
+            line(300.0, 200.0, 120.0),
+            line(300.0, 200.0, 140.0),
+        ];
+        assert_eq!(order(blocks), [100.0, 120.0, 140.0, 100.0, 120.0, 140.0]);
+        // A superscript drawn after its line, a little higher, stays after it.
+        let sup = vec![line(72.0, 300.0, 200.0), line(372.0, 5.0, 196.0)];
+        assert_eq!(order(sup), [200.0, 196.0]);
+    }
 
     fn line(x: f64, width: f64, baseline: f64) -> GlyphLine {
         GlyphLine {
