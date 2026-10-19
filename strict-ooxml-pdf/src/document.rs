@@ -41,6 +41,60 @@ pub(crate) fn bounded_decompress(
     }
 }
 
+/// Writes every stream's `/Filter` and `/DecodeParms` as direct objects.
+///
+/// `lopdf` reads a stream's filter chain only when it is written in the
+/// dictionary itself. An indirect one (`/Filter 3 0 R` → `[/FlateDecode]`, as
+/// SAP NetWeaver writes every stream) reads as "no filter", and the stream's
+/// *compressed* bytes come back as its content: a page of them tokenises to a
+/// stray `x` operator (the zlib header) and nothing else (R1,
+/// PDF-IMPORT-COMPARISON-2026-10-19). Resolving the references once, at open,
+/// fixes the page content, forms, fonts and images alike.
+fn direct_stream_filters(document: &mut lopdf::Document) {
+    let mut fixes: Vec<(lopdf::ObjectId, &'static [u8], Object)> = Vec::new();
+    for (&id, object) in &document.objects {
+        let Object::Stream(stream) = object else {
+            continue;
+        };
+        for key in [b"Filter".as_slice(), b"DecodeParms".as_slice()] {
+            if let Some(direct) = stream
+                .dict
+                .get(key)
+                .ok()
+                .and_then(|value| direct_value(document, value))
+            {
+                fixes.push((id, key, direct));
+            }
+        }
+    }
+    for (id, key, value) in fixes {
+        if let Some(Object::Stream(stream)) = document.objects.get_mut(&id) {
+            stream.dict.set(key.to_vec(), value);
+        }
+    }
+}
+
+/// `value` with its references resolved, one array level deep; `None` when it
+/// is already direct.
+fn direct_value(document: &lopdf::Document, value: &Object) -> Option<Object> {
+    let resolve = |item: &Object| {
+        document
+            .dereference(item)
+            .map_or(Object::Null, |(_, target)| target.clone())
+    };
+    let target = match value {
+        Object::Reference(_) => resolve(value),
+        Object::Array(items) if items.iter().any(|item| item.as_reference().is_ok()) => {
+            value.clone()
+        }
+        _ => return None,
+    };
+    Some(match target {
+        Object::Array(items) => Object::Array(items.iter().map(resolve).collect()),
+        other => other,
+    })
+}
+
 /// A form's content, decoded once for the document (AUD-13).
 struct DecodedForm {
     operations: Rc<Vec<lopdf::content::Operation>>,
@@ -252,8 +306,9 @@ impl PdfDocument {
             max_decompressed_size: Some(crate::preload::object_stream_budget(&limits)),
             ..lopdf::LoadOptions::default()
         };
-        let document = lopdf::Document::load_mem_with_options(bytes, options)
+        let mut document = lopdf::Document::load_mem_with_options(bytes, options)
             .map_err(|error| PdfError::from_lopdf(&error))?;
+        direct_stream_filters(&mut document);
         if document.is_encrypted() {
             return Err(PdfError::Encrypted);
         }
