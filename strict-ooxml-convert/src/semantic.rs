@@ -141,6 +141,25 @@ pub(crate) fn build(
     // The page before was set as a design, in anchored boxes that take no room
     // in the flow: this page starts a page of its own.
     let mut break_next = false;
+    // A page rebuilt by a model was rebuilt because its own text layer could
+    // not be read; that layer's lines in the flow as well put the page's
+    // text in the document twice, the model's copy on a page of its own.
+    let mut page_lines: Vec<Vec<GlyphLine>> = pages
+        .iter()
+        .enumerate()
+        .map(|(index, page)| {
+            if recovered.page(index).iter().any(|block| block.whole_page) {
+                Vec::new()
+            } else {
+                join_fragments(strict_ooxml_pdf::text::lines(page.items()))
+            }
+        })
+        .collect();
+    // The running header and footer are the document's, not a page's: found
+    // across the pages before any page is built, they leave every page's flow.
+    let heights: Vec<f64> = pages.iter().map(|page| page.geometry.height).collect();
+    let running = crate::running::detect(&page_lines, &heights);
+    let decorations = crate::running::Decorations::build(&running, pages, &page_lines, report);
     for (index, page) in pages.iter().enumerate() {
         // A size or margin change closes the previous page before these blocks
         // are appended. Identical neighbours stay in the open section.
@@ -150,6 +169,7 @@ pub(crate) fn build(
             section.page_size = Some(*size);
             section.page_margins = Some(*margins);
         }
+        decorations.adjust(index, &mut section);
         let text_area = text_area(&section);
         let top_margin = section
             .page_margins
@@ -166,15 +186,19 @@ pub(crate) fn build(
             .and_then(|margins| margins.left)
             .map_or(0.0, |left| f64::from(left.0) / 20.0);
         sections.begin_page(&mut blocks, section, false);
-        // A page rebuilt by a model was rebuilt because its own text layer could
-        // not be read; that layer's lines in the flow as well put the page's
-        // text in the document twice, the model's copy on a page of its own.
-        let raw_lines = if rebuilt {
-            Vec::new()
-        } else {
-            join_fragments(strict_ooxml_pdf::text::lines(page.items()))
-        };
+        let raw_lines = page_lines
+            .get_mut(index)
+            .map(std::mem::take)
+            .unwrap_or_default();
         report.lines += raw_lines.len();
+        let raw_lines: Vec<GlyphLine> = raw_lines
+            .into_iter()
+            .enumerate()
+            .filter(|(number, line)| {
+                !running.leaves_flow(index, *number, line, page.geometry.height)
+            })
+            .map(|(_, line)| line)
+            .collect();
         let column_plan = crate::columns::plan(page, &raw_lines, report);
         let lines = margin_lines_in_place(
             crate::columns::apply(raw_lines, &column_plan),
@@ -403,6 +427,7 @@ pub(crate) fn build(
     let mut document = crate::empty_document();
     document.body = strict_ooxml_wml::model::document::Body { blocks };
     document.sections = sections.finish();
+    decorations.attach(&mut document);
     media.register(&mut document.media);
     // The numbering the lists asked for, with the `w:numPr` paragraphs above.
     document.numbering = numbering;
@@ -1198,7 +1223,7 @@ fn push_runs_from(paragraph: &mut Paragraph, line: &GlyphLine, skip: usize) {
 
 /// The run properties a glyph implies.
 #[must_use]
-fn run_properties(glyph: &Glyph) -> RunProperties {
+pub(crate) fn run_properties(glyph: &Glyph) -> RunProperties {
     let [red, green, blue] = glyph.color.to_rgb8();
     let face = FontName::of(&glyph.font);
     let on = |set: bool| {
@@ -1323,7 +1348,7 @@ fn needs_space(paragraph: &Paragraph, line: &GlyphLine) -> bool {
 }
 
 /// One run with its text.
-fn run(properties: RunProperties, text: String) -> Inline {
+pub(crate) fn run(properties: RunProperties, text: String) -> Inline {
     // A run whose text begins or ends with a space needs `xml:space`, or the
     // XML parser strips it and the line comes back with its words stuck
     // together - the one way a faithful conversion can still lose text.
