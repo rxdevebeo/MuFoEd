@@ -129,11 +129,12 @@ fn chat_with(
             messages.push(json!({"role": "system", "content": system}));
         }
         messages.push(user);
+        let num_ctx = crate::context_window::num_ctx(&config.endpoint, &config.model);
         let mut body = json!({
             "model": config.model,
             "stream": false,
             "messages": messages,
-            "options": {"temperature": 0.2, "num_ctx": 16384},
+            "options": {"temperature": 0.2, "num_ctx": num_ctx},
         });
         if !think {
             if let Some(map) = body.as_object_mut() {

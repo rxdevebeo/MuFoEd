@@ -51,8 +51,8 @@ pub(crate) enum TabEvent {
     Failed(String),
     /// A comment was added: show the pane.
     CommentAdded,
-    /// The document has words in scripts no dictionary checks.
-    SpellingMissing(Vec<crate::spell::Script>),
+    /// Dictionary languages the document asks to fetch.
+    SpellingMissing(Vec<&'static str>),
     /// The document has text no font draws; these packs would.
     FontsMissing(Vec<&'static str>),
     /// The selected chart's data was asked for (none: a new chart).
@@ -129,6 +129,8 @@ pub(crate) struct ViewState {
     pub(crate) last_drag: Option<egui::Pos2>,
     /// Visible size of the canvas, for fit-to-width and one-page zoom.
     pub(crate) viewport: egui::Vec2,
+    /// Several pages in a row, when the width and zoom leave room.
+    pub(crate) pages_across: bool,
     pub(crate) current_page: usize,
     /// When the caret last moved, for the blink phase.
     pub(crate) caret_moved: f64,
@@ -194,6 +196,7 @@ impl ViewState {
             caret_at_top: false,
             last_drag: None,
             viewport: egui::vec2(800.0, 600.0),
+            pages_across: false,
             current_page: 0,
             caret_moved: 0.0,
             resize: None,

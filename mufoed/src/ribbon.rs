@@ -77,6 +77,8 @@ pub(crate) struct RibbonState<'a> {
     pub(crate) document: bool,
     pub(crate) navigation: bool,
     pub(crate) ruler: bool,
+    /// Pages sit side by side when the window and zoom leave room.
+    pub(crate) pages_across: bool,
     pub(crate) report: bool,
     pub(crate) dark: bool,
     pub(crate) zoom: f32,
@@ -2965,9 +2967,23 @@ fn view(ui: &mut egui::Ui, s: &RibbonState<'_>, actions: &mut Vec<Action>) {
             }
         });
         column(ui, |ui| {
-            let width = text_width(ui, s.t("cmd.ruler"), &label_font()) + 36.0;
+            let width = [s.t("cmd.ruler"), s.t("cmd.pages_across")]
+                .iter()
+                .map(|label| text_width(ui, label, &label_font()))
+                .fold(0.0, f32::max)
+                + 36.0;
             if check(ui, s.t("cmd.ruler"), s.t("tip.ruler"), s.ruler, width, p) {
                 actions.push(Action::ToggleRuler);
+            }
+            if check(
+                ui,
+                s.t("cmd.pages_across"),
+                s.t("tip.pages_across"),
+                s.pages_across,
+                width,
+                p,
+            ) {
+                actions.push(Action::TogglePagesAcross);
             }
         });
     });

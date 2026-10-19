@@ -564,11 +564,173 @@ pub(crate) const LANGUAGES: &[Language] = &[
     },
 ];
 
-/// The language offered first for a script.
+/// The language offered first for a script, when the words do not say which.
 pub(crate) fn language_for(script: Script) -> &'static str {
     match script {
         Script::Cyrillic => "ru",
         Script::Latin => "en",
+    }
+}
+
+struct Probe {
+    code: &'static str,
+    words: &'static [&'static str],
+    letters: &'static [char],
+}
+
+const PROBES: &[Probe] = &[
+    Probe {
+        code: "en",
+        words: &[
+            "the", "and", "of", "to", "in", "is", "that", "for", "with", "on", "was", "are",
+            "this", "from", "have", "they", "their", "not", "you", "we",
+        ],
+        letters: &[],
+    },
+    Probe {
+        code: "de",
+        words: &[
+            "der", "die", "das", "und", "den", "dem", "des", "ein", "eine", "nicht", "ist", "von",
+            "mit", "auf", "für", "sich", "auch", "oder", "nach", "bei", "aus", "dass", "wir",
+        ],
+        letters: &['ä', 'ö', 'ü', 'ß'],
+    },
+    Probe {
+        code: "fr",
+        words: &[
+            "les", "des", "une", "est", "pas", "qui", "dans", "pour", "sur", "avec", "sont",
+            "cette", "aux", "nous", "vous", "elle", "mais", "leur", "plus",
+        ],
+        letters: &[
+            'ç', 'œ', 'à', 'è', 'ê', 'ë', 'â', 'î', 'ï', 'ô', 'ù', 'û', 'ÿ',
+        ],
+    },
+    Probe {
+        code: "es",
+        words: &[
+            "los", "las", "una", "por", "con", "para", "del", "está", "están", "también", "porque",
+            "cuando", "sobre", "entre", "hay", "muy", "esto", "pero", "como", "sus",
+        ],
+        letters: &['ñ', 'á', 'í', 'ó', 'ú', '¿', '¡'],
+    },
+    Probe {
+        code: "ru",
+        words: &[
+            "не",
+            "что",
+            "это",
+            "как",
+            "все",
+            "она",
+            "его",
+            "для",
+            "если",
+            "или",
+            "уже",
+            "только",
+            "когда",
+            "чтобы",
+            "можно",
+            "был",
+            "была",
+            "они",
+            "этот",
+            "есть",
+        ],
+        letters: &['ы', 'э', 'ё'],
+    },
+    Probe {
+        code: "uk",
+        words: &[
+            "що",
+            "як",
+            "це",
+            "від",
+            "але",
+            "або",
+            "вже",
+            "їх",
+            "також",
+            "між",
+            "під",
+            "його",
+            "цей",
+            "якщо",
+            "немає",
+            "які",
+            "який",
+            "вони",
+            "була",
+            "тільки",
+        ],
+        letters: &['і', 'ї', 'є', 'ґ'],
+    },
+];
+
+const BRITISH: &[&str] = &[
+    "colour",
+    "colours",
+    "favour",
+    "honour",
+    "organise",
+    "organised",
+    "organisation",
+    "whilst",
+    "amongst",
+    "centre",
+    "theatre",
+    "grey",
+    "defence",
+    "practise",
+];
+
+/// The dictionary the words most resemble, when one language leads clearly.
+/// At most the first 400 words are read. `None` when the sample is too small
+/// or two languages stay close.
+pub(crate) fn detect_language<'a>(
+    words: impl IntoIterator<Item = &'a str>,
+) -> Option<&'static str> {
+    let mut scores = [0u32; PROBES.len()];
+    let mut british = 0u32;
+    let mut seen = 0u32;
+    for word in words {
+        if seen >= 400 {
+            break;
+        }
+        seen += 1;
+        let lower = word.to_lowercase();
+        if BRITISH.contains(&lower.as_str()) {
+            british += 1;
+        }
+        for (index, probe) in PROBES.iter().enumerate() {
+            if probe.words.contains(&lower.as_str()) {
+                scores[index] += 2;
+            }
+            if lower.chars().any(|c| probe.letters.contains(&c)) {
+                scores[index] += 3;
+            }
+        }
+    }
+    let mut best_at = 0usize;
+    let mut best = 0u32;
+    let mut second = 0u32;
+    for (index, score) in scores.iter().copied().enumerate() {
+        if score > best {
+            second = best;
+            best = score;
+            best_at = index;
+        } else if score > second {
+            second = score;
+        }
+    }
+    if best < 6 || best < second + 4 {
+        return None;
+    }
+    let code = PROBES[best_at].code;
+    if code == "en" && british >= 2 {
+        Some("en-GB")
+    } else {
+        Some(code)
     }
 }
 
@@ -912,6 +1074,40 @@ mod tests {
             .map(|w| w.text)
             .collect();
         assert_eq!(found, ["Он", "don't", "кот", "рыба"]);
+    }
+
+    #[test]
+    fn a_paragraph_picks_its_language() {
+        let guess = |text: &str| detect_language(words(text).iter().map(|word| word.text.as_str()));
+        assert_eq!(
+            guess("Der Hund und die Katze sind nicht im Haus, und das ist auch so."),
+            Some("de")
+        );
+        assert_eq!(
+            guess("Les chats sont dans la maison avec nous, mais cette porte est pour vous."),
+            Some("fr")
+        );
+        assert_eq!(
+            guess("Los gatos están en la casa porque hay muy poco para ellos, pero esto es suyo."),
+            Some("es")
+        );
+        assert_eq!(
+            guess("The cat and the dog are in the house with their food from the shop."),
+            Some("en")
+        );
+        assert_eq!(
+            guess("The colour of the theatre and the colour of the centre are not grey."),
+            Some("en-GB")
+        );
+        assert_eq!(
+            guess("Это не дом для кота, если он был там только когда все уже ушли."),
+            Some("ru")
+        );
+        assert_eq!(
+            guess("Це не дім для кота, якщо він уже був там, але вони також під вікном."),
+            Some("uk")
+        );
+        assert_eq!(guess("кот котт"), None);
     }
 
     #[test]

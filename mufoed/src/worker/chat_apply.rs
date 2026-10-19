@@ -106,6 +106,7 @@ impl<'a, 's> Worker<'a, 's> {
                 Op::Caption { index, text } => {
                     self.caption_after(*index, text, &mut definitions, &mut commands);
                 }
+                Op::Write { paragraphs } => self.write_paragraphs(paragraphs, &mut commands),
             }
         }
         for op in &batch.ops {
@@ -321,11 +322,21 @@ impl<'a, 's> Worker<'a, 's> {
             replace_inlines(&at, paragraph.inlines.len(), inlines, commands);
             return;
         }
+        // A paragraph cannot hold a line break, so a piece is several paragraphs.
+        let pieces = if new.chars().any(|c| matches!(c, '\n' | '\r' | '\t')) {
+            crate::chat::paragraphs_of(new)
+        } else {
+            vec![new.to_owned()]
+        };
+        if pieces.is_empty() {
+            return;
+        }
         commands.push(Edit::Text {
             at,
             range: 0..old.chars().count(),
-            text: new.to_owned(),
+            text: pieces[0].clone(),
         });
+        insert_paragraphs(index + 1, &pieces[1..], commands);
     }
 
     fn replace_span(
@@ -757,6 +768,56 @@ impl<'a, 's> Worker<'a, 's> {
         self.put_chart(data)
     }
 
+    /// Puts new paragraphs after the text already there. An empty document
+    /// takes the first paragraph in its blank paragraph, unless that paragraph
+    /// carries the section: then every paragraph is inserted before it, so the
+    /// section stays last.
+    fn write_paragraphs(&self, texts: &[String], commands: &mut Vec<Edit>) {
+        if texts.is_empty() {
+            return;
+        }
+        let document = self.session.document();
+        let blocks = &document.body.blocks;
+        let mut last_content = None;
+        let mut first_paragraph = None;
+        let mut only_empty = true;
+        for (index, block) in blocks.iter().enumerate() {
+            let Block::Paragraph(paragraph) = block else {
+                only_empty = false;
+                last_content = Some(index);
+                continue;
+            };
+            if first_paragraph.is_none() {
+                first_paragraph = Some(index);
+            }
+            if !shown(paragraph).is_empty() {
+                only_empty = false;
+                last_content = Some(index);
+            }
+        }
+        if only_empty {
+            if let Some(index) = first_paragraph {
+                let boundary = matches!(
+                    &blocks[index],
+                    Block::Paragraph(paragraph) if paragraph.props.section.is_some()
+                );
+                if boundary {
+                    insert_paragraphs(index, texts, commands);
+                    return;
+                }
+                commands.push(Edit::Text {
+                    at: Address::body(index),
+                    range: 0..0,
+                    text: texts[0].clone(),
+                });
+                insert_paragraphs(index + 1, &texts[1..], commands);
+                return;
+            }
+        }
+        let at = last_content.map_or(0, |index| index + 1);
+        insert_paragraphs(at, texts, commands);
+    }
+
     fn caption_after(
         &self,
         index: usize,
@@ -805,6 +866,19 @@ impl<'a, 's> Worker<'a, 's> {
         style.run.size = Some(HalfPoints(18));
         definitions.push(Definition::CreateStyle(Box::new(style)));
         id
+    }
+}
+
+fn insert_paragraphs(start: usize, texts: &[String], commands: &mut Vec<Edit>) {
+    for (offset, text) in texts.iter().enumerate() {
+        let mut paragraph = super::empty_paragraph();
+        paragraph
+            .inlines
+            .push(Inline::Run(text_run(RunProperties::default(), text)));
+        commands.push(Edit::Insert {
+            at: Address::body(start + offset),
+            block: Box::new(Block::Paragraph(paragraph)),
+        });
     }
 }
 

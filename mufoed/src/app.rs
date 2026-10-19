@@ -81,6 +81,8 @@ pub(crate) enum Action {
     ToggleReport,
     ToggleNavigation,
     ToggleRuler,
+    /// Several pages in a row, as many as the window and zoom fit.
+    TogglePagesAcross,
     ToggleComments,
     /// A comment on the selection, by the user.
     NewComment,
@@ -555,6 +557,7 @@ impl App {
             ctx,
         );
         let mut tab = tab;
+        tab.view.pages_across = self.settings.pages_across;
         tab.set_speller(self.speller_for_tabs());
         self.tabs.push(tab);
         self.active = Some(self.tabs.len() - 1);
@@ -1041,6 +1044,14 @@ impl App {
                 self.settings.ruler = !self.settings.ruler;
                 self.settings.save();
             }
+            Action::TogglePagesAcross => {
+                self.settings.pages_across = !self.settings.pages_across;
+                self.settings.save();
+                let across = self.settings.pages_across;
+                for tab in &mut self.tabs {
+                    tab.view.pages_across = across;
+                }
+            }
             Action::ToggleNavigation => {
                 self.settings.navigation = !self.settings.navigation;
                 self.settings.save();
@@ -1102,7 +1113,7 @@ impl App {
         let mut close = Vec::new();
         let mut messages = Vec::new();
         let mut pictures = Vec::new();
-        let mut missing_scripts = Vec::new();
+        let mut missing_languages = Vec::new();
         let mut missing_fonts = Vec::new();
         let mut ai_sources = Vec::new();
         let mut chat_views = Vec::new();
@@ -1233,7 +1244,7 @@ impl App {
                             crate::paragraph::Dialog::new(*format),
                         )));
                     }
-                    TabEvent::SpellingMissing(scripts) => missing_scripts.extend(scripts),
+                    TabEvent::SpellingMissing(codes) => missing_languages.extend(codes),
                     TabEvent::FontsMissing(packs) => missing_fonts.extend(packs),
                     TabEvent::AiSource { job, source } => ai_sources.push((tab.id, job, source)),
                     TabEvent::ChatSnapshot { job, view } => {
@@ -1297,7 +1308,7 @@ impl App {
             self.ai_cleanup_result(tab, applied);
         }
         self.offer_font_packs(&missing_fonts);
-        self.offer_dictionaries(&missing_scripts);
+        self.offer_dictionaries(&missing_languages);
         for (tab, id, bytes, extension, purpose) in pictures {
             match purpose {
                 ExportPurpose::External => self.edit_externally(tab, id, &bytes, extension, now),
@@ -1846,14 +1857,13 @@ impl App {
         self.say(text, false, now);
     }
 
-    /// Offers a dictionary for a script the document has words in.
-    fn offer_dictionaries(&mut self, scripts: &[crate::spell::Script]) {
+    /// Offers a dictionary for a language the document's words resemble.
+    fn offer_dictionaries(&mut self, codes: &[&'static str]) {
         if !self.settings.spelling || self.dialog.is_some() || self.dictionary_download.is_some() {
             return;
         }
-        for script in scripts {
-            let code = crate::spell::language_for(*script);
-            if self.dictionaries_offered.contains(&code) || crate::spell::installed(code) {
+        for code in codes {
+            if self.dictionaries_offered.contains(code) || crate::spell::installed(code) {
                 continue;
             }
             self.dictionaries_offered.push(code);
@@ -2468,6 +2478,7 @@ impl App {
             document: ready,
             navigation: self.settings.navigation,
             ruler: self.settings.ruler,
+            pages_across: self.settings.pages_across,
             report: self.report_open,
             dark: self.settings.dark,
             zoom: tab.map_or(1.0, |tab| tab.zoom),
@@ -2637,6 +2648,24 @@ impl App {
                     if response.on_hover_text(self.i18n.t(tip)).clicked() {
                         actions.push(Action::Zoom(zoom));
                     }
+                }
+                let across = tab.view.pages_across;
+                let (rect, response) = ui.allocate_exact_size(vec2(22.0, 20.0), Sense::click());
+                if across || response.hovered() {
+                    ui.painter().rect_filled(rect, 3.0, palette.hover);
+                }
+                icons::paint(
+                    ui.painter(),
+                    rect.shrink(3.0),
+                    Icon::Pages,
+                    palette.status_text,
+                    theme::ACCENT,
+                );
+                if response
+                    .on_hover_text(self.i18n.t("tip.pages_across"))
+                    .clicked()
+                {
+                    actions.push(Action::TogglePagesAcross);
                 }
             });
         });

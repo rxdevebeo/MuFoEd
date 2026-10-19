@@ -33,6 +33,7 @@ mod canvas;
 mod chat;
 mod cleanup;
 mod clipboard;
+mod context_window;
 mod dialog;
 mod docfonts;
 mod formats;

@@ -166,6 +166,10 @@ pub(crate) struct AiState {
     chat_cancel: Option<Arc<AtomicBool>>,
     /// A prompt waiting for the document picture: job, tab, text.
     chat_wait: Option<(u64, u64, String)>,
+    /// The document picture held until Ollama's model list is known.
+    chat_held: Option<(u64, u64, crate::chat::View)>,
+    /// The tab a running turn will write into.
+    chat_tab: Option<u64>,
 }
 
 /// What one chat turn finished with.
@@ -716,6 +720,9 @@ impl App {
                     self.ai_run(ctx, action);
                 }
             }
+            if let Some((tab, job, view)) = self.ai.chat_held.take() {
+                self.chat_snapshot(ctx, tab, job, view);
+            }
         }
         self.ai_poll_download(ctx);
         let Some(job) = self.ai.job.as_mut() else {
@@ -1117,6 +1124,7 @@ impl App {
         let was = self.i18n.t("ai.chat_was").to_owned();
         let now = self.i18n.t("ai.chat_now").to_owned();
         let cancel = self.i18n.t("ai.chat_cancel").to_owned();
+        let checking = self.i18n.t("ai.checking").to_owned();
         let comment = self.i18n.t("ai.chat_comment").to_owned();
         let edit = self.i18n.t("ai.chat_edit").to_owned();
         let Some(tab_id) = self.active_tab().map(|tab| tab.id) else {
@@ -1172,6 +1180,11 @@ impl App {
                         flag.store(true, Ordering::Relaxed);
                     }
                 }
+            });
+        } else if self.ai.chat_wait.is_some() {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(&checking);
             });
         }
         let mut submitted = false;
@@ -1253,13 +1266,27 @@ impl App {
             return;
         }
         let Some(config) = self.ai_config() else {
+            // The list is asked for when the settings open. A chat sent before
+            // that has not failed to find a model: the question was not sent.
+            if !matches!(self.ai.probe, Probe::Ready(_) | Probe::Absent(_)) {
+                self.ai.chat_wait = Some((pending, pending_tab, prompt));
+                self.ai.chat_held = Some((tab, job, view));
+                self.ai_probe(ctx);
+                return;
+            }
+            let key = if matches!(self.ai.probe, Probe::Absent(_)) {
+                "ai.no_ollama"
+            } else {
+                "ai.no_model"
+            };
             self.ai.chat_history.push(crate::chat::Turn::user(prompt));
-            self.ai.chat_history.push(crate::chat::Turn::assistant(
-                self.i18n.t("ai.no_model").to_owned(),
-            ));
+            self.ai
+                .chat_history
+                .push(crate::chat::Turn::assistant(self.i18n.t(key).to_owned()));
             return;
         };
         let language = self.i18n.language().to_owned();
+        self.ai.chat_tab = Some(tab);
         let mut history = self.ai.chat_history.clone();
         history.push(crate::chat::Turn::user(prompt));
         let cancel = Arc::new(AtomicBool::new(false));
@@ -1280,6 +1307,7 @@ impl App {
             let mut remote = crate::chat::Remote {
                 endpoint: config.endpoint,
                 model: config.model,
+                num_ctx: None,
             };
             let mut book = crate::chat::Book::default();
             let stop = crate::chat::run(
@@ -1288,6 +1316,7 @@ impl App {
                 |name, args| crate::chat::tool(&view, &mut book, name, args),
                 &cancel,
             );
+            crate::chat::keep_blank_answer(&view, &history, &mut book);
             let _ = sender.send(ChatDone {
                 stop,
                 history,
@@ -1323,7 +1352,22 @@ impl App {
         self.ai.chat_rx = None;
         self.ai.chat_cancel = None;
         self.ai.chat_history = done.history;
-        self.ai.chat_batches.extend(done.batches);
+        let tab = self.ai.chat_tab.take();
+        let (writes, rest): (Vec<_>, Vec<_>) = done.batches.into_iter().partition(|batch| {
+            !batch.ops.is_empty()
+                && batch
+                    .ops
+                    .iter()
+                    .all(|op| matches!(op, crate::chat::Op::Write { .. }))
+        });
+        if let Some(tab) = tab.and_then(|tab_id| self.tabs.iter().find(|tab| tab.id == tab_id)) {
+            for batch in writes {
+                tab.send(Request::ApplyChat(Box::new(batch)));
+            }
+        } else {
+            self.ai.chat_batches.extend(writes);
+        }
+        self.ai.chat_batches.extend(rest);
         self.ai.chat_report.extend(done.report);
     }
 

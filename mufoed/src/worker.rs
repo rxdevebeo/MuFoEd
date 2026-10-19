@@ -762,7 +762,8 @@ struct SpellSource {
 
 struct SpellDone {
     errors: Vec<SpellError>,
-    missing: Vec<crate::spell::Script>,
+    /// Language codes whose dictionary the text asks for.
+    missing: Vec<&'static str>,
     cache: HashMap<String, Checked>,
 }
 
@@ -781,7 +782,7 @@ fn spell_document(
     epoch: u64,
 ) -> Option<SpellDone> {
     let mut errors = Vec::new();
-    let mut missing: Vec<crate::spell::Script> = Vec::new();
+    let mut unchecked: Vec<crate::spell::Script> = Vec::new();
     let mut seen: HashMap<String, Checked> = HashMap::new();
     for source in &paragraphs {
         if spell_gate(sync).epoch != epoch {
@@ -794,8 +795,8 @@ fn spell_document(
         let checked = cached.unwrap_or_else(|| verdicts(&speller, &source.text));
         seen.insert(source.text.clone(), Arc::clone(&checked));
         for script in &checked.1 {
-            if !missing.contains(script) {
-                missing.push(*script);
+            if !unchecked.contains(script) {
+                unchecked.push(*script);
             }
         }
         for word in &checked.0 {
@@ -827,6 +828,28 @@ fn spell_document(
                 end,
                 rects,
             });
+        }
+    }
+    let mut sample = Vec::new();
+    for source in &paragraphs {
+        if sample.len() >= 400 {
+            break;
+        }
+        for word in crate::spell::words(&source.text) {
+            sample.push(word.text);
+            if sample.len() >= 400 {
+                break;
+            }
+        }
+    }
+    let mut missing = Vec::new();
+    if let Some(code) = crate::spell::detect_language(sample.iter().map(String::as_str)) {
+        missing.push(code);
+    }
+    for script in unchecked {
+        let code = crate::spell::language_for(script);
+        if !missing.contains(&code) {
+            missing.push(code);
         }
     }
     Some(SpellDone {
@@ -1155,10 +1178,10 @@ pub(crate) enum Reply {
     Formula(Option<Box<(Address, usize, strict_ooxml::model::math::MathExpression)>>),
     /// Font packs that would draw text nothing draws now (their ids).
     FontsMissing(Vec<&'static str>),
-    /// The misspelt words, and the scripts with words no dictionary checks.
+    /// The misspelt words, and dictionary languages the text asks to fetch.
     Spelling {
         errors: Vec<SpellError>,
-        missing: Vec<crate::spell::Script>,
+        missing: Vec<&'static str>,
     },
     /// A comment was added: the pane edits its text.
     CommentAdded(String),
@@ -12503,6 +12526,31 @@ mod tests {
                 "{:?}",
                 texts_of(&after)
             );
+        });
+    }
+
+    /// New prose lands in an empty document as paragraphs, and one undo removes it.
+    #[test]
+    fn chat_writes_paragraphs_into_an_empty_document() {
+        use crate::chat::{Batch, Op};
+        with_worker_replies(|worker, replies| {
+            let depth = worker.undo_depth;
+            worker.handle(Request::ApplyChat(Box::new(Batch {
+                title: "write".into(),
+                lines: Vec::new(),
+                ops: vec![Op::Write {
+                    paragraphs: vec!["Осень.".into(), "Листья падают на дорожки парка.".into()],
+                }],
+            })));
+            assert_eq!(worker.undo_depth, depth + 1);
+            let written = take_view(worker, replies, 1);
+            assert_eq!(
+                texts_of(&written),
+                vec!["Осень.", "Листья падают на дорожки парка."]
+            );
+            worker.handle(Request::Undo);
+            let cleared = take_view(worker, replies, 2);
+            assert!(texts_of(&cleared).is_empty());
         });
     }
 }

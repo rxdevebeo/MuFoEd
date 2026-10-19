@@ -141,9 +141,14 @@ pub(crate) fn system_prompt(language: &str) -> String {
         "You revise one open document by calling tools. Read with outline, \
          read_paragraphs, read_selection, find_all, list_formulas and list_tables \
          before proposing a change. propose queues a change the user applies; it \
-         does not change the document. Fragments written as ⟦…⟧ are formulas and \
-         pictures: copy every such fragment unchanged. Do not invent character \
-         offsets or object numbers. When you are finished, answer in {language}, briefly."
+         does not change the document, except kind write, which the editor inserts. \
+         To add new prose, call propose with kind write and put the whole piece in \
+         text, with a blank line between paragraphs. write adds paragraphs and does \
+         not replace text that is already there. Do not use report to deliver new \
+         prose, and do not claim the piece is in the document unless write was queued. \
+         Fragments written as ⟦…⟧ are formulas and pictures: copy every such fragment \
+         unchanged. Do not invent character offsets or object numbers. When you are \
+         finished, answer in {language}, briefly."
     )
 }
 
@@ -164,7 +169,7 @@ pub(crate) fn tool_schema() -> Value {
         })),
         schema_tool("list_formulas", "Displayed formulas in document order: id, paragraph, LaTeX, current number.", json!({"type": "object", "properties": {}})),
         schema_tool("list_tables", "Tables as rows of cell text, and which pictures there are.", json!({"type": "object", "properties": {}})),
-        schema_tool("propose", "Queue one change. kind is replace, range, forms, underline, kinds, numbers, comment, bookmark, join, split, move, cite, report, table_header, chart or caption.", json!({
+        schema_tool("propose", "Queue one change. kind is replace, range, forms, underline, kinds, numbers, comment, bookmark, join, split, move, cite, report, table_header, chart, caption or write. write adds the text of a new piece; separate its paragraphs with a blank line.", json!({
             "type": "object",
             "properties": {
                 "kind": {"type": "string"},
@@ -199,13 +204,13 @@ fn schema_tool(name: &str, description: &str, parameters: Value) -> Value {
 }
 
 /// The JSON body of one `/api/chat` call.
-pub(crate) fn request_body(model: &str, history: &[Turn]) -> Value {
+pub(crate) fn request_body(model: &str, history: &[Turn], num_ctx: u32) -> Value {
     json!({
         "model": model,
         "stream": false,
         "messages": history.iter().map(message_json).collect::<Vec<_>>(),
         "tools": tool_schema(),
-        "options": {"temperature": 0.2, "num_ctx": 16384},
+        "options": {"temperature": 0.2, "num_ctx": num_ctx},
         "think": false,
     })
 }
@@ -243,7 +248,12 @@ fn agent() -> ureq::Agent {
 }
 
 /// Posts one chat request and returns Ollama's JSON.
-pub(crate) fn post(endpoint: &str, model: &str, history: &[Turn]) -> Result<Value, String> {
+pub(crate) fn post(
+    endpoint: &str,
+    model: &str,
+    history: &[Turn],
+    num_ctx: u32,
+) -> Result<Value, String> {
     let url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
     let send = |body: Value| -> Result<(u16, Value), String> {
         let mut response = agent()
@@ -259,9 +269,9 @@ pub(crate) fn post(endpoint: &str, model: &str, history: &[Turn]) -> Result<Valu
             .and_then(|text| serde_json::from_str(&text).map_err(|error| error.to_string()))?;
         Ok((status, value))
     };
-    let (mut status, mut value) = send(request_body(model, history))?;
+    let (mut status, mut value) = send(request_body(model, history, num_ctx))?;
     if status != 200 && error_text(&value).contains("think") {
-        let mut body = request_body(model, history);
+        let mut body = request_body(model, history, num_ctx);
         if let Some(map) = body.as_object_mut() {
             map.remove("think");
         }
@@ -287,11 +297,20 @@ pub(crate) struct Remote {
     pub(crate) endpoint: String,
     /// Model name.
     pub(crate) model: String,
+    /// Measured once, then reused for every step of the turn.
+    pub(crate) num_ctx: Option<u32>,
 }
 
 impl Model for Remote {
     fn complete(&mut self, history: &[Turn]) -> Result<ModelReply, String> {
-        interpret(&post(&self.endpoint, &self.model, history)?)
+        let num_ctx = if let Some(num_ctx) = self.num_ctx {
+            num_ctx
+        } else {
+            let num_ctx = crate::context_window::num_ctx(&self.endpoint, &self.model);
+            self.num_ctx = Some(num_ctx);
+            num_ctx
+        };
+        interpret(&post(&self.endpoint, &self.model, history, num_ctx)?)
     }
 }
 
@@ -676,6 +695,11 @@ pub(crate) enum Op {
         /// Caption text.
         text: String,
     },
+    /// New paragraphs, added without replacing text that is already there.
+    Write {
+        /// Plain paragraphs, in order. None of them contains a line break.
+        paragraphs: Vec<String>,
+    },
 }
 
 /// One row of a consistency report. It changes nothing until it is chosen.
@@ -928,6 +952,7 @@ fn propose(view: &View, book: &mut Book, args: &Value) -> String {
             batch.ops.push(Op::Chart { title });
         }
         "caption" => propose_caption(view, args, &mut batch, &mut skipped),
+        "write" => propose_write(args, &mut batch, &mut skipped),
         _ => return json!({"error": "unknown proposal", "kind": kind}).to_string(),
     }
     let queued = !batch.ops.is_empty();
@@ -947,6 +972,16 @@ fn propose_replace(view: &View, args: &Value, batch: &mut Batch, skipped: &mut u
         let new = string(item, "new");
         if paragraph.text != old {
             *skipped += 1;
+            continue;
+        }
+        // An empty paragraph cannot hold a line break. New prose is inserted.
+        if old.is_empty() {
+            let paragraphs = paragraphs_of(&new);
+            if paragraphs.is_empty() {
+                *skipped += 1;
+                continue;
+            }
+            push_write(batch, paragraphs);
             continue;
         }
         batch.lines.push(Line {
@@ -1264,6 +1299,112 @@ fn propose_cite(view: &View, args: &Value, batch: &mut Batch, skipped: &mut u32)
     });
 }
 
+fn propose_write(args: &Value, batch: &mut Batch, skipped: &mut u32) {
+    let mut paragraphs = paragraphs_of(&string(args, "text"));
+    for item in array(args, "items") {
+        let text = item
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| string(item, "text"));
+        paragraphs.extend(paragraphs_of(&text));
+    }
+    if paragraphs.is_empty() {
+        *skipped += 1;
+        return;
+    }
+    push_write(batch, paragraphs);
+}
+
+/// Plain paragraphs of a piece. Line breaks separate them; an empty line is
+/// not a paragraph, and a paragraph cannot hold a tab or a line break.
+pub(crate) fn paragraphs_of(text: &str) -> Vec<String> {
+    text.split('\n')
+        .map(|line| {
+            line.trim_matches('\r')
+                .replace('\t', " ")
+                .chars()
+                .filter(|c| !c.is_control())
+                .collect::<String>()
+                .trim()
+                .to_owned()
+        })
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
+fn push_write(batch: &mut Batch, paragraphs: Vec<String>) {
+    for paragraph in &paragraphs {
+        batch.lines.push(Line {
+            before: String::new(),
+            after: paragraph.clone(),
+        });
+    }
+    if let Some(Op::Write {
+        paragraphs: existing,
+    }) = batch.ops.last_mut()
+    {
+        existing.extend(paragraphs);
+        return;
+    }
+    batch.ops.push(Op::Write { paragraphs });
+}
+
+/// On a document with no text, a finished answer that is the piece itself
+/// becomes a write. A short status line does not.
+pub(crate) fn keep_blank_answer(view: &View, history: &[Turn], book: &mut Book) {
+    if view
+        .paragraphs
+        .iter()
+        .any(|paragraph| !paragraph.text.trim().is_empty())
+    {
+        return;
+    }
+    if book
+        .batches
+        .iter()
+        .any(|batch| batch.ops.iter().any(|op| matches!(op, Op::Write { .. })))
+    {
+        return;
+    }
+    let from_answer = history.iter().rev().find_map(|turn| {
+        (turn.role == Role::Assistant && !turn.content.trim().is_empty())
+            .then(|| turn.content.clone())
+    });
+    let mut paragraphs = from_answer
+        .as_deref()
+        .map(paragraphs_of)
+        .unwrap_or_default();
+    if paragraphs
+        .iter()
+        .map(|line| line.chars().count())
+        .sum::<usize>()
+        < 50
+    {
+        paragraphs = book
+            .report
+            .iter()
+            .flat_map(|item| paragraphs_of(&item.text))
+            .collect();
+        if paragraphs
+            .iter()
+            .map(|line| line.chars().count())
+            .sum::<usize>()
+            < 50
+        {
+            return;
+        }
+        book.report.clear();
+    }
+    book.batches.push(Batch {
+        title: "write".to_owned(),
+        lines: Vec::new(),
+        ops: Vec::new(),
+    });
+    if let Some(batch) = book.batches.last_mut() {
+        push_write(batch, paragraphs);
+    }
+}
+
 fn propose_caption(view: &View, args: &Value, batch: &mut Batch, skipped: &mut u32) {
     let Some(index) = usize_field(args, "index") else {
         *skipped += 1;
@@ -1456,10 +1597,11 @@ pub(crate) fn report_controls(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_action, assign_numbers, batch_controls, find_all, interpret, plan_moves, post,
-        report_action, report_controls, request_body, run, section_count, system_prompt, tool,
-        word_spans, Batch, Book, Formula, Hit, Line, ModelReply, Paragraph, ReportChoice,
-        ReportItem, Role, Scripted, Stop, ToolCall, Turn, View,
+        apply_action, assign_numbers, batch_controls, find_all, interpret, keep_blank_answer,
+        paragraphs_of, plan_moves, post, report_action, report_controls, request_body, run,
+        section_count, system_prompt, tool, word_spans, Batch, Book, Formula, Hit, Line,
+        ModelReply, Op, Paragraph, ReportChoice, ReportItem, Role, Scripted, Stop, ToolCall, Turn,
+        View,
     };
     use eframe::egui;
     use std::sync::atomic::AtomicBool;
@@ -1647,9 +1789,10 @@ mod tests {
             Turn::user("look"),
             Turn::tool("outline", "previous-result-token"),
         ];
-        let body = request_body("test-model", &history);
+        let body = request_body("test-model", &history, 4096);
+        assert_eq!(body["options"]["num_ctx"], 4096);
         assert!(body.get("tools").is_some());
-        let value = post(&format!("http://{address}"), "test-model", &history).unwrap();
+        let value = post(&format!("http://{address}"), "test-model", &history, 4096).unwrap();
         server.join().unwrap();
         assert_eq!(value["message"]["content"], "ok");
     }
@@ -1851,5 +1994,69 @@ mod tests {
         );
         assert_eq!(choice, None);
         assert!(system_prompt("ru").contains("Russian"));
+    }
+
+    #[test]
+    fn a_blank_document_keeps_a_written_answer() {
+        let blank = View {
+            paragraphs: vec![Paragraph {
+                index: 0,
+                ..Paragraph::default()
+            }],
+            ..View::default()
+        };
+        let mut book = Book::default();
+        let wrote = tool(
+            &blank,
+            &mut book,
+            "propose",
+            &serde_json::json!({
+                "kind": "write",
+                "text": "Осень.\n\nЛистья падают на дорожки парка и шуршат под ногами."
+            }),
+        );
+        assert!(wrote.contains("\"queued\":true"));
+        match &book.batches[0].ops[0] {
+            Op::Write { paragraphs } => {
+                assert_eq!(
+                    paragraphs,
+                    &[
+                        "Осень.".to_owned(),
+                        "Листья падают на дорожки парка и шуршат под ногами.".to_owned()
+                    ]
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+        let mut reported = Book::default();
+        tool(
+            &blank,
+            &mut reported,
+            "propose",
+            &serde_json::json!({
+                "kind": "report",
+                "items": [{
+                    "text": "Катет — сторона прямоугольного треугольника, образующая прямой угол.",
+                    "paragraph": 0
+                }]
+            }),
+        );
+        let history = vec![Turn::assistant("Добавлено в документ.".to_owned())];
+        keep_blank_answer(&blank, &history, &mut reported);
+        assert!(reported.report.is_empty());
+        match &reported.batches[0].ops[0] {
+            Op::Write { paragraphs } => {
+                assert_eq!(paragraphs.len(), 1);
+                assert!(paragraphs[0].contains("Катет"));
+            }
+            other => panic!("{other:?}"),
+        }
+        let mut status = Book::default();
+        keep_blank_answer(&blank, &history, &mut status);
+        assert!(status.batches.is_empty());
+        assert_eq!(
+            paragraphs_of("  one \n\n\ttwo\r\n"),
+            vec!["one".to_owned(), "two".to_owned()]
+        );
     }
 }

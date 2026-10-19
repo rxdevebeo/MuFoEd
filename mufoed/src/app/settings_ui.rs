@@ -164,6 +164,16 @@ fn view_page(ui: &mut egui::Ui, app: &mut App) {
     ui.checkbox(&mut app.settings.dark, dark);
     let ruler = app.i18n.t("cmd.ruler").to_owned();
     ui.checkbox(&mut app.settings.ruler, ruler);
+    let across = app.i18n.t("cmd.pages_across").to_owned();
+    if ui
+        .checkbox(&mut app.settings.pages_across, across)
+        .changed()
+    {
+        let on = app.settings.pages_across;
+        for tab in &mut app.tabs {
+            tab.view.pages_across = on;
+        }
+    }
     let navigation = app.i18n.t("cmd.navigation").to_owned();
     ui.checkbox(&mut app.settings.navigation, navigation);
     let report = app.i18n.t("cmd.report_pane").to_owned();

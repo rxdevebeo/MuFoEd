@@ -1,4 +1,5 @@
-//! The desk: pages in a column, the caret and the selection over them.
+//! The desk: pages in a column, or several across when that mode fits, the
+//! caret and the selection over them.
 //!
 //! Pages arrive laid out. Only the pages in view (and one either side) are
 //! painted to SVG and rasterized, on the thread pool, at the zoom and the
@@ -49,30 +50,85 @@ pub(crate) fn desk(tab: &DocTab) -> Desk {
         .map(|page| page.width as f32 * zoom)
         .fold(0.0_f32, f32::max);
     let pair = tab.original.is_some() && tab.view.viewport.x >= widest * 2.0 + GAP * 3.0;
-    let column = if pair {
-        widest * 2.0 + GAP * 3.0
-    } else {
-        widest + GAP * 2.0
-    };
-    let mut y = GAP;
-    let mut pages = Vec::with_capacity(tab.pages.len());
-    let mut originals = Vec::new();
-    for page in &tab.pages {
-        #[allow(clippy::cast_possible_truncation)]
-        let size = vec2(page.width as f32 * zoom, page.height as f32 * zoom);
-        if pair {
+    if pair {
+        let column = widest * 2.0 + GAP * 3.0;
+        let mut y = GAP;
+        let mut pages = Vec::with_capacity(tab.pages.len());
+        let mut originals = Vec::new();
+        for page in &tab.pages {
+            #[allow(clippy::cast_possible_truncation)]
+            let size = vec2(page.width as f32 * zoom, page.height as f32 * zoom);
             originals.push(Rect::from_min_size(pos2(GAP, y), size));
             pages.push(Rect::from_min_size(pos2(GAP * 2.0 + widest, y), size));
-        } else {
-            pages.push(Rect::from_min_size(pos2((column - size.x) / 2.0, y), size));
+            y += size.y + GAP;
         }
-        y += size.y + GAP;
+        return Desk {
+            pages,
+            originals,
+            content: vec2(column, y),
+        };
     }
+    #[allow(clippy::cast_possible_truncation)]
+    let sheets: Vec<(f32, f32)> = tab
+        .pages
+        .iter()
+        .map(|page| (page.width as f32 * zoom, page.height as f32 * zoom))
+        .collect();
+    let (pages, content) = arrange(&sheets, tab.view.viewport.x, tab.view.pages_across);
     Desk {
         pages,
-        originals,
-        content: vec2(column, y),
+        originals: Vec::new(),
+        content,
     }
+}
+
+/// How many pages of width `page_w` fit in `viewport_w`, counting the gaps.
+fn columns_across(viewport_w: f32, page_w: f32, count: usize) -> usize {
+    if count == 0 || page_w <= 0.0 {
+        return 1;
+    }
+    let raw = (viewport_w - GAP) / (page_w + GAP);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let fit = if raw.is_finite() && raw > 0.0 {
+        raw.floor() as usize
+    } else {
+        1
+    };
+    fit.clamp(1, count)
+}
+
+/// Page rectangles in content coordinates. Sizes are already scaled by zoom.
+/// `multi` lays out as many columns as the viewport width holds.
+fn arrange(sheets: &[(f32, f32)], viewport_w: f32, multi: bool) -> (Vec<Rect>, egui::Vec2) {
+    if sheets.is_empty() {
+        return (Vec::new(), vec2(GAP * 2.0, GAP));
+    }
+    let widest = sheets.iter().map(|sheet| sheet.0).fold(0.0_f32, f32::max);
+    let columns = if multi {
+        columns_across(viewport_w, widest, sheets.len())
+    } else {
+        1
+    };
+    #[allow(clippy::cast_precision_loss)]
+    let content_w = columns as f32 * widest + (columns as f32 + 1.0) * GAP;
+    let mut y = GAP;
+    let mut rects = Vec::with_capacity(sheets.len());
+    let mut index = 0;
+    while index < sheets.len() {
+        let end = (index + columns).min(sheets.len());
+        let row_h = sheets[index..end]
+            .iter()
+            .map(|sheet| sheet.1)
+            .fold(0.0_f32, f32::max);
+        for (col, sheet) in sheets[index..end].iter().enumerate() {
+            #[allow(clippy::cast_precision_loss)]
+            let x = GAP + col as f32 * (widest + GAP) + (widest - sheet.0) * 0.5;
+            rects.push(Rect::from_min_size(pos2(x, y), vec2(sheet.0, sheet.1)));
+        }
+        y += row_h + GAP;
+        index = end;
+    }
+    (rects, vec2(content_w, y))
 }
 
 /// Where each recognized page sits in the column, in content coordinates.
@@ -360,7 +416,10 @@ pub(crate) fn show(
                 for (index, rect) in originals.iter().enumerate() {
                     let screen = rect.translate(offset);
                     let local = rect.translate(center);
-                    if !local.expand2(vec2(0.0, rect.height())).intersects(viewport) {
+                    if !local
+                        .expand2(vec2(rect.width(), rect.height()))
+                        .intersects(viewport)
+                    {
                         continue;
                     }
                     painter.rect_filled(
@@ -391,7 +450,9 @@ pub(crate) fn show(
                 for (index, rect) in rects.iter().enumerate() {
                     let screen = rect.translate(offset);
                     let local = rect.translate(center);
-                    let near = local.expand2(vec2(0.0, rect.height())).intersects(viewport);
+                    let near = local
+                        .expand2(vec2(rect.width(), rect.height()))
+                        .intersects(viewport);
                     if !near {
                         continue;
                     }
@@ -444,12 +505,20 @@ pub(crate) fn show(
                         .iter()
                         .copied()
                         .max_by(|a, b| {
-                            let overlap = |i: usize| {
-                                rects.get(i).map_or(0.0, |r| {
-                                    r.translate(center).intersect(viewport).height()
+                            let metric = |i: usize| {
+                                rects.get(i).map_or((0.0, f32::MAX), |r| {
+                                    let placed = r.translate(center);
+                                    let hit = placed.intersect(viewport);
+                                    let area = hit.width().max(0.0) * hit.height().max(0.0);
+                                    let dist = (placed.center() - viewport.center()).length();
+                                    (area, dist)
                                 })
                             };
-                            overlap(*a).total_cmp(&overlap(*b))
+                            let (area_a, dist_a) = metric(*a);
+                            let (area_b, dist_b) = metric(*b);
+                            area_a
+                                .total_cmp(&area_b)
+                                .then_with(|| dist_b.total_cmp(&dist_a).then_with(|| b.cmp(a)))
                         })
                         .unwrap_or(first);
                 }
@@ -1199,5 +1268,47 @@ mod tests {
             );
         }
         assert!(loading && populated, "both popup states must be exercised");
+    }
+
+    #[test]
+    fn pages_stay_in_one_column_until_the_mode_is_on() {
+        let sheets = [(600.0, 800.0), (600.0, 800.0), (600.0, 800.0)];
+        let (rects, _) = arrange(&sheets, 2000.0, false);
+        assert_eq!(rects.len(), 3);
+        assert!((rects[0].left() - rects[1].left()).abs() < 0.1);
+        assert!(rects[1].top() > rects[0].bottom());
+    }
+
+    #[test]
+    fn the_row_holds_as_many_pages_as_the_width_allows() {
+        let sheets = [(600.0, 800.0), (600.0, 800.0), (600.0, 800.0)];
+        let (two, size) = arrange(&sheets, 1400.0, true);
+        assert!((two[0].left() - 18.0).abs() < 0.1);
+        assert!((two[1].left() - 636.0).abs() < 0.1);
+        assert!((two[0].top() - two[1].top()).abs() < 0.1);
+        assert!((two[2].left() - two[0].left()).abs() < 0.1);
+        assert!(two[2].top() > two[0].bottom());
+        assert!((size.x - 1254.0).abs() < 0.1);
+
+        let (three, wide) = arrange(&sheets, 2000.0, true);
+        assert!((three[2].top() - three[0].top()).abs() < 0.1);
+        assert!(three[2].left() > three[1].left());
+        assert!((wide.x - 1872.0).abs() < 0.1);
+
+        let (one, _) = arrange(&sheets, 700.0, true);
+        assert!((one[0].left() - one[1].left()).abs() < 0.1);
+    }
+
+    #[test]
+    fn a_narrower_page_sits_in_the_middle_of_its_cell() {
+        let (rects, _) = arrange(&[(600.0, 800.0), (400.0, 500.0)], 1400.0, true);
+        assert!((rects[1].left() - 736.0).abs() < 0.1);
+        assert!((rects[1].top() - rects[0].top()).abs() < 0.1);
+        let (next, _) = arrange(
+            &[(600.0, 400.0), (600.0, 900.0), (600.0, 800.0)],
+            1400.0,
+            true,
+        );
+        assert!((next[2].top() - (18.0 + 900.0 + 18.0)).abs() < 0.1);
     }
 }

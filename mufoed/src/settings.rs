@@ -47,6 +47,8 @@ pub(crate) struct Settings {
     pub(crate) navigation: bool,
     /// Show the rulers.
     pub(crate) ruler: bool,
+    /// Lay pages side by side, as many as the window and zoom fit.
+    pub(crate) pages_across: bool,
     /// Measure and draw with the machine's installed fonts as well.
     pub(crate) system_fonts: bool,
     /// Ollama endpoint for recognition.
@@ -92,6 +94,7 @@ impl Default for Settings {
             zoom: 1.0,
             navigation: true,
             ruler: true,
+            pages_across: false,
             system_fonts: false,
             ocr_endpoint: endpoint,
             ocr_model: model,

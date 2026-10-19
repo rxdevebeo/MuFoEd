@@ -67,6 +67,7 @@ pub(crate) enum Icon {
     ZoomOut,
     OnePage,
     PageWidth,
+    Pages,
     Accept,
     Reject,
     Report,
@@ -1184,6 +1185,19 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32, a
                 r.width() * 0.16,
                 accent,
             );
+        }
+        Icon::Pages => {
+            let gap = r.width() * 0.08;
+            let width = (r.width() - gap) * 0.5;
+            let height = r.height() * 0.9;
+            let left = Rect::from_min_size(
+                pos2(r.left(), r.center().y - height * 0.5),
+                vec2(width, height),
+            );
+            let right =
+                Rect::from_min_size(pos2(left.right() + gap, left.top()), vec2(width, height));
+            page(painter, left, color, paper);
+            page(painter, right, color, paper);
         }
         Icon::Accept | Icon::Reject => {
             page(
