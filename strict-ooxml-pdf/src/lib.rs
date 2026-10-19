@@ -69,6 +69,7 @@
     clippy::cast_lossless
 )]
 
+mod clip;
 pub mod content;
 pub mod document;
 pub mod error;

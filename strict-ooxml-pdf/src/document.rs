@@ -948,8 +948,13 @@ struct PageResources<'a> {
     images: BTreeMap<String, lopdf::ObjectId>,
     forms: BTreeMap<String, lopdf::ObjectId>,
     shadings: BTreeMap<String, crate::content::AxialGradient>,
+    /// Shading patterns (`PatternType 2`) with an axial shading, and their
+    /// `/Matrix` (G2).
+    patterns: BTreeMap<String, (crate::content::AxialGradient, crate::content::Matrix)>,
     /// Graphics states' fill and stroke opacity (`ca`, `CA`).
     ext_g_states: BTreeMap<String, (Option<f64>, Option<f64>)>,
+    /// Graphics states that set a soft mask.
+    soft_masks: std::collections::BTreeSet<String>,
     limits: PdfLimits,
     /// The resources a form falls back on, when the form declares none itself.
     parent: Option<&'a PageResources<'a>>,
@@ -1007,7 +1012,9 @@ impl<'a> PageResources<'a> {
         let mut images = BTreeMap::new();
         let mut forms = BTreeMap::new();
         let mut shadings = BTreeMap::new();
+        let mut patterns = BTreeMap::new();
         let mut ext_g_states = BTreeMap::new();
+        let mut soft_masks = std::collections::BTreeSet::new();
         let mut notes: Vec<(String, String)> = Vec::new();
         let Some(resources) = inherited
             .get(b"Resources".as_slice())
@@ -1023,7 +1030,9 @@ impl<'a> PageResources<'a> {
                 images,
                 forms,
                 shadings,
+                patterns,
                 ext_g_states,
+                soft_masks,
                 limits,
                 parent,
                 notes,
@@ -1036,6 +1045,10 @@ impl<'a> PageResources<'a> {
         // case for a scanned document.
         if let Ok(states) = resources.get(b"ExtGState") {
             ext_g_states = graphics_states(resolve, states);
+            soft_masks = soft_mask_states(resolve, states);
+        }
+        if let Ok(pattern_object) = resources.get(b"Pattern") {
+            patterns = shading_patterns(resolve, pattern_object);
         }
         if let Ok(shading_object) = resources.get(b"Shading") {
             for (name, object) in dictionary_entries(resolve, shading_object) {
@@ -1103,7 +1116,9 @@ impl<'a> PageResources<'a> {
             images,
             forms,
             shadings,
+            patterns,
             ext_g_states,
+            soft_masks,
             limits,
             parent,
             notes,
@@ -1147,6 +1162,71 @@ fn graphics_states(
     out
 }
 
+/// The graphics states that set a soft mask (`/SMask` that is not `/None`).
+fn soft_mask_states(
+    resolve: crate::fonts::Resolver<'_>,
+    states: &Object,
+) -> std::collections::BTreeSet<String> {
+    dictionary_entries(resolve, states)
+        .into_iter()
+        .filter(|(_, object)| {
+            resolve
+                .get(object)
+                .and_then(|state| state.as_dict().ok())
+                .and_then(|state| state.get(b"SMask").ok())
+                .and_then(|mask| resolve.get(mask))
+                .is_some_and(|mask| !matches!(mask, Object::Name(name) if name == b"None"))
+        })
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// The shading patterns of a `/Pattern` resource dictionary, by name.
+fn shading_patterns(
+    resolve: crate::fonts::Resolver<'_>,
+    patterns: &Object,
+) -> BTreeMap<String, (crate::content::AxialGradient, crate::content::Matrix)> {
+    dictionary_entries(resolve, patterns)
+        .into_iter()
+        .filter_map(|(name, object)| Some((name, shading_pattern(resolve, &object)?)))
+        .collect()
+}
+
+/// A shading pattern (`/PatternType 2`) whose shading this reader decodes,
+/// with its `/Matrix` (identity when absent). A tiling pattern is a stream,
+/// not a dictionary, and is not one.
+fn shading_pattern(
+    resolve: crate::fonts::Resolver<'_>,
+    object: &Object,
+) -> Option<(crate::content::AxialGradient, crate::content::Matrix)> {
+    let pattern = resolve.get(object)?.as_dict().ok()?;
+    if pattern.get(b"PatternType").ok()?.as_i64().ok()? != 2 {
+        return None;
+    }
+    let gradient = crate::shading::decode(resolve, pattern.get(b"Shading").ok()?)?;
+    let matrix = match pattern.get(b"Matrix") {
+        Ok(value) => {
+            let numbers: Vec<f64> = crate::fonts::array_items(value, resolve)
+                .iter()
+                .map(number_of_object)
+                .collect::<Option<Vec<f64>>>()?;
+            let &[scale_x, skew_y, skew_x, scale_y, move_x, move_y] = numbers.as_slice() else {
+                return None;
+            };
+            crate::content::Matrix {
+                a: scale_x,
+                b: skew_y,
+                c: skew_x,
+                d: scale_y,
+                e: move_x,
+                f: move_y,
+            }
+        }
+        Err(_) => crate::content::Matrix::IDENTITY,
+    };
+    Some((gradient, matrix))
+}
+
 fn dictionary_entries(
     resolve: crate::fonts::Resolver<'_>,
     object: &Object,
@@ -1166,6 +1246,20 @@ impl ResourceProvider for PageResources<'_> {
             .get(name)
             .copied()
             .or_else(|| self.parent.and_then(|parent| parent.ext_g_state(name)))
+    }
+    fn pattern(
+        &self,
+        name: &str,
+    ) -> Option<(crate::content::AxialGradient, crate::content::Matrix)> {
+        self.patterns
+            .get(name)
+            .cloned()
+            .or_else(|| self.parent.and_then(|parent| parent.pattern(name)))
+    }
+    fn soft_mask(&self, name: &str) -> bool {
+        self.soft_masks.contains(name)
+            || (!self.ext_g_states.contains_key(name)
+                && self.parent.is_some_and(|parent| parent.soft_mask(name)))
     }
     fn shading(&self, name: &str) -> Option<crate::content::AxialGradient> {
         self.shadings

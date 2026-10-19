@@ -1,4 +1,5 @@
-//! Bounded decoding of RGB axial shadings emitted by the document writer.
+//! Bounded decoding of RGB axial shadings: the ones the document writer emits,
+//! and the stitched and sampled functions design tools and Word write (G2).
 use crate::content::{AxialGradient, Rgb};
 use crate::fonts::Resolver;
 use lopdf::{Dictionary, Object};
@@ -31,6 +32,86 @@ fn colour(resolve: Resolver<'_>, dict: &Dictionary, key: &[u8]) -> Option<Rgb> {
         .iter()
         .all(|value| (0.0..=1.0).contains(value))
         .then_some(Rgb(r, g, b))
+}
+
+/// The most a sampled function's table may hold, decoded; a real one is a few
+/// kilobytes (512 RGB samples of 8 bits is 1.5 KB).
+const MAX_SAMPLE_BYTES: usize = 1 << 20;
+/// How many stops a sampled function becomes: evenly along the axis, which a
+/// DrawingML gradient interpolates between as the table would.
+const SAMPLED_STOPS: usize = 9;
+
+/// A one-input, three-output sampled function (`/FunctionType 0`) as stops.
+fn sampled_stops(object: &Object, resolve: Resolver<'_>) -> Option<Vec<(f64, Rgb)>> {
+    let stream = resolve.get(object)?.as_stream().ok()?;
+    let dict = &stream.dict;
+    let size = numbers(resolve, dict, b"Size")?;
+    let &[count] = size.as_slice() else {
+        return None;
+    };
+    let count = count as usize;
+    let bits = number(dict.get(b"BitsPerSample").ok()?)? as u32;
+    let width = match bits {
+        8 => 1,
+        16 => 2,
+        _ => return None,
+    };
+    if !(2..=65_536).contains(&count)
+        || numbers(resolve, dict, b"Domain")? != [0.0, 1.0]
+        || numbers(resolve, dict, b"Range")?.len() != 6
+    {
+        return None;
+    }
+    // The last index; `count` is at least 2.
+    let last = count.saturating_sub(1);
+    // `/Encode` and `/Decode` other than their defaults remap the table; only
+    // the defaults are read.
+    if let Some(encode) = numbers(resolve, dict, b"Encode") {
+        if encode != [0.0, last as f64] {
+            return None;
+        }
+    }
+    if let Some(decode) = numbers(resolve, dict, b"Decode") {
+        if decode != [0.0, 1.0, 0.0, 1.0, 0.0, 1.0] {
+            return None;
+        }
+    }
+    let bytes = crate::document::bounded_decompress(stream, MAX_SAMPLE_BYTES).ok()?;
+    // 255 or 65 535: the largest sample of the width.
+    let max = if width == 1 { 255.0 } else { 65_535.0 };
+    let sample = |index: usize, channel: usize| -> Option<f64> {
+        let at = index
+            .checked_mul(3)?
+            .checked_add(channel)?
+            .checked_mul(width)?;
+        let value = match width {
+            1 => u32::from(*bytes.get(at)?),
+            _ => u32::from(u16::from_be_bytes([
+                *bytes.get(at)?,
+                *bytes.get(at.checked_add(1)?)?,
+            ])),
+        };
+        Some(f64::from(value) / max)
+    };
+    (0..SAMPLED_STOPS)
+        .map(|step| {
+            let t = step as f64 / SAMPLED_STOPS.saturating_sub(1) as f64;
+            let index = ((t * last as f64).round() as usize).min(last);
+            Some((
+                t,
+                Rgb(sample(index, 0)?, sample(index, 1)?, sample(index, 2)?),
+            ))
+        })
+        .collect()
+}
+
+/// The colour `t` of the way from `a` to `b`.
+fn mix(a: Rgb, b: Rgb, t: f64) -> Rgb {
+    Rgb(
+        a.0 + (b.0 - a.0) * t,
+        a.1 + (b.1 - a.1) * t,
+        a.2 + (b.2 - a.2) * t,
+    )
 }
 
 fn interpolation(resolve: Resolver<'_>, object: &Object) -> Option<(Rgb, Rgb)> {
@@ -82,7 +163,12 @@ pub(crate) fn decode(resolve: Resolver<'_>, object: &Object) -> Option<AxialGrad
         return None;
     }
     let function_object = dict.get(b"Function").ok()?;
-    let function = resolve.get(function_object)?.as_dict().ok()?;
+    // A sampled function is a stream; the others are dictionaries.
+    let function = match resolve.get(function_object)? {
+        Object::Dictionary(dict) => dict,
+        Object::Stream(stream) => &stream.dict,
+        _ => return None,
+    };
     let kind = function.get(b"FunctionType").ok()?.as_i64().ok()?;
     let stops = if kind == 2 {
         let (first, last) = interpolation(resolve, function_object)?;
@@ -107,26 +193,39 @@ pub(crate) fn decode(resolve: Resolver<'_>, object: &Object) -> Option<AxialGrad
         {
             return None;
         }
+        // `/Encode` maps each piece's share of the axis onto its own function's
+        // domain; `[1 0]` runs a piece backwards, from `C1` to `C0`, which is
+        // how Word writes a gradient whose stops it reversed (G2).
         let encode = numbers(resolve, function, b"Encode")?;
         if encode.len() != functions.len().checked_mul(2)?
-            || encode.chunks_exact(2).any(|pair| pair != [0.0, 1.0])
+            || encode.iter().any(|value| !(0.0..=1.0).contains(value))
         {
             return None;
         }
-        let ends = bounds.into_iter().chain([1.0]);
-        let mut stops = Vec::with_capacity(functions.len().checked_add(1)?);
-        for (function, end) in functions.iter().zip(ends) {
-            let (first, last) = interpolation(resolve, function)?;
-            if let Some((_, previous)) = stops.last() {
-                if *previous != first {
-                    return None;
-                }
-            } else {
-                stops.push((0.0, first));
+        let starts = std::iter::once(0.0).chain(bounds.iter().copied());
+        let ends = bounds.iter().copied().chain([1.0]);
+        let mut stops: Vec<(f64, Rgb)> = Vec::with_capacity(functions.len().checked_mul(2)?);
+        for (((function, start), end), pair) in functions
+            .iter()
+            .zip(starts)
+            .zip(ends)
+            .zip(encode.chunks_exact(2))
+        {
+            let (c0, c1) = interpolation(resolve, function)?;
+            let &[e0, e1] = pair else {
+                return None;
+            };
+            let (first, last) = (mix(c0, c1, e0), mix(c0, c1, e1));
+            // A piece that does not start where the last one ended is a hard
+            // edge: two stops at one place.
+            if stops.last().is_none_or(|(_, previous)| *previous != first) {
+                stops.push((start, first));
             }
             stops.push((end, last));
         }
         stops
+    } else if kind == 0 {
+        sampled_stops(function_object, resolve)?
     } else {
         return None;
     };
@@ -160,6 +259,38 @@ mod tests {
             "Extend" => vec![Object::Boolean(true), Object::Boolean(true)],
             "Function" => Object::Dictionary(function),
         })
+    }
+
+    /// A sampled function (Word's gradients) is read as evenly spaced stops.
+    #[test]
+    fn a_sampled_function_becomes_stops() {
+        let document = Document::with_version("1.7");
+        // Red to blue over 3 samples.
+        let samples = vec![255, 0, 0, 128, 0, 128, 0, 0, 255];
+        let floats =
+            |values: &[f32]| Object::Array(values.iter().copied().map(Object::Real).collect());
+        let function = lopdf::Stream::new(
+            dictionary! {
+                "FunctionType" => 0,
+                "Size" => vec![Object::Integer(3)],
+                "BitsPerSample" => 8,
+                "Domain" => floats(&[0.0, 1.0]),
+                "Range" => floats(&[0.0, 1.0, 0.0, 1.0, 0.0, 1.0]),
+            },
+            samples,
+        );
+        let shading = Object::Dictionary(dictionary! {
+            "ShadingType" => 2,
+            "ColorSpace" => Object::Name(b"DeviceRGB".to_vec()),
+            "Coords" => floats(&[0.0, 0.0, 100.0, 0.0]),
+            "Function" => Object::Stream(function),
+        });
+        let gradient = decode(resolver(&document), &shading).expect("a gradient");
+        assert_eq!(gradient.stops.len(), 9);
+        let first = gradient.stops.first().expect("a stop").1;
+        let last = gradient.stops.last().expect("a stop").1;
+        assert!((first.0 - 1.0).abs() < 1e-9 && first.2.abs() < 1e-9);
+        assert!(last.0.abs() < 1e-9 && (last.2 - 1.0).abs() < 1e-9);
     }
 
     #[test]

@@ -345,6 +345,9 @@ pub struct PlacedImage {
     /// The matrix that maps the image's unit square onto the page (PDF
     /// space, y up): its turn and mirror, which the box above does not say.
     pub ctm: Matrix,
+    /// The fractions of the picture a rectangular clip cuts off, `[left, top,
+    /// right, bottom]`; the box above is then the part that shows (G1).
+    pub crop: Option<[f64; 4]>,
 }
 
 /// The box a matrix maps the unit square to: `(x, y, width, height)`, with
@@ -569,6 +572,16 @@ struct State {
     text_clip: Option<usize>,
     /// Fill opacity from the graphics state's `ca` (1 = opaque).
     fill_alpha: f64,
+    /// The fill is a shading pattern (`/Pattern cs /P1 scn`): its gradient and
+    /// the matrix from pattern space to the device (G2).
+    fill_pattern: Option<(AxialGradient, Matrix)>,
+    /// The graphics state's `/SMask` is a soft mask this reader does not apply.
+    soft_mask: bool,
+    /// The visible box, when every clip so far was an axis-aligned rectangle:
+    /// `[x0, y0, x1, y1]` in device space, y up (G1).
+    clip_rect: Option<[f64; 4]>,
+    /// A clip that is not a rectangle is in force, and nothing is clipped by it.
+    clip_unknown: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -601,6 +614,10 @@ impl Default for State {
             render_mode: RenderMode::Fill,
             text_clip: None,
             fill_alpha: 1.0,
+            fill_pattern: None,
+            soft_mask: false,
+            clip_rect: None,
+            clip_unknown: false,
         }
     }
 }
@@ -660,10 +677,19 @@ impl Ignored {
 
 /// The resources a page needs to interpret its operators.
 pub trait Resources {
+    /// A shading pattern's gradient and its `/Matrix` (pattern space to the
+    /// default space of the content that uses it).
+    fn pattern(&self, _name: &str) -> Option<(AxialGradient, Matrix)> {
+        None
+    }
     /// The fill and stroke opacity (`ca`, `CA`) a graphics state `name` sets,
     /// each `None` when it does not set it.
     fn ext_g_state(&self, _name: &str) -> Option<(Option<f64>, Option<f64>)> {
         None
+    }
+    /// Whether a graphics state sets a soft mask (`/SMask` other than `/None`).
+    fn soft_mask(&self, _name: &str) -> bool {
+        false
     }
     /// A supported RGB axial shading. Unsupported resources return `None`.
     fn shading(&self, _name: &str) -> Option<AxialGradient> {
@@ -897,6 +923,8 @@ fn interpret_from(
     let mut stack: Vec<State> = vec![seed.clone()];
     let mut text = TextState::default();
     let mut path = PathBuilder::default();
+    // The default space of this content: a pattern's matrix maps into it.
+    let base_ctm = seed.ctm;
     let mut current = seed;
 
     for operation in operations {
@@ -924,6 +952,7 @@ fn interpret_from(
                     (number_at(args, 0), number_at(args, 1), number_at(args, 2))
                 {
                     current.fill = Rgb(r, g, b);
+                    current.fill_pattern = None;
                 }
             }
             "RG" => {
@@ -936,6 +965,7 @@ fn interpret_from(
             "g" => {
                 if let Some(grey) = number_at(args, 0) {
                     current.fill = Rgb(grey, grey, grey);
+                    current.fill_pattern = None;
                 }
             }
             "G" => {
@@ -955,6 +985,7 @@ fn interpret_from(
                         (1.0 - m).clamp(0.0, 1.0) * (1.0 - k).clamp(0.0, 1.0),
                         (1.0 - y).clamp(0.0, 1.0) * (1.0 - k).clamp(0.0, 1.0),
                     );
+                    current.fill_pattern = None;
                 }
             }
             "K" => {
@@ -996,6 +1027,26 @@ fn interpret_from(
                 }
             }
             "sc" | "scn" | "SC" | "SCN" => {
+                // A pattern colour names the pattern (`/P1 scn`). A shading
+                // pattern is the fill's gradient; anything else - a tiling
+                // pattern, a stroke - is reported, and the colour is left alone
+                // rather than read as numbers that are not there (G2).
+                if let Some(Object::Name(name)) = args.last() {
+                    let name = String::from_utf8_lossy(name).into_owned();
+                    match resources.pattern(&name) {
+                        Some((gradient, matrix)) if operator == "scn" => {
+                            current.fill_pattern =
+                                Some((gradient, Matrix::chain(matrix, base_ctm)));
+                        }
+                        _ => out.ignored.push(Ignored::new(
+                            "pdf.pattern",
+                            format!(
+                                "pattern `{name}` is not a shading pattern this reader fills with"
+                            ),
+                        )),
+                    }
+                    continue;
+                }
                 let components: Vec<f64> = args.iter().filter_map(number_of).collect();
                 let colour = match *components.as_slice() {
                     [gray] => Rgb(gray, gray, gray),
@@ -1019,6 +1070,7 @@ fn interpret_from(
                 // and design tools write colour - stayed black.)
                 if operator == "sc" || operator == "scn" {
                     current.fill = colour;
+                    current.fill_pattern = None;
                 } else {
                     current.stroke = colour;
                 }
@@ -1070,7 +1122,10 @@ fn interpret_from(
             }
             // Of a graphics state, the fill opacity is carried (a translucent
             // box over a photograph); the rest is reported.
-            "gs" => match name_at(args, 0).and_then(|name| resources.ext_g_state(&name)) {
+            "gs" => match name_at(args, 0).and_then(|name| {
+                current.soft_mask = resources.soft_mask(&name);
+                resources.ext_g_state(&name)
+            }) {
                 Some((fill, _stroke)) => {
                     if let Some(alpha) = fill.filter(|alpha| alpha.is_finite()) {
                         current.fill_alpha = alpha.clamp(0.0, 1.0);
@@ -1369,10 +1424,25 @@ fn interpret_from(
                     even_odd: operator == "W*",
                     intersected: current.clip.is_some(),
                 });
-                // Clipping changes what is visible and not what is drawn; the
-                // consumer keeps the whole path and notes that it was clipped.
-                out.ignored
-                    .push(Ignored::new("pdf.clip", "clip paths are retained for supported axial shading; other clipping is not applied"));
+                // A rectangle is applied to what is drawn after it (G1); any
+                // other shape is kept for an axial shading and otherwise not
+                // applied, and says so.
+                match crate::clip::device_rect(&path.clone().finish(), current.ctm) {
+                    Some(rect) if !current.clip_unknown => {
+                        current.clip_rect = Some(match current.clip_rect {
+                            Some(previous) => crate::clip::intersect(previous, rect),
+                            None => rect,
+                        });
+                    }
+                    Some(_) => {}
+                    None => {
+                        current.clip_unknown = true;
+                        out.ignored.push(Ignored::new(
+                            "pdf.clip",
+                            "a clip path that is not a rectangle is not applied, except to an axial shading",
+                        ));
+                    }
+                }
             }
             "Do" => {
                 if let Some(name) = name_at(args, 0) {
@@ -1480,11 +1550,38 @@ fn paint(
     if subpaths.is_empty() {
         return;
     }
+    // A shading pattern fill is the vector's gradient (G2). Under a soft mask
+    // this reader does not apply, a gradient over the whole shape would be a
+    // solid block where the producer drew a glow: it is left out instead.
+    let mut fill = fill;
+    let mut gradient = None;
+    if let (true, Some((pattern, from))) = (fill, state.fill_pattern.as_ref()) {
+        if state.soft_mask {
+            out.ignored.push(Ignored::new(
+                "pdf.smask",
+                "a pattern fill under a soft mask is not drawn",
+            ));
+            fill = false;
+            if !stroke {
+                return;
+            }
+        } else {
+            gradient = remap_axis(pattern.clone(), *from, state.ctm);
+        }
+    }
+    let subpaths = match state.clip_rect.filter(|_| !state.clip_unknown) {
+        Some(rect) => match crate::clip::clip_path(&subpaths, state.ctm, rect, fill, stroke) {
+            crate::clip::Clipped::Unchanged => subpaths,
+            crate::clip::Clipped::Hidden => return,
+            crate::clip::Clipped::Cut(cut) => cut,
+        },
+        None => subpaths,
+    };
     let scale = state.ctm.scale_factor();
     out.items.push(Item::Vector(Vector {
         subpaths,
         fill: fill.then_some(state.fill),
-        gradient: None,
+        gradient,
         fill_alpha: state.fill_alpha,
         stroke: stroke.then_some(state.stroke),
         line_width: state.line_width * scale,
@@ -1551,6 +1648,21 @@ fn place_form(
     Ok(())
 }
 
+/// A picture's box after the rectangular clip in force (G1): `None` when
+/// nothing of it shows, a crop when part of it does.
+#[allow(clippy::type_complexity)]
+fn clipped_box(state: &State) -> Option<((f64, f64, f64, f64), Option<[f64; 4]>)> {
+    let whole = unit_square_box(state.ctm);
+    let Some(rect) = state.clip_rect.filter(|_| !state.clip_unknown) else {
+        return Some((whole, None));
+    };
+    match crate::clip::image_cut(state.ctm, rect) {
+        crate::clip::ImageCut::Whole => Some((whole, None)),
+        crate::clip::ImageCut::Hidden => None,
+        crate::clip::ImageCut::Cropped(shown, crop) => Some((shown, Some(crop))),
+    }
+}
+
 /// Places an inline image extracted before tokenisation (AUD-84).
 fn place_inline(
     args: &[lopdf::Object],
@@ -1576,7 +1688,9 @@ fn place_inline(
         ));
         return;
     };
-    let (x, y, width, height) = unit_square_box(state.ctm);
+    let Some(((x, y, width, height), crop)) = clipped_box(state) else {
+        return;
+    };
     out.items.push(Item::Image(PlacedImage {
         image: image.encoded.clone(),
         x,
@@ -1585,6 +1699,7 @@ fn place_inline(
         height,
         missing: image.missing.clone(),
         ctm: state.ctm,
+        crop,
     }));
 }
 
@@ -1612,6 +1727,7 @@ fn place_image(
                 height: 0.0,
                 missing: Some(missing),
                 ctm: Matrix::IDENTITY,
+                crop: None,
             }));
             return;
         }
@@ -1624,12 +1740,15 @@ fn place_image(
                 height: 0.0,
                 missing: Some(error.to_string()),
                 ctm: Matrix::IDENTITY,
+                crop: None,
             }));
             return;
         }
     };
     let _ = (pixel_width, pixel_height);
-    let (x, y, width, height) = unit_square_box(state.ctm);
+    let Some(((x, y, width, height), crop)) = clipped_box(state) else {
+        return;
+    };
     out.items.push(Item::Image(PlacedImage {
         image: Some(decoded),
         x,
@@ -1638,6 +1757,7 @@ fn place_image(
         height,
         missing: None,
         ctm: state.ctm,
+        crop,
     }));
     let _ = geometry;
 }

@@ -1462,9 +1462,35 @@ fn anchored_images_of(
                 }
                 wrap = PictureWrap::Square;
             }
-            anchored_image(image, &part, description, top, wrap)
+            let mut inline = anchored_image(image, &part, description, top, wrap)?;
+            // Stacked by where the page painted it among its shapes too, not
+            // only among its pictures: a card painted over a photograph was
+            // drawn under it.
+            let painted = page.items().iter().position(|item| {
+                matches!(item, strict_ooxml_pdf::Item::Image(placed) if std::ptr::eq(placed, image))
+            });
+            if let (
+                Some(index),
+                Inline::Drawing(Drawing {
+                    kind: DrawingKind::Anchor(anchor),
+                    ..
+                }),
+            ) = (painted, &mut inline)
+            {
+                anchor.relative_height = Some(paint_height(index));
+            }
+            Some(inline)
         })
         .collect()
+}
+
+/// The `relativeHeight` of the page's `index`th painted item: one scale for
+/// its pictures and its shapes, in the order the page painted them. It starts
+/// at 2, because 1 is what a drawing without a place in that order carries.
+pub(crate) fn paint_height(index: usize) -> u32 {
+    u32::try_from(index)
+        .unwrap_or(u32::MAX - 2)
+        .saturating_add(2)
 }
 
 /// How a page-anchored picture meets the text.
@@ -1486,18 +1512,41 @@ fn hold_anchors(blocks: &mut Vec<Block>, page_start: usize, mut anchors: Vec<Inl
         return;
     }
     // Stacked in the order the page painted them: with one height for all, a
-    // page's background box could be drawn over the picture set on it.
-    let mut height = 0u32;
+    // page's background box could be drawn over the picture set on it. A
+    // drawing that already has its paint height keeps it; the rest follow.
+    let mut height = anchors
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Drawing(Drawing {
+                kind: DrawingKind::Anchor(anchor),
+                ..
+            }) if anchor.relative_height.is_some_and(|height| height > 1) => anchor.relative_height,
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
     for inline in &mut anchors {
         if let Inline::Drawing(Drawing {
             kind: DrawingKind::Anchor(anchor),
             ..
         }) = inline
         {
-            height = height.saturating_add(1);
-            anchor.relative_height = Some(height);
+            if anchor.relative_height.is_none_or(|height| height <= 1) {
+                height = height.saturating_add(1);
+                anchor.relative_height = Some(height);
+            }
         }
     }
+    // And written in that order: WPS stacks drawings behind the text by their
+    // order in the document rather than by `relativeHeight`, and drew a
+    // page's pictures over the cards painted on them.
+    anchors.sort_by_key(|inline| match inline {
+        Inline::Drawing(Drawing {
+            kind: DrawingKind::Anchor(anchor),
+            ..
+        }) => anchor.relative_height.unwrap_or(0),
+        _ => 0,
+    });
     let first = blocks
         .iter_mut()
         .skip(page_start)
@@ -1772,7 +1821,32 @@ fn image_paragraph(
     part: &strict_ooxml_core::part::PartId,
     description: Option<String>,
 ) -> Paragraph {
-    sized_image_paragraph(image.width, image.height, part, description)
+    let mut paragraph = sized_image_paragraph(image.width, image.height, part, description);
+    if let Some(Inline::Drawing(Drawing {
+        kind: DrawingKind::Inline(inline),
+        ..
+    })) = paragraph.inlines.first_mut()
+    {
+        crop_picture(inline.graphic.as_mut(), image.crop);
+    }
+    paragraph
+}
+
+/// The part of a picture a rectangular clip lets show, as `a:srcRect` (G1):
+/// the reader has already shrunk the box to that part, and the crop says
+/// which part of the picture fills it.
+fn crop_picture(graphic: &mut Graphic, crop: Option<[f64; 4]>) {
+    let (Graphic::Picture(picture), Some([left, top, right, bottom])) = (graphic, crop) else {
+        return;
+    };
+    // Thousandths of a percent.
+    let unit = |fraction: f64| (fraction.clamp(0.0, 1.0) * 100_000.0).round() as i32;
+    picture.src_rect = Some(strict_ooxml_wml::model::drawing::SrcRect {
+        left: unit(left),
+        top: unit(top),
+        right: unit(right),
+        bottom: unit(bottom),
+    });
 }
 
 /// The margins of a scanned book's pages rebuilt from their layout: the
@@ -2161,6 +2235,7 @@ fn anchored_image(
     else {
         return None;
     };
+    crop_picture(inline.graphic.as_mut(), image.crop);
     if let (Some(turn), Graphic::Picture(picture)) = (turn, inline.graphic.as_mut()) {
         picture.xfrm = Some(strict_ooxml_wml::model::drawing::Xfrm {
             offset: None,

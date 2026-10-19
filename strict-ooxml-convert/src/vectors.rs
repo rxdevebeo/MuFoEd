@@ -380,9 +380,10 @@ fn shape_paragraph(index: usize, rect: &Rect, geometry: ShapeGeometry) -> Block 
             polygon: Vec::new(),
             polygon_edited: None,
         }),
-        // A filled box is painted before the text over it.
+        // A filled box is painted before the text over it, and among the
+        // page's pictures and shapes where the page painted it.
         behind_doc: true,
-        relative_height: Some(1),
+        relative_height: Some(crate::semantic::paint_height(index)),
         dist_top: None,
         dist_bottom: None,
         dist_left: None,
