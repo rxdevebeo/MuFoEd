@@ -953,8 +953,9 @@ struct PageResources<'a> {
     patterns: BTreeMap<String, (crate::content::AxialGradient, crate::content::Matrix)>,
     /// Graphics states' fill and stroke opacity (`ca`, `CA`).
     ext_g_states: BTreeMap<String, (Option<f64>, Option<f64>)>,
-    /// Graphics states that set a soft mask.
-    soft_masks: std::collections::BTreeSet<String>,
+    /// What graphics states do that this reader does not apply: a soft mask,
+    /// a blend mode other than `Normal` (G5).
+    effects: BTreeMap<String, StateEffects>,
     limits: PdfLimits,
     /// The resources a form falls back on, when the form declares none itself.
     parent: Option<&'a PageResources<'a>>,
@@ -1014,7 +1015,7 @@ impl<'a> PageResources<'a> {
         let mut shadings = BTreeMap::new();
         let mut patterns = BTreeMap::new();
         let mut ext_g_states = BTreeMap::new();
-        let mut soft_masks = std::collections::BTreeSet::new();
+        let mut effects = BTreeMap::new();
         let mut notes: Vec<(String, String)> = Vec::new();
         let Some(resources) = inherited
             .get(b"Resources".as_slice())
@@ -1032,7 +1033,7 @@ impl<'a> PageResources<'a> {
                 shadings,
                 patterns,
                 ext_g_states,
-                soft_masks,
+                effects,
                 limits,
                 parent,
                 notes,
@@ -1045,7 +1046,7 @@ impl<'a> PageResources<'a> {
         // case for a scanned document.
         if let Ok(states) = resources.get(b"ExtGState") {
             ext_g_states = graphics_states(resolve, states);
-            soft_masks = soft_mask_states(resolve, states);
+            effects = state_effects(resolve, states);
         }
         if let Ok(pattern_object) = resources.get(b"Pattern") {
             patterns = shading_patterns(resolve, pattern_object);
@@ -1118,7 +1119,7 @@ impl<'a> PageResources<'a> {
             shadings,
             patterns,
             ext_g_states,
-            soft_masks,
+            effects,
             limits,
             parent,
             notes,
@@ -1162,22 +1163,52 @@ fn graphics_states(
     out
 }
 
-/// The graphics states that set a soft mask (`/SMask` that is not `/None`).
-fn soft_mask_states(
+/// What one graphics state does that this reader does not apply.
+#[derive(Clone, Debug, Default)]
+struct StateEffects {
+    /// `/SMask` other than `/None`.
+    soft_mask: bool,
+    /// `/BM` other than `Normal` (or its old name `Compatible`); of an array,
+    /// the first mode.
+    blend_mode: Option<String>,
+}
+
+/// The graphics states that set a soft mask or a blend mode, by name.
+fn state_effects(
     resolve: crate::fonts::Resolver<'_>,
     states: &Object,
-) -> std::collections::BTreeSet<String> {
+) -> BTreeMap<String, StateEffects> {
     dictionary_entries(resolve, states)
         .into_iter()
-        .filter(|(_, object)| {
-            resolve
-                .get(object)
-                .and_then(|state| state.as_dict().ok())
-                .and_then(|state| state.get(b"SMask").ok())
+        .filter_map(|(name, object)| {
+            let state = resolve.get(&object)?.as_dict().ok()?;
+            let soft_mask = state
+                .get(b"SMask")
+                .ok()
                 .and_then(|mask| resolve.get(mask))
-                .is_some_and(|mask| !matches!(mask, Object::Name(name) if name == b"None"))
+                .is_some_and(|mask| !matches!(mask, Object::Name(name) if name == b"None"));
+            let mode = state
+                .get(b"BM")
+                .ok()
+                .and_then(|mode| match resolve.get(mode)? {
+                    Object::Name(mode) => Some(mode.clone()),
+                    Object::Array(modes) => match modes.first()? {
+                        Object::Name(mode) => Some(mode.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                });
+            let blend_mode = mode
+                .filter(|mode| mode != b"Normal" && mode != b"Compatible")
+                .map(|mode| String::from_utf8_lossy(&mode).into_owned());
+            (soft_mask || blend_mode.is_some()).then_some((
+                name,
+                StateEffects {
+                    soft_mask,
+                    blend_mode,
+                },
+            ))
         })
-        .map(|(name, _)| name)
         .collect()
 }
 
@@ -1256,10 +1287,23 @@ impl ResourceProvider for PageResources<'_> {
             .cloned()
             .or_else(|| self.parent.and_then(|parent| parent.pattern(name)))
     }
+    fn blend_mode(&self, name: &str) -> Option<String> {
+        if self.ext_g_states.contains_key(name) {
+            self.effects
+                .get(name)
+                .and_then(|effects| effects.blend_mode.clone())
+        } else {
+            self.parent.and_then(|parent| parent.blend_mode(name))
+        }
+    }
     fn soft_mask(&self, name: &str) -> bool {
-        self.soft_masks.contains(name)
-            || (!self.ext_g_states.contains_key(name)
-                && self.parent.is_some_and(|parent| parent.soft_mask(name)))
+        if self.ext_g_states.contains_key(name) {
+            self.effects
+                .get(name)
+                .is_some_and(|effects| effects.soft_mask)
+        } else {
+            self.parent.is_some_and(|parent| parent.soft_mask(name))
+        }
     }
     fn shading(&self, name: &str) -> Option<crate::content::AxialGradient> {
         self.shadings

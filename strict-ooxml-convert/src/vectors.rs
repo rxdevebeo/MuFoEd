@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use strict_ooxml_core::error::SourceLocation;
-use strict_ooxml_pdf::content::{Item, Rgb, Vector};
+use strict_ooxml_pdf::content::{Item, LineCap, LineJoin, Rgb, Vector};
 use strict_ooxml_pdf::PdfPage;
 use strict_ooxml_wml::model::block::{Block, Paragraph};
 use strict_ooxml_wml::model::drawing::{
@@ -89,6 +89,101 @@ struct Rect {
     fill: Option<Rgb>,
     stroke: Option<Rgb>,
     line_width: f64,
+    line: LineStyle,
+}
+
+/// How a stroke is drawn beyond its colour and width (G5, G6 of
+/// `PDF-VECTOR-GRAPHICS-2026-10-19.md`): the reader had all of it and the
+/// shape got none, so a dashed rule came out solid and a 20 % hairline frame
+/// opaque.
+struct LineStyle {
+    /// `CA`: the stroke's opacity.
+    alpha: f64,
+    cap: LineCap,
+    join: LineJoin,
+    /// The dash array in points; empty for a solid line.
+    dash: Vec<f64>,
+}
+
+impl LineStyle {
+    fn of(vector: &Vector) -> Self {
+        Self {
+            alpha: vector.stroke_alpha,
+            cap: vector.line_cap,
+            join: vector.line_join,
+            dash: vector.dash.clone(),
+        }
+    }
+
+    /// `a:ln/@cap`, always written: DrawingML's default is a square cap and
+    /// PDF's a butt one.
+    fn cap(&self) -> &'static str {
+        match self.cap {
+            LineCap::Butt => "flat",
+            LineCap::Round => "rnd",
+            LineCap::Square => "sq",
+        }
+    }
+
+    /// The join element. A miter's limit is left at DrawingML's default: PDF
+    /// states a ratio and DrawingML a percentage, and the two only meet at
+    /// the corners nobody looks at.
+    fn join(&self) -> &'static str {
+        match self.join {
+            LineJoin::Miter => "<a:miter/>",
+            LineJoin::Round => "<a:round/>",
+            LineJoin::Bevel => "<a:bevel/>",
+        }
+    }
+}
+
+/// The DrawingML preset dash nearest a PDF dash array, measured in line
+/// widths as the presets are. DrawingML has a custom dash too, but this model
+/// carries the preset only, and a near preset is a dashed line where none was.
+fn preset_dash(dash: &[f64], width: f64) -> Option<&'static str> {
+    if dash.is_empty() || dash.iter().all(|value| *value <= 0.0) {
+        return None;
+    }
+    // An odd array repeats to an even one (ISO 32000-1 §8.4.3.6).
+    let pattern: Vec<f64> = if dash.len() % 2 == 1 {
+        dash.iter().chain(dash.iter()).copied().collect()
+    } else {
+        dash.to_vec()
+    };
+    let width = width.max(0.25);
+    let units: Vec<f64> = pattern.iter().map(|value| value / width).collect();
+    let candidates: &[(&'static str, &[f64])] = match units.len() {
+        2 => &[
+            ("sysDot", &[1.0, 1.0]),
+            ("sysDash", &[3.0, 1.0]),
+            ("dot", &[1.0, 3.0]),
+            ("dash", &[4.0, 3.0]),
+            ("lgDash", &[8.0, 3.0]),
+        ],
+        4 => &[
+            ("sysDashDot", &[3.0, 1.0, 1.0, 1.0]),
+            ("dashDot", &[4.0, 3.0, 1.0, 3.0]),
+            ("lgDashDot", &[8.0, 3.0, 1.0, 3.0]),
+        ],
+        _ => &[
+            ("sysDashDotDot", &[3.0, 1.0, 1.0, 1.0, 1.0, 1.0]),
+            ("lgDashDotDot", &[8.0, 3.0, 1.0, 3.0, 1.0, 3.0]),
+        ],
+    };
+    // Distance on a log scale, so 2:1 and 1:2 are equally far from 1:1; a
+    // zero-length dash (a dot drawn by a round cap) counts as one width.
+    let distance = |preset: &[f64]| -> f64 {
+        units
+            .iter()
+            .zip(preset.iter().cycle())
+            .map(|(have, want)| (have.max(0.5) / want).ln().abs())
+            .sum()
+    };
+    candidates
+        .iter()
+        .map(|(name, preset)| (*name, distance(preset)))
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(name, _)| name)
 }
 
 fn rectangle(vector: &Vector, page_height: f64) -> Option<Rect> {
@@ -137,6 +232,7 @@ fn rectangle(vector: &Vector, page_height: f64) -> Option<Rect> {
         fill: vector.fill,
         stroke: vector.stroke,
         line_width: vector.line_width,
+        line: LineStyle::of(vector),
     })
 }
 
@@ -215,6 +311,7 @@ fn outline(vector: &Vector, page_height: f64) -> Option<(Rect, CustomGeometry)> 
             fill: vector.fill,
             stroke: vector.stroke,
             line_width: vector.line_width,
+            line: LineStyle::of(vector),
         },
         geometry,
     ))
@@ -290,6 +387,15 @@ fn is_rule(vector: &Vector) -> bool {
     })
 }
 
+/// A colour with its opacity as `a:alpha`, in Strict's percentage form.
+fn alpha_markup(rgb: Rgb, alpha: f64) -> Arc<str> {
+    let [r, g, b] = rgb.to_rgb8();
+    let percent = (alpha.clamp(0.0, 1.0) * 100_000.0).round() / 1000.0;
+    Arc::from(format!(
+        "<a:srgbClr val=\"{r:02X}{g:02X}{b:02X}\"><a:alpha val=\"{percent}%\"/></a:srgbClr>"
+    ))
+}
+
 fn shape_paragraph(index: usize, rect: &Rect, geometry: ShapeGeometry) -> Block {
     let emu = |points: f64| Emu((points * EMU_PER_POINT).round() as i64);
     // A rule is a line: its box is a point wide or tall, never nothing.
@@ -311,19 +417,24 @@ fn shape_paragraph(index: usize, rect: &Rect, geometry: ShapeGeometry) -> Block 
         rect.fill.map(|rgb| {
             let mut fill_color = color(rgb);
             if rect.fill_alpha < 0.999 {
-                let [r, g, b] = rgb.to_rgb8();
-                let percent = (rect.fill_alpha.clamp(0.0, 1.0) * 100_000.0).round() / 1000.0;
-                fill_color.markup = Some(Arc::from(format!(
-                    "<a:srgbClr val=\"{r:02X}{g:02X}{b:02X}\"><a:alpha val=\"{percent}%\"/></a:srgbClr>"
-                )));
+                fill_color.markup = Some(alpha_markup(rgb, rect.fill_alpha));
             }
             ShapeFill::Solid { color: fill_color }
         })
     });
-    let stroke = rect.stroke.map(|rgb| ShapeStroke {
-        color: Some(color(rgb)),
-        width: Some(emu(rect.line_width.max(0.25))),
-        ..ShapeStroke::default()
+    let stroke = rect.stroke.map(|rgb| {
+        let mut line_color = color(rgb);
+        if rect.line.alpha < 0.999 {
+            line_color.markup = Some(alpha_markup(rgb, rect.line.alpha));
+        }
+        ShapeStroke {
+            color: Some(line_color),
+            width: Some(emu(rect.line_width.max(0.25))),
+            dash: preset_dash(&rect.line.dash, rect.line_width).map(Arc::from),
+            attributes: vec![(Arc::from("cap"), Arc::from(rect.line.cap()))],
+            join: Some(Arc::from(rect.line.join())),
+            ..ShapeStroke::default()
+        }
     });
     let name: Arc<str> = Arc::from(format!("vector-{index}"));
     let shape = Shape {
@@ -409,4 +520,88 @@ fn shape_paragraph(index: usize, rect: &Rect, geometry: ShapeGeometry) -> Block 
         revision: None,
         location: SourceLocation::unknown(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use strict_ooxml_pdf::content::{Matrix, SubPath};
+
+    fn stroked(dash: Vec<f64>, alpha: f64, cap: LineCap, join: LineJoin) -> Vector {
+        Vector {
+            subpaths: vec![SubPath {
+                points: vec![(10.0, 10.0), (110.0, 10.0), (110.0, 60.0), (10.0, 60.0)],
+                closed: true,
+            }],
+            fill: None,
+            gradient: None,
+            fill_alpha: 1.0,
+            stroke_alpha: alpha,
+            stroke: Some(Rgb(1.0, 0.0, 0.0)),
+            line_width: 1.0,
+            line_cap: cap,
+            line_join: join,
+            miter_limit: 10.0,
+            even_odd: false,
+            ctm: Matrix::IDENTITY,
+            dash,
+        }
+    }
+
+    fn line_of(vector: &Vector) -> ShapeStroke {
+        let rect = rectangle(vector, 800.0).expect("a rectangle");
+        let Block::Paragraph(paragraph) =
+            shape_paragraph(0, &rect, ShapeGeometry::Preset(Arc::from("rect")))
+        else {
+            panic!("a paragraph");
+        };
+        let Some(Inline::Drawing(Drawing {
+            kind: DrawingKind::Anchor(anchor),
+            ..
+        })) = paragraph.inlines.into_iter().next()
+        else {
+            panic!("an anchored drawing");
+        };
+        let Graphic::Shape(shape) = *anchor.graphic else {
+            panic!("a shape");
+        };
+        shape.stroke.expect("a stroke")
+    }
+
+    #[test]
+    fn a_dash_array_becomes_the_nearest_preset() {
+        assert_eq!(preset_dash(&[], 1.0), None);
+        assert_eq!(preset_dash(&[4.0, 3.0], 1.0), Some("dash"));
+        assert_eq!(preset_dash(&[1.0, 1.0], 1.0), Some("sysDot"));
+        // Scaled with the line: a 2 pt line's 8/6 is still "dash".
+        assert_eq!(preset_dash(&[8.0, 6.0], 2.0), Some("dash"));
+        // A dot drawn by a round cap: no dash length at all.
+        assert_eq!(preset_dash(&[0.0, 3.0], 1.0), Some("dot"));
+        assert_eq!(preset_dash(&[4.0, 3.0, 1.0, 3.0], 1.0), Some("dashDot"));
+        // An odd array repeats.
+        assert_eq!(preset_dash(&[3.0], 1.0), preset_dash(&[3.0, 3.0], 1.0));
+    }
+
+    #[test]
+    fn a_stroke_keeps_its_opacity_cap_join_and_dash() {
+        let line = line_of(&stroked(
+            vec![4.0, 3.0],
+            0.2,
+            LineCap::Round,
+            LineJoin::Bevel,
+        ));
+        assert_eq!(line.dash.as_deref(), Some("dash"));
+        assert_eq!(line.join.as_deref(), Some("<a:bevel/>"));
+        assert_eq!(line.attributes, vec![(Arc::from("cap"), Arc::from("rnd"))]);
+        let markup = line.color.and_then(|color| color.markup).expect("an alpha");
+        assert!(markup.contains("<a:alpha val=\"20%\"/>"), "{markup}");
+    }
+
+    #[test]
+    fn an_opaque_solid_stroke_has_no_alpha_and_no_dash() {
+        let line = line_of(&stroked(Vec::new(), 1.0, LineCap::Butt, LineJoin::Miter));
+        assert_eq!(line.dash, None);
+        assert_eq!(line.attributes, vec![(Arc::from("cap"), Arc::from("flat"))]);
+        assert_eq!(line.color.and_then(|color| color.markup), None);
+    }
 }

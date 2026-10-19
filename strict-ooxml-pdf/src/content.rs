@@ -308,6 +308,8 @@ pub struct Vector {
     pub gradient: Option<AxialGradient>,
     /// The fill's opacity, from the graphics state's `ca` (1 = opaque).
     pub fill_alpha: f64,
+    /// The stroke's opacity, from the graphics state's `CA` (1 = opaque).
+    pub stroke_alpha: f64,
     /// Stroke colour, when the path is stroked.
     pub stroke: Option<Rgb>,
     /// Line width in points.
@@ -572,6 +574,8 @@ struct State {
     text_clip: Option<usize>,
     /// Fill opacity from the graphics state's `ca` (1 = opaque).
     fill_alpha: f64,
+    /// Stroke opacity from the graphics state's `CA` (1 = opaque).
+    stroke_alpha: f64,
     /// The fill is a shading pattern (`/Pattern cs /P1 scn`): its gradient and
     /// the matrix from pattern space to the device (G2).
     fill_pattern: Option<(AxialGradient, Matrix)>,
@@ -614,6 +618,7 @@ impl Default for State {
             render_mode: RenderMode::Fill,
             text_clip: None,
             fill_alpha: 1.0,
+            stroke_alpha: 1.0,
             fill_pattern: None,
             soft_mask: false,
             clip_rect: None,
@@ -690,6 +695,10 @@ pub trait Resources {
     /// Whether a graphics state sets a soft mask (`/SMask` other than `/None`).
     fn soft_mask(&self, _name: &str) -> bool {
         false
+    }
+    /// The blend mode a graphics state sets, when it is not `Normal`.
+    fn blend_mode(&self, _name: &str) -> Option<String> {
+        None
     }
     /// A supported RGB axial shading. Unsupported resources return `None`.
     fn shading(&self, _name: &str) -> Option<AxialGradient> {
@@ -1124,11 +1133,28 @@ fn interpret_from(
             // box over a photograph); the rest is reported.
             "gs" => match name_at(args, 0).and_then(|name| {
                 current.soft_mask = resources.soft_mask(&name);
+                // A soft mask and a blend mode change what shows and are not
+                // applied; said here rather than lost in silence (G5).
+                if current.soft_mask {
+                    out.ignored.push(Ignored::new(
+                        "pdf.smask",
+                        "a soft mask is not applied: what it masks is drawn whole",
+                    ));
+                }
+                if let Some(mode) = resources.blend_mode(&name) {
+                    out.ignored.push(Ignored::new(
+                        "pdf.blend",
+                        format!("blend mode `{mode}` is not applied: drawn as Normal"),
+                    ));
+                }
                 resources.ext_g_state(&name)
             }) {
-                Some((fill, _stroke)) => {
+                Some((fill, stroke)) => {
                     if let Some(alpha) = fill.filter(|alpha| alpha.is_finite()) {
                         current.fill_alpha = alpha.clamp(0.0, 1.0);
+                    }
+                    if let Some(alpha) = stroke.filter(|alpha| alpha.is_finite()) {
+                        current.stroke_alpha = alpha.clamp(0.0, 1.0);
                     }
                 }
                 None => out
@@ -1583,6 +1609,7 @@ fn paint(
         fill: fill.then_some(state.fill),
         gradient,
         fill_alpha: state.fill_alpha,
+        stroke_alpha: state.stroke_alpha,
         stroke: stroke.then_some(state.stroke),
         line_width: state.line_width * scale,
         line_cap: state.line_cap,
