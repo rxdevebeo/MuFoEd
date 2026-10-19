@@ -2819,7 +2819,21 @@ fn place_formatted_word(
                 sink.ctx.measure(text, run) - sink.ctx.measure(text.trim_end_matches(' '), run)
             })
             .max(0.0);
-        let end = free_spans(sink, normal_x, provisional_line_height(sink))
+        let spans = free_spans(sink, normal_x, provisional_line_height(sink));
+        if spans.is_empty() {
+            // A line the wrap fills completely must move below it. Falling
+            // back to the column edge painted the caption through a
+            // `wrapTopAndBottom` picture (057, picture 7).
+            if advance_past_blocked(sink, current, x, normal_x) {
+                continue;
+            }
+            if !current.is_empty() {
+                sink.emit(std::mem::replace(current, LineBuilder::new()), false);
+                *x = normal_x;
+                continue;
+            }
+        }
+        let end = spans
             .into_iter()
             .find(|(left, right)| *left <= *x + 0.001 && *x < *right)
             .map_or(sink.right_edge, |(_, right)| right);

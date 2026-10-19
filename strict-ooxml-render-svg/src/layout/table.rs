@@ -1825,6 +1825,7 @@ fn place_cell_paragraph(
         neighbors,
     );
     let mut front_anchors = Vec::new();
+    let mut anchor_bottom = host_y;
     if ctx.options.floating {
         for anchor in &flow.anchors {
             let geometry = if anchor.layout_in_cell {
@@ -1856,6 +1857,11 @@ fn place_cell_paragraph(
                 ctx.options.scale,
             );
             let placement = crate::layout::floating::clamp_frame(ctx, &geometry, ax, ay, w, h);
+            if anchor.layout_in_cell {
+                // The picture hangs from this paragraph. A later row must start
+                // below it, or its text runs through the picture (082).
+                anchor_bottom = anchor_bottom.max(placement.y + placement.h);
+            }
             let mut anchor_items = crate::paint::graphics::anchor_items(
                 ctx,
                 anchor,
@@ -1945,6 +1951,7 @@ fn place_cell_paragraph(
     }
     items.extend(front_anchors);
     *y += flow.space_after + flow.border_after;
+    *y = (*y).max(anchor_bottom);
 }
 
 /// Appends a nested table's row flows at `*y` (see [`place_cell_paragraph`]).

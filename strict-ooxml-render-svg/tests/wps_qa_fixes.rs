@@ -607,3 +607,206 @@ fn the_tallest_run_sets_the_line_box() {
     // descent (Carlito 0.269 em: 10.0 px against 3.6 px at 10 pt).
     assert!(tall > even + 5.0, "{even} vs {tall}");
 }
+
+/// A floating text box, anchored at `position_v`, wrapped by `wrap` and drawn
+/// with `text`.
+fn anchored_box(wrap: &str, position_v: &str, text: &str) -> String {
+    format!(
+        "<w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" \
+relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">\
+<wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"column\"><wp:posOffset>0</wp:posOffset></wp:positionH>\
+<wp:positionV relativeFrom=\"page\"><wp:posOffset>{position_v}</wp:posOffset></wp:positionV>\
+<wp:extent cx=\"1828800\" cy=\"1828800\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>{wrap}\
+<wp:docPr id=\"1\" name=\"box\"/><a:graphic>\
+<a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/wordprocessingShape\">\
+<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"1828800\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></wps:spPr>\
+<wps:txbx><w:txbxContent><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:txbxContent></wps:txbx>\
+<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>"
+    )
+}
+
+/// WQ-046: a cover page whose drawings sit in the paragraph that also holds
+/// the page break stays on the page it starts on. The empty line the break
+/// leaves behind used to become the anchors' host, so the cover art moved to
+/// the first body page (`core-docx/4. Complex-Conditions`, page 2).
+#[test]
+fn wq046_a_cover_drawing_stays_on_the_page_of_its_paragraph() {
+    let body = format!(
+        "<w:p>{}<w:r><w:br w:type=\"page\"/></w:r></w:p>\
+<w:p><w:r><w:t>Body</w:t></w:r></w:p>{NARROW}",
+        anchored_box("<wp:wrapSquare wrapText=\"bothSides\"/>", "914400", "Cover")
+    );
+    let placed = pages(&body, &RenderOptions::default());
+    assert!(placed.len() > 1, "the break must open a second page");
+    let first: Vec<String> = texts(&placed[0])
+        .into_iter()
+        .map(|(_, _, text)| text)
+        .collect();
+    let second: Vec<String> = texts(&placed[1])
+        .into_iter()
+        .map(|(_, _, text)| text)
+        .collect();
+    assert!(
+        first.iter().any(|text| text == "Cover"),
+        "the cover drawing is not on page 1: {first:?}"
+    );
+    assert!(
+        !second.iter().any(|text| text == "Cover"),
+        "the cover drawing moved to page 2: {second:?}"
+    );
+}
+
+/// WQ-047: Office writes `wp:wrapPolygon` in its fixed 21600 by 21600 shape
+/// space. Read as EMU, the contour collapsed to a sliver and the text ran
+/// straight over the picture (`core-docx/4. Complex-Conditions`: 31 overlaps
+/// against WPS's 0).
+#[test]
+fn wq047_an_office_space_wrap_polygon_excludes_the_whole_box() {
+    let wrap = "<wp:wrapThrough wrapText=\"bothSides\"><wp:wrapPolygon>\
+<wp:start x=\"0\" y=\"0\"/><wp:lineTo x=\"0\" y=\"21600\"/><wp:lineTo x=\"21600\" y=\"21600\"/>\
+<wp:lineTo x=\"21600\" y=\"0\"/><wp:lineTo x=\"0\" y=\"0\"/></wp:wrapPolygon></wp:wrapThrough>";
+    let body = format!(
+        "<w:p>{}<w:r><w:t>{LONG}</w:t></w:r></w:p>{NARROW}",
+        anchored_box(wrap, "0", "Box")
+    );
+    let page = pages(&body, &RenderOptions::default()).remove(0);
+    // NARROW: 0.5 in margin, so the column runs 48..336 px; the box is 2 in
+    // square from the page top (positionV=page, offset 0).
+    let (top, bottom, right) = (0.0, 192.0, 48.0 + 192.0);
+    let inside: Vec<(f64, f64, String)> = texts(&page)
+        .into_iter()
+        .filter(|(x, y, text)| {
+            !text.trim().is_empty() && text != "Box" && *y > top && *y < bottom && *x < right - 1.0
+        })
+        .collect();
+    assert!(
+        inside.is_empty(),
+        "text inside the Office-space contour {top}..{bottom}: {inside:?}"
+    );
+}
+
+/// A floating text box with explicit horizontal and vertical anchors.
+fn anchored_at(wrap: &str, position_h: &str, position_v: &str, text: &str) -> String {
+    format!(
+        "<w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" \
+relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">\
+<wp:simplePos x=\"0\" y=\"0\"/>{position_h}{position_v}\
+<wp:extent cx=\"1828800\" cy=\"1828800\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>{wrap}\
+<wp:docPr id=\"1\" name=\"box\"/><a:graphic>\
+<a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/wordprocessingShape\">\
+<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"1828800\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></wps:spPr>\
+<wps:txbx><w:txbxContent><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:txbxContent></wps:txbx>\
+<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>"
+    )
+}
+
+/// A caption split across two runs still starts below a `wrapTopAndBottom`
+/// picture. One run already did; the multi-run path treated a fully blocked
+/// line as the whole column and drew the caption through the picture
+/// (`057_Wen_Xue`, picture 7).
+#[test]
+fn wq048_a_caption_split_across_runs_starts_below_the_picture() {
+    let anchor = anchored_at(
+        "<wp:wrapTopAndBottom/>",
+        "<wp:positionH relativeFrom=\"column\"><wp:posOffset>186055</wp:posOffset></wp:positionH>",
+        "<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>37465</wp:posOffset></wp:positionV>",
+        "Box",
+    );
+    let body = format!(
+        "<w:p>{anchor}<w:r><w:t>Caption</w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>KeepsGoing past the picture without entering it.</w:t></w:r></w:p>{NARROW}"
+    );
+    let page = pages(&body, &RenderOptions::default()).remove(0);
+    let box_top = texts(&page)
+        .iter()
+        .find(|(_, _, text)| text == "Box")
+        .map(|(_, y, _)| *y)
+        .expect("box");
+    // The box is 2 in (192 px); its label sits on the first line inside it.
+    let box_bottom = box_top + 160.0;
+    let inside: Vec<(f64, f64, String)> = texts(&page)
+        .into_iter()
+        .filter(|(_, y, text)| text != "Box" && !text.trim().is_empty() && *y < box_bottom)
+        .collect();
+    assert!(
+        inside.is_empty(),
+        "caption inside the top-and-bottom picture (box top {box_top}): {inside:?}"
+    );
+}
+
+/// A picture anchored in an empty paragraph under the cell's text hangs out
+/// of that row. The next row used to start in the middle of the picture
+/// (`082_Empaquetado`).
+#[test]
+fn wq049_a_cell_picture_below_its_text_keeps_the_next_row_clear() {
+    let wrap = "<wp:wrapTight wrapText=\"bothSides\"><wp:wrapPolygon>\
+<wp:start x=\"0\" y=\"0\"/><wp:lineTo x=\"0\" y=\"21600\"/><wp:lineTo x=\"21600\" y=\"21600\"/>\
+<wp:lineTo x=\"21600\" y=\"0\"/><wp:lineTo x=\"0\" y=\"0\"/></wp:wrapPolygon></wp:wrapTight>";
+    let anchor = anchored_at(
+        wrap,
+        "<wp:positionH relativeFrom=\"column\"><wp:posOffset>0</wp:posOffset></wp:positionH>",
+        "<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>0</wp:posOffset></wp:positionV>",
+        "Box",
+    );
+    let body = format!(
+        "<w:tbl><w:tblGrid><w:gridCol w:w=\"2000\"/><w:gridCol w:w=\"6400\"/></w:tblGrid>\
+<w:tr><w:tc><w:p><w:r><w:t>Side</w:t></w:r></w:p></w:tc>\
+<w:tc><w:p><w:r><w:t>Above</w:t></w:r></w:p><w:p>{anchor}</w:p></w:tc></w:tr>\
+<w:tr><w:tc><w:p><w:r><w:t>Mark</w:t></w:r></w:p></w:tc>\
+<w:tc><w:p><w:r><w:t>Next row stays clear of the picture.</w:t></w:r></w:p></w:tc></w:tr>\
+</w:tbl>{NARROW}"
+    );
+    let page = pages(&body, &RenderOptions::default()).remove(0);
+    let box_top = texts(&page)
+        .iter()
+        .find(|(_, _, text)| text == "Box")
+        .map(|(_, y, _)| *y)
+        .expect("box");
+    // The box is 2 in tall and its label is the first line inside it.
+    let box_bottom = box_top + 150.0;
+    let inside: Vec<(f64, f64, String)> = texts(&page)
+        .into_iter()
+        .filter(|(_, y, text)| text.contains("Next") && *y < box_bottom)
+        .collect();
+    assert!(
+        inside.is_empty(),
+        "next row inside the cell picture (box top {box_top}): {inside:?}"
+    );
+}
+
+/// A table that follows a `wrapTopAndBottom` picture starts below the picture.
+/// The picture's paragraph is only the anchor, so the table used to begin on
+/// that line and sit inside the picture (`031_Better_English`).
+#[test]
+fn wq050_a_table_below_a_top_and_bottom_picture_starts_under_it() {
+    let anchor = anchored_at(
+        "<wp:wrapTopAndBottom/>",
+        "<wp:positionH relativeFrom=\"margin\"><wp:align>center</wp:align></wp:positionH>",
+        "<wp:positionV relativeFrom=\"line\"><wp:align>top</wp:align></wp:positionV>",
+        "Box",
+    );
+    let body = format!(
+        "<w:p>{anchor}</w:p>\
+<w:tbl><w:tblGrid><w:gridCol w:w=\"3000\"/><w:gridCol w:w=\"3000\"/></w:tblGrid>\
+<w:tr><w:tc><w:p><w:r><w:t>permit</w:t></w:r></w:p></w:tc>\
+<w:tc><w:p><w:r><w:t>perfect</w:t></w:r></w:p></w:tc></w:tr></w:tbl>{NARROW}"
+    );
+    let page = pages(&body, &RenderOptions::default()).remove(0);
+    let box_top = texts(&page)
+        .iter()
+        .find(|(_, _, text)| text == "Box")
+        .map(|(_, y, _)| *y)
+        .expect("box");
+    let box_bottom = box_top + 150.0;
+    let inside: Vec<(f64, f64, String)> = texts(&page)
+        .into_iter()
+        .filter(|(_, y, text)| {
+            (text.contains("permit") || text.contains("perfect")) && *y < box_bottom
+        })
+        .collect();
+    assert!(
+        inside.is_empty(),
+        "table inside the top-and-bottom picture (box top {box_top}): {inside:?}"
+    );
+}

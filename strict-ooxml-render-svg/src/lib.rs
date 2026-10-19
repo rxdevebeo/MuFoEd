@@ -163,10 +163,16 @@ pub enum RevisionView {
 /// Coordinate interpretation for wrapping polygons.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WrapCoordinates {
-    /// ISO coordinates and this library's VML-normalized model, in EMU.
+    /// Take the convention from the points themselves (the default): Office
+    /// writes `wp:wrapPolygon` in its fixed 21600 by 21600 shape space
+    /// (MS-OI29500 2.1.1349), while a model built in document units carries
+    /// EMU. Points that fit that fixed space beside a larger extent are read
+    /// as Office coordinates; anything else is EMU.
     #[default]
+    Auto,
+    /// ISO coordinates and this library's VML-normalized model, in EMU.
     Emu,
-    /// Office's fixed 21600 by 21600 shape space (MS-OI29500 2.1.1349).
+    /// Office's fixed 21600 by 21600 shape space, unconditionally.
     Office21600,
 }
 
@@ -225,7 +231,8 @@ pub struct RenderOptions {
     /// Maximum combined SVG payload. Painting stops with a warning before
     /// retaining output beyond this bound; the default is unlimited.
     pub max_svg_bytes: usize,
-    /// Wrapping polygon coordinate convention; no size-based guessing is used.
+    /// Wrapping polygon coordinate convention. The default reads the points
+    /// themselves; see [`WrapCoordinates::Auto`].
     pub wrap_coordinates: WrapCoordinates,
     /// Output scale: px per inch (default `96.0` = 96 DPI).
     pub scale: f64,
@@ -310,7 +317,7 @@ impl Default for RenderOptions {
     fn default() -> Self {
         Self {
             max_svg_bytes: usize::MAX,
-            wrap_coordinates: WrapCoordinates::Emu,
+            wrap_coordinates: WrapCoordinates::Auto,
             scale: 96.0,
             default_paper: DefaultPaper::default(),
             media: MediaMode::EmbedDataUri,

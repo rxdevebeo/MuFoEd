@@ -470,6 +470,28 @@ pub(crate) fn clip_frame_items(items: Vec<Item>, clip: [f64; 4], bounds: [f64; 4
     })]
 }
 
+/// Whether a contour is written in Office's fixed 21600 by 21600 shape space
+/// rather than in EMU.
+///
+/// Office writes `wp:wrapPolygon` in that fixed space (MS-OI29500 2.1.1349), and
+/// its points are small integers (0..~21600, with a few producers a little
+/// outside). A model built in document units carries EMU, which for any drawing
+/// larger than a fraction of a millimetre runs into the millions. The two are
+/// four orders of magnitude apart, so the contour is compared with the drawing's
+/// own extent: points that stay inside the fixed space while the extent is far
+/// larger are Office coordinates.
+fn in_office_shape_space(polygon: &[(i64, i64)], source: strict_ooxml_wml::model::Extent) -> bool {
+    const OFFICE_SPACE: i64 = 21_600;
+    // A producer may write a point slightly outside the nominal space (009 has
+    // -7 and 21626); a small margin keeps those in Office coordinates.
+    const MARGIN: i64 = 512;
+    let Some(largest) = polygon.iter().flat_map(|(x, y)| [x.abs(), y.abs()]).max() else {
+        return false;
+    };
+    let extent = source.cx.value().max(source.cy.value());
+    largest <= OFFICE_SPACE + MARGIN && extent > OFFICE_SPACE + MARGIN
+}
+
 /// Wrap exclusion in absolute page coordinates, or `None` when text is not excluded.
 /// Tight/Through use the source polygon rather than its bounding rectangle.
 pub(crate) fn page_exclusion(
@@ -533,12 +555,18 @@ pub(crate) fn page_exclusion(
     ];
     let contour = if matches!(wrap.kind, WrapKind::Tight | WrapKind::Through) {
         let source = anchor.extent?;
-        let (sx, sy) = match ctx.options.wrap_coordinates {
-            crate::WrapCoordinates::Emu => (
+        let office_space = match ctx.options.wrap_coordinates {
+            crate::WrapCoordinates::Emu => false,
+            crate::WrapCoordinates::Office21600 => true,
+            crate::WrapCoordinates::Auto => in_office_shape_space(&wrap.polygon, source),
+        };
+        let (sx, sy) = if office_space {
+            (width / 21_600.0, height / 21_600.0)
+        } else {
+            (
                 width / source.cx.value().max(1) as f64,
                 height / source.cy.value().max(1) as f64,
-            ),
-            crate::WrapCoordinates::Office21600 => (width / 21_600.0, height / 21_600.0),
+            )
         };
         Some(Arc::new(Contour {
             points: wrap

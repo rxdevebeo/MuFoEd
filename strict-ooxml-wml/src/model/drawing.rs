@@ -698,7 +698,7 @@ pub struct Wrap {
     /// Bottom distance (`distB`), in EMU.
     pub dist_bottom: Option<u32>,
     /// The wrap contour (`wp:wrapPolygon`): one `wp:start` followed by two or more
-    /// `wp:lineTo`, as `(x, y)` in EMU.
+    /// `wp:lineTo`, as `(x, y)` in the units the producer wrote.
     ///
     /// `CT_WrapPath` is a sequence of exactly one `start` and at least two
     /// `lineTo`, so an EMPTY polygon is non-conformant and there is no "no contour"
@@ -706,11 +706,12 @@ pub struct Wrap {
     /// rectangle, which is a tight wrap around a box - honest, and not the contour
     /// the producer chose.
     ///
-    /// The corpus has exactly one document that carries a contour at all, and its
-    /// points are in VML shape space (0..21626, the classic `coordsize`), so they
-    /// are scaled on the way in rather than copied. That scaling is the reason this
-    /// field is points and not a path string: a path would have to be re-parsed to
-    /// be written, and re-parsing is where the unit goes wrong.
+    /// Office writes these points in its fixed 21600 by 21600 shape space, not in
+    /// EMU (MS-OI29500 2.1.1349); a VML-normalized contour is in VML shape space
+    /// (the classic `coordsize`). The renderer tells the two apart by comparing
+    /// the points with the drawing's extent (`WrapCoordinates::Auto`), so the
+    /// field keeps the numbers as read: a path string would have to be re-parsed
+    /// to be written, and re-parsing is where the unit goes wrong.
     pub polygon: Vec<(i64, i64)>,
     /// `wp:wrapPolygon/@edited` when the producer set it (including explicit `0`).
     pub polygon_edited: Option<bool>,

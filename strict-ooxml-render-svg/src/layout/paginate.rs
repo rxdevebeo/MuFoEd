@@ -666,6 +666,11 @@ fn layout_blocks(
                     place_framed_table(ctx, table, frame, paginator, depth)?;
                     pending_after = 0.0;
                 } else {
+                    // A full-width wrap (top-and-bottom) still covers this
+                    // cursor. A table does not flow around it, so it starts
+                    // below the object (031: the phonetic table sat inside
+                    // the picture).
+                    paginator.clear_full_width_wrap()?;
                     let flows = layout_table(ctx, table, left, width, depth, true);
                     paginator.set_table_headers(&flows);
                     for flow in flows {
@@ -817,6 +822,12 @@ fn place_body_paragraph(
         .collect();
     for (index, item) in flow.flows.into_iter().enumerate() {
         if blank_before_break.get(index).copied().unwrap_or(false) && !boundary_marker {
+            // The paragraph's anchors hang off where it starts, not off the
+            // empty line the break leaves behind: a cover page's drawings stay
+            // on the page the break is about to leave (WQ-046).
+            if index == 0 && host.is_none() {
+                host = Some(expected);
+            }
             continue;
         }
         if index > 0 && widow_break == Some(index) {
@@ -2636,6 +2647,46 @@ impl<'a> Paginator<'a> {
         }
         self.cursor = (self.cursor + space).min(self.body_height());
         self.record_column_bottom();
+    }
+
+    /// Moves the cursor below a wrap that leaves the column no free width.
+    ///
+    /// Paragraphs already do this while breaking lines. A table is placed as
+    /// a block, so without this step it starts on the line under the anchor
+    /// and runs through a `wrapTopAndBottom` picture.
+    fn clear_full_width_wrap(&mut self) -> Result<()> {
+        for _ in 0..8 {
+            let y = self.geometry.top + self.cursor;
+            let column_width = self.column_width();
+            let bottom = self
+                .wrap_exclusions
+                .iter()
+                .filter(|exclusion| {
+                    exclusion.contour.is_none()
+                        && exclusion.side == WrapSide::Both
+                        && y + 0.5 < exclusion.bottom
+                        && y + 1.0 > exclusion.top
+                        && exclusion.right - exclusion.left >= column_width - 1.0
+                })
+                .map(|exclusion| exclusion.bottom)
+                .fold(None, |lowest: Option<f64>, bottom| {
+                    Some(lowest.map_or(bottom, |value| value.max(bottom)))
+                });
+            let Some(bottom) = bottom else {
+                return Ok(());
+            };
+            let page_bottom = self.geometry.top + self.body_height();
+            if bottom > page_bottom - 0.5 && self.has_content_above() {
+                self.overflow_break()?;
+                continue;
+            }
+            let skip = bottom - y;
+            if skip <= 0.5 {
+                return Ok(());
+            }
+            self.add_vspace(skip);
+        }
+        Ok(())
     }
 
     fn check_page_capacity(&self) -> Result<()> {
