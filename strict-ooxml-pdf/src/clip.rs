@@ -321,10 +321,17 @@ pub(crate) enum ImageCut {
 /// Crops a picture whose unit square `ctm` places to `rect`.
 pub(crate) fn image_cut(ctm: Matrix, rect: Rect) -> ImageCut {
     let upright = ctm.b.abs() < 1e-9 && ctm.c.abs() < 1e-9 && ctm.a > 0.0 && ctm.d > 0.0;
-    let box_ = [ctm.e, ctm.f, ctm.e + ctm.a, ctm.f + ctm.d];
-    if !box_.iter().all(|value| value.is_finite()) {
+    // The box the unit square lands on, whichever way the matrix turns it: a
+    // picture drawn upside down (`d < 0`, how Office writes many of its
+    // pictures) had its lower edge above its upper one, read as outside every
+    // clip, and was dropped though it showed.
+    let Some(box_) = bounds(
+        [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)]
+            .into_iter()
+            .map(|(x, y)| ctm.apply(x, y)),
+    ) else {
         return ImageCut::Whole;
-    }
+    };
     if is_empty(rect) || disjoint(rect, box_) {
         return ImageCut::Hidden;
     }
@@ -452,5 +459,24 @@ mod tests {
             ImageCut::Hidden
         );
         assert_eq!(image_cut(ctm, [-1.0, -1.0, 101.0, 201.0]), ImageCut::Whole);
+    }
+
+    /// A picture drawn upside down inside its clip shows, whole.
+    #[test]
+    fn a_mirrored_picture_inside_its_clip_is_kept() {
+        // Office's way: `a 0 0 -d e f cm` under `x y w -h re W n`.
+        let ctm = Matrix {
+            a: 28.76,
+            b: 0.0,
+            c: 0.0,
+            d: -31.38,
+            e: 192.0,
+            f: 450.25,
+        };
+        assert_eq!(
+            image_cut(ctm, [192.0, 418.87, 220.76, 450.0]),
+            ImageCut::Whole
+        );
+        assert_eq!(image_cut(ctm, [0.0, 0.0, 50.0, 50.0]), ImageCut::Hidden);
     }
 }

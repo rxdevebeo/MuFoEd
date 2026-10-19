@@ -185,6 +185,9 @@ pub(crate) fn build(
             .as_ref()
             .and_then(|margins| margins.left)
             .map_or(0.0, |left| f64::from(left.0) / 20.0);
+        // The right edge of the text area, which a paragraph's measure is
+        // narrowed from.
+        let text_right = text_area.map(|(width, _)| left_margin + width);
         sections.begin_page(&mut blocks, section, false);
         let raw_lines = page_lines
             .get_mut(index)
@@ -337,6 +340,7 @@ pub(crate) fn build(
                         report,
                         index + 1,
                         &leaders,
+                        text_right,
                     );
                     blocks.push(figure);
                 }
@@ -355,6 +359,7 @@ pub(crate) fn build(
                     report,
                     index + 1,
                     &leaders,
+                    text_right,
                 );
                 blocks.push(table_block(table, body, pitch, options, report, index + 1));
                 continue;
@@ -375,6 +380,7 @@ pub(crate) fn build(
             report,
             index + 1,
             &leaders,
+            text_right,
         );
         blocks.extend(figures.map(|(_, figure)| figure));
         // Only where the page starts at the top: the document's first page, or
@@ -475,6 +481,7 @@ fn paragraphs_of(
     page: usize,
     items: &std::collections::BTreeMap<usize, crate::lists::Item>,
     leaders: &[crate::leaders::Leader],
+    text_right: Option<f64>,
 ) -> Vec<Paragraph> {
     let mut out: Vec<Paragraph> = Vec::new();
     let mut paragraph: Option<Paragraph> = None;
@@ -486,6 +493,10 @@ fn paragraphs_of(
     // took eleven.
     let mut furthest: Option<f64> = None;
     let edges = text_edges(lines);
+    // Where each column's body text ends, for the short-line rule, and how
+    // wide the open paragraph's lines run, for its measure.
+    let ends = LineEnds::of(lines, body);
+    let mut measure = Measure::default();
     // The open paragraph's line while it has only one.
     let mut single: Option<&GlyphLine> = None;
     let starts: Vec<f64> = lines
@@ -526,6 +537,7 @@ fn paragraphs_of(
                     tab_to(open, line, origin, edges, crate::leaders::of(leaders, line));
                     push_runs_from(open, line, 0);
                     single = None;
+                    measure.extend(line);
                     previous = Some(line);
                     continue;
                 }
@@ -547,10 +559,15 @@ fn paragraphs_of(
                         // the start of the one below.
                         || is_blank(previous)
                         || is_blank(line)
-                        || ended_short(previous, line, edges)
+                        || ended_short(
+                            previous,
+                            line,
+                            ends.edge_for(previous).or(edges.map(|(_, right)| right)),
+                        )
                 }));
         if starts_new || paragraph.is_none() {
             if let Some(mut finished) = paragraph.take() {
+                measure.apply(&mut finished, text_right);
                 give_room(&mut finished, single, edges);
                 out.push(finished);
             }
@@ -591,8 +608,11 @@ fn paragraphs_of(
             }
             paragraph = Some(fresh);
             single = Some(line);
+            measure = Measure::default();
+            measure.add(line);
         } else if let Some(paragraph) = paragraph.as_mut() {
             single = None;
+            measure.add(line);
             if let Some(previous) = previous {
                 set_line_gap(paragraph, line, line.baseline - previous.baseline);
             }
@@ -625,6 +645,7 @@ fn paragraphs_of(
             Some(furthest.map_or(line.baseline, |furthest: f64| furthest.max(line.baseline)));
     }
     if let Some(mut finished) = paragraph {
+        measure.apply(&mut finished, text_right);
         give_room(&mut finished, single, edges);
         out.push(finished);
     }
@@ -647,8 +668,8 @@ fn is_blank(line: &GlyphLine) -> bool {
 /// `PDF-IMPORT-COMPARISON-2026-10-19.md`). One and a half sizes are allowed
 /// for the space between the words and the slack of a ragged right edge, so a
 /// short ragged block measured against its own longest line still runs on.
-fn ended_short(previous: &GlyphLine, line: &GlyphLine, edges: Option<(f64, f64)>) -> bool {
-    let Some((_, right)) = edges else {
+fn ended_short(previous: &GlyphLine, line: &GlyphLine, right: Option<f64>) -> bool {
+    let Some(right) = right else {
         return false;
     };
     let Some(end) = previous
@@ -671,6 +692,111 @@ fn ended_short(previous: &GlyphLine, line: &GlyphLine, edges: Option<(f64, f64)>
     let word_end = word.last().unwrap_or(first);
     let word_width = word_end.x + word_end.width - first.x;
     right - end > word_width + line.size * 1.5
+}
+
+/// Where a line's ink ends: its last glyph that is not a space.
+fn ink_right(line: &GlyphLine) -> f64 {
+    line.glyphs
+        .iter()
+        .rev()
+        .find(|glyph| !glyph.text.trim().is_empty())
+        .map_or(line.x + line.width, |glyph| glyph.x + glyph.width)
+}
+
+/// Where the body text's lines end, by where they start.
+///
+/// The short-line rule asks how much room a line left at its end, and the room
+/// has to be measured to the edge **its own column's** text keeps. Measured to
+/// the page's rightmost ink - a chapter banner, a footer, the other column -
+/// every line of a narrower block looked short, and its paragraphs broke at
+/// each line again (`PDF-CORPUS-RUN-2026-10-19.md`).
+struct LineEnds {
+    /// `(start, end)` of each body-size line with ink.
+    lines: Vec<(f64, f64)>,
+}
+
+impl LineEnds {
+    fn of(lines: &[GlyphLine], body: f64) -> Self {
+        Self {
+            lines: lines
+                .iter()
+                .filter(|line| {
+                    (line.size - body).abs() <= body * 0.05 && !line.text().trim().is_empty()
+                })
+                .map(|line| (line.x, ink_right(line)))
+                .collect(),
+        }
+    }
+
+    /// The edge the lines starting where `line` starts reach: the ninth decile
+    /// of their ends, so one long line past the others does not set it.
+    /// `None` with fewer than three such lines.
+    fn edge_for(&self, line: &GlyphLine) -> Option<f64> {
+        let reach = line.size * 1.5;
+        let mut ends: Vec<f64> = self
+            .lines
+            .iter()
+            .filter(|(start, _)| (start - line.x).abs() <= reach)
+            .map(|(_, end)| *end)
+            .collect();
+        if ends.len() < 3 {
+            return None;
+        }
+        ends.sort_by(f64::total_cmp);
+        let at = ends.len().saturating_sub(1).saturating_mul(9) / 10;
+        ends.get(at).copied()
+    }
+}
+
+/// How far an open paragraph's lines run, for its measure.
+#[derive(Default)]
+struct Measure {
+    lines: usize,
+    right: f64,
+}
+
+impl Measure {
+    fn add(&mut self, line: &GlyphLine) {
+        self.lines = self.lines.saturating_add(1);
+        self.extend(line);
+    }
+
+    /// A piece of a line already counted (a page number reached by a tab).
+    fn extend(&mut self, line: &GlyphLine) {
+        self.right = self.right.max(ink_right(line));
+    }
+
+    /// Narrows a paragraph of two or more lines to the width its lines ran
+    /// in the PDF. Its right edge was the page's rightmost ink, a banner's or
+    /// a footer's, and a paragraph set wider than its source re-wrapped
+    /// everywhere and pulled the following pages up
+    /// (`PDF-CORPUS-RUN-2026-10-19.md`). A point of slack stays, so a line
+    /// the source filled exactly is not pushed to the next one by rounding.
+    fn apply(&self, paragraph: &mut Paragraph, text_right: Option<f64>) {
+        let Some(text_right) = text_right else {
+            return;
+        };
+        if self.lines < 2 || !self.right.is_finite() {
+            return;
+        }
+        if matches!(
+            paragraph.props.alignment,
+            Some(Justification::Center | Justification::End)
+        ) {
+            return;
+        }
+        let gap = text_right - self.right - 1.0;
+        if gap <= 2.0 {
+            return;
+        }
+        let indentation = paragraph
+            .props
+            .indentation
+            .get_or_insert_with(Indentation::default);
+        if indentation.end.is_none() {
+            indentation.end = Some(Twips(to_twips(gap)));
+        }
+    }
 }
 
 /// Adds a tab stop at a piece's place on its line (at its end when it ends
@@ -756,6 +882,7 @@ fn push_paragraphs(
     page: usize,
     items: &std::collections::BTreeMap<usize, crate::lists::Item>,
     leaders: &[crate::leaders::Leader],
+    text_right: Option<f64>,
 ) {
     blocks.extend(
         paragraphs_of(
@@ -769,6 +896,7 @@ fn push_paragraphs(
             page,
             items,
             leaders,
+            text_right,
         )
         .into_iter()
         .map(Block::Paragraph),
@@ -802,6 +930,7 @@ fn table_block(
                         page,
                         &std::collections::BTreeMap::new(),
                         &[],
+                        None,
                     )
                 })
                 .collect()
@@ -1411,6 +1540,7 @@ fn flush_flow(
     report: &mut ConversionReport,
     page: usize,
     leaders: &[crate::leaders::Leader],
+    text_right: Option<f64>,
 ) {
     if flow.is_empty() {
         return;
@@ -1428,6 +1558,7 @@ fn flush_flow(
         page,
         &list_items,
         leaders,
+        text_right,
     );
     flow.clear();
 }
@@ -2388,6 +2519,64 @@ mod fragment_tests {
         lines.push(line_at(776.6, 9.12));
         let pitch = super::body_pitch(&lines);
         assert!((12.5..13.1).contains(&pitch), "pitch {pitch}");
+    }
+
+    /// The short-line edge is the one the line's own column keeps, not the
+    /// page's rightmost ink: a footer or the other column does not make a
+    /// full line look short.
+    #[test]
+    fn a_lines_edge_is_its_own_columns() {
+        let at = |x: f64, width: f64, baseline: f64| {
+            let mut line = run("text", x, width);
+            line.baseline = baseline;
+            line.glyphs[0].y = baseline;
+            line
+        };
+        let mut lines: Vec<GlyphLine> = (0..5)
+            .map(|row| at(50.0, 200.0, 100.0 + 12.0 * f64::from(row)))
+            .collect();
+        lines.extend((0..5).map(|row| at(300.0, 200.0, 100.0 + 12.0 * f64::from(row))));
+        // A footer far to the right.
+        lines.push(at(480.0, 60.0, 800.0));
+        let ends = super::LineEnds::of(&lines, 9.0);
+        assert_eq!(ends.edge_for(&lines[0]), Some(250.0));
+        assert_eq!(ends.edge_for(&lines[5]), Some(500.0));
+        let full = &lines[0];
+        let next = &lines[1];
+        assert!(!super::ended_short(full, next, ends.edge_for(full)));
+        assert!(
+            super::ended_short(full, next, Some(500.0)),
+            "the old, page-wide edge"
+        );
+    }
+
+    /// A paragraph of several lines is as wide as its lines ran, not as the
+    /// text area; a one-line paragraph and a centred one are left alone.
+    #[test]
+    fn a_paragraphs_measure_is_its_lines() {
+        let line = run("text", 72.0, 300.0);
+        let mut measure = super::Measure::default();
+        measure.add(&line);
+        measure.add(&line);
+        let mut paragraph = super::new_paragraph(&line, None, 72.0);
+        measure.apply(&mut paragraph, Some(540.0));
+        let end = paragraph
+            .props
+            .indentation
+            .and_then(|indentation| indentation.end)
+            .expect("an end indent");
+        // 540 - 372 - 1 pt of slack = 167 pt.
+        assert_eq!(end.0, 167 * 20);
+        let mut single = super::Measure::default();
+        single.add(&line);
+        let mut one = super::new_paragraph(&line, None, 72.0);
+        single.apply(&mut one, Some(540.0));
+        assert_eq!(
+            one.props
+                .indentation
+                .and_then(|indentation| indentation.end),
+            None
+        );
     }
 
     /// A gap that occurs once is not a pitch, and with none repeated the

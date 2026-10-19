@@ -1,0 +1,2962 @@
+{
+ "pdf__1_5_Async_js": {
+  "base": {
+   "ink": 0.8,
+   "ssim": 0.7326,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.8,
+   "ssim": 0.73,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.8,
+   "ssim": 0.7261,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__6686513": {
+  "base": {
+   "ink": 0.8661,
+   "ssim": 0.8998,
+   "pages": 5,
+   "src_pages": 4
+  },
+  "head-577dc6de": {
+   "ink": 0.8706,
+   "ssim": 0.8999,
+   "pages": 5,
+   "src_pages": 4
+  },
+  "head-final": {
+   "ink": 0.8706,
+   "ssim": 0.8999,
+   "pages": 5,
+   "src_pages": 4
+  }
+ },
+ "pdf__8_Tailwind": {
+  "base": {
+   "ink": 0.3494,
+   "ssim": 0.1661,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.3517,
+   "ssim": 0.1654,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.3517,
+   "ssim": 0.1654,
+   "pages": 2,
+   "src_pages": 5
+  }
+ },
+ "pdf__aenum": {
+  "base": {
+   "ink": 0.3578,
+   "ssim": 0.5836,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.2709,
+   "ssim": 0.6048,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.2692,
+   "ssim": 0.6044,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "pdf__architecture": {
+  "base": {
+   "ink": 0.9748,
+   "ssim": 0.9026,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.9743,
+   "ssim": 0.8938,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.9743,
+   "ssim": 0.8938,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "pdf__BinkforUnrealEngine": {
+  "base": {
+   "ink": 0.5652,
+   "ssim": 0.6233,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4292,
+   "ssim": 0.4573,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5493,
+   "ssim": 0.6507,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__Bv9ARM": {
+  "base": {
+   "ink": 0.4699,
+   "ssim": 0.7204,
+   "pages": 8,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5264,
+   "ssim": 0.7225,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5264,
+   "ssim": 0.7225,
+   "pages": 6,
+   "src_pages": 5
+  }
+ },
+ "pdf__CAPRA_PartnershipPlan": {
+  "base": {
+   "ink": 0.9661,
+   "ssim": 0.7748,
+   "pages": 2,
+   "src_pages": 2
+  },
+  "head-577dc6de": {
+   "ink": 0.9876,
+   "ssim": 0.82,
+   "pages": 2,
+   "src_pages": 2
+  },
+  "head-final": {
+   "ink": 0.9876,
+   "ssim": 0.82,
+   "pages": 2,
+   "src_pages": 2
+  }
+ },
+ "pdf__CAPRA_PlanPartenariat": {
+  "base": {
+   "ink": 0.423,
+   "ssim": 0.041,
+   "pages": 1,
+   "src_pages": 2
+  },
+  "head-577dc6de": {
+   "ink": 0.423,
+   "ssim": 0.041,
+   "pages": 1,
+   "src_pages": 2
+  },
+  "head-final": {
+   "ink": 0.423,
+   "ssim": 0.041,
+   "pages": 1,
+   "src_pages": 2
+  }
+ },
+ "pdf__Clio_Der_Sarkissian_Mitochondrial_DNA_in_Ancient_Human_Populations_of_Europ": {
+  "base": {
+   "ink": 0.3802,
+   "ssim": 0.5884,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5118,
+   "ssim": 0.6148,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5118,
+   "ssim": 0.6148,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "pdf__contract": {
+  "base": {
+   "ink": 1.0,
+   "ssim": 0.9985,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 1.0,
+   "ssim": 0.9985,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 1.0,
+   "ssim": 0.9985,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "pdf__CP_Citronus_Atnifraud_rules_1_": {
+  "base": {
+   "ink": 0.4186,
+   "ssim": 0.5028,
+   "pages": 3,
+   "src_pages": 3
+  },
+  "head-577dc6de": {
+   "ink": 0.4822,
+   "ssim": 0.5699,
+   "pages": 3,
+   "src_pages": 3
+  },
+  "head-final": {
+   "ink": 0.5429,
+   "ssim": 0.6052,
+   "pages": 3,
+   "src_pages": 3
+  }
+ },
+ "pdf__cpio_5": {
+  "base": {
+   "ink": 0.446,
+   "ssim": 0.5936,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4383,
+   "ssim": 0.4735,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4195,
+   "ssim": 0.4622,
+   "pages": 4,
+   "src_pages": 5
+  }
+ },
+ "pdf__DeviceN_Figure1": {
+  "base": {
+   "ink": 0.9789,
+   "ssim": 0.9667,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.5484,
+   "ssim": 0.7557,
+   "pages": 2,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.9789,
+   "ssim": 0.9668,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "pdf__Documentation_": {
+  "base": {
+   "ink": 0.8581,
+   "ssim": 0.6542,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.9291,
+   "ssim": 0.7436,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.9291,
+   "ssim": 0.7436,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "pdf__gemini_for_workspace_prompt_guide_october_2024_digital_final": {
+  "base": {
+   "ink": 0.5486,
+   "ssim": 0.6381,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5914,
+   "ssim": 0.6098,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5937,
+   "ssim": 0.6123,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__Ghostscript": {
+  "base": {
+   "ink": 0.7573,
+   "ssim": 0.9275,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.8377,
+   "ssim": 0.9448,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.8377,
+   "ssim": 0.9448,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__ghostscriptR_stack_RGBclr_CS6": {
+  "base": {
+   "ink": 0.9874,
+   "ssim": 0.9862,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.9874,
+   "ssim": 0.9862,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.9874,
+   "ssim": 0.9862,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "pdf__Google_Prompt_Engineering_v7": {
+  "base": {
+   "ink": 0.8755,
+   "ssim": 0.885,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.8423,
+   "ssim": 0.8149,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.8406,
+   "ssim": 0.8125,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__HSVNoiseIno": {
+  "base": {
+   "ink": 0.6228,
+   "ssim": 0.7401,
+   "pages": 5,
+   "src_pages": 4
+  },
+  "head-577dc6de": {
+   "ink": 0.7484,
+   "ssim": 0.777,
+   "pages": 5,
+   "src_pages": 4
+  },
+  "head-final": {
+   "ink": 0.7484,
+   "ssim": 0.777,
+   "pages": 5,
+   "src_pages": 4
+  }
+ },
+ "pdf__introToJs": {
+  "base": {
+   "ink": 0.6574,
+   "ssim": 0.9711,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.8896,
+   "ssim": 0.9759,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.8896,
+   "ssim": 0.9759,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__Izmene_i_dopune_Opštih_uslova_poslovanja_za_pružanje_platnih_usluga_preduze": {
+  "base": {
+   "ink": 0.5815,
+   "ssim": 0.5552,
+   "pages": 2,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.929,
+   "ssim": 0.7885,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.9386,
+   "ssim": 0.7872,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "pdf__language_center": {
+  "base": {
+   "ink": 0.3638,
+   "ssim": 0.4303,
+   "pages": 5,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.2861,
+   "ssim": 0.4777,
+   "pages": 5,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.2861,
+   "ssim": 0.4777,
+   "pages": 5,
+   "src_pages": 1
+  }
+ },
+ "pdf__life_level_up_guide_zh": {
+  "base": {
+   "ink": 0.4975,
+   "ssim": 0.7553,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5148,
+   "ssim": 0.7578,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5148,
+   "ssim": 0.7578,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__markerPlacementGuide": {
+  "base": {
+   "ink": 0.4682,
+   "ssim": 0.8115,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4623,
+   "ssim": 0.8039,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.3064,
+   "ssim": 0.8107,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "pdf__MotionWindIno": {
+  "base": {
+   "ink": 0.4879,
+   "ssim": 0.7182,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.6106,
+   "ssim": 0.7475,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.6134,
+   "ssim": 0.7488,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__mtree_5": {
+  "base": {
+   "ink": 0.3605,
+   "ssim": 0.6319,
+   "pages": 3,
+   "src_pages": 3
+  },
+  "head-577dc6de": {
+   "ink": 0.4401,
+   "ssim": 0.6725,
+   "pages": 3,
+   "src_pages": 3
+  },
+  "head-final": {
+   "ink": 0.4316,
+   "ssim": 0.6726,
+   "pages": 3,
+   "src_pages": 3
+  }
+ },
+ "pdf__Mugsar_Catalog_29v26_docx": {
+  "base": {
+   "ink": 0.4613,
+   "ssim": 0.6295,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4574,
+   "ssim": 0.6568,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5407,
+   "ssim": 0.6775,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__NeuroVision_One_pager_A_Ustin__Partners_RU_2026_05_07": {
+  "base": {
+   "ink": 0.9069,
+   "ssim": 0.7386,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.979,
+   "ssim": 0.863,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.979,
+   "ssim": 0.863,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "pdf__Object_Color": {
+  "base": {
+   "ink": 0.9768,
+   "ssim": 0.9734,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.9784,
+   "ssim": 0.9768,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.9784,
+   "ssim": 0.9768,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "pdf__RadialBlurIno": {
+  "base": {
+   "ink": 0.6112,
+   "ssim": 0.7868,
+   "pages": 3,
+   "src_pages": 3
+  },
+  "head-577dc6de": {
+   "ink": 0.6376,
+   "ssim": 0.7925,
+   "pages": 3,
+   "src_pages": 3
+  },
+  "head-final": {
+   "ink": 0.6363,
+   "ssim": 0.7913,
+   "pages": 3,
+   "src_pages": 3
+  }
+ },
+ "pdf__Račun_za_električnu_energiju_2_": {
+  "base": {
+   "ink": 0.0,
+   "ssim": 0.5163,
+   "pages": 2,
+   "src_pages": 2
+  },
+  "head-577dc6de": {
+   "ink": 0.9412,
+   "ssim": 0.8553,
+   "pages": 2,
+   "src_pages": 2
+  },
+  "head-final": {
+   "ink": 0.9412,
+   "ssim": 0.8553,
+   "pages": 2,
+   "src_pages": 2
+  }
+ },
+ "pdf__SolverCollectionOverview": {
+  "base": {
+   "ink": 0.7568,
+   "ssim": 0.9323,
+   "pages": 2,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.7794,
+   "ssim": 0.9335,
+   "pages": 2,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.7794,
+   "ssim": 0.9335,
+   "pages": 2,
+   "src_pages": 1
+  }
+ },
+ "pdf__SpinBlurIno": {
+  "base": {
+   "ink": 0.6319,
+   "ssim": 0.7924,
+   "pages": 3,
+   "src_pages": 3
+  },
+  "head-577dc6de": {
+   "ink": 0.6399,
+   "ssim": 0.7959,
+   "pages": 3,
+   "src_pages": 3
+  },
+  "head-final": {
+   "ink": 0.6399,
+   "ssim": 0.7959,
+   "pages": 3,
+   "src_pages": 3
+  }
+ },
+ "pdf__tar_5": {
+  "base": {
+   "ink": 0.4777,
+   "ssim": 0.4922,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5937,
+   "ssim": 0.5473,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.589,
+   "ssim": 0.5367,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__Tencent_Hunyuan3D_2_0": {
+  "base": {
+   "ink": 0.7415,
+   "ssim": 0.5863,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.7234,
+   "ssim": 0.618,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.7222,
+   "ssim": 0.6182,
+   "pages": 6,
+   "src_pages": 5
+  }
+ },
+ "pdf__TERMS_CONDITIONS": {
+  "base": {
+   "ink": 0.4418,
+   "ssim": 0.4436,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4906,
+   "ssim": 0.4551,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5464,
+   "ssim": 0.4754,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__text_graph_image_cmyk_rgb": {
+  "base": {
+   "ink": 0.9545,
+   "ssim": 0.8305,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.9545,
+   "ssim": 0.8305,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.9545,
+   "ssim": 0.8305,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "pdf__UCIMO_SRPSKI_1": {
+  "base": {
+   "ink": 0.132,
+   "ssim": 0.3818,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.132,
+   "ssim": 0.3818,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.132,
+   "ssim": 0.3818,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "pdf__UCIMO_SRPSKI_2_1_": {
+  "base": {
+   "ink": 0.3127,
+   "ssim": 0.3753,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.3127,
+   "ssim": 0.3749,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.3127,
+   "ssim": 0.3755,
+   "pages": 6,
+   "src_pages": 5
+  }
+ },
+ "pdf__uncoalescedGlobalAccesses": {
+  "base": {
+   "ink": 0.9783,
+   "ssim": 0.8982,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.8854,
+   "ssim": 0.8628,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9006,
+   "ssim": 0.8725,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__USER_GUIDE": {
+  "base": {
+   "ink": 0.3342,
+   "ssim": 0.5575,
+   "pages": 5,
+   "src_pages": 4
+  },
+  "head-577dc6de": {
+   "ink": 0.3008,
+   "ssim": 0.5679,
+   "pages": 5,
+   "src_pages": 4
+  },
+  "head-final": {
+   "ink": 0.3014,
+   "ssim": 0.5684,
+   "pages": 5,
+   "src_pages": 4
+  }
+ },
+ "pdf__Week_2_2_Node_js_runtime_HTTP": {
+  "base": {
+   "ink": 0.9987,
+   "ssim": 0.939,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.9988,
+   "ssim": 0.9465,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9988,
+   "ssim": 0.9474,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__Балашова_М_Я_Большой_альбом_для_рукоделия_2010": {
+  "base": {
+   "ink": 0.4,
+   "ssim": 0.6532,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4,
+   "ssim": 0.6394,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4,
+   "ssim": 0.6394,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "pdf__Вольтман_Л_Учение_о_расах_1905": {
+  "base": {
+   "ink": 0.4986,
+   "ssim": 0.2044,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.489,
+   "ssim": 0.1962,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4863,
+   "ssim": 0.1973,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "pdf__Казе_Кобо_277_ярких_узоров_для_вязания_на_спицах_З_Р_Бестселлер_из_Японии_2": {
+  "base": {
+   "ink": 0.0299,
+   "ssim": 0.1812,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.0299,
+   "ssim": 0.1812,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.0299,
+   "ssim": 0.1812,
+   "pages": 2,
+   "src_pages": 5
+  }
+ },
+ "pdf__Пинтосевич_И_10_заповедей_личной_эффективности_10_заповедей_2007": {
+  "base": {
+   "ink": 0.3919,
+   "ssim": 0.6088,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.6635,
+   "ssim": 0.7147,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.7202,
+   "ssim": 0.7403,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "pdf__Рудейко_В_Христос_посеред_нас_2015": {
+  "base": {
+   "ink": 0.5493,
+   "ssim": 0.7355,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5337,
+   "ssim": 0.7817,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5337,
+   "ssim": 0.7817,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__10378": {
+  "base": {
+   "ink": 0.096,
+   "ssim": 0.0649,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.096,
+   "ssim": 0.0649,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.096,
+   "ssim": 0.0649,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__20260604_896437years": {
+  "base": {
+   "ink": 0.3557,
+   "ssim": 0.5167,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.3424,
+   "ssim": 0.5108,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.341,
+   "ssim": 0.5102,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__205_2026_1": {
+  "base": {
+   "ink": 0.4635,
+   "ssim": 0.6742,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4997,
+   "ssim": 0.686,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4998,
+   "ssim": 0.6861,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__31_001_202609": {
+  "base": {
+   "ink": 0.1264,
+   "ssim": 0.0699,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.1264,
+   "ssim": 0.0699,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.1264,
+   "ssim": 0.0699,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__7_1951_202609": {
+  "base": {
+   "ink": 0.1436,
+   "ssim": 0.0473,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.1436,
+   "ssim": 0.0473,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.1436,
+   "ssim": 0.0473,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__abhandlungvonder00mend_0": {
+  "base": {
+   "ink": 0.9723,
+   "ssim": 0.9166,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.9723,
+   "ssim": 0.9166,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9723,
+   "ssim": 0.9166,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__absoluteunlawful00laww_0": {
+  "base": {
+   "ink": 0.2676,
+   "ssim": 0.3532,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.2676,
+   "ssim": 0.3532,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.2676,
+   "ssim": 0.3532,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__allen_thomson_address_plymouth_1877_english": {
+  "base": {
+   "ink": 0.5804,
+   "ssim": 0.6585,
+   "pages": 10,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5328,
+   "ssim": 0.6513,
+   "pages": 10,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5328,
+   "ssim": 0.6513,
+   "pages": 10,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__ANA_DIG_COL_FA_GPN_022": {
+  "base": {
+   "ink": 0.3456,
+   "ssim": 0.4692,
+   "pages": 2,
+   "src_pages": 3
+  },
+  "head-577dc6de": {
+   "ink": 0.3464,
+   "ssim": 0.4701,
+   "pages": 2,
+   "src_pages": 3
+  },
+  "head-final": {
+   "ink": 0.3464,
+   "ssim": 0.4701,
+   "pages": 2,
+   "src_pages": 3
+  }
+ },
+ "CC0_PDF__arnobiana00brak": {
+  "base": {
+   "ink": 0.4,
+   "ssim": 0.5226,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4,
+   "ssim": 0.5226,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4,
+   "ssim": 0.5226,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__autorisation_du_proprietaire_srm_casablanca_settat": {
+  "base": {
+   "ink": 0.9835,
+   "ssim": 0.8552,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.9835,
+   "ssim": 0.8552,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.9835,
+   "ssim": 0.8552,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "CC0_PDF__bara_kanjuruhan": {
+  "base": {
+   "ink": 0.1917,
+   "ssim": 0.008,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.1917,
+   "ssim": 0.008,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.1917,
+   "ssim": 0.008,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__bautizo_miguel_garcia_alvarez": {
+  "base": {
+   "ink": 0.9998,
+   "ssim": 0.632,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.9998,
+   "ssim": 0.632,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.9998,
+   "ssim": 0.632,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "CC0_PDF__BNA_DIG_NEERLANDIA_1905_CURACAO": {
+  "base": {
+   "ink": 0.5041,
+   "ssim": 0.3491,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5041,
+   "ssim": 0.3491,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5041,
+   "ssim": 0.3491,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__chakra_ji_ke_adhytamik_lekho_ka_sanklan": {
+  "base": {
+   "ink": 0.0978,
+   "ssim": 0.6118,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.0993,
+   "ssim": 0.605,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.0993,
+   "ssim": 0.605,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__dairy_management_system_project_report": {
+  "base": {
+   "ink": 0.6858,
+   "ssim": 0.6324,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.7592,
+   "ssim": 0.6458,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.7592,
+   "ssim": 0.6458,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__daubree_observations_meteorites_orgueil_1864_french": {
+  "base": {
+   "ink": 0.2734,
+   "ssim": 0.7132,
+   "pages": 10,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.396,
+   "ssim": 0.7122,
+   "pages": 8,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.396,
+   "ssim": 0.7122,
+   "pages": 8,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__dazai_osamu_hirosaki_high_school_notebook_chemistry_pages_only": {
+  "base": {
+   "ink": 0.1311,
+   "ssim": 0.1205,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.1311,
+   "ssim": 0.1205,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.1311,
+   "ssim": 0.1205,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__defunsion_civil_francisco_neve_olivos_202509": {
+  "base": {
+   "ink": 0.9997,
+   "ssim": 0.7147,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.9997,
+   "ssim": 0.7147,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.9997,
+   "ssim": 0.7147,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "CC0_PDF__den_levende_jungle_jim_corbett": {
+  "base": {
+   "ink": 0.4563,
+   "ssim": 0.7255,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5895,
+   "ssim": 0.7619,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5897,
+   "ssim": 0.762,
+   "pages": 6,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__detheologianatur00holb": {
+  "base": {
+   "ink": 0.9981,
+   "ssim": 0.9431,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.9981,
+   "ssim": 0.9431,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9981,
+   "ssim": 0.9431,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__digitami_LO10434268": {
+  "base": {
+   "ink": 0.645,
+   "ssim": 0.4776,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.645,
+   "ssim": 0.4776,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.645,
+   "ssim": 0.4776,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__digitami_PUV0776055": {
+  "base": {
+   "ink": 0.5137,
+   "ssim": 0.7183,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5137,
+   "ssim": 0.7183,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5137,
+   "ssim": 0.7183,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__drammen_rutekart_1934_2023": {
+  "base": {
+   "ink": 0.07,
+   "ssim": 0.1763,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.0705,
+   "ssim": 0.1763,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.0705,
+   "ssim": 0.1763,
+   "pages": 2,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__ecclesiasticalco00unse": {
+  "base": {
+   "ink": 0.9908,
+   "ssim": 0.9146,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.9908,
+   "ssim": 0.9146,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9908,
+   "ssim": 0.9146,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__einweysechristli00luth": {
+  "base": {
+   "ink": 0.9947,
+   "ssim": 0.9032,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.9947,
+   "ssim": 0.9032,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9947,
+   "ssim": 0.9032,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__exp_93_esc_180": {
+  "base": {
+   "ink": 0.0823,
+   "ssim": 0.0919,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.0823,
+   "ssim": 0.0919,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.0823,
+   "ssim": 0.0919,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__geneseeFarmer_18340823": {
+  "base": {
+   "ink": 0.0,
+   "ssim": 0.1205,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.0,
+   "ssim": 0.1205,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.0,
+   "ssim": 0.1205,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__graduatetheologi00robe_0": {
+  "base": {
+   "ink": 0.9863,
+   "ssim": 0.8994,
+   "pages": 4,
+   "src_pages": 4
+  },
+  "head-577dc6de": {
+   "ink": 0.9863,
+   "ssim": 0.8994,
+   "pages": 4,
+   "src_pages": 4
+  },
+  "head-final": {
+   "ink": 0.9863,
+   "ssim": 0.8994,
+   "pages": 4,
+   "src_pages": 4
+  }
+ },
+ "CC0_PDF__graduatetheologi00unse_38": {
+  "base": {
+   "ink": 0.9988,
+   "ssim": 0.9122,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.9988,
+   "ssim": 0.9122,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9988,
+   "ssim": 0.9122,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__graduatetheologi00wsan": {
+  "base": {
+   "ink": 0.9987,
+   "ssim": 0.9249,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.9987,
+   "ssim": 0.9249,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9987,
+   "ssim": 0.9249,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__gtuislamicmanuscript72": {
+  "base": {
+   "ink": 0.4938,
+   "ssim": 0.4453,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4938,
+   "ssim": 0.4453,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4938,
+   "ssim": 0.4453,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__gtuislamicmanuscript80": {
+  "base": {
+   "ink": 0.7188,
+   "ssim": 0.5829,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.7188,
+   "ssim": 0.5829,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.7188,
+   "ssim": 0.5829,
+   "pages": 4,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__guigniaut_venus_paphos_temple_1827_french": {
+  "base": {
+   "ink": 0.7092,
+   "ssim": 0.4489,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5214,
+   "ssim": 0.4155,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5315,
+   "ssim": 0.4154,
+   "pages": 4,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__gyrp_natak_kareou_band_by_hari_krishan_koul_urdu": {
+  "base": {
+   "ink": 0.9973,
+   "ssim": 0.9134,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.9973,
+   "ssim": 0.9134,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9973,
+   "ssim": 0.9134,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__hbun_nagar_udase_historical_play_in_kashmiri_by_moti_laal_kemmu_urdu": {
+  "base": {
+   "ink": 0.998,
+   "ssim": 0.9446,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.998,
+   "ssim": 0.9446,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.998,
+   "ssim": 0.9446,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__helmholtz_entstehung_planetensystems_1871_german": {
+  "base": {
+   "ink": 0.4756,
+   "ssim": 0.6219,
+   "pages": 10,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4468,
+   "ssim": 0.6275,
+   "pages": 9,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4468,
+   "ssim": 0.6275,
+   "pages": 9,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__informe_de_tomas_fabregas": {
+  "base": {
+   "ink": 0.9984,
+   "ssim": 0.8272,
+   "pages": 4,
+   "src_pages": 4
+  },
+  "head-577dc6de": {
+   "ink": 0.9985,
+   "ssim": 0.8277,
+   "pages": 4,
+   "src_pages": 4
+  },
+  "head-final": {
+   "ink": 0.9985,
+   "ssim": 0.8277,
+   "pages": 4,
+   "src_pages": 4
+  }
+ },
+ "CC0_PDF__iris_angeles_the_social_archive": {
+  "base": {
+   "ink": 0.531,
+   "ssim": 0.4913,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4477,
+   "ssim": 0.4521,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5066,
+   "ssim": 0.5016,
+   "pages": 6,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__its_the_economy_anger_as_the_gradient": {
+  "base": {
+   "ink": 0.5007,
+   "ssim": 0.5197,
+   "pages": 9,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4902,
+   "ssim": 0.5549,
+   "pages": 9,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4897,
+   "ssim": 0.5473,
+   "pages": 9,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__j_lawrence_smith_researches_carbon_meteorites_1876_english": {
+  "base": {
+   "ink": 0.5237,
+   "ssim": 0.643,
+   "pages": 8,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.475,
+   "ssim": 0.6494,
+   "pages": 8,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.475,
+   "ssim": 0.6494,
+   "pages": 8,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__karl_mohr_natur_entstehungsart_meteorite_1875_german": {
+  "base": {
+   "ink": 0.4585,
+   "ssim": 0.6238,
+   "pages": 10,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4412,
+   "ssim": 0.6278,
+   "pages": 10,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4412,
+   "ssim": 0.6278,
+   "pages": 10,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__kholasat_202403": {
+  "base": {
+   "ink": 0.4,
+   "ssim": 0.2896,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4,
+   "ssim": 0.2896,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4,
+   "ssim": 0.2896,
+   "pages": 2,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__kritischeuntersu00laqu": {
+  "base": {
+   "ink": 0.2167,
+   "ssim": 0.3187,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.2167,
+   "ssim": 0.3187,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.2167,
+   "ssim": 0.3187,
+   "pages": 2,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__kuran_acisindan_kuresel_afetler": {
+  "base": {
+   "ink": 0.4259,
+   "ssim": 0.4527,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4807,
+   "ssim": 0.5989,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.519,
+   "ssim": 0.6113,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__LO11172995": {
+  "base": {
+   "ink": 0.3791,
+   "ssim": 0.4415,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.3791,
+   "ssim": 0.4415,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.3791,
+   "ssim": 0.4415,
+   "pages": 4,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__local_gov_reform_inheritance_of_infrastructure_gaps_august_2026": {
+  "base": {
+   "ink": 0.7151,
+   "ssim": 0.5095,
+   "pages": 2,
+   "src_pages": 2
+  },
+  "head-577dc6de": {
+   "ink": 0.6699,
+   "ssim": 0.5793,
+   "pages": 2,
+   "src_pages": 2
+  },
+  "head-final": {
+   "ink": 0.6723,
+   "ssim": 0.5801,
+   "pages": 2,
+   "src_pages": 2
+  }
+ },
+ "CC0_PDF__mae_jose_de_alencar": {
+  "base": {
+   "ink": 0.2,
+   "ssim": 0.0623,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.2,
+   "ssim": 0.0623,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.2,
+   "ssim": 0.0623,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__manuel_de_berbere_marocain_dialecte_chleuh_dialecte_rifain_justinard": {
+  "base": {
+   "ink": 0.3362,
+   "ssim": 0.1642,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.3362,
+   "ssim": 0.1642,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.3362,
+   "ssim": 0.1642,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__mata_e_hayat_ka_aakhri_raaz_20260809": {
+  "base": {
+   "ink": 0.5705,
+   "ssim": 0.918,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5671,
+   "ssim": 0.9161,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5671,
+   "ssim": 0.9161,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__Metricheskaya_kniga_Uglovskoy_tserkvi_za_1922_god_111_str_206_78_Mb": {
+  "base": {
+   "ink": 0.0149,
+   "ssim": 0.3157,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.0149,
+   "ssim": 0.3157,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.0149,
+   "ssim": 0.3157,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__mil_ii_hindi_book": {
+  "base": {
+   "ink": 0.021,
+   "ssim": 0.0717,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.021,
+   "ssim": 0.0717,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.021,
+   "ssim": 0.0717,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__minister_finance_willis_transparency_record_bank_lending_older_housing_": {
+  "base": {
+   "ink": 0.68,
+   "ssim": 0.5423,
+   "pages": 3,
+   "src_pages": 3
+  },
+  "head-577dc6de": {
+   "ink": 0.4363,
+   "ssim": 0.2803,
+   "pages": 2,
+   "src_pages": 3
+  },
+  "head-final": {
+   "ink": 0.4497,
+   "ssim": 0.3087,
+   "pages": 2,
+   "src_pages": 3
+  }
+ },
+ "CC0_PDF__missus_candotti": {
+  "base": {
+   "ink": 0.9853,
+   "ssim": 0.8087,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.9849,
+   "ssim": 0.8128,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9849,
+   "ssim": 0.8128,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__mizimrat_haarets_american_national_songs_in_hebrew_gerson_rosenzweig_18": {
+  "base": {
+   "ink": 0.0,
+   "ssim": 0.2513,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.0,
+   "ssim": 0.2513,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.0,
+   "ssim": 0.2513,
+   "pages": 2,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__monografia_hd_monasterio_puig_leopoldo": {
+  "base": {
+   "ink": 0.4214,
+   "ssim": 0.4748,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4256,
+   "ssim": 0.5185,
+   "pages": 8,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4256,
+   "ssim": 0.5185,
+   "pages": 8,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__MS_ARA_954": {
+  "base": {
+   "ink": 0.3965,
+   "ssim": 0.258,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.3965,
+   "ssim": 0.258,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.3965,
+   "ssim": 0.258,
+   "pages": 2,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__najda_045_0012": {
+  "base": {
+   "ink": 0.1968,
+   "ssim": 0.0856,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.1968,
+   "ssim": 0.0856,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.1968,
+   "ssim": 0.0856,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__nhom_tran_hoang_nhom_4_lich_su_va_su_phat_trien_khoa_thong_tin_thu_vien": {
+  "base": {
+   "ink": 0.5953,
+   "ssim": 0.5303,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5966,
+   "ssim": 0.4887,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5966,
+   "ssim": 0.4887,
+   "pages": 4,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__NL_HaNA_1_05_13_02_004": {
+  "base": {
+   "ink": 0.795,
+   "ssim": 0.68,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.9996,
+   "ssim": 0.8157,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9996,
+   "ssim": 0.8157,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__november_1904_socialist_standard": {
+  "base": {
+   "ink": 0.0,
+   "ssim": 0.1393,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.0,
+   "ssim": 0.1393,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.0,
+   "ssim": 0.1393,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__open_data_portal": {
+  "base": {
+   "ink": 0.3499,
+   "ssim": 0.6437,
+   "pages": 5,
+   "src_pages": 4
+  },
+  "head-577dc6de": {
+   "ink": 0.3405,
+   "ssim": 0.7171,
+   "pages": 6,
+   "src_pages": 4
+  },
+  "head-final": {
+   "ink": 0.3432,
+   "ssim": 0.7187,
+   "pages": 6,
+   "src_pages": 4
+  }
+ },
+ "CC0_PDF__peckolt_historia_plantas_medicinaes_1888": {
+  "base": {
+   "ink": 0.4,
+   "ssim": 0.7845,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4,
+   "ssim": 0.7845,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4,
+   "ssim": 0.7845,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__pp_4_023": {
+  "base": {
+   "ink": 0.4753,
+   "ssim": 0.293,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4753,
+   "ssim": 0.293,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4753,
+   "ssim": 0.293,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__pp_4_047": {
+  "base": {
+   "ink": 0.4995,
+   "ssim": 0.4823,
+   "pages": 1,
+   "src_pages": 2
+  },
+  "head-577dc6de": {
+   "ink": 0.4995,
+   "ssim": 0.4823,
+   "pages": 1,
+   "src_pages": 2
+  },
+  "head-final": {
+   "ink": 0.4995,
+   "ssim": 0.4823,
+   "pages": 1,
+   "src_pages": 2
+  }
+ },
+ "CC0_PDF__pre_mortem_of_prohibitive_alignment": {
+  "base": {
+   "ink": 0.4385,
+   "ssim": 0.3943,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5726,
+   "ssim": 0.5673,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4492,
+   "ssim": 0.472,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__questionariointermq": {
+  "base": {
+   "ink": 0.2825,
+   "ssim": 0.8001,
+   "pages": 8,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.2931,
+   "ssim": 0.7996,
+   "pages": 8,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.2931,
+   "ssim": 0.7996,
+   "pages": 8,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__retalhos_de_outros_retalhos_a_regressao_infinita_do_acumulo_de_sentido": {
+  "base": {
+   "ink": 0.1356,
+   "ssim": 0.189,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.2334,
+   "ssim": 0.3163,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.2341,
+   "ssim": 0.3124,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__revista_el_zurriago_21_05_1851": {
+  "base": {
+   "ink": 0.7185,
+   "ssim": 0.5821,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.7186,
+   "ssim": 0.5944,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.7267,
+   "ssim": 0.5994,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__RGIA_1865_Pskovskaya_guberniya_Fasady_Kremlevskoy_bashni_v_gor_Pskove": {
+  "base": {
+   "ink": 0.2828,
+   "ssim": 0.3443,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.2828,
+   "ssim": 0.3443,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.2828,
+   "ssim": 0.3443,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__RGO_1904_Sp_morsk_office_01_Str_sostav": {
+  "base": {
+   "ink": 0.9999,
+   "ssim": 0.9632,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.9999,
+   "ssim": 0.9632,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.9999,
+   "ssim": 0.9632,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__RGVIA_1917_0408_001_14792_RGVIA_F408_Op1_Tom_01_Div_oboz_107_PD": {
+  "base": {
+   "ink": 0.3894,
+   "ssim": 0.3956,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.3894,
+   "ssim": 0.3956,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.3894,
+   "ssim": 0.3956,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__RGVIA_1917_0408_001_14847_14849_14850_RGVIA_F408_Op1_Tom_02": {
+  "base": {
+   "ink": 0.3962,
+   "ssim": 0.4397,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.3962,
+   "ssim": 0.4397,
+   "pages": 3,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.3962,
+   "ssim": 0.4397,
+   "pages": 3,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__ricardo_essay_on_profits_1815": {
+  "base": {
+   "ink": 0.1966,
+   "ssim": 0.7243,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.1966,
+   "ssim": 0.7243,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.1966,
+   "ssim": 0.7243,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__ryukyu_people_separate_from_the_japanese": {
+  "base": {
+   "ink": 0.6602,
+   "ssim": 0.7787,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.6787,
+   "ssim": 0.7815,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.6786,
+   "ssim": 0.7817,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__sb_1_n_277_1912_images": {
+  "base": {
+   "ink": 0.715,
+   "ssim": 0.6974,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.715,
+   "ssim": 0.6974,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.715,
+   "ssim": 0.6974,
+   "pages": 4,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__sb_1_n_277_1915_images": {
+  "base": {
+   "ink": 0.6733,
+   "ssim": 0.6487,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.6733,
+   "ssim": 0.6487,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.6733,
+   "ssim": 0.6487,
+   "pages": 4,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__schreiben_von_heinz_hinkel_an_julius_schaub_06_08_1943": {
+  "base": {
+   "ink": 0.5,
+   "ssim": 0.2488,
+   "pages": 1,
+   "src_pages": 2
+  },
+  "head-577dc6de": {
+   "ink": 0.5,
+   "ssim": 0.2488,
+   "pages": 1,
+   "src_pages": 2
+  },
+  "head-final": {
+   "ink": 0.5,
+   "ssim": 0.2488,
+   "pages": 1,
+   "src_pages": 2
+  }
+ },
+ "CC0_PDF__schreiben_von_heinz_hinkel_an_julius_schaub_16_10_1944": {
+  "base": {
+   "ink": 0.4999,
+   "ssim": 0.3226,
+   "pages": 1,
+   "src_pages": 2
+  },
+  "head-577dc6de": {
+   "ink": 0.4999,
+   "ssim": 0.3226,
+   "pages": 1,
+   "src_pages": 2
+  },
+  "head-final": {
+   "ink": 0.4999,
+   "ssim": 0.3226,
+   "pages": 1,
+   "src_pages": 2
+  }
+ },
+ "CC0_PDF__seder_hagaddah_shel_pesah_nayen_velt_magid_1888": {
+  "base": {
+   "ink": 0.1309,
+   "ssim": 0.0648,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.1309,
+   "ssim": 0.0648,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.1309,
+   "ssim": 0.0648,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__seder_tefilah_after_a_failed_assassination_of_king_george_iii": {
+  "base": {
+   "ink": 0.0225,
+   "ssim": 0.0759,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.0225,
+   "ssim": 0.0759,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.0225,
+   "ssim": 0.0759,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__seidenstucker_karman": {
+  "base": {
+   "ink": 0.14,
+   "ssim": 0.0481,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.14,
+   "ssim": 0.0481,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.14,
+   "ssim": 0.0481,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__serat_sabda_mula_muli_diterbitkan_oleh_ratu_agung_sentra_nusantara_ratu": {
+  "base": {
+   "ink": 0.3302,
+   "ssim": 0.3143,
+   "pages": 1,
+   "src_pages": 3
+  },
+  "head-577dc6de": {
+   "ink": 0.3564,
+   "ssim": 0.5592,
+   "pages": 2,
+   "src_pages": 3
+  },
+  "head-final": {
+   "ink": 0.3745,
+   "ssim": 0.5649,
+   "pages": 2,
+   "src_pages": 3
+  }
+ },
+ "CC0_PDF__skyward_202608": {
+  "base": {
+   "ink": 0.2,
+   "ssim": 0.1775,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.2,
+   "ssim": 0.1775,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.2,
+   "ssim": 0.1775,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__soderblom_1910_uppenbarelse": {
+  "base": {
+   "ink": 0.1246,
+   "ssim": 0.0743,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.1246,
+   "ssim": 0.0743,
+   "pages": 1,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.1246,
+   "ssim": 0.0743,
+   "pages": 1,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__soderblom_1922_tre_livsformer": {
+  "base": {
+   "ink": 0.3847,
+   "ssim": 0.4828,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.391,
+   "ssim": 0.4852,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.391,
+   "ssim": 0.4852,
+   "pages": 6,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__strategy_restoring_engineering_baselines_july_2026": {
+  "base": {
+   "ink": 0.3369,
+   "ssim": 0.4458,
+   "pages": 5,
+   "src_pages": 3
+  },
+  "head-577dc6de": {
+   "ink": 0.6757,
+   "ssim": 0.6094,
+   "pages": 4,
+   "src_pages": 3
+  },
+  "head-final": {
+   "ink": 0.6761,
+   "ssim": 0.6096,
+   "pages": 4,
+   "src_pages": 3
+  }
+ },
+ "CC0_PDF__swiat_gier_komputerowych_2003_07_08": {
+  "base": {
+   "ink": 0.999,
+   "ssim": 0.8058,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.999,
+   "ssim": 0.8058,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.999,
+   "ssim": 0.8058,
+   "pages": 5,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__the_institutionalisation_of_short_termism_in_new_zealand": {
+  "base": {
+   "ink": 0.7189,
+   "ssim": 0.5399,
+   "pages": 4,
+   "src_pages": 4
+  },
+  "head-577dc6de": {
+   "ink": 0.7156,
+   "ssim": 0.5422,
+   "pages": 4,
+   "src_pages": 4
+  },
+  "head-final": {
+   "ink": 0.7176,
+   "ssim": 0.5427,
+   "pages": 4,
+   "src_pages": 4
+  }
+ },
+ "CC0_PDF__throneless_orikami_series_part_1": {
+  "base": {
+   "ink": 0.2686,
+   "ssim": 0.3093,
+   "pages": 2,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.3291,
+   "ssim": 0.5603,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.3519,
+   "ssim": 0.5685,
+   "pages": 4,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__TO01116898": {
+  "base": {
+   "ink": 0.7965,
+   "ssim": 0.5458,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.7965,
+   "ssim": 0.5458,
+   "pages": 4,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.7965,
+   "ssim": 0.5458,
+   "pages": 4,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__transiro_202509": {
+  "base": {
+   "ink": 0.8188,
+   "ssim": 0.8157,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.8188,
+   "ssim": 0.8157,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.8188,
+   "ssim": 0.8157,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__tratado_sobre_a_imortalidade_da_alma_edicao_de_estudo": {
+  "base": {
+   "ink": 0.7771,
+   "ssim": 0.4345,
+   "pages": 5,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.5606,
+   "ssim": 0.3661,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.5606,
+   "ssim": 0.3661,
+   "pages": 6,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__universal_descaler_for_boiler_turbine": {
+  "base": {
+   "ink": 0.699,
+   "ssim": 0.6621,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-577dc6de": {
+   "ink": 0.7592,
+   "ssim": 0.7022,
+   "pages": 1,
+   "src_pages": 1
+  },
+  "head-final": {
+   "ink": 0.9989,
+   "ssim": 0.9589,
+   "pages": 1,
+   "src_pages": 1
+  }
+ },
+ "CC0_PDF__verne_ballon": {
+  "base": {
+   "ink": 0.3007,
+   "ssim": 0.7743,
+   "pages": 8,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.2943,
+   "ssim": 0.775,
+   "pages": 8,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.2834,
+   "ssim": 0.7753,
+   "pages": 8,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__verne_ile": {
+  "base": {
+   "ink": 0.2473,
+   "ssim": 0.8358,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.2617,
+   "ssim": 0.8372,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.2625,
+   "ssim": 0.8369,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__verne_tour_monde": {
+  "base": {
+   "ink": 0.2593,
+   "ssim": 0.7616,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.2761,
+   "ssim": 0.7666,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.2756,
+   "ssim": 0.7684,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__volume_5_the_soul_suffering_the_bigger_picture": {
+  "base": {
+   "ink": 0.3445,
+   "ssim": 0.6672,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4495,
+   "ssim": 0.6962,
+   "pages": 7,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4495,
+   "ssim": 0.6962,
+   "pages": 7,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__walter_flight_meteorites_origin_life_1877_english": {
+  "base": {
+   "ink": 0.5163,
+   "ssim": 0.6161,
+   "pages": 11,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4922,
+   "ssim": 0.6278,
+   "pages": 10,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4922,
+   "ssim": 0.6278,
+   "pages": 10,
+   "src_pages": 5
+  }
+ },
+ "CC0_PDF__wrih_1737": {
+  "base": {
+   "ink": 0.4642,
+   "ssim": 0.5393,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-577dc6de": {
+   "ink": 0.4711,
+   "ssim": 0.543,
+   "pages": 6,
+   "src_pages": 5
+  },
+  "head-final": {
+   "ink": 0.4711,
+   "ssim": 0.543,
+   "pages": 6,
+   "src_pages": 5
+  }
+ }
+}
