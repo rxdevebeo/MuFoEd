@@ -31,7 +31,7 @@ const MAX_PATH_POINTS: usize = 20_000;
 
 /// Page-anchored shapes for the vectors this page did not turn into table rules.
 pub(crate) fn blocks_for(page: &PdfPage, report: &mut ConversionReport) -> Vec<Block> {
-    placed_blocks_for(page, report, true)
+    placed_blocks_for(page, report, true, &std::collections::BTreeSet::new())
         .into_iter()
         .map(|(_, block)| block)
         .collect()
@@ -40,17 +40,22 @@ pub(crate) fn blocks_for(page: &PdfPage, report: &mut ConversionReport) -> Vec<B
 /// [`blocks_for`], each block with the top of its shape in points from the
 /// page's top (for placing it in the reading order). `rules`: whether thin
 /// rules are drawn as well, which a page whose table pass found tables
-/// leaves to its tables' borders.
+/// leaves to its tables' borders. `skip`: the items another pass drew.
 pub(crate) fn placed_blocks_for(
     page: &PdfPage,
     report: &mut ConversionReport,
     rules: bool,
+    skip: &std::collections::BTreeSet<usize>,
 ) -> Vec<(f64, Block)> {
     let mut blocks = Vec::new();
     for (index, item) in page.items().iter().enumerate() {
         let Item::Vector(vector) = item else {
             continue;
         };
+        // Drawn by something else already: a tab's leader.
+        if skip.contains(&index) {
+            continue;
+        }
         match rectangle(vector, page.geometry.height) {
             // The PDF renderer paints the page itself as a white rectangle.
             // That canvas is the page, not a drawing, so it is not a second

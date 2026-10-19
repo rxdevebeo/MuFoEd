@@ -234,3 +234,52 @@ fn character_spacing_the_width_of_a_space_is_a_space() {
         .collect();
     assert_eq!(paragraphs, ["collects any number of files"]);
 }
+
+/// A contents line's dots drawn as a dotted path under the baseline are the
+/// leader of the tab to its page number, not a shape anchored to the page that
+/// stays put when the text moves.
+#[test]
+fn a_dotted_path_to_a_page_number_is_the_tabs_leader() {
+    use strict_ooxml_wml::model::values::TabLeader;
+    let mut pdf = PdfBuilder::new();
+    let widths = vec!["500"; 95].join(" ");
+    let font = pdf.object(format!(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+         /FirstChar 32 /LastChar 126 /Widths [{widths}] >>"
+    ));
+    pdf.set_media_box([0, 0, 612, 792]);
+    let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+    // "Introduction" ends at 132; the number stands at 500; the dots run
+    // between them, 1.8 pt under the baseline, as Google Docs draws them.
+    let stream = "BT /F1 10 Tf 72 700 Td (Introduction) Tj ET\n\
+                  BT /F1 10 Tf 500 700 Td (6) Tj ET\n\
+                  BT /F1 10 Tf 72 600 Td (After the contents) Tj ET\n\
+                  0.5 w 1 J [0 1.5] 0 d 135 698.2 m 498 698.2 l S";
+    pdf.page_with(stream.as_bytes(), &resources);
+    let bytes = pdf.build();
+    let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+    let converted =
+        convert(&mut reader, &PdfOptions::default().mode(Mode::Semantic)).expect("convert");
+    let paragraphs: Vec<_> = converted
+        .document
+        .body
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Paragraph(paragraph) => Some(paragraph),
+            _ => None,
+        })
+        .collect();
+    let leaders: Vec<_> = paragraphs
+        .iter()
+        .flat_map(|paragraph| paragraph.props.tabs.iter())
+        .filter_map(|tab| tab.leader)
+        .collect();
+    assert_eq!(leaders, [TabLeader::Dot]);
+    let shapes = paragraphs
+        .iter()
+        .flat_map(|paragraph| paragraph.inlines.iter())
+        .filter(|inline| matches!(inline, Inline::Drawing(_)))
+        .count();
+    assert_eq!(shapes, 0, "the dots are not drawn a second time");
+}

@@ -244,7 +244,10 @@ pub(crate) fn build(
                     frames.len()
                 ),
             );
-            anchored.splice(0..0, page_shapes(page, report, true));
+            anchored.splice(
+                0..0,
+                page_shapes(page, report, true, &std::collections::BTreeSet::new()),
+            );
             anchored.extend(frames);
             // Anchors take no room in the flow, so the page is a page of its
             // own: it starts one, and the page after it starts another.
@@ -302,7 +305,12 @@ pub(crate) fn build(
         // onto whatever page that text reached, and a dark box no longer lay
         // under its white words. Thin rules are a table's borders where the
         // page has tables.
-        anchored.splice(0..0, page_shapes(page, report, plan.tables.is_empty()));
+        // A contents line's dots are its tab's leader, not a shape (leaders).
+        let (leaders, leader_paths) = crate::leaders::find(page, &lines);
+        anchored.splice(
+            0..0,
+            page_shapes(page, report, plan.tables.is_empty(), &leader_paths),
+        );
         let interleave = matches!(column_plan, crate::columns::ColumnPlan::Single);
         if interleave {
             figures.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -328,6 +336,7 @@ pub(crate) fn build(
                         &mut numbering,
                         report,
                         index + 1,
+                        &leaders,
                     );
                     blocks.push(figure);
                 }
@@ -345,6 +354,7 @@ pub(crate) fn build(
                     &mut numbering,
                     report,
                     index + 1,
+                    &leaders,
                 );
                 blocks.push(table_block(table, body, pitch, options, report, index + 1));
                 continue;
@@ -364,6 +374,7 @@ pub(crate) fn build(
             &mut numbering,
             report,
             index + 1,
+            &leaders,
         );
         blocks.extend(figures.map(|(_, figure)| figure));
         // Only where the page starts at the top: the document's first page, or
@@ -463,6 +474,7 @@ fn paragraphs_of(
     report: &mut ConversionReport,
     page: usize,
     items: &std::collections::BTreeMap<usize, crate::lists::Item>,
+    leaders: &[crate::leaders::Leader],
 ) -> Vec<Paragraph> {
     let mut out: Vec<Paragraph> = Vec::new();
     let mut paragraph: Option<Paragraph> = None;
@@ -511,7 +523,7 @@ fn paragraphs_of(
                     && line.x > before.x + before.width
                     && !line.text().trim().is_empty()
                 {
-                    tab_to(open, line, origin, edges);
+                    tab_to(open, line, origin, edges, crate::leaders::of(leaders, line));
                     push_runs_from(open, line, 0);
                     single = None;
                     previous = Some(line);
@@ -664,7 +676,13 @@ fn ended_short(previous: &GlyphLine, line: &GlyphLine, edges: Option<(f64, f64)>
 /// Adds a tab stop at a piece's place on its line (at its end when it ends
 /// at the text's right edge, which is where a page number is aligned) and the
 /// tab that reaches it.
-fn tab_to(paragraph: &mut Paragraph, line: &GlyphLine, origin: f64, edges: Option<(f64, f64)>) {
+fn tab_to(
+    paragraph: &mut Paragraph,
+    line: &GlyphLine,
+    origin: f64,
+    edges: Option<(f64, f64)>,
+    leader: Option<strict_ooxml_wml::model::values::TabLeader>,
+) {
     use strict_ooxml_wml::model::values::{TabAlignment, TabStop};
     let end = line.x + line.width;
     let at_edge = edges.is_some_and(|(_, right)| (end - right).abs() <= 2.0);
@@ -676,7 +694,7 @@ fn tab_to(paragraph: &mut Paragraph, line: &GlyphLine, origin: f64, edges: Optio
     paragraph.props.tabs.push(TabStop {
         position: Twips(to_twips(position - origin)),
         alignment,
-        leader: None,
+        leader,
     });
     paragraph.inlines.push(Inline::Run(Run {
         props: RunProperties::default(),
@@ -737,6 +755,7 @@ fn push_paragraphs(
     report: &mut ConversionReport,
     page: usize,
     items: &std::collections::BTreeMap<usize, crate::lists::Item>,
+    leaders: &[crate::leaders::Leader],
 ) {
     blocks.extend(
         paragraphs_of(
@@ -749,6 +768,7 @@ fn push_paragraphs(
             report,
             page,
             items,
+            leaders,
         )
         .into_iter()
         .map(Block::Paragraph),
@@ -781,6 +801,7 @@ fn table_block(
                         report,
                         page,
                         &std::collections::BTreeMap::new(),
+                        &[],
                     )
                 })
                 .collect()
@@ -1101,8 +1122,13 @@ fn set_line_gap(paragraph: &mut Paragraph, line: &GlyphLine, pitch: f64) {
 }
 
 /// A page's drawn shapes as anchored drawings.
-fn page_shapes(page: &PdfPage, report: &mut ConversionReport, rules: bool) -> Vec<Inline> {
-    crate::vectors::placed_blocks_for(page, report, rules)
+fn page_shapes(
+    page: &PdfPage,
+    report: &mut ConversionReport,
+    rules: bool,
+    skip: &std::collections::BTreeSet<usize>,
+) -> Vec<Inline> {
+    crate::vectors::placed_blocks_for(page, report, rules, skip)
         .into_iter()
         .flat_map(|(_, block)| match block {
             Block::Paragraph(paragraph) => paragraph.inlines,
@@ -1384,6 +1410,7 @@ fn flush_flow(
     numbering: &mut strict_ooxml_wml::model::numbering::NumberingTable,
     report: &mut ConversionReport,
     page: usize,
+    leaders: &[crate::leaders::Leader],
 ) {
     if flow.is_empty() {
         return;
@@ -1400,6 +1427,7 @@ fn flush_flow(
         report,
         page,
         &list_items,
+        leaders,
     );
     flow.clear();
 }
