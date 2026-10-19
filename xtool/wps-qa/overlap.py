@@ -24,6 +24,7 @@ overlaps are ours and which the reference has too.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import csv
 import json
 import sys
@@ -57,6 +58,73 @@ OBJ_TEXT = 1
 OBJ_PATH = 2
 OBJ_IMAGE = 3
 OBJ_FORM = 5
+
+HAS_CLIP_PATH = pdfium is not None and hasattr(pdfium_raw, "FPDFPageObj_GetClipPath")
+
+
+def _clip_boxes(obj) -> list[tuple[float, float, float, float]]:
+    """Clip rectangles active on one page object, in PDF coordinates.
+
+    A cropped `a:srcRect` picture is drawn by scaling the whole bitmap up and
+    clipping it to the visible frame (`q … re W n … Do Q`). `get_bounds()`
+    reports the uncropped bitmap, which is what made `text-image` count text
+    that never meets the picture (WPS QA class A). Each clip path is one
+    rectangle; PDF clips intersect, so the caller intersects them too.
+
+    The pdfium bindings already describe these functions. Overriding their
+    `argtypes` makes `FPDFClipPath_CountPaths` report failure (`-1`) for a
+    clip that is there.
+    """
+    if not HAS_CLIP_PATH:
+        return []
+    clip = pdfium_raw.FPDFPageObj_GetClipPath(obj.raw)
+    if not clip:
+        return []
+    path_count = pdfium_raw.FPDFClipPath_CountPaths(clip)
+    if path_count <= 0:
+        return []
+    boxes: list[tuple[float, float, float, float]] = []
+    for path in range(path_count):
+        segment_count = pdfium_raw.FPDFClipPath_CountPathSegments(clip, path)
+        if segment_count <= 0:
+            continue
+        points: list[tuple[float, float]] = []
+        for segment in range(segment_count):
+            raw = pdfium_raw.FPDFClipPath_GetPathSegment(clip, path, segment)
+            if not raw:
+                continue
+            x, y = ctypes.c_float(), ctypes.c_float()
+            if not pdfium_raw.FPDFPathSegment_GetPoint(raw, ctypes.byref(x), ctypes.byref(y)):
+                continue
+            points.append((x.value, y.value))
+        if len(points) < 2:
+            continue
+        boxes.append(
+            (
+                min(point[0] for point in points),
+                min(point[1] for point in points),
+                max(point[0] for point in points),
+                max(point[1] for point in points),
+            )
+        )
+    return boxes
+
+
+def _visible_box(
+    bounds: tuple[float, float, float, float],
+    clip_boxes: list[tuple[float, float, float, float]],
+) -> tuple[float, float, float, float] | None:
+    """Intersect a box with every active clip; `None` when nothing is visible."""
+    left, bottom, right, top = bounds
+    for clip_left, clip_bottom, clip_right, clip_top in clip_boxes:
+        left = max(left, clip_left)
+        bottom = max(bottom, clip_bottom)
+        right = min(right, clip_right)
+        top = min(top, clip_top)
+        if right <= left or top <= bottom:
+            return None
+    return (left, bottom, right, top)
+
 
 # Classes, in report order.
 CLASSES = (
@@ -171,6 +239,11 @@ def page_items(
                 left, bottom, right, top = obj.get_bounds()
             except Exception:  # noqa: BLE001 - a degenerate object has no box
                 continue
+            if kind == "image":
+                painted = _visible_box((left, bottom, right, top), _clip_boxes(obj))
+                if painted is None:
+                    continue
+                left, bottom, right, top = painted
             items.append(Item(kind, page_index, left, height - top, right, height - bottom, order))
             order += 1
         page.close()

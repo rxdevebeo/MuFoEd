@@ -13,6 +13,7 @@ import numpy as np  # noqa: E402
 
 import metrics  # noqa: E402
 from metrics import PdfFacts, Word  # noqa: E402
+import overlap as overlap_metric  # noqa: E402
 import wpsqa_common  # noqa: E402
 from wpsqa_common import safe_key  # noqa: E402
 
@@ -107,6 +108,14 @@ empty = PdfFacts(1, [(600.0, 800.0)], [], 0)
 check("readability: an empty page is not legible", metrics.readability(["one"], empty, set(), 0, 0)["score"] <= 15.0)
 check("raster blank candidate low", metrics.page_raster_metrics(page, np.ones_like(page))["row_corr"] == 0.0)
 check("diff image shape", metrics.diff_image(page, page).shape == (100, 80 * 3 + 12, 3))
+
+# An image's box is its visible ink: the uncropped bitmap is cut by the clip.
+visible = overlap_metric._visible_box((0.0, 0.0, 100.0, 100.0), [(10.0, 20.0, 90.0, 80.0)])
+check("overlap: clip narrows the image box", visible == (10.0, 20.0, 90.0, 80.0))
+clipped_away = overlap_metric._visible_box((0.0, 0.0, 10.0, 10.0), [(20.0, 20.0, 30.0, 30.0)])
+check("overlap: a clipped-away image has no ink", clipped_away is None)
+unclipped = overlap_metric._visible_box((1.0, 2.0, 3.0, 4.0), [])
+check("overlap: an unclipped image keeps its box", unclipped == (1.0, 2.0, 3.0, 4.0))
 
 check("safe_key nested", safe_key("a/b:c.docx") == "a__b_c")
 check("safe_key long", len(safe_key("x" * 300 + ".docx")) <= 111)

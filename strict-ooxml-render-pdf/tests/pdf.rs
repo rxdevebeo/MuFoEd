@@ -1137,3 +1137,68 @@ fn a_right_to_left_ligature_is_written_letter_by_letter() {
         "no two-letter entry: {destinations:?}"
     );
 }
+
+/// `a:srcRect` is a clip around the visible frame. The picture behind it is the
+/// whole bitmap, so a reader that ignores the clip reports a box several times
+/// too big (WPS QA class A).
+#[test]
+fn a_cropped_picture_is_clipped_to_its_frame() {
+    use strict_ooxml_testkit::DocxBuilder;
+
+    let mut png = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut png, 2, 2);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().expect("header");
+        writer
+            .write_image_data(&[255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255])
+            .expect("data");
+    }
+    let body = concat!(
+        "<w:p><w:r><w:drawing><wp:inline>",
+        "<wp:extent cx=\"914400\" cy=\"914400\"/>",
+        "<wp:docPr id=\"1\" name=\"crop\"/>",
+        "<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/picture\">",
+        "<pic:pic><pic:nvPicPr><pic:cNvPr id=\"0\" name=\"crop\"/><pic:cNvPicPr/>",
+        "</pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rIdImg\"/>",
+        "<a:srcRect l=\"0\" t=\"0\" r=\"50000\" b=\"50000\"/>",
+        "</pic:blipFill>",
+        "<pic:spPr><a:xfrm><a:ext cx=\"914400\" cy=\"914400\"/></a:xfrm></pic:spPr>",
+        "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>",
+        "<w:r><w:t>Beside</w:t></w:r></w:p>"
+    );
+    let bytes = DocxBuilder::strict()
+        .body(body)
+        .content_type("/word/media/crop.png", "image/png")
+        .part(
+            "word/_rels/document.xml.rels",
+            br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rIdImg" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/image" Target="media/crop.png"/>
+</Relationships>"#
+                .to_vec(),
+        )
+        .part("word/media/crop.png", png)
+        .build();
+    let (pdf, _svg, _report) = to_pdf(&bytes);
+    let document = lopdf::Document::load_mem(&pdf).expect("pdf");
+    let content = document
+        .page_iter()
+        .map(|id| String::from_utf8_lossy(&document.get_page_content(id)).into_owned())
+        .collect::<String>();
+    assert!(
+        content.contains("\nW\n") || content.contains("\nW\r"),
+        "the crop must clip before drawing the bitmap: {content}"
+    );
+    // The frame is 1 in. Cutting half the width and half the height draws a
+    // 2 in bitmap behind that 1 in clip; the metric has to use the clip.
+    assert!(
+        content.contains("72 648 72 72 re"),
+        "clip is the visible frame: {content}"
+    );
+    assert!(
+        content.contains("144 0 0 144 "),
+        "the bitmap behind the clip is the uncropped picture: {content}"
+    );
+}
