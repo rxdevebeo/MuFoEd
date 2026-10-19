@@ -1,0 +1,10 @@
+[package]
+name = "mufoed-model-runtime"
+description = "Shared admission and lifecycle coordination for MuFoEd model backends"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true

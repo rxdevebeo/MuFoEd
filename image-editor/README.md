@@ -1,0 +1,152 @@
+# Image Studio / image-editor
+
+Первый работающий срез: Rust-крейт с API, встраиваемым egui-редактором и отдельным демонстрационным приложением. Новый пакет независим от библиотечных крейтов StrictLib. В корневом Cargo workspace добавлен только новый member; существующие крейты не изменяются.
+
+## Устройство
+
+- `Document` / `Raster`: RGBA8 sRGB, слои снизу вверх, прозрачность, общий inpaint-mask, ручные операции, проектный формат.
+- `History`: undo/redo по пользовательским действиям; до 32 снимков и целевой бюджет 64 MiB на стек, с сохранением одного большого снимка.
+- `ImageEditor::show`: встраиваемый egui UI; файловые диалоги реализует хост через `FileAction`.
+- `generation::NativeJob`: встроенный Plakat через поддерживаемый `plakat::api`, inference вне потока UI, одна активная библиотечная задача, preview → accept/discard.
+- `generation::Job`: дополнительный CLI-адаптер для диагностики с изолированными входными файлами и принудительной остановкой процесса.
+
+Plakat — настоящий inference backend и опциональная Git-зависимость самого крейта. Feature `plakat` включает прямое библиотечное встраивание на CPU, `plakat-cuda` — на CUDA. При их наличии UI по умолчанию выбирает библиотечный backend; `plakat.exe` ему не требуется. Без этих features ручной редактор собирается отдельно, а для ИИ доступен CLI-адаптер.
+
+## Уже реализовано
+
+- Новый прозрачный холст; импорт PNG/JPEG/WebP/BMP/TIFF.
+- Слева три вкладки **Создание / Редактирование / Апскейл** для моделей; справа ручные инструменты, коррекция и слои. Общий холст в центре, независимая прокрутка панелей.
+- Компоновка и размеры элементов по образцу Invoke, с синим акцентом `#2B579A` и нейтральной тёмной палитрой MuFoEd. Встраиваемый хост может применить оформление через `ui::apply_studio_style`.
+- Кисть, ластик, рисование/стирание маски; масштабирование и прокрутка.
+- Добавление/удаление/перестановка слоёв, видимость, имя, opacity.
+- Crop, resize с Lanczos3, поворот на 90°; все слои и маска преобразуются вместе.
+- Яркость, контраст, grayscale, Gaussian blur (`image`), median denoise (`imageproc`) активного слоя; alpha сохраняется.
+- Undo/redo, Ctrl+Z / Ctrl+Shift+Z.
+- Самодостаточный JSON-проект со слоями/маской и атомарной заменой файла; экспорт PNG без наложения маски и шахматной подложки.
+- Text-to-image / image-to-image / inpaint через `plakat::api::Generate` / `Img2img` либо CLI, параметры model/prompt/negative/seed/steps/guidance/strength/cache.
+- Результат принимается новым слоем вместе с использованными параметрами генерации. Для img2img/inpaint отвергается принятие результата, если исходный холст уже изменён.
+- За пределами inpaint-mask адаптер восстанавливает исходные пиксели, даже если модель изменила весь кадр.
+
+Это основа редактора, не полная функциональная копия Invoke или профессиональный RAW/PSD-редактор.
+
+## Запуск
+
+На Windows: двойной щелчок по `image-editor/start.bat`. Можно также перетащить изображение на BAT-файл, чтобы сразу открыть его в редакторе. BAT вызывает `start.ps1` и использует встроенный CUDA backend.
+
+Из корня worktree:
+
+```powershell
+cargo +1.92.0 run -p image-editor --features demo --bin image-editor-demo
+```
+
+Для подготовленной на этой машине локальной модели:
+
+```powershell
+./image-editor/start.ps1
+./image-editor/start.ps1 -Image 'D:/path/photo.png'
+```
+
+`start.ps1` использует `.runtime/hub` и модель `local/image-studio-sdxl`; соседний checkout `../plakat` нужен только для CLI-режима. Общее приложение также принимает `IMAGE_STUDIO_PLAKAT`, `IMAGE_STUDIO_MODEL`, `IMAGE_STUDIO_CACHE`. По умолчанию Plakat может скачивать недостающие компоненты из HF; подготовленный локальный комплект предназначен для работы без скачивания весов.
+
+`start.ps1` по умолчанию собирает и запускает **встроенный CUDA backend**, а `-Cli` выбирает диагностическую сборку без библиотечного Plakat. При прямом встраивании в другой хост `PLAKAT_CACHE_DIR` нужно задать до запуска потоков хоста; cache в UI отображается только для чтения. `PLAKAT_NO_SDPA=1` обходит найденную в upstream ошибку выбора Metal-only SDPA на CUDA; демо и CLI-адаптер выставляют его сами на Windows. Для библиотеки из другого хоста задайте переменную при старте процесса.
+
+## Модельные инструменты и вкладки
+
+**Создание:** генерация по тексту либо по исходному изображению (img2img). В режиме img2img кнопка «Загрузить исходное изображение…» открывает файл на холсте с обычным подтверждением несохранённых изменений; источником становится композит холста. Prompt, negative prompt и denoising strength управляют преобразованием. Результат сначала предлагается для принятия.
+
+Модель и LoRA выбираются в отдельных диалогах. Локальная библиотека по умолчанию сканирует `D:/Models` (`IMAGE_STUDIO_MODELS` переопределяет путь), читая только ограниченные заголовки safetensors. Есть поиск, семейство, статус готовности, импорт отдельного файла и подготовка checkpoint. Сканирование ограничено глубиной 3 и 10000 записями; каталоги зависимостей и symlink пропускаются. Неопределённые архитектуры checkpoint не запускаются автоматически. Неизвестное семейство LoRA показывается явно; известная несовместимость отклоняется.
+
+Вкладка Civitai в этих диалогах ищет Checkpoint или LoRA, фильтрует базовую модель, показывает версии/файлы/размер/trigger words и ссылку на условия автора. Поддерживается cursor pagination. Скачиваются только safetensors с SHA256; файл публикуется после проверки хеша и роли тензоров, существующие файлы не перезаписываются. Токен можно ввести в скрытое поле или передать через `CIVITAI_TOKEN`; он остаётся в памяти и передаётся как Bearer header. В проект изображения и receipt он не записывается. Сеть используется при явном поиске/скачивании. Загрузки помещаются в `<model folder>/Civitai`.
+
+SDXL/SD1.5 checkpoint готовится через `scripts/prepare_asset.py` в изолированный идентификатор HF cache; исходник не меняется. Python, diffusers, локальные конфиги и токенизаторы должны быть установлены заранее. Конвертация сама не скачивает недостающие компоненты. SDXL проверен на этой машине; другие checkpoint и SD1.5 требуют отдельной проверки совместимости. Ранее подготовленный `local/image-studio-sdxl` распознаётся по receipt.
+
+Для text-to-image есть пресеты модели и соотношений 1:1, 4:3, 3:4, 16:9, 9:16, 3:2, 2:3, собственные размеры и Swap. Новый размер не изменяет исходный холст до принятия результата; другой размер принимается как новое изображение с Undo. Img2img/inpaint сохраняют размер исходного холста, который можно заранее изменить вручную. Seed можно задать точно как u64 либо случайно обновлять на каждом запуске; сохраняется фактически использованное число. LoRA поддерживают включение/удаление и независимые веса в -2..2; шаги — 1..150. VAE необязателен: выбор локального файла запускает offline-конвертацию в отдельные Diffusers-веса. Сменный VAE использует изолированный адаптер внутренних pipeline API зафиксированного Plakat; CLI этот режим явно отклоняет.
+
+**Редактирование:** inpaint по нарисованной маске, BiRefNet и SAM 2.1 Hiera Large. Маску можно рисовать/стирать справа, скрывать, инвертировать и задавать feather 0..128 px. Пиксели за пределами эффективной маски восстанавливаются точно после inference; feather upstream не расширяет область разрешённых изменений.
+
+- **BiRefNet:** загрузка официальных ONNX General Tiny (214 MiB), General или Matting (928 MiB), либо выбор локального ONNX. Обрабатывается активный слой, результат содержит исходный RGB и уменьшенный alpha. Preview → принятие новым слоем с сохранением opacity и скрытием оригинала; Undo восстанавливает исходник. По умолчанию CPU, GPU через доступный ONNX provider включается отдельно. Receipt содержит источник и рассчитанный digest; у старых GitHub assets нет опубликованного SHA256, поэтому первоначальная проверка — HTTPS, размер и загрузка ONNX-графа, затем локальный digest.
+- **SAM 2.1 Hiera Large:** официальные веса `facebook/sam2.1-hiera-large`, revision `665f8e2ad61cf5f53d65644ff27c8ee525124610`; конфиги и safetensors скачиваются с фиксированными SHA256. Также можно выбрать существующий Transformers model folder. Положительные/отрицательные точки ставятся на холсте, затем **Segment object**. Маска выбирается по quality score, просматривается и принимается как общая editing/inpaint mask. Есть Undo/Clear points и возвращение к ручным инструментам. **Cut out active layer using mask** создаёт прозрачный слой и скрывает оригинал. Двоичный `.pt` upstream не загружается этим адаптером напрямую: используется та же Hiera Large в официальном safetensors-представлении.
+
+**Апскейл:** 4x-UltraSharp, AuraSR v2 либо смешивание двух результатов. По умолчанию **65% UltraSharp / 35% AuraSR v2**, отдельные настраиваемые ползунки; положительные веса нормализуются до 100%, два нуля отклоняются. Это смешивание выходных изображений одного размера, а не интерполяция несовместимых архитектур. В одиночном режиме выбранная модель даёт 100% результата.
+
+UltraSharp умеет использовать имеющийся `D:/Models/4xUltrasharp_4xUltrasharpV10.pt` или импортированные safetensors/pth/pt с `weights_only=True`. Есть загрузка официального `Kim2091/UltraSharp` safetensors (64 MiB). AuraSR v2 скачивается из `fal/AuraSR-v2` (около 2.30 GiB) либо выбирается каталог с config.json/model.safetensors. Обе загрузки фиксируют ревизию и SHA256; pickle/ckpt для AuraSR не требуется. UltraSharp обрабатывает тайлы 128/256/512 с контекстом, AuraSR — overlapped tiles batch=1; в смеси модели запускаются последовательно. RGB увеличивается нейросетями, alpha — Lanczos. Выход ограничен 16,777,216 пикселями. Preview → новое изображение с Undo; фактическое соотношение записывается в имя слоя. Полная типизированная processing recipe для вспомогательных моделей пока не сохраняется.
+
+BiRefNet, SAM и апскейлеры запускаются через **необязательные локальные Python-процессы**, Plakat inference остаётся встроенным Rust backend. Используется `IMAGE_STUDIO_PYTHON` или установленный Python 3.11; общий Python при работе редактора не изменяется. Требования: `scripts/requirements-model-tools.txt`. На этой машине torch/transformers/ONNX уже были установлены, а `spandrel==0.4.2` и `aura-sr==0.0.4` добавлены изолированно в `.runtime/python-packages`; Rust bridge добавляет этот каталог в PYTHONPATH. Для повторения установки только этих двух пакетов:
+
+```powershell
+python -m pip install --target image-editor/.runtime/python-packages --no-deps spandrel==0.4.2 aura-sr==0.0.4
+```
+
+Скачанные веса находятся в игнорируемых `.runtime/BiRefNet`, `.runtime/SAM2`, `.runtime/Upscale`; последующий inference выполняется локально. Отмена Python-задачи завершает процесс и удаляет принадлежащий bridge временный каталог. Preview защищён проверкой исходных пикселей/слоя от применения к изменившемуся изображению. Resident inference cache пока отсутствует, включая SAM image embeddings и ONNX sessions; см. [TODO.md](TODO.md).
+
+## Plakat и локальные веса
+
+Зафиксирован upstream `vulogov/plakat` **7.9.0**, commit `ce0d67a45bc9b5f742c3772aef85afe0d15890f6`, Unlicense. Библиотека подключена по Git SHA в Cargo.toml/Cargo.lock. Соседний checkout используется только для диагностического CLI; исходники Plakat не изменяются.
+
+```powershell
+./image-editor/scripts/build-plakat.ps1
+# CPU-вариант:
+./image-editor/scripts/build-plakat.ps1 -Cpu
+```
+
+CUDA-конфигурация скрипта рассчитана на эту машину: RTX 5070 Ti / SM120 / CUDA 12.9 / MSVC 2022. Она включает `-allow-unsupported-compiler` для установленного MSVC 14.44. На другом оборудовании нужно выбрать соответствующую compute capability/toolchain.
+
+Plakat ожидает HF/Diffusers-компоненты, а не произвольный монолитный checkpoint. `scripts/prepare_sdxl.py` преобразует локальный SDXL safetensors на CPU через установленный Python + diffusers + torch + transformers. Конфиги и токенизаторы также должны уже существовать локально. Скрипт использует `local_files_only=True`, не меняет исходные веса и не загружает pickle `.ckpt`.
+
+```powershell
+python image-editor/scripts/prepare_sdxl.py D:/Models/dvine_v60.safetensors `
+  --config '<local SDXL config snapshot>' `
+  --cache image-editor/.runtime/hub `
+  --vae D:/Models/sdxl_vae.safetensors
+```
+
+В отдельном кэше создаётся `local/image-studio-sdxl`. VAE преобразуется из LDM в Diffusers layout и помещается в namespace, который Plakat использует для SDXL fp16 VAE. Это пользовательский локальный VAE, а не утверждение о происхождении или побитовой идентичности с madebyollin. Фактический источник записан в `receipt.json` рядом с преобразованными весами. Receipt включает путь, размер и SHA256 заголовка safetensors; это не SHA256 всего файла. Лицензии/ограничения самих весов сохраняются за исходными моделями.
+
+Кэш и результаты находятся в игнорируемых `.runtime/` и `artifacts/`; веса в Git не добавляются.
+
+## Проверки
+
+```powershell
+cargo +1.92.0 test -p image-editor --all-targets --features demo
+cargo +1.92.0 clippy -p image-editor --all-targets --features demo -- -D warnings
+cargo +1.92.0 run -p image-editor --example plakat_smoke -- `
+  '<absolute path to plakat.exe>' '<absolute cache path>' '<output.png>'
+# Настоящий inpaint и проверка сохранности каждого пикселя вне маски:
+cargo +1.92.0 run -p image-editor --example plakat_smoke -- `
+  '<plakat.exe>' '<cache>' '<edited.png>' inpaint '<input.png>'
+# Прямое встраивание, без запуска plakat.exe (Windows/CUDA):
+. ./image-editor/scripts/enter-cuda.ps1
+cargo +1.92.0 run -p image-editor --features plakat-cuda --example native_smoke `
+  --config 'profile.dev.package.plakat.opt-level=2' -- '<cache>' '<output.png>'
+# Для inpaint добавьте третьим аргументом путь к исходному PNG.
+```
+
+`IMAGE_STUDIO_SHOT=<absolute png path>` включает автоматический снимок настоящего окна и закрытие после получения снимка.
+`IMAGE_STUDIO_SHOT_DIALOG=model|lora|civitai|img2img|edit|upscale` выбирает проверяемый диалог/вкладку. Снимок ждёт завершения сканирования ресурсов.
+
+`examples/civitai_smoke.rs` проверяет живой поиск и следующую страницу каталога. `model_tools_smoke` запускает BiRefNet/SAM через тот же Rust bridge, что UI. `upscale_smoke` проверяет смесь 65/35 через bridge, включая прозрачный PNG. Примеры требуют заранее загруженные веса; `native_smoke` принимает `IMAGE_STUDIO_SMOKE_IMG2IMG`, `IMAGE_STUDIO_SMOKE_LORA`, `IMAGE_STUDIO_SMOKE_VAE`, `IMAGE_STUDIO_SMOKE_WIDE`, `IMAGE_STUDIO_SMOKE_INVERT` для соответствующих реальных проверок.
+
+## Контракты и ограничения первого среза
+
+- До 16,777,216 пикселей, до 16 слоёв, 128 MiB исходных пикселей документа; JSON-файл до 128 MiB. JSON с числовыми массивами может достичь лимита раньше пиксельного бюджета. Пиковая память операций выше размера документа из-за рабочих буферов и undo.
+- Генерация требует размеры, кратные 8. Конкретная модель может потребовать дополнительного выравнивания; несовпадающие выходные размеры отвергаются, а не неявно растягиваются.
+- Слои пока полноразмерные, normal/source-over. Mask единый, белый означает regenerate. Inpaint-кандидат — полный композит исходного холста, принимаемый отдельным слоем.
+- Коррекция работает в RGBA8/sRGB, без ICC/EXIF workflow, HDR/16-bit RAW и неразрушающего стека adjustment layers. Blur не является цветометрически точной обработкой полупрозрачных краёв.
+- В демо есть подтверждение замены/закрытия несохранённого проекта; PNG export не сбрасывает признак несохранённых слоёв.
+- Нет outpaint, ControlNet/reference/regional layers, графа workflow и параллельной очереди задач. GUI и генерация используют один активный проект/одну задачу.
+- Прогресс inference пока статус/лог без процентов и промежуточных изображений; builder API заново загружает модели на каждый вызов. Сам факт библиотечного встраивания ещё не даёт resident model cache.
+- Отмена NativeJob помечает результат для удаления: API Plakat не прерывает текущий denoising pass. Пока вызов не завершится, новая библиотечная задача отвергается. В режиме CLI отмена завершает отдельный процесс.
+
+## Следующие этапы и критерии готовности
+
+Отдельные обязательные доработки ведутся в [TODO.md](TODO.md), включая кэш загруженных моделей.
+
+1. **Расширенное ручное редактирование.** Выделения и заливка, трансформации/перемещение слоя, JPEG export с явным flatten background. Приёмка: отмена каждого действия и восстановление проекта после перезапуска, UI-проверки на фото и прозрачном PNG.
+2. **Canvas pipeline по образцу Invoke.** Generation rectangle, outpaint с расширением всех слоёв/маски, staging нескольких вариантов. Приёмка: неизменность защищённых пикселей, явные координаты и разрешение, отмена не меняет документ.
+3. **Управляемое локальное inference.** Model registry с семейством/совместимостью/локальными файлами, resident model cache при поддержке upstream, прогресс/cooperative cancel/VRAM limits. Приёмка: веса загружаются один раз, независимые результаты двух последовательных задач, воспроизводимый seed в пределах backend, проверка на RTX 5070 Ti.
+4. **Workflow и conditioning.** Типизированный DAG с версиями узлов, ControlNet/reference/regional guidance и сохранением recipe рядом с результатом. Приёмка: валидация до запуска, поведение неподдерживаемого узла явно описано, повторное выполнение сохранённого проекта.
+5. **Интеграция MuFoEd.** Отдельный адаптер экспорта PNG/метаданных и вставки через существующие контракты StrictLib. Начинать после приёмки автономного редактора; библиотечные крейты не менять.
+
+Референсы: [Plakat supported API](https://github.com/vulogov/plakat/blob/ce0d67a45bc9b5f742c3772aef85afe0d15890f6/src/api/mod.rs), [Invoke Canvas](https://invoke-ai.github.io/InvokeAI-7/users-guide/canvas/introduction/), [image](https://github.com/image-rs/image), [imageproc](https://github.com/image-rs/imageproc). От Invoke заимствована организация workflow; его код не копировался.
+
+API и модели: [Civitai catalog](https://github.com/civitai/civitai-developer-docs/blob/main/site/reference/models.md), [BiRefNet](https://github.com/ZhengPeng7/BiRefNet), [SAM2 Transformers](https://huggingface.co/docs/transformers/model_doc/sam2), [UltraSharp](https://huggingface.co/Kim2091/UltraSharp), [AuraSR v2](https://huggingface.co/fal/AuraSR-v2), [Spandrel](https://github.com/chaiNNer-org/spandrel). Условия использования конкретных весов проверяются на их страницах.
