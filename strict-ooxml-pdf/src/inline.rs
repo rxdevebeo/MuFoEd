@@ -135,15 +135,34 @@ struct InlineDict {
     height: Option<u32>,
     bits: Option<u32>,
     components: Option<u8>,
-    filter: Option<Vec<u8>>,
+    /// The filter chain in decoding order, as full names (`/A85` →
+    /// `ASCII85Decode`); a single name and an array both land here.
+    filters: Vec<Vec<u8>>,
+    /// `/IM true`: a 1-bit stencil painted in the fill colour.
+    image_mask: bool,
+    /// `/DP` was given (predictors and the like, which are not applied here).
+    decode_parms: bool,
 }
 
 impl InlineDict {
+    /// The sample bytes the dictionary promises, when the data between `ID`
+    /// and `EI` is the samples themselves. A filtered image's data is as long
+    /// as its encoding happens to be, so it promises nothing.
     fn expected_bytes(&self) -> Option<usize> {
+        if !self.filters.is_empty() {
+            return None;
+        }
         let width = usize::try_from(self.width?).ok()?;
         let height = usize::try_from(self.height?).ok()?;
-        let bits = usize::try_from(self.bits.unwrap_or(8)).ok()?;
-        let components = usize::from(self.components.unwrap_or(3));
+        // ISO 32000-1 §8.9.6.2: a stencil is one component of one bit.
+        let (bits, components) = if self.image_mask {
+            (1, 1)
+        } else {
+            (
+                usize::try_from(self.bits.unwrap_or(8)).ok()?,
+                usize::from(self.components.unwrap_or(3)),
+            )
+        };
         let bits_total = width
             .checked_mul(height)?
             .checked_mul(components)?
@@ -159,7 +178,9 @@ fn parse_inline_dict(bytes: &[u8], mut index: usize) -> Option<(usize, InlineDic
         height: None,
         bits: None,
         components: None,
-        filter: None,
+        filters: Vec::new(),
+        image_mask: false,
+        decode_parms: false,
     };
     while index < bytes.len() {
         while bytes.get(index).is_some_and(|&byte| is_whitespace(byte)) {
@@ -192,7 +213,9 @@ fn parse_inline_dict(bytes: &[u8], mut index: usize) -> Option<(usize, InlineDic
             b"H" | b"Height" => dict.height = value.as_number(),
             b"BPC" | b"BitsPerComponent" => dict.bits = value.as_number(),
             b"CS" | b"ColorSpace" => dict.components = value.components(),
-            b"F" | b"Filter" => dict.filter = value.as_name(),
+            b"F" | b"Filter" => dict.filters = value.filter_chain(),
+            b"IM" | b"ImageMask" => dict.image_mask = matches!(value, Value::Bool(true)),
+            b"DP" | b"DecodeParms" => dict.decode_parms = !matches!(value, Value::Null),
             _ => {}
         }
     }
@@ -202,6 +225,10 @@ fn parse_inline_dict(bytes: &[u8], mut index: usize) -> Option<(usize, InlineDic
 enum Value {
     Number(u32),
     Name(Vec<u8>),
+    Bool(bool),
+    Null,
+    /// The names in an array, in order; other members are dropped.
+    Names(Vec<Vec<u8>>),
     Other,
 }
 
@@ -213,10 +240,11 @@ impl Value {
         }
     }
 
-    fn as_name(&self) -> Option<Vec<u8>> {
+    fn filter_chain(&self) -> Vec<Vec<u8>> {
         match self {
-            Self::Name(n) => Some(n.clone()),
-            _ => None,
+            Self::Name(name) => vec![full_filter_name(name)],
+            Self::Names(names) => names.iter().map(|name| full_filter_name(name)).collect(),
+            _ => Vec::new(),
         }
     }
 
@@ -233,7 +261,31 @@ impl Value {
     }
 }
 
+/// The full name of an inline-image filter (ISO 32000-1 Table 94).
+fn full_filter_name(name: &[u8]) -> Vec<u8> {
+    let full: &[u8] = match name {
+        b"AHx" => b"ASCIIHexDecode",
+        b"A85" => b"ASCII85Decode",
+        b"LZW" => b"LZWDecode",
+        b"Fl" => b"FlateDecode",
+        b"RL" => b"RunLengthDecode",
+        b"CCF" => b"CCITTFaxDecode",
+        b"DCT" => b"DCTDecode",
+        b"JPX" => b"JPXDecode",
+        b"JBIG2" => b"JBIG2Decode",
+        other => other,
+    };
+    full.to_vec()
+}
+
+/// How deep an inline-image value may nest arrays before it is refused.
+const MAX_VALUE_DEPTH: u32 = 8;
+
 fn parse_value(bytes: &[u8], index: usize) -> Option<(Value, usize)> {
+    parse_value_at(bytes, index, 0)
+}
+
+fn parse_value_at(bytes: &[u8], index: usize, depth: u32) -> Option<(Value, usize)> {
     let first = *bytes.get(index)?;
     if first == b'/' {
         let mut end = index.saturating_add(1);
@@ -246,23 +298,73 @@ fn parse_value(bytes: &[u8], index: usize) -> Option<(Value, usize)> {
         ));
     }
     if first == b'[' {
-        // Skip array values we do not need (e.g. Decode).
+        // A filter chain (`[/A85 /Fl]`) is the array that matters; a `/Decode`
+        // array of numbers parses and is dropped.
+        if depth >= MAX_VALUE_DEPTH {
+            return None;
+        }
+        let mut names = Vec::new();
         let mut end = index.saturating_add(1);
-        let mut depth: u32 = 1;
-        while depth > 0 {
-            let Some(&byte) = bytes.get(end) else {
-                break;
-            };
-            match byte {
-                b'[' => depth = depth.saturating_add(1),
-                b']' => depth = depth.saturating_sub(1),
-                _ => {}
+        loop {
+            while bytes.get(end).is_some_and(|&byte| is_whitespace(byte)) {
+                end = end.saturating_add(1);
+            }
+            match bytes.get(end) {
+                None => return None,
+                Some(b']') => return Some((Value::Names(names), end.saturating_add(1))),
+                Some(_) => {
+                    let (item, next) = parse_value_at(bytes, end, depth.saturating_add(1))?;
+                    if let Value::Name(name) = item {
+                        names.push(name);
+                    }
+                    end = next;
+                }
+            }
+        }
+    }
+    if bytes
+        .get(index..index.saturating_add(2))
+        .is_some_and(|pair| pair == b"<<")
+    {
+        // A `/DP` dictionary, skipped whole so that its keys are not read as
+        // the image's own.
+        let mut end = index.saturating_add(2);
+        let mut open: u32 = 1;
+        while open > 0 {
+            let pair = bytes.get(end..end.saturating_add(2))?;
+            if pair == b"<<" {
+                open = open.saturating_add(1);
+                end = end.saturating_add(2);
+            } else if pair == b">>" {
+                open = open.saturating_sub(1);
+                end = end.saturating_add(2);
+            } else {
+                end = end.saturating_add(1);
+            }
+        }
+        return Some((Value::Other, end));
+    }
+    if first == b'<' || first == b'(' {
+        // A hex or literal string (an indexed palette, say): skipped.
+        let literal = first == b'(';
+        let mut end = index.saturating_add(1);
+        let mut open: u32 = 1;
+        while open > 0 {
+            let byte = *bytes.get(end)?;
+            if literal && byte == b'\\' {
+                end = end.saturating_add(2);
+                continue;
+            }
+            if literal && byte == b'(' {
+                open = open.saturating_add(1);
+            } else if byte == if literal { b')' } else { b'>' } {
+                open = open.saturating_sub(1);
             }
             end = end.saturating_add(1);
         }
         return Some((Value::Other, end));
     }
-    if first.is_ascii_digit() || first == b'-' || first == b'+' {
+    if first.is_ascii_digit() || matches!(first, b'-' | b'+' | b'.') {
         let mut end = index;
         while bytes
             .get(end)
@@ -274,12 +376,18 @@ fn parse_value(bytes: &[u8], index: usize) -> Option<(Value, usize)> {
         let number = text.parse::<f64>().ok()?;
         return Some((Value::Number(number as u32), end));
     }
-    // Bare name without slash (rare) or unknown token: skip one token.
+    // A keyword (`true`, `false`, `null`), a bare name, or an unknown token.
     let mut end = index;
     while bytes.get(end).is_some_and(|&byte| is_regular(byte)) {
         end = end.saturating_add(1);
     }
-    Some((Value::Other, end.max(index.saturating_add(1))))
+    let value = match bytes.get(index..end) {
+        Some(b"true") => Value::Bool(true),
+        Some(b"false") => Value::Bool(false),
+        Some(b"null") => Value::Null,
+        _ => Value::Other,
+    };
+    Some((value, end.max(index.saturating_add(1))))
 }
 
 /// Finds `EI` after `data_start`. Prefer the length implied by the dictionary;
@@ -327,38 +435,55 @@ fn find_ei(bytes: &[u8], data_start: usize, dict: &InlineDict) -> Option<(usize,
     None
 }
 
+fn missing(reason: impl Into<String>) -> InlineImage {
+    InlineImage {
+        encoded: None,
+        missing: Some(reason.into()),
+    }
+}
+
+/// Filters that only carry bytes, which lopdf's stream decoder undoes.
+fn is_transport_filter(name: &[u8]) -> bool {
+    matches!(
+        name,
+        b"ASCIIHexDecode" | b"ASCII85Decode" | b"LZWDecode" | b"FlateDecode" | b"RunLengthDecode"
+    )
+}
+
 fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
     let width = match dict.width {
         Some(w) if w > 0 => w,
-        _ => {
-            return InlineImage {
-                encoded: None,
-                missing: Some("inline image has no Width".into()),
-            };
-        }
+        _ => return missing("inline image has no Width"),
     };
     let height = match dict.height {
         Some(h) if h > 0 => h,
-        _ => {
-            return InlineImage {
-                encoded: None,
-                missing: Some("inline image has no Height".into()),
-            };
-        }
+        _ => return missing("inline image has no Height"),
     };
-    let filter = dict.filter.as_deref();
+    // A stencil is the fill colour through a 1-bit mask, not a picture: the
+    // same answer as for an XObject `/ImageMask`.
+    if dict.image_mask {
+        return missing("inline image mask is not carried");
+    }
+    // The chain is transport filters, then at most one image codec.
+    let (codec, transport) = match dict.filters.split_last() {
+        Some((last, rest)) if !is_transport_filter(last) => (Some(last.as_slice()), rest),
+        _ => (None, dict.filters.as_slice()),
+    };
+    if let Some(other) = transport.iter().find(|name| !is_transport_filter(name)) {
+        return missing(format!(
+            "inline image filter /{} is not carried",
+            String::from_utf8_lossy(other)
+        ));
+    }
     let codec_carries_depth = matches!(
-        filter,
-        Some(b"JPX" | b"JPXDecode" | b"CCITTFax" | b"CCITTFaxDecode" | b"JBIG2" | b"JBIG2Decode")
+        codec,
+        Some(b"JPXDecode" | b"CCITTFaxDecode" | b"JBIG2Decode")
     );
     let bits = dict.bits.unwrap_or(8);
     let components = dict.components.unwrap_or(3);
     let expand_one_bit = !codec_carries_depth && bits == 1 && components == 1;
     if !codec_carries_depth && !expand_one_bit && bits != 8 {
-        return InlineImage {
-            encoded: None,
-            missing: Some("inline image bits per component is not 8".into()),
-        };
+        return missing("inline image bits per component is not 8");
     }
     let limits = crate::PdfLimits::default();
     // The same pixel budget as an XObject's, for every filter: an inline JPEG
@@ -366,72 +491,61 @@ fn decode_inline(dict: &InlineDict, data: &[u8]) -> InlineImage {
     // `ID` data is a decode nobody downstream can afford (default limits, as
     // for `/JPX`).
     if let Err(reject) = crate::image::check_pixels(width, height, &limits) {
-        return InlineImage {
-            encoded: None,
-            missing: Some(reject.to_string()),
-        };
+        return missing(reject.to_string());
     }
-    match filter {
-        Some(b"DCT" | b"DCTDecode") => InlineImage {
+    let bytes = if transport.is_empty() {
+        data.to_vec()
+    } else {
+        if dict.decode_parms {
+            // A predictor would have to be undone on the inflated rows.
+            return missing("inline image DecodeParms is not carried");
+        }
+        let chain = transport
+            .iter()
+            .map(|name| lopdf::Object::Name(name.clone()))
+            .collect();
+        let mut stream_dict = lopdf::Dictionary::new();
+        stream_dict.set("Filter", lopdf::Object::Array(chain));
+        let stream = lopdf::Stream::new(stream_dict, data.to_vec());
+        match crate::document::bounded_decompress(&stream, limits.max_image_bytes) {
+            Ok(bytes) => bytes,
+            Err(_) => return missing("inline image filters could not be decoded"),
+        }
+    };
+    match codec {
+        Some(b"DCTDecode") => InlineImage {
             encoded: Some(Encoded::Jpeg {
                 width,
                 height,
-                data: Arc::new(data.to_vec()),
+                data: Arc::new(bytes),
                 alpha: None,
             }),
             missing: None,
         },
-        Some(b"JPX" | b"JPXDecode") => match crate::image::decode_jpx_bytes(data, &limits) {
+        Some(b"JPXDecode") => match crate::image::decode_jpx_bytes(&bytes, &limits) {
             // Same decoder as XObject `/JPXDecode`; default limits — a large
             // inline image has already paid for the content-stream budget.
             Ok(encoded) => InlineImage {
                 encoded: Some(encoded),
                 missing: None,
             },
-            Err(reject) => InlineImage {
-                encoded: None,
-                missing: Some(reject.to_string()),
-            },
+            Err(reject) => missing(reject.to_string()),
         },
-        None | Some(b"Fl" | b"FlateDecode") => decode_inline_samples(
-            data,
-            filter.is_some(),
-            expand_one_bit,
-            width,
-            height,
-            components,
-        ),
-        Some(other) => InlineImage {
-            encoded: None,
-            missing: Some(format!(
-                "inline image filter /{} is not carried",
-                String::from_utf8_lossy(other)
-            )),
-        },
+        None => decode_inline_samples(bytes, expand_one_bit, width, height, components),
+        Some(other) => missing(format!(
+            "inline image filter /{} is not carried",
+            String::from_utf8_lossy(other)
+        )),
     }
 }
 
 fn decode_inline_samples(
-    data: &[u8],
-    flate: bool,
+    samples: Vec<u8>,
     expand_one_bit: bool,
     width: u32,
     height: u32,
     components: u8,
 ) -> InlineImage {
-    let samples = if flate {
-        match miniz_oxide::inflate::decompress_to_vec_zlib(data) {
-            Ok(raw) => raw,
-            Err(_) => {
-                return InlineImage {
-                    encoded: None,
-                    missing: Some("inline image FlateDecode failed".into()),
-                };
-            }
-        }
-    } else {
-        data.to_vec()
-    };
     let samples = if expand_one_bit {
         match crate::image::expand_gray1_to_eight(
             &samples,
@@ -440,12 +554,7 @@ fn decode_inline_samples(
             &crate::PdfLimits::default(),
         ) {
             Ok(expanded) => expanded,
-            Err(reject) => {
-                return InlineImage {
-                    encoded: None,
-                    missing: Some(reject.to_string()),
-                };
-            }
+            Err(reject) => return missing(reject.to_string()),
         }
     } else {
         samples
@@ -501,6 +610,75 @@ mod tests {
         assert!(images[0].encoded.is_none());
         let missing = images[0].missing.as_deref().unwrap_or_default();
         assert!(missing.contains("budget"), "{missing}");
+    }
+
+    fn hex(bytes: &[u8]) -> String {
+        use std::fmt::Write as _;
+        let mut out = String::new();
+        for byte in bytes {
+            let _ = write!(out, "{byte:02X}");
+        }
+        out.push('>');
+        out
+    }
+
+    #[test]
+    fn a_stencil_behind_a_filter_array_is_a_named_loss_between_intact_text() {
+        // R1: `/IM true` with no `/CS`, `/F [/AHx /Fl]`; the text either side
+        // must reach the tokeniser untouched.
+        let data = miniz_oxide::deflate::compress_to_vec_zlib(&[0xAA, 0x55], 6);
+        let mut stream = Vec::new();
+        stream.extend_from_slice(
+            b"BT (before) Tj ET q BI /W 8 /H 2 /BPC 1 /IM true /F [/AHx /Fl] ID ",
+        );
+        stream.extend_from_slice(hex(&data).as_bytes());
+        stream.extend_from_slice(b" EI Q BT (after) Tj ET");
+        let (cleaned, images) = extract(&stream);
+        let text = String::from_utf8_lossy(&cleaned);
+        assert_eq!(
+            text,
+            format!("BT (before) Tj ET q 0 {INLINE_OP} Q BT (after) Tj ET")
+        );
+        assert_eq!(images.len(), 1);
+        assert!(images[0].encoded.is_none());
+        let missing = images[0].missing.as_deref().unwrap_or_default();
+        assert_eq!(missing, "inline image mask is not carried");
+    }
+
+    #[test]
+    fn a_gray_image_behind_a_filter_array_decodes() {
+        let data = miniz_oxide::deflate::compress_to_vec_zlib(&[0, 64, 128, 255], 6);
+        let mut stream = Vec::new();
+        stream.extend_from_slice(b"BI /W 2 /H 2 /BPC 8 /CS /G /F [/AHx /Fl] ID ");
+        stream.extend_from_slice(hex(&data).as_bytes());
+        stream.extend_from_slice(b" EI");
+        let (_, images) = extract(&stream);
+        assert_eq!(images.len(), 1);
+        let Some(crate::image::Encoded::Raw {
+            samples,
+            components,
+            ..
+        }) = &images[0].encoded
+        else {
+            panic!("not decoded: {:?}", images[0].missing);
+        };
+        assert_eq!(*components, 1);
+        assert_eq!(samples.as_slice(), &[0, 64, 128, 255]);
+    }
+
+    #[test]
+    fn decode_parms_are_skipped_whole_and_reported() {
+        let mut stream = Vec::new();
+        stream.extend_from_slice(
+            b"BI /W 1 /H 1 /CS /G /DP << /Predictor 15 /Columns 1 >> /F /Fl ID x EI Q",
+        );
+        let (cleaned, images) = extract(&stream);
+        assert_eq!(
+            String::from_utf8_lossy(&cleaned),
+            format!("0 {INLINE_OP} Q")
+        );
+        let missing = images[0].missing.as_deref().unwrap_or_default();
+        assert_eq!(missing, "inline image DecodeParms is not carried");
     }
 
     #[test]

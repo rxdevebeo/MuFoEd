@@ -4591,6 +4591,7 @@ dependencies = [
  "lopdf",
  "miniz_oxide 0.8.9",
  "png",
+ "read-fonts 0.41.0",
  "strict-ooxml-core",
  "strict-ooxml-fidelity",
  "strict-ooxml-render-pdf",

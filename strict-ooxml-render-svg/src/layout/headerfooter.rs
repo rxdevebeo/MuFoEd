@@ -39,8 +39,11 @@ const DEFAULT_HEADER_FOOTER_TWIPS: i32 = 720;
 struct Region {
     /// Paint items relative to the content left edge at `y = 0`.
     items: Vec<Item>,
-    /// Region height in px.
+    /// Flow height in px - what the body clears and the cache stores.
     height: f64,
+    /// Lowest ink the region draws, floats included. A footer is placed by
+    /// this, so a footer made of floating objects lands on the page.
+    ink_bottom: f64,
 }
 
 /// Cached layout of a header/footer part without dynamic fields.
@@ -203,7 +206,7 @@ pub(crate) fn decorate_pages(
                 )
             }) {
                 ctx.charge_items(region.items.iter().map(|item| item.leaves().count()).sum())?;
-                let y = (page.height_px - footer_offset - region.height).max(0.0);
+                let y = (page.height_px - footer_offset - region.ink_bottom).max(0.0);
                 for item in &region.items {
                     decorated.push(offset_item(item, 0.0, y));
                 }
@@ -474,6 +477,7 @@ fn region_for(
         Some(Region {
             items: cached.region.items.clone(),
             height: cached.region.height,
+            ink_bottom: cached.region.ink_bottom,
         })
     } else {
         let region = layout_region(ctx, &header_footer.blocks, left, width, None);
@@ -483,6 +487,7 @@ fn region_for(
                 region: Region {
                     items: region.items.clone(),
                     height: region.height,
+                    ink_bottom: region.ink_bottom,
                 },
             },
         );
@@ -515,5 +520,37 @@ fn layout_region(
         &mut page_frames,
     );
     ctx.field_env.set(None);
-    Region { items, height: y }
+    // A header/footer of only floating objects has no flow height (`y` stays
+    // 0). Its `ink_bottom` is where those objects actually reach, so a
+    // bottom-anchored footer still lands with its content on the page
+    // (CC0/019: a footer text box drew 15 pt under the page; CC0/020: 740 pt).
+    // `height` stays the flow height: the body clears the text, not a stray
+    // box that reaches far down, and using the ink here exploded the page count.
+    //
+    // Only ink that is *drawn* counts. An auto-fit VML text box keeps its
+    // declared extent in its invisible rectangle (`fill="none"`, `stroked="f"`);
+    // counting that rectangle lifted a footer whose text was fine right up into
+    // the body (CC0_DOCX_MATH/095: a 144 pt page-number box over a 60 pt text
+    // line, the flow text then overlapping the last body lines).
+    let ink_bottom = items
+        .iter()
+        .filter(|item| paints_ink(item))
+        .map(|item| crate::layout::table::item_vertical_bounds(ctx, item).1)
+        .fold(y, f64::max);
+    Region {
+        items,
+        height: y,
+        ink_bottom,
+    }
+}
+
+/// Whether an item puts any ink on the page: text, a picture or a line always
+/// does; a shape only with a fill, gradient or stroke; a group as its children.
+fn paints_ink(item: &Item) -> bool {
+    match item {
+        Item::Text(_) | Item::Image(_) | Item::Line(_) => true,
+        Item::Rect(rect) => rect.fill.is_some() || rect.stroke.is_some(),
+        Item::Path(path) => path.fill.is_some() || path.paint.is_some() || path.stroke.is_some(),
+        Item::Group(group) => group.items.iter().any(paints_ink),
+    }
 }

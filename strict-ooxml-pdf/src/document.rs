@@ -41,6 +41,60 @@ pub(crate) fn bounded_decompress(
     }
 }
 
+/// Writes every stream's `/Filter` and `/DecodeParms` as direct objects.
+///
+/// `lopdf` reads a stream's filter chain only when it is written in the
+/// dictionary itself. An indirect one (`/Filter 3 0 R` → `[/FlateDecode]`, as
+/// SAP NetWeaver writes every stream) reads as "no filter", and the stream's
+/// *compressed* bytes come back as its content: a page of them tokenises to a
+/// stray `x` operator (the zlib header) and nothing else (R1,
+/// PDF-IMPORT-COMPARISON-2026-10-19). Resolving the references once, at open,
+/// fixes the page content, forms, fonts and images alike.
+fn direct_stream_filters(document: &mut lopdf::Document) {
+    let mut fixes: Vec<(lopdf::ObjectId, &'static [u8], Object)> = Vec::new();
+    for (&id, object) in &document.objects {
+        let Object::Stream(stream) = object else {
+            continue;
+        };
+        for key in [b"Filter".as_slice(), b"DecodeParms".as_slice()] {
+            if let Some(direct) = stream
+                .dict
+                .get(key)
+                .ok()
+                .and_then(|value| direct_value(document, value))
+            {
+                fixes.push((id, key, direct));
+            }
+        }
+    }
+    for (id, key, value) in fixes {
+        if let Some(Object::Stream(stream)) = document.objects.get_mut(&id) {
+            stream.dict.set(key.to_vec(), value);
+        }
+    }
+}
+
+/// `value` with its references resolved, one array level deep; `None` when it
+/// is already direct.
+fn direct_value(document: &lopdf::Document, value: &Object) -> Option<Object> {
+    let resolve = |item: &Object| {
+        document
+            .dereference(item)
+            .map_or(Object::Null, |(_, target)| target.clone())
+    };
+    let target = match value {
+        Object::Reference(_) => resolve(value),
+        Object::Array(items) if items.iter().any(|item| item.as_reference().is_ok()) => {
+            value.clone()
+        }
+        _ => return None,
+    };
+    Some(match target {
+        Object::Array(items) => Object::Array(items.iter().map(resolve).collect()),
+        other => other,
+    })
+}
+
 /// A form's content, decoded once for the document (AUD-13).
 struct DecodedForm {
     operations: Rc<Vec<lopdf::content::Operation>>,
@@ -252,8 +306,9 @@ impl PdfDocument {
             max_decompressed_size: Some(crate::preload::object_stream_budget(&limits)),
             ..lopdf::LoadOptions::default()
         };
-        let document = lopdf::Document::load_mem_with_options(bytes, options)
+        let mut document = lopdf::Document::load_mem_with_options(bytes, options)
             .map_err(|error| PdfError::from_lopdf(&error))?;
+        direct_stream_filters(&mut document);
         if document.is_encrypted() {
             return Err(PdfError::Encrypted);
         }
@@ -366,6 +421,30 @@ impl PdfDocument {
         let page = self.read_page(id, number)?;
         self.report.merge(&page.report);
         Ok(page)
+    }
+
+    /// What every font decoded so far states about its look, sorted by
+    /// `/BaseFont` and without duplicates.
+    ///
+    /// Fonts are decoded as pages are read, so this answers for the pages read
+    /// before it is called.
+    #[must_use]
+    pub fn font_faces(&self) -> Vec<crate::fonts::FontFace> {
+        let mut faces: Vec<crate::fonts::FontFace> = self
+            .fonts
+            .entries
+            .borrow()
+            .values()
+            .map(|font| font.face())
+            .collect();
+        faces.sort_by(|a, b| {
+            a.base_font
+                .cmp(&b.base_font)
+                .then_with(|| a.flags.cmp(&b.flags))
+                .then_with(|| a.panose.cmp(&b.panose))
+        });
+        faces.dedup();
+        faces
     }
 
     /// Reads every page, bounded by `PdfLimits::max_pages`.
@@ -869,8 +948,14 @@ struct PageResources<'a> {
     images: BTreeMap<String, lopdf::ObjectId>,
     forms: BTreeMap<String, lopdf::ObjectId>,
     shadings: BTreeMap<String, crate::content::AxialGradient>,
+    /// Shading patterns (`PatternType 2`) with an axial shading, and their
+    /// `/Matrix` (G2).
+    patterns: BTreeMap<String, (crate::content::AxialGradient, crate::content::Matrix)>,
     /// Graphics states' fill and stroke opacity (`ca`, `CA`).
     ext_g_states: BTreeMap<String, (Option<f64>, Option<f64>)>,
+    /// What graphics states do that this reader does not apply: a soft mask,
+    /// a blend mode other than `Normal` (G5).
+    effects: BTreeMap<String, StateEffects>,
     limits: PdfLimits,
     /// The resources a form falls back on, when the form declares none itself.
     parent: Option<&'a PageResources<'a>>,
@@ -928,7 +1013,9 @@ impl<'a> PageResources<'a> {
         let mut images = BTreeMap::new();
         let mut forms = BTreeMap::new();
         let mut shadings = BTreeMap::new();
+        let mut patterns = BTreeMap::new();
         let mut ext_g_states = BTreeMap::new();
+        let mut effects = BTreeMap::new();
         let mut notes: Vec<(String, String)> = Vec::new();
         let Some(resources) = inherited
             .get(b"Resources".as_slice())
@@ -944,7 +1031,9 @@ impl<'a> PageResources<'a> {
                 images,
                 forms,
                 shadings,
+                patterns,
                 ext_g_states,
+                effects,
                 limits,
                 parent,
                 notes,
@@ -957,6 +1046,10 @@ impl<'a> PageResources<'a> {
         // case for a scanned document.
         if let Ok(states) = resources.get(b"ExtGState") {
             ext_g_states = graphics_states(resolve, states);
+            effects = state_effects(resolve, states);
+        }
+        if let Ok(pattern_object) = resources.get(b"Pattern") {
+            patterns = shading_patterns(resolve, pattern_object);
         }
         if let Ok(shading_object) = resources.get(b"Shading") {
             for (name, object) in dictionary_entries(resolve, shading_object) {
@@ -1024,7 +1117,9 @@ impl<'a> PageResources<'a> {
             images,
             forms,
             shadings,
+            patterns,
             ext_g_states,
+            effects,
             limits,
             parent,
             notes,
@@ -1068,6 +1163,101 @@ fn graphics_states(
     out
 }
 
+/// What one graphics state does that this reader does not apply.
+#[derive(Clone, Debug, Default)]
+struct StateEffects {
+    /// `/SMask` other than `/None`.
+    soft_mask: bool,
+    /// `/BM` other than `Normal` (or its old name `Compatible`); of an array,
+    /// the first mode.
+    blend_mode: Option<String>,
+}
+
+/// The graphics states that set a soft mask or a blend mode, by name.
+fn state_effects(
+    resolve: crate::fonts::Resolver<'_>,
+    states: &Object,
+) -> BTreeMap<String, StateEffects> {
+    dictionary_entries(resolve, states)
+        .into_iter()
+        .filter_map(|(name, object)| {
+            let state = resolve.get(&object)?.as_dict().ok()?;
+            let soft_mask = state
+                .get(b"SMask")
+                .ok()
+                .and_then(|mask| resolve.get(mask))
+                .is_some_and(|mask| !matches!(mask, Object::Name(name) if name == b"None"));
+            let mode = state
+                .get(b"BM")
+                .ok()
+                .and_then(|mode| match resolve.get(mode)? {
+                    Object::Name(mode) => Some(mode.clone()),
+                    Object::Array(modes) => match modes.first()? {
+                        Object::Name(mode) => Some(mode.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                });
+            let blend_mode = mode
+                .filter(|mode| mode != b"Normal" && mode != b"Compatible")
+                .map(|mode| String::from_utf8_lossy(&mode).into_owned());
+            (soft_mask || blend_mode.is_some()).then_some((
+                name,
+                StateEffects {
+                    soft_mask,
+                    blend_mode,
+                },
+            ))
+        })
+        .collect()
+}
+
+/// The shading patterns of a `/Pattern` resource dictionary, by name.
+fn shading_patterns(
+    resolve: crate::fonts::Resolver<'_>,
+    patterns: &Object,
+) -> BTreeMap<String, (crate::content::AxialGradient, crate::content::Matrix)> {
+    dictionary_entries(resolve, patterns)
+        .into_iter()
+        .filter_map(|(name, object)| Some((name, shading_pattern(resolve, &object)?)))
+        .collect()
+}
+
+/// A shading pattern (`/PatternType 2`) whose shading this reader decodes,
+/// with its `/Matrix` (identity when absent). A tiling pattern is a stream,
+/// not a dictionary, and is not one.
+fn shading_pattern(
+    resolve: crate::fonts::Resolver<'_>,
+    object: &Object,
+) -> Option<(crate::content::AxialGradient, crate::content::Matrix)> {
+    let pattern = resolve.get(object)?.as_dict().ok()?;
+    if pattern.get(b"PatternType").ok()?.as_i64().ok()? != 2 {
+        return None;
+    }
+    let gradient = crate::shading::decode(resolve, pattern.get(b"Shading").ok()?)?;
+    let matrix = match pattern.get(b"Matrix") {
+        Ok(value) => {
+            let numbers: Vec<f64> = crate::fonts::array_items(value, resolve)
+                .iter()
+                .map(number_of_object)
+                .collect::<Option<Vec<f64>>>()?;
+            let &[scale_x, skew_y, skew_x, scale_y, move_x, move_y] = numbers.as_slice() else {
+                return None;
+            };
+            crate::content::Matrix {
+                a: scale_x,
+                b: skew_y,
+                c: skew_x,
+                d: scale_y,
+                e: move_x,
+                f: move_y,
+            }
+        }
+        Err(_) => crate::content::Matrix::IDENTITY,
+    };
+    Some((gradient, matrix))
+}
+
 fn dictionary_entries(
     resolve: crate::fonts::Resolver<'_>,
     object: &Object,
@@ -1087,6 +1277,33 @@ impl ResourceProvider for PageResources<'_> {
             .get(name)
             .copied()
             .or_else(|| self.parent.and_then(|parent| parent.ext_g_state(name)))
+    }
+    fn pattern(
+        &self,
+        name: &str,
+    ) -> Option<(crate::content::AxialGradient, crate::content::Matrix)> {
+        self.patterns
+            .get(name)
+            .cloned()
+            .or_else(|| self.parent.and_then(|parent| parent.pattern(name)))
+    }
+    fn blend_mode(&self, name: &str) -> Option<String> {
+        if self.ext_g_states.contains_key(name) {
+            self.effects
+                .get(name)
+                .and_then(|effects| effects.blend_mode.clone())
+        } else {
+            self.parent.and_then(|parent| parent.blend_mode(name))
+        }
+    }
+    fn soft_mask(&self, name: &str) -> bool {
+        if self.ext_g_states.contains_key(name) {
+            self.effects
+                .get(name)
+                .is_some_and(|effects| effects.soft_mask)
+        } else {
+            self.parent.is_some_and(|parent| parent.soft_mask(name))
+        }
     }
     fn shading(&self, name: &str) -> Option<crate::content::AxialGradient> {
         self.shadings

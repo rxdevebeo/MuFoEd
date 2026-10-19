@@ -338,6 +338,23 @@ fn authored_cell_height(
 /// nesting level of a 1 MiB stack (`hostile` `twelve_nested_tables_*`).
 #[inline(never)]
 fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flow> {
+    // A row is divided only when it cannot fit a page: a shorter row is moved
+    // whole, and only a taller one may break at a zero-gap boundary (033).
+    let page_height = ctx
+        .document
+        .sections
+        .get(ctx.current_section.get())
+        .map(|section| {
+            crate::layout::geometry_for(
+                Some(&section.properties),
+                ctx.options.scale,
+                None,
+                ctx.document.settings.gutter_at_top,
+                ctx.options.default_paper,
+            )
+            .content_height()
+        })
+        .unwrap_or(f64::INFINITY);
     let mut flows = Vec::with_capacity(rows.len());
     for (row_index, row) in rows.iter().enumerate() {
         let mut items = Vec::new();
@@ -429,6 +446,8 @@ fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flo
                     .is_some_and(|row| row.props.cant_split)
             {
                 Vec::new()
+            } else if row.height > page_height {
+                row_split_points_touching(bands, row.height)
             } else {
                 row_split_points(bands, row.height)
             },
@@ -476,13 +495,39 @@ pub(crate) fn item_vertical_bounds(ctx: &LayoutContext<'_>, item: &Item) -> (f64
 }
 
 /// Union the occupied intervals across every cell before selecting boundaries.
-pub(crate) fn row_split_points(mut bands: Vec<(f64, f64)>, height: f64) -> Vec<f64> {
+///
+/// A boundary is only chosen where two bands leave a positive gap: a break in a
+/// gap cannot cut any ink. A row that does not fit the page and has no gap at
+/// all then has no point to break at, so [`row_split_points_touching`] is used
+/// when the row is taller than the page and must be divided.
+pub(crate) fn row_split_points(bands: Vec<(f64, f64)>, height: f64) -> Vec<f64> {
+    split_points(bands, height, false)
+}
+
+/// The split points of content taller than its page, where a zero-gap boundary
+/// counts too.
+///
+/// Single-spaced lines whose ascender/descender boxes abut leave no gap, yet a
+/// break between them cuts nothing: [`row_fragment`] assigns a text item by its
+/// baseline, so the line above stays whole above the break and the line below
+/// starts below it. Without this a row taller than the page was indivisible and
+/// ran off it (033).
+pub(crate) fn row_split_points_touching(bands: Vec<(f64, f64)>, height: f64) -> Vec<f64> {
+    split_points(bands, height, true)
+}
+
+fn split_points(mut bands: Vec<(f64, f64)>, height: f64, touching: bool) -> Vec<f64> {
     bands.retain(|(top, bottom)| top.is_finite() && bottom.is_finite() && bottom >= top);
     bands.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut points = Vec::new();
     let mut end = 0.0_f64;
     for (top, bottom) in bands {
-        if top > end + 0.01 && end > 0.0 && end < height {
+        let separated = if touching {
+            top + 0.01 >= end
+        } else {
+            top > end + 0.01
+        };
+        if separated && end > 0.0 && end < height {
             points.push(f64::midpoint(end, top));
         }
         end = end.max(bottom);
@@ -1810,7 +1855,25 @@ fn place_cell_paragraph(
                 h,
                 ctx.options.scale,
             );
-            let anchor_items = crate::paint::graphics::anchor_items(ctx, anchor, ax, ay, w, h);
+            let placement = crate::layout::floating::clamp_frame(ctx, &geometry, ax, ay, w, h);
+            let mut anchor_items = crate::paint::graphics::anchor_items(
+                ctx,
+                anchor,
+                placement.x,
+                placement.y,
+                placement.w,
+                placement.h,
+            );
+            if placement.off_page {
+                crate::layout::floating::mark_floating_items(&mut anchor_items);
+            }
+            if let Some(clip) = placement.clip {
+                anchor_items = crate::layout::floating::clip_frame_items(
+                    anchor_items,
+                    clip,
+                    [placement.x, placement.y, placement.w, placement.h],
+                );
+            }
             if anchor.layout_in_cell {
                 CELL_HEIGHT_REQUIRED.with(|stack| {
                     if let Some(required) = stack.borrow_mut().last_mut() {
@@ -2017,14 +2080,26 @@ fn append_row_anchors(
             h,
             ctx.options.scale,
         );
-        items.extend(crate::paint::graphics::anchor_items(
+        let placement = crate::layout::floating::clamp_frame(ctx, &geometry, x, y, w, h);
+        let mut anchor_items = crate::paint::graphics::anchor_items(
             ctx,
             &anchor.anchor,
-            x,
-            y,
-            w,
-            h,
-        ));
+            placement.x,
+            placement.y,
+            placement.w,
+            placement.h,
+        );
+        if placement.off_page {
+            crate::layout::floating::mark_floating_items(&mut anchor_items);
+        }
+        if let Some(clip) = placement.clip {
+            anchor_items = crate::layout::floating::clip_frame_items(
+                anchor_items,
+                clip,
+                [placement.x, placement.y, placement.w, placement.h],
+            );
+        }
+        items.extend(anchor_items);
     }
 }
 

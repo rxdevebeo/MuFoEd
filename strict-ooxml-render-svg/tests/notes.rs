@@ -179,7 +179,8 @@ fn endnote_renders_at_document_end() {
 
 #[test]
 fn long_footnote_continues_on_next_page() {
-    // A short page: a multi-line note cannot fit alongside the body.
+    // A short page: a multi-line note cannot fit alongside the body. The note is
+    // taller than the page, so it continues line by line onto the pages after.
     let body = "<w:p><w:r><w:t>Body</w:t></w:r><w:r><w:footnoteReference w:id=\"1\"/></w:r></w:p>\
 <w:sectPr><w:pgSz w:w=\"12240\" w:h=\"2600\"/>\
 <w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"720\" w:left=\"1440\" w:header=\"720\" w:footer=\"360\"/></w:sectPr>";
@@ -195,9 +196,16 @@ fn long_footnote_continues_on_next_page() {
         &rels,
         &[("word/footnotes.xml", footnotes(&long_note))],
     );
-    assert_eq!(pages.len(), 2, "expected the note to force a second page");
+    assert!(pages.len() >= 2, "expected the note to force a second page");
     assert!(!pages[0].svg.contains("ContinuedNoteText"));
-    assert!(pages[1].svg.contains("ContinuedNoteText"));
+    // The note is kept whole across the pages that carry it: nothing is lost.
+    let continued: String = pages[1..].iter().map(|page| page.svg.as_str()).collect();
+    assert!(continued.contains("ContinuedNoteText"));
+    assert_eq!(
+        continued.matches("extra").count(),
+        5,
+        "every continued note line is kept"
+    );
     // Page 2 starts with a continued note, so its separator spans the full width.
     let content_width = 12240.0 / 1440.0 * 96.0 - 2.0 * 96.0;
     let lengths = line_lengths(&pages[1].svg);

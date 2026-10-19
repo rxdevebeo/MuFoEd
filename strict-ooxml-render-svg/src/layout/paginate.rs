@@ -501,6 +501,13 @@ fn layout_once(
     // after, from the page edges.
     crate::layout::sectionpage::mirror_margins(ctx, &mut layout.pages, sections);
     crate::layout::pageborders::apply(ctx, &mut layout.pages, sections)?;
+    // The page is complete: mark every text fragment whose ink left the sheet
+    // (a tab stop past its box, a floating frame off the page, any other
+    // overflow). The marks are diagnostics; `OffPageInk::Clamp` has already
+    // pulled the guided cases back at their source.
+    for page in &mut layout.pages {
+        page.mark_off_page();
+    }
     let mut fingerprint = LayoutFingerprint::new(&layout.pages, &regions);
     fingerprint.note_pages = ctx.note_numbers.reference_pages();
     fingerprint
@@ -2508,7 +2515,9 @@ impl<'a> Paginator<'a> {
         if *height <= start + budget {
             return Some((start, *height));
         }
-        let points = crate::layout::table::row_split_points(
+        // The note does not fit the area it is being sliced into: it has to be
+        // divided, so a zero-gap line boundary is a break point too (033).
+        let points = crate::layout::table::row_split_points_touching(
             items
                 .iter()
                 .filter(|item| !matches!(item, Item::Rect(_) | Item::Line(_)))
@@ -2750,6 +2759,7 @@ impl<'a> Paginator<'a> {
             height_px: self.geometry.height,
             items: std::mem::take(&mut self.current),
             section_index: self.section_index,
+            off_page: Vec::new(),
         });
         self.page_regions.push(self.current_region);
         Ok(())
@@ -3272,6 +3282,7 @@ impl<'a> Paginator<'a> {
                 height_px: self.geometry.height,
                 items: Vec::new(),
                 section_index: self.section_index,
+                off_page: Vec::new(),
             });
             self.page_regions.push(self.current_region);
         }
@@ -3305,6 +3316,7 @@ mod tests {
             height_px: 100.0,
             items: Vec::new(),
             section_index: 0,
+            off_page: Vec::new(),
         };
         let pages = [page.clone(), page];
         let a = LayoutFingerprint::new(&pages, &[(10.0, 4.0), (10.0, 4.0)]);

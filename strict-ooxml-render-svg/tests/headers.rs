@@ -12,7 +12,7 @@
 
 mod common;
 
-use common::{build_docx, content_types, document, open_bytes, root_rels, W};
+use common::{build_docx, content_types, document, open_bytes, root_rels, A, W, WPS, WP};
 use strict_ooxml_render_svg::{render, Page, RenderOptions};
 
 const HEADER_REL: &str = "http://purl.oclc.org/ooxml/officeDocument/relationships/header";
@@ -57,6 +57,26 @@ fn two_page_body(sect_pr: &str) -> String {
 <w:p><w:r><w:t>Body two</w:t></w:r></w:p>\
 <w:sectPr>{sect_pr}</w:sectPr>"
     )
+}
+
+/// A footer whose only content is a floating (`wp:anchor`) text box, offset
+/// `offset_emu` below its paragraph. Such a footer has no flow height.
+fn footer_with_text_box(text: &str, offset_emu: i64) -> Vec<u8> {
+    format!(
+        "<?xml version=\"1.0\"?><w:ftr xmlns:w=\"{W}\" xmlns:wp=\"{WP}\" xmlns:a=\"{A}\" xmlns:wps=\"{WPS}\">\
+<w:p><w:r><w:drawing>\
+<wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">\
+<wp:simplePos x=\"0\" y=\"0\"/>\
+<wp:positionH relativeFrom=\"column\"><wp:align>center</wp:align></wp:positionH>\
+<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>{offset_emu}</wp:posOffset></wp:positionV>\
+<wp:extent cx=\"2743200\" cy=\"914400\"/><wp:docPr id=\"1\" name=\"box\"/>\
+<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/wordprocessingShape\">\
+<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"2743200\" cy=\"914400\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></wps:spPr>\
+<wps:txbx><w:txbxContent><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:txbxContent></wps:txbx>\
+<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p></w:ftr>"
+    )
+    .into_bytes()
 }
 
 /// Builds and parses a Strict package from a body, rels, settings and extra parts.
@@ -267,6 +287,90 @@ fn header_offset_follows_page_margin() {
         "header offset delta was {}",
         one_inch - half_inch
     );
+}
+
+#[test]
+fn a_footer_of_floating_objects_keeps_its_text_on_the_page() {
+    // The footer is a single floating text box: the region has no flow height
+    // (`y` stays 0), so placing it by `y` put the box at the page edge and its
+    // text below it (CC0/019 drew a footer box 15 pt under the page). The
+    // footer is placed by the ink it draws.
+    let body = two_page_body(
+        "<w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"0\" w:footer=\"0\"/>\
+<w:footerReference w:type=\"default\" r:id=\"rIdF\"/>",
+    );
+    let rels = doc_rels(&[("rIdF", FOOTER_REL, "footer1.xml")]);
+    let pages = build(
+        &body,
+        &rels,
+        None,
+        &[("word/footer1.xml", footer_with_text_box("FTBOX", 228_600))],
+    );
+    let page = &pages[0];
+    let y = text_y(&page.svg, "FTBOX").expect("footer text box baseline");
+    assert!(
+        y > page.height_px / 2.0,
+        "the footer box is in the lower half: y={y}"
+    );
+    assert!(
+        y < page.height_px,
+        "the footer box must stay on the page: y={y}, height={}",
+        page.height_px
+    );
+}
+
+#[test]
+fn a_bare_footer_box_does_not_lift_the_footer_text() {
+    // The footer has a real text line and, below it, a floating text box whose
+    // declared extent is large but which draws nothing (`a:noFill`, no line) and
+    // holds only a short label. Counting that invisible rectangle as ink lifted
+    // the whole footer into the body (CC0_DOCX_MATH/095). Only drawn ink counts.
+    let body = two_page_body(
+        "<w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"0\" w:footer=\"0\"/>\
+<w:footerReference w:type=\"default\" r:id=\"rIdF\"/>",
+    );
+    let rels = doc_rels(&[("rIdF", FOOTER_REL, "footer1.xml")]);
+    let pages = build(
+        &body,
+        &rels,
+        None,
+        &[(
+            "word/footer1.xml",
+            footer_with_flow_and_bare_box("FTREAL", "lbl"),
+        )],
+    );
+    let page = &pages[0];
+    let y = text_y(&page.svg, "FTREAL").expect("footer flow text");
+    assert!(
+        y > page.height_px - 120.0,
+        "the footer text stays at the foot, not lifted by the bare box: y={y}, height={}",
+        page.height_px
+    );
+    assert!(y < page.height_px, "footer must stay on the page: y={y}");
+}
+
+/// A footer with one flow text line and a large, invisible (`a:noFill`) text box
+/// anchored below it.
+fn footer_with_flow_and_bare_box(flow: &str, box_text: &str) -> Vec<u8> {
+    format!(
+        "<?xml version=\"1.0\"?><w:ftr xmlns:w=\"{W}\" xmlns:wp=\"{WP}\" xmlns:a=\"{A}\" xmlns:wps=\"{WPS}\">\
+<w:p><w:r><w:t>{flow}</w:t></w:r></w:p>\
+<w:p><w:r><w:drawing>\
+<wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">\
+<wp:simplePos x=\"0\" y=\"0\"/>\
+<wp:positionH relativeFrom=\"column\"><wp:align>center</wp:align></wp:positionH>\
+<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>0</wp:posOffset></wp:positionV>\
+<wp:extent cx=\"2743200\" cy=\"2743200\"/><wp:docPr id=\"1\" name=\"box\"/>\
+<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/wordprocessingShape\">\
+<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"2743200\" cy=\"2743200\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/>\
+<a:ln><a:noFill/></a:ln></wps:spPr>\
+<wps:txbx><w:txbxContent><w:p><w:r><w:t>{box_text}</w:t></w:r></w:p></w:txbxContent></wps:txbx>\
+<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p></w:ftr>"
+    )
+    .into_bytes()
 }
 
 #[test]

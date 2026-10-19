@@ -141,6 +141,25 @@ pub(crate) fn build(
     // The page before was set as a design, in anchored boxes that take no room
     // in the flow: this page starts a page of its own.
     let mut break_next = false;
+    // A page rebuilt by a model was rebuilt because its own text layer could
+    // not be read; that layer's lines in the flow as well put the page's
+    // text in the document twice, the model's copy on a page of its own.
+    let mut page_lines: Vec<Vec<GlyphLine>> = pages
+        .iter()
+        .enumerate()
+        .map(|(index, page)| {
+            if recovered.page(index).iter().any(|block| block.whole_page) {
+                Vec::new()
+            } else {
+                join_fragments(strict_ooxml_pdf::text::lines(page.items()))
+            }
+        })
+        .collect();
+    // The running header and footer are the document's, not a page's: found
+    // across the pages before any page is built, they leave every page's flow.
+    let heights: Vec<f64> = pages.iter().map(|page| page.geometry.height).collect();
+    let running = crate::running::detect(&page_lines, &heights);
+    let decorations = crate::running::Decorations::build(&running, pages, &page_lines, report);
     for (index, page) in pages.iter().enumerate() {
         // A size or margin change closes the previous page before these blocks
         // are appended. Identical neighbours stay in the open section.
@@ -150,6 +169,7 @@ pub(crate) fn build(
             section.page_size = Some(*size);
             section.page_margins = Some(*margins);
         }
+        decorations.adjust(index, &mut section);
         let text_area = text_area(&section);
         let top_margin = section
             .page_margins
@@ -166,15 +186,19 @@ pub(crate) fn build(
             .and_then(|margins| margins.left)
             .map_or(0.0, |left| f64::from(left.0) / 20.0);
         sections.begin_page(&mut blocks, section, false);
-        // A page rebuilt by a model was rebuilt because its own text layer could
-        // not be read; that layer's lines in the flow as well put the page's
-        // text in the document twice, the model's copy on a page of its own.
-        let raw_lines = if rebuilt {
-            Vec::new()
-        } else {
-            join_fragments(strict_ooxml_pdf::text::lines(page.items()))
-        };
+        let raw_lines = page_lines
+            .get_mut(index)
+            .map(std::mem::take)
+            .unwrap_or_default();
         report.lines += raw_lines.len();
+        let raw_lines: Vec<GlyphLine> = raw_lines
+            .into_iter()
+            .enumerate()
+            .filter(|(number, line)| {
+                !running.leaves_flow(index, *number, line, page.geometry.height)
+            })
+            .map(|(_, line)| line)
+            .collect();
         let column_plan = crate::columns::plan(page, &raw_lines, report);
         let lines = margin_lines_in_place(
             crate::columns::apply(raw_lines, &column_plan),
@@ -220,7 +244,10 @@ pub(crate) fn build(
                     frames.len()
                 ),
             );
-            anchored.splice(0..0, page_shapes(page, report, true));
+            anchored.splice(
+                0..0,
+                page_shapes(page, report, true, &std::collections::BTreeSet::new()),
+            );
             anchored.extend(frames);
             // Anchors take no room in the flow, so the page is a page of its
             // own: it starts one, and the page after it starts another.
@@ -278,7 +305,12 @@ pub(crate) fn build(
         // onto whatever page that text reached, and a dark box no longer lay
         // under its white words. Thin rules are a table's borders where the
         // page has tables.
-        anchored.splice(0..0, page_shapes(page, report, plan.tables.is_empty()));
+        // A contents line's dots are its tab's leader, not a shape (leaders).
+        let (leaders, leader_paths) = crate::leaders::find(page, &lines);
+        anchored.splice(
+            0..0,
+            page_shapes(page, report, plan.tables.is_empty(), &leader_paths),
+        );
         let interleave = matches!(column_plan, crate::columns::ColumnPlan::Single);
         if interleave {
             figures.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -304,6 +336,7 @@ pub(crate) fn build(
                         &mut numbering,
                         report,
                         index + 1,
+                        &leaders,
                     );
                     blocks.push(figure);
                 }
@@ -321,6 +354,7 @@ pub(crate) fn build(
                     &mut numbering,
                     report,
                     index + 1,
+                    &leaders,
                 );
                 blocks.push(table_block(table, body, pitch, options, report, index + 1));
                 continue;
@@ -340,6 +374,7 @@ pub(crate) fn build(
             &mut numbering,
             report,
             index + 1,
+            &leaders,
         );
         blocks.extend(figures.map(|(_, figure)| figure));
         // Only where the page starts at the top: the document's first page, or
@@ -403,6 +438,7 @@ pub(crate) fn build(
     let mut document = crate::empty_document();
     document.body = strict_ooxml_wml::model::document::Body { blocks };
     document.sections = sections.finish();
+    decorations.attach(&mut document);
     media.register(&mut document.media);
     // The numbering the lists asked for, with the `w:numPr` paragraphs above.
     document.numbering = numbering;
@@ -438,6 +474,7 @@ fn paragraphs_of(
     report: &mut ConversionReport,
     page: usize,
     items: &std::collections::BTreeMap<usize, crate::lists::Item>,
+    leaders: &[crate::leaders::Leader],
 ) -> Vec<Paragraph> {
     let mut out: Vec<Paragraph> = Vec::new();
     let mut paragraph: Option<Paragraph> = None;
@@ -486,7 +523,7 @@ fn paragraphs_of(
                     && line.x > before.x + before.width
                     && !line.text().trim().is_empty()
                 {
-                    tab_to(open, line, origin, edges);
+                    tab_to(open, line, origin, edges, crate::leaders::of(leaders, line));
                     push_runs_from(open, line, 0);
                     single = None;
                     previous = Some(line);
@@ -505,6 +542,12 @@ fn paragraphs_of(
                     gap > pitch * options.paragraphs.paragraph_gap_ratio
                         || moved > body * options.paragraphs.indent_ratio
                         || !same_format(previous, line)
+                        // An empty line is the empty paragraph a producer typed
+                        // between two others: it ends the one above and is not
+                        // the start of the one below.
+                        || is_blank(previous)
+                        || is_blank(line)
+                        || ended_short(previous, line, edges)
                 }));
         if starts_new || paragraph.is_none() {
             if let Some(mut finished) = paragraph.take() {
@@ -588,10 +631,58 @@ fn paragraphs_of(
     out
 }
 
+/// A line with no ink.
+fn is_blank(line: &GlyphLine) -> bool {
+    line.text().trim().is_empty()
+}
+
+/// Whether `previous` ended its paragraph: the first word of `line` would have
+/// fitted in the room left at its end, so a producer that wrapped there was
+/// not wrapping.
+///
+/// The gap and indent rules cannot see this. A letter's signature block, the
+/// name, title and department lines of a contact, a list of short entries one
+/// line pitch apart all have ordinary gaps and one left edge, and joined they
+/// became one run-on paragraph as soon as the pitch was measured right (P1,
+/// `PDF-IMPORT-COMPARISON-2026-10-19.md`). One and a half sizes are allowed
+/// for the space between the words and the slack of a ragged right edge, so a
+/// short ragged block measured against its own longest line still runs on.
+fn ended_short(previous: &GlyphLine, line: &GlyphLine, edges: Option<(f64, f64)>) -> bool {
+    let Some((_, right)) = edges else {
+        return false;
+    };
+    let Some(end) = previous
+        .glyphs
+        .iter()
+        .rev()
+        .find(|glyph| !glyph.text.trim().is_empty())
+        .map(|glyph| glyph.x + glyph.width)
+    else {
+        return false;
+    };
+    let mut word = line
+        .glyphs
+        .iter()
+        .skip_while(|glyph| glyph.text.trim().is_empty())
+        .take_while(|glyph| !glyph.text.trim().is_empty());
+    let Some(first) = word.next() else {
+        return false;
+    };
+    let word_end = word.last().unwrap_or(first);
+    let word_width = word_end.x + word_end.width - first.x;
+    right - end > word_width + line.size * 1.5
+}
+
 /// Adds a tab stop at a piece's place on its line (at its end when it ends
 /// at the text's right edge, which is where a page number is aligned) and the
 /// tab that reaches it.
-fn tab_to(paragraph: &mut Paragraph, line: &GlyphLine, origin: f64, edges: Option<(f64, f64)>) {
+fn tab_to(
+    paragraph: &mut Paragraph,
+    line: &GlyphLine,
+    origin: f64,
+    edges: Option<(f64, f64)>,
+    leader: Option<strict_ooxml_wml::model::values::TabLeader>,
+) {
     use strict_ooxml_wml::model::values::{TabAlignment, TabStop};
     let end = line.x + line.width;
     let at_edge = edges.is_some_and(|(_, right)| (end - right).abs() <= 2.0);
@@ -603,7 +694,7 @@ fn tab_to(paragraph: &mut Paragraph, line: &GlyphLine, origin: f64, edges: Optio
     paragraph.props.tabs.push(TabStop {
         position: Twips(to_twips(position - origin)),
         alignment,
-        leader: None,
+        leader,
     });
     paragraph.inlines.push(Inline::Run(Run {
         props: RunProperties::default(),
@@ -664,6 +755,7 @@ fn push_paragraphs(
     report: &mut ConversionReport,
     page: usize,
     items: &std::collections::BTreeMap<usize, crate::lists::Item>,
+    leaders: &[crate::leaders::Leader],
 ) {
     blocks.extend(
         paragraphs_of(
@@ -676,6 +768,7 @@ fn push_paragraphs(
             report,
             page,
             items,
+            leaders,
         )
         .into_iter()
         .map(Block::Paragraph),
@@ -708,6 +801,7 @@ fn table_block(
                         report,
                         page,
                         &std::collections::BTreeMap::new(),
+                        &[],
                     )
                 })
                 .collect()
@@ -905,22 +999,53 @@ fn is_marker(line: &GlyphLine) -> bool {
     digits || letter || roman
 }
 
-/// The distance between consecutive baselines, in points.
+/// The distance between consecutive baselines of the body text, in points.
+///
+/// Measured between lines **of the body size** only, as the smallest gap that
+/// occurs more than once. It used to be the smallest gap between any two
+/// baselines on the page, and a footer's two 9-point lines 5 pt apart made the
+/// pitch of a 10.6-point page 5.3 pt: every ordinary line break then looked
+/// like a paragraph break, and each line of the page became a paragraph of its
+/// own, which reflowed into a line and a stray word as soon as the face was a
+/// little wider (P1, `PDF-IMPORT-COMPARISON-2026-10-19.md`). Gaps under 0.8 of
+/// the size are not line pitch at all — a superscript, two columns' lines
+/// interleaved by baseline — and are left out; a gap that occurs once is a
+/// paragraph's spacing as often as a line's.
 #[must_use]
 fn body_pitch(lines: &[GlyphLine]) -> f64 {
-    if lines.len() < 2 {
-        return lines.first().map_or(12.0, |line| line.size * 1.2);
-    }
-    let mut sorted: Vec<f64> = lines.iter().map(|line| line.baseline).collect();
-    sorted.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
-    let mut gaps: Vec<f64> = sorted
+    let body = body_size(lines);
+    let fallback = lines.first().map_or(12.0, |_| body * 1.2);
+    let mut baselines: Vec<f64> = lines
         .iter()
-        .zip(sorted.iter().skip(1))
-        .map(|(previous, next)| next - previous)
-        .filter(|gap| *gap > 0.1)
+        .filter(|line| (line.size - body).abs() <= body * 0.05)
+        .map(|line| line.baseline)
         .collect();
-    gaps.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
-    gaps.first().copied().unwrap_or(12.0)
+    baselines.sort_by(f64::total_cmp);
+    baselines.dedup_by(|next, previous| (*next - *previous).abs() <= 0.1);
+    // Gaps bucketed to a quarter point, so 12.72 and 12.96 of one paragraph's
+    // rounding count as the same pitch.
+    let mut buckets: std::collections::BTreeMap<i64, (usize, f64)> =
+        std::collections::BTreeMap::new();
+    for (previous, next) in baselines.iter().zip(baselines.iter().skip(1)) {
+        let gap = next - previous;
+        if gap < body * 0.8 {
+            continue;
+        }
+        let entry = buckets
+            .entry((gap * 4.0).round() as i64)
+            .or_insert((0, gap));
+        entry.0 += 1;
+        entry.1 = entry.1.min(gap);
+    }
+    // Neighbouring buckets are one pitch split by rounding: count them together.
+    let keys: Vec<i64> = buckets.keys().copied().collect();
+    keys.iter()
+        .find_map(|key| {
+            let (count, gap) = buckets.get(key).copied()?;
+            let neighbour = buckets.get(&(key + 1)).map_or(0, |(count, _)| *count);
+            (count + neighbour >= 2).then_some(gap)
+        })
+        .unwrap_or(fallback)
 }
 
 /// Whether two lines are set the same way, which is a paragraph boundary when
@@ -997,8 +1122,13 @@ fn set_line_gap(paragraph: &mut Paragraph, line: &GlyphLine, pitch: f64) {
 }
 
 /// A page's drawn shapes as anchored drawings.
-fn page_shapes(page: &PdfPage, report: &mut ConversionReport, rules: bool) -> Vec<Inline> {
-    crate::vectors::placed_blocks_for(page, report, rules)
+fn page_shapes(
+    page: &PdfPage,
+    report: &mut ConversionReport,
+    rules: bool,
+    skip: &std::collections::BTreeSet<usize>,
+) -> Vec<Inline> {
+    crate::vectors::placed_blocks_for(page, report, rules, skip)
         .into_iter()
         .flat_map(|(_, block)| match block {
             Block::Paragraph(paragraph) => paragraph.inlines,
@@ -1119,7 +1249,7 @@ fn push_runs_from(paragraph: &mut Paragraph, line: &GlyphLine, skip: usize) {
 
 /// The run properties a glyph implies.
 #[must_use]
-fn run_properties(glyph: &Glyph) -> RunProperties {
+pub(crate) fn run_properties(glyph: &Glyph) -> RunProperties {
     let [red, green, blue] = glyph.color.to_rgb8();
     let face = FontName::of(&glyph.font);
     let on = |set: bool| {
@@ -1148,14 +1278,14 @@ fn run_properties(glyph: &Glyph) -> RunProperties {
 /// family Amalia, bold: the six letters and `+` name a subset, and the style
 /// is a suffix. Kept whole, the name was a font nobody has, drawn in a
 /// regular substitute - every bold word of a Word PDF lost its weight.
-struct FontName {
-    family: String,
-    bold: bool,
-    italic: bool,
+pub(crate) struct FontName {
+    pub(crate) family: String,
+    pub(crate) bold: bool,
+    pub(crate) italic: bool,
 }
 
 impl FontName {
-    fn of(name: &str) -> Self {
+    pub(crate) fn of(name: &str) -> Self {
         let name = name.trim();
         // A subset tag: six capitals and `+`.
         let name = match name.split_once('+') {
@@ -1244,7 +1374,7 @@ fn needs_space(paragraph: &Paragraph, line: &GlyphLine) -> bool {
 }
 
 /// One run with its text.
-fn run(properties: RunProperties, text: String) -> Inline {
+pub(crate) fn run(properties: RunProperties, text: String) -> Inline {
     // A run whose text begins or ends with a space needs `xml:space`, or the
     // XML parser strips it and the line comes back with its words stuck
     // together - the one way a faithful conversion can still lose text.
@@ -1280,6 +1410,7 @@ fn flush_flow(
     numbering: &mut strict_ooxml_wml::model::numbering::NumberingTable,
     report: &mut ConversionReport,
     page: usize,
+    leaders: &[crate::leaders::Leader],
 ) {
     if flow.is_empty() {
         return;
@@ -1296,6 +1427,7 @@ fn flush_flow(
         report,
         page,
         &list_items,
+        leaders,
     );
     flow.clear();
 }
@@ -1358,9 +1490,35 @@ fn anchored_images_of(
                 }
                 wrap = PictureWrap::Square;
             }
-            anchored_image(image, &part, description, top, wrap)
+            let mut inline = anchored_image(image, &part, description, top, wrap)?;
+            // Stacked by where the page painted it among its shapes too, not
+            // only among its pictures: a card painted over a photograph was
+            // drawn under it.
+            let painted = page.items().iter().position(|item| {
+                matches!(item, strict_ooxml_pdf::Item::Image(placed) if std::ptr::eq(placed, image))
+            });
+            if let (
+                Some(index),
+                Inline::Drawing(Drawing {
+                    kind: DrawingKind::Anchor(anchor),
+                    ..
+                }),
+            ) = (painted, &mut inline)
+            {
+                anchor.relative_height = Some(paint_height(index));
+            }
+            Some(inline)
         })
         .collect()
+}
+
+/// The `relativeHeight` of the page's `index`th painted item: one scale for
+/// its pictures and its shapes, in the order the page painted them. It starts
+/// at 2, because 1 is what a drawing without a place in that order carries.
+pub(crate) fn paint_height(index: usize) -> u32 {
+    u32::try_from(index)
+        .unwrap_or(u32::MAX - 2)
+        .saturating_add(2)
 }
 
 /// How a page-anchored picture meets the text.
@@ -1382,18 +1540,41 @@ fn hold_anchors(blocks: &mut Vec<Block>, page_start: usize, mut anchors: Vec<Inl
         return;
     }
     // Stacked in the order the page painted them: with one height for all, a
-    // page's background box could be drawn over the picture set on it.
-    let mut height = 0u32;
+    // page's background box could be drawn over the picture set on it. A
+    // drawing that already has its paint height keeps it; the rest follow.
+    let mut height = anchors
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::Drawing(Drawing {
+                kind: DrawingKind::Anchor(anchor),
+                ..
+            }) if anchor.relative_height.is_some_and(|height| height > 1) => anchor.relative_height,
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
     for inline in &mut anchors {
         if let Inline::Drawing(Drawing {
             kind: DrawingKind::Anchor(anchor),
             ..
         }) = inline
         {
-            height = height.saturating_add(1);
-            anchor.relative_height = Some(height);
+            if anchor.relative_height.is_none_or(|height| height <= 1) {
+                height = height.saturating_add(1);
+                anchor.relative_height = Some(height);
+            }
         }
     }
+    // And written in that order: WPS stacks drawings behind the text by their
+    // order in the document rather than by `relativeHeight`, and drew a
+    // page's pictures over the cards painted on them.
+    anchors.sort_by_key(|inline| match inline {
+        Inline::Drawing(Drawing {
+            kind: DrawingKind::Anchor(anchor),
+            ..
+        }) => anchor.relative_height.unwrap_or(0),
+        _ => 0,
+    });
     let first = blocks
         .iter_mut()
         .skip(page_start)
@@ -1668,7 +1849,32 @@ fn image_paragraph(
     part: &strict_ooxml_core::part::PartId,
     description: Option<String>,
 ) -> Paragraph {
-    sized_image_paragraph(image.width, image.height, part, description)
+    let mut paragraph = sized_image_paragraph(image.width, image.height, part, description);
+    if let Some(Inline::Drawing(Drawing {
+        kind: DrawingKind::Inline(inline),
+        ..
+    })) = paragraph.inlines.first_mut()
+    {
+        crop_picture(inline.graphic.as_mut(), image.crop);
+    }
+    paragraph
+}
+
+/// The part of a picture a rectangular clip lets show, as `a:srcRect` (G1):
+/// the reader has already shrunk the box to that part, and the crop says
+/// which part of the picture fills it.
+fn crop_picture(graphic: &mut Graphic, crop: Option<[f64; 4]>) {
+    let (Graphic::Picture(picture), Some([left, top, right, bottom])) = (graphic, crop) else {
+        return;
+    };
+    // Thousandths of a percent.
+    let unit = |fraction: f64| (fraction.clamp(0.0, 1.0) * 100_000.0).round() as i32;
+    picture.src_rect = Some(strict_ooxml_wml::model::drawing::SrcRect {
+        left: unit(left),
+        top: unit(top),
+        right: unit(right),
+        bottom: unit(bottom),
+    });
 }
 
 /// The margins of a scanned book's pages rebuilt from their layout: the
@@ -2057,6 +2263,7 @@ fn anchored_image(
     else {
         return None;
     };
+    crop_picture(inline.graphic.as_mut(), image.crop);
     if let (Some(turn), Graphic::Picture(picture)) = (turn, inline.graphic.as_mut()) {
         picture.xfrm = Some(strict_ooxml_wml::model::drawing::Xfrm {
             offset: None,
@@ -2160,6 +2367,35 @@ mod fragment_tests {
             width,
             glyphs: vec![glyph],
         }
+    }
+
+    fn line_at(baseline: f64, size: f64) -> GlyphLine {
+        let mut line = run("text", 36.0, 300.0);
+        line.baseline = baseline;
+        line.size = size;
+        line
+    }
+
+    /// P1: a footer's two small lines 5 pt apart set the pitch of the whole
+    /// page, and every line of its body became a paragraph.
+    #[test]
+    fn the_pitch_is_the_body_texts_not_a_footers() {
+        let mut lines: Vec<GlyphLine> = [215.8, 228.7, 241.4, 267.1, 279.8, 292.6, 305.5]
+            .into_iter()
+            .map(|baseline| line_at(baseline, 10.86))
+            .collect();
+        lines.push(line_at(771.4, 9.12));
+        lines.push(line_at(776.6, 9.12));
+        let pitch = super::body_pitch(&lines);
+        assert!((12.5..13.1).contains(&pitch), "pitch {pitch}");
+    }
+
+    /// A gap that occurs once is not a pitch, and with none repeated the
+    /// estimate is the size's ordinary leading.
+    #[test]
+    fn a_single_gap_is_not_a_pitch() {
+        let lines = [line_at(100.0, 10.0), line_at(130.0, 10.0)];
+        assert!((super::body_pitch(&lines) - 12.0).abs() < 1e-9);
     }
 
     #[test]

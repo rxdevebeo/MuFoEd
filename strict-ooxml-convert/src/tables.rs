@@ -1237,6 +1237,7 @@ mod tests {
         Item::Vector(Vector {
             gradient: None,
             fill_alpha: 1.0,
+            stroke_alpha: 1.0,
             subpaths: vec![SubPath {
                 points: vec![(x0, HEIGHT - y0), (x1, HEIGHT - y1)],
                 closed: false,
@@ -1258,6 +1259,7 @@ mod tests {
         Item::Vector(Vector {
             gradient: None,
             fill_alpha: 1.0,
+            stroke_alpha: 1.0,
             subpaths: vec![SubPath {
                 points: vec![
                     (left, HEIGHT - top),

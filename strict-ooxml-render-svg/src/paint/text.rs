@@ -29,7 +29,7 @@ pub(crate) fn text_ink_right(item: &TextItem) -> Option<f64> {
 
 /// Writes one text fragment with its shading, highlight, underline and
 /// strikethrough.
-pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
+pub(crate) fn text_svg(out: &mut String, item: &TextItem, mark_off_page: bool) {
     if item.is_caret_anchor() {
         return;
     }
@@ -46,18 +46,18 @@ pub(crate) fn text_svg(out: &mut String, item: &TextItem) {
     // text they belong to.
     let decorations = crate::layout::text_decorations(item);
     for decoration in &decorations.behind {
-        super::item_svg(out, decoration);
+        super::item_svg(out, decoration, mark_off_page);
     }
-    text_svg_unrotated(out, item);
+    text_svg_unrotated(out, item, mark_off_page);
     for decoration in &decorations.over {
-        super::item_svg(out, decoration);
+        super::item_svg(out, decoration, mark_off_page);
     }
     if item.run.rotation_deg != 0.0 {
         out.push_str("</g>\n");
     }
 }
 
-fn text_svg_unrotated(out: &mut String, item: &TextItem) {
+fn text_svg_unrotated(out: &mut String, item: &TextItem, mark_off_page: bool) {
     if (item.run.char_scale - 1.0).abs() > 1e-9 {
         let _ = writeln!(
             out,
@@ -97,6 +97,13 @@ fn text_svg_unrotated(out: &mut String, item: &TextItem) {
             super::escape_attr(&fill),
             coord((item.size_px * 0.035).max(0.5))
         );
+    }
+    // A fragment the layout placed outside the page carries its reason so a
+    // downstream correction can find it (the mark moves nothing by itself).
+    if mark_off_page {
+        if let Some(reason) = item.off_page {
+            let _ = write!(attributes, " data-off-page=\"{}\"", reason.as_str());
+        }
     }
     // Explicit per-scalar x from the shared shaper so the browser does not
     // re-shape against a different face (F07). Ligature clusters share one x.

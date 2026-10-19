@@ -156,6 +156,12 @@ pub struct PdfFont {
     pub ascent: Option<f64>,
     /// `/Descent` in 1000-unit text space, when the font states one.
     pub descent: Option<f64>,
+    /// The descriptor's `/Flags` (ISO 32000-1 §9.8.2), when the font has a
+    /// descriptor that states them. See [`FontFace`].
+    pub flags: Option<u32>,
+    /// The ten PANOSE bytes of the descriptor's `/Style /Panose`, without the
+    /// two-byte family class in front of them.
+    pub panose: Option<[u8; 10]>,
     /// What reading this font cost: `(report id, detail)`, one entry per thing.
     ///
     /// Carried on the font rather than pushed into a report the font builder has
@@ -188,6 +194,8 @@ impl PdfFont {
             base_font: String::new(),
             ascent: None,
             descent: None,
+            flags: None,
+            panose: None,
             notes: Vec::new(),
         }
     }
@@ -228,6 +236,8 @@ impl PdfFont {
             base_font: String::new(),
             ascent: None,
             descent: None,
+            flags: None,
+            panose: None,
             notes: Vec::new(),
         };
 
@@ -300,6 +310,10 @@ impl PdfFont {
                 .unwrap_or_else(|| descriptor_source.clone());
             font.ascent = number_entry(&inner, b"Ascent", resolve);
             font.descent = number_entry(&inner, b"Descent", resolve);
+            font.flags = number_entry(&inner, b"Flags", resolve)
+                .filter(|flags| flags.is_finite() && *flags >= 0.0 && *flags <= f64::from(u32::MAX))
+                .map(|flags| flags as u32);
+            font.panose = panose_of(&inner, resolve);
         }
 
         if let Ok(to_unicode) = dictionary.get(b"ToUnicode") {
@@ -939,7 +953,10 @@ fn glyph_name_to_char(name: &str) -> Option<char> {
         "plusminus" => '\u{b1}',
         "multiply" => '\u{d7}',
         "divide" => '\u{f7}',
-        _ => return None,
+        // Everything else the Adobe Glyph List names: ligatures (`fi`, `fl`),
+        // accented capitals, dashes and the rest of a producer's
+        // `/Differences` (R3: `/fi` fell back to WinAnsi and read `Œ`).
+        _ => return read_fonts::ps::agl::name_to_char(name),
     })
 }
 
@@ -1040,6 +1057,81 @@ pub fn string_of(object: Option<&Object>, resolve: Resolver<'_>) -> Option<Strin
         Object::String(bytes, _) => Some(String::from_utf8_lossy(bytes).into_owned()),
         Object::Name(name) => Some(String::from_utf8_lossy(name).into_owned()),
         _ => None,
+    }
+}
+
+/// The ten PANOSE bytes of a descriptor's `/Style << /Panose <12 bytes> >>`.
+///
+/// The string is the two-byte `sFamilyClass` followed by the ten-byte PANOSE
+/// classification (ISO 32000-1 §9.8.3.2); only the last ten are a PANOSE value,
+/// and a string of any other length is not one.
+fn panose_of(descriptor: &lopdf::Dictionary, resolve: Resolver<'_>) -> Option<[u8; 10]> {
+    let style = resolve
+        .get(descriptor.get(b"Style").ok()?)?
+        .as_dict()
+        .ok()?;
+    let Object::String(bytes, _) = resolve.get(style.get(b"Panose").ok()?)? else {
+        return None;
+    };
+    let tail: [u8; 10] = bytes.get(2..12)?.try_into().ok()?;
+    // All zero is "any" for every digit: a descriptor that says nothing.
+    (bytes.len() == 12 && tail.iter().any(|&byte| byte != 0)).then_some(tail)
+}
+
+/// What a font's descriptor says about the face's look, for a consumer that has
+/// to stand in another face for it.
+///
+/// A converted document names a family it does not ship. A renderer without that
+/// family falls back, and the only facts it has to fall back *well* are the ones
+/// the PDF stated: fixed or proportional, serif or not, script. Without them a
+/// sans face was being drawn in a monospaced default (W1,
+/// `PDF-IMPORT-COMPARISON-2026-10-19.md`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FontFace {
+    /// `/BaseFont`, subset tag included.
+    pub base_font: String,
+    /// The descriptor's `/Flags`, if stated.
+    pub flags: Option<u32>,
+    /// The PANOSE classification, if stated.
+    pub panose: Option<[u8; 10]>,
+    /// Whether the font program is embedded.
+    pub embedded: bool,
+}
+
+impl FontFace {
+    const FIXED_PITCH: u32 = 1;
+    const SERIF: u32 = 1 << 1;
+    const SCRIPT: u32 = 1 << 3;
+
+    /// Every glyph has the same width; `None` when the font states no flags.
+    #[must_use]
+    pub fn fixed_pitch(&self) -> Option<bool> {
+        self.flags.map(|flags| flags & Self::FIXED_PITCH != 0)
+    }
+
+    /// Glyphs have serifs; `None` when the font states no flags.
+    #[must_use]
+    pub fn serif(&self) -> Option<bool> {
+        self.flags.map(|flags| flags & Self::SERIF != 0)
+    }
+
+    /// Glyphs resemble handwriting; `None` when the font states no flags.
+    #[must_use]
+    pub fn script(&self) -> Option<bool> {
+        self.flags.map(|flags| flags & Self::SCRIPT != 0)
+    }
+}
+
+impl PdfFont {
+    /// What this font states about its look.
+    #[must_use]
+    pub fn face(&self) -> FontFace {
+        FontFace {
+            base_font: self.base_font.clone(),
+            flags: self.flags,
+            panose: self.panose,
+            embedded: self.embedded,
+        }
     }
 }
 
@@ -1185,6 +1277,16 @@ endcmap";
         assert_eq!(glyph_name_to_char("nonesuch"), None);
     }
 
+    /// R3: `/Differences` naming `/fi` fell back to WinAnsi and read `Œ`; the
+    /// names the hand-written table lacks come from the Adobe Glyph List.
+    #[test]
+    fn glyph_names_beyond_the_table_come_from_the_glyph_list() {
+        assert_eq!(glyph_name_to_char("fi"), Some('\u{FB01}'));
+        assert_eq!(glyph_name_to_char("fl"), Some('\u{FB02}'));
+        assert_eq!(glyph_name_to_char("Lslash"), Some('Ł'));
+        assert_eq!(glyph_name_to_char("emdash"), Some('—'));
+    }
+
     #[test]
     fn a_width_the_font_did_not_state_is_marked_as_a_guess() {
         let font = PdfFont {
@@ -1201,6 +1303,8 @@ endcmap";
             base_font: "Helvetica".to_owned(),
             ascent: None,
             descent: None,
+            flags: None,
+            panose: None,
             notes: Vec::new(),
         };
         assert!(font.width(65).is_estimated());
@@ -1228,6 +1332,8 @@ endcmap";
             base_font: "Helvetica".to_owned(),
             ascent: None,
             descent: None,
+            flags: None,
+            panose: None,
             notes: Vec::new(),
         };
         assert!(

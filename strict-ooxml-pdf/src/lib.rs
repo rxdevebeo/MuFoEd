@@ -69,6 +69,7 @@
     clippy::cast_lossless
 )]
 
+mod clip;
 pub mod content;
 pub mod document;
 pub mod error;
@@ -87,7 +88,7 @@ pub use crate::content::{
 };
 pub use crate::document::{PdfDocument, PdfPage, TextLayer};
 pub use crate::error::{LimitKind, PdfError, PdfLimits, OBJECT_STREAM_BUDGET_FACTOR};
-pub use crate::fonts::{BaseEncoding, PdfFont, Width};
+pub use crate::fonts::{BaseEncoding, FontFace, PdfFont, Width};
 pub use crate::image::{Encoded, Reject};
 pub use crate::report::{Loss, ReadReport};
 pub use crate::text::{lines as text_lines, GlyphLine};

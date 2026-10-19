@@ -43,6 +43,50 @@ pub enum TextAdvanceKind {
     Metric,
 }
 
+/// Why a text fragment's ink lies outside the page.
+///
+/// A mark is a diagnostic and an input to the optional `OffPageInk::Clamp`
+/// correction; on its own it never moves ink. The reason names the source so a
+/// consumer can act on the right one (a correction pulls a `TabStop` back to
+/// its text box, a `Floating` frame onto the page) — `Overflow` is any other
+/// line whose box crossed the page edge.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OffPageReason {
+    /// A right/centre/decimal tab stop resolved past its text box, so the text
+    /// it aligns (a table-of-contents page number) sits past the box — and here
+    /// past the sheet (WQ-036 keeps the stop, Word 2013+ allows the margin).
+    TabStop,
+    /// A floating (anchored) frame whose resolved box leaves the page
+    /// (cluster 3: a duplicate `References` text box, margin notes).
+    Floating,
+    /// A flow line whose ink crossed the page edge for another reason (a long
+    /// unbreakable token, a CJK run, an indent).
+    Overflow,
+}
+
+impl OffPageReason {
+    /// A stable lowercase token for output markup (`data-off-page`).
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::TabStop => "tab-stop",
+            Self::Floating => "floating",
+            Self::Overflow => "overflow",
+        }
+    }
+}
+
+/// One text fragment's ink that lies outside the page, in page pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OffPageMark {
+    /// Zero-based page index the ink is on.
+    pub page: usize,
+    /// Why it is off the page.
+    pub reason: OffPageReason,
+    /// Ink box `[left, top, right, bottom]` in page pixels.
+    pub rect: [f64; 4],
+}
+
 /// A painted text fragment.
 #[derive(Clone, Debug)]
 pub struct TextItem {
@@ -74,6 +118,9 @@ pub struct TextItem {
     pub following_non_space: Option<char>,
     /// Advance factor for spaces that are not post-punctuation collapses.
     pub plain_space_factor: f64,
+    /// Why this fragment is off the page, set by the layout's off-page pass.
+    /// `None` when its box is on the page.
+    pub off_page: Option<OffPageReason>,
 }
 
 impl TextItem {
@@ -300,6 +347,20 @@ impl Item {
             None
         })
     }
+
+    /// Iterates over leaf primitives mutably, including transformed descendants.
+    pub(crate) fn leaves_mut(&mut self) -> impl Iterator<Item = &mut Item> {
+        let mut stack = vec![self];
+        std::iter::from_fn(move || {
+            while let Some(item) = stack.pop() {
+                match item {
+                    Item::Group(group) => stack.extend(group.items.iter_mut().rev()),
+                    leaf => return Some(leaf),
+                }
+            }
+            None
+        })
+    }
 }
 
 /// A fully placed page ready to be painted.
@@ -314,6 +375,103 @@ pub struct PlacedPage {
     /// Zero-based index into `Document::sections` for this page's geometry
     /// and headers/footers (AUD-74).
     pub section_index: usize,
+    /// Text ink that lies outside the page, one entry per fragment. The same
+    /// fragments carry [`TextItem::off_page`]; this rollup is what the report
+    /// and the QA harness read without walking the item tree.
+    pub off_page: Vec<OffPageMark>,
+}
+
+impl PlacedPage {
+    /// Marks every text fragment whose ink leaves the page and rolls the marks
+    /// up into [`Self::off_page`]. A fragment a source already labelled (a tab
+    /// stop, a floating frame) keeps its reason; anything else is
+    /// [`OffPageReason::Overflow`]. Idempotent: re-running only re-labels.
+    pub(crate) fn mark_off_page(&mut self) {
+        let page = (self.width_px, self.height_px);
+        let mut marks = Vec::new();
+        for item in &mut self.items {
+            item.mark_off_page(&IDENTITY, page, self.section_index, &mut marks);
+        }
+        self.off_page = marks;
+    }
+}
+
+/// The identity affine `[a, b, c, d, e, f]`.
+const IDENTITY: [f64; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+
+/// A page pixel box is treated as off the page past this much, to absorb the
+/// sub-point rounding of glyph advances at the edges.
+pub(crate) const OFF_PAGE_TOLERANCE: f64 = 0.5;
+
+impl Item {
+    /// Marks text leaves whose box, under `parent`, leaves the page.
+    fn mark_off_page(
+        &mut self,
+        parent: &[f64; 6],
+        page: (f64, f64),
+        page_index: usize,
+        marks: &mut Vec<OffPageMark>,
+    ) {
+        match self {
+            Item::Text(text) => {
+                // Horizontal ink is the advance box; vertical ink is measured at
+                // the baseline, so a line that merely reaches the top margin is
+                // not called off-page (a full ascent box would over-report).
+                let box_ = apply_matrix(
+                    parent,
+                    [text.x, text.baseline, text.x + text.width, text.baseline],
+                );
+                if box_[0] < -OFF_PAGE_TOLERANCE
+                    || box_[1] < -OFF_PAGE_TOLERANCE
+                    || box_[2] > page.0 + OFF_PAGE_TOLERANCE
+                    || box_[3] > page.1 + OFF_PAGE_TOLERANCE
+                {
+                    let reason = text.off_page.get_or_insert(OffPageReason::Overflow);
+                    marks.push(OffPageMark {
+                        page: page_index,
+                        reason: *reason,
+                        rect: box_,
+                    });
+                } else {
+                    // A hint set at the source (a tab stop) is only a reason:
+                    // the box decides whether the fragment is off the page.
+                    text.off_page = None;
+                }
+            }
+            Item::Group(group) => {
+                let combined = compose_matrix(parent, &group.matrix);
+                for child in &mut group.items {
+                    child.mark_off_page(&combined, page, page_index, marks);
+                }
+            }
+            Item::Rect(_) | Item::Line(_) | Item::Image(_) | Item::Path(_) => {}
+        }
+    }
+}
+
+/// Maps a box through the affine `m`.
+fn apply_matrix(m: &[f64; 6], b: [f64; 4]) -> [f64; 4] {
+    let (x0, y0) = (
+        m[0] * b[0] + m[2] * b[1] + m[4],
+        m[1] * b[0] + m[3] * b[1] + m[5],
+    );
+    let (x1, y1) = (
+        m[0] * b[2] + m[2] * b[3] + m[4],
+        m[1] * b[2] + m[3] * b[3] + m[5],
+    );
+    [x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)]
+}
+
+/// Composes two affines: `parent` applied after `child`.
+fn compose_matrix(parent: &[f64; 6], child: &[f64; 6]) -> [f64; 6] {
+    [
+        parent[0] * child[0] + parent[2] * child[1],
+        parent[1] * child[0] + parent[3] * child[1],
+        parent[0] * child[2] + parent[2] * child[3],
+        parent[1] * child[2] + parent[3] * child[3],
+        parent[0] * child[4] + parent[2] * child[5] + parent[4],
+        parent[1] * child[4] + parent[3] * child[5] + parent[5],
+    ]
 }
 
 /// A laid-out text line.
@@ -547,8 +705,20 @@ impl ColumnLayout {
         let mut boxes = [(0.0, 0.0); MAX_COLUMNS];
         let count = if columns.equal_width || columns.columns.is_empty() {
             let count = columns.count.map_or(1, usize::from).clamp(1, MAX_COLUMNS);
-            let gap = px(columns.space, DEFAULT_COLUMN_SPACE_TWIPS);
-            let width = ((content_width - gap * (count - 1) as f64) / count as f64).max(1.0);
+            // A `w:space` that leaves no usable column is treated as absent, the
+            // way Word and WPS read a garbage value: the CC0 sample's 361800
+            // twips (250 in) would otherwise put the second column 18000 pt to
+            // the right, or squeeze two columns into slivers. Word's default gap
+            // keeps the columns equal and on the page.
+            let declared = px(columns.space, DEFAULT_COLUMN_SPACE_TWIPS);
+            let fair = content_width / count as f64;
+            let width_with = |gap: f64| (content_width - gap * (count - 1) as f64) / count as f64;
+            let gap = if width_with(declared) >= fair / 2.0 {
+                declared
+            } else {
+                px(None, DEFAULT_COLUMN_SPACE_TWIPS)
+            };
+            let width = width_with(gap).max(1.0);
             for (index, slot) in boxes.iter_mut().take(count).enumerate() {
                 *slot = (index as f64 * (width + gap), width);
             }
@@ -556,6 +726,7 @@ impl ColumnLayout {
         } else {
             let specs: Vec<_> = columns.columns.iter().take(MAX_COLUMNS).collect();
             let count = specs.len();
+            let max_gap = content_width / count as f64;
             let spaces: Vec<f64> = specs
                 .iter()
                 .enumerate()
@@ -563,14 +734,14 @@ impl ColumnLayout {
                     if index + 1 == count {
                         0.0
                     } else {
-                        px(spec.space, 0)
+                        px(spec.space, 0).min(max_gap)
                     }
                 })
                 .collect();
             let declared: f64 = specs
                 .iter()
                 .filter_map(|spec| spec.width)
-                .map(|width| px(Some(width), 0))
+                .map(|width| px(Some(width), 0).min(content_width))
                 .sum();
             let missing = specs.iter().filter(|spec| spec.width.is_none()).count();
             let share = if missing == 0 {
@@ -583,7 +754,7 @@ impl ColumnLayout {
                 let width = spec
                     .width
                     .map_or(share, |width| px(Some(width), 0))
-                    .max(1.0);
+                    .clamp(1.0, content_width);
                 *slot = (offset, width);
                 offset += width + space;
             }

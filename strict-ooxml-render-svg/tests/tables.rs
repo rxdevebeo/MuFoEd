@@ -93,6 +93,28 @@ fn nested_table_renders() {
 }
 
 #[test]
+fn a_single_row_taller_than_the_page_splits_across_pages() {
+    // 033: a margin-note table whose one cell is a narrow column of single-spaced
+    // lines. Their ascender/descender boxes abut (no leading), so
+    // `row_split_points` saw no gap between lines, the row looked indivisible,
+    // and it ran off the sheet instead of continuing on the next page.
+    let text = "note ".repeat(300);
+    let body = format!(
+        "<w:tbl><w:tblPr><w:tblW w:w=\"278\" w:type=\"pct\"/><w:tblLayout w:type=\"fixed\"/></w:tblPr>\
+<w:tblGrid><w:gridCol w:w=\"440\"/></w:tblGrid>\
+<w:tr><w:tc><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:tc></w:tr></w:tbl>\
+<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/>\
+<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\"/></w:sectPr>"
+    );
+    let pages = build(&body);
+    assert!(pages.len() >= 2, "a row taller than the page must split");
+    assert!(
+        pages.iter().all(|page| page.off_page.is_empty()),
+        "no fragment of a split row may leave the sheet"
+    );
+}
+
+#[test]
 fn table_breaks_across_pages() {
     let mut rows = String::new();
     for index in 0..20 {

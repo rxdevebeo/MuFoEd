@@ -18,8 +18,16 @@ use crate::layout::{Item, PlacedPage};
 use crate::units::fmt_num;
 
 /// Renders one placed page to an SVG document string.
+///
+/// `mark_off_page` writes `data-off-page` on the `<text>` of every fragment the
+/// layout marked outside the page (the mark is a diagnostic; it moves nothing).
 #[must_use]
-pub(crate) fn render_page(page: &PlacedPage, background: bool, embed_fonts: bool) -> String {
+pub(crate) fn render_page(
+    page: &PlacedPage,
+    background: bool,
+    embed_fonts: bool,
+    mark_off_page: bool,
+) -> String {
     let _naming = InstalledNames::scope(!embed_fonts);
     let mut out = String::with_capacity(1024);
     let width = fmt_num(page.width_px);
@@ -38,7 +46,7 @@ pub(crate) fn render_page(page: &PlacedPage, background: bool, embed_fonts: bool
         );
     }
     for item in &page.items {
-        item_svg(&mut out, item);
+        item_svg(&mut out, item, mark_off_page);
     }
     out.push_str("</svg>\n");
     out
@@ -74,7 +82,7 @@ pub(crate) fn svg_family(run: &crate::style::ComputedRun, painted: String) -> St
 }
 
 /// Writes one paint item.
-pub(crate) fn item_svg(out: &mut String, item: &Item) {
+pub(crate) fn item_svg(out: &mut String, item: &Item, mark_off_page: bool) {
     match item {
         Item::Group(group) => {
             let _ = writeln!(
@@ -112,7 +120,7 @@ pub(crate) fn item_svg(out: &mut String, item: &Item) {
                     escape_attr(&data), escape_attr(&shapes::path_transform(path)), if group.clip_inverse { "evenodd" } else { "nonzero" });
             }
             for child in &group.items {
-                item_svg(out, child);
+                item_svg(out, child, mark_off_page);
             }
             if group.clip_path.is_some() {
                 out.push_str("</g>\n");
@@ -124,7 +132,7 @@ pub(crate) fn item_svg(out: &mut String, item: &Item) {
         }
         Item::Rect(rect) => shapes::rect_svg(out, rect),
         Item::Line(line) => shapes::line_svg(out, line),
-        Item::Text(item) => text::text_svg(out, item),
+        Item::Text(item) => text::text_svg(out, item, mark_off_page),
         Item::Image(item) => image::image_svg(out, item),
         Item::Path(item) => shapes::path_svg(out, item),
     }
@@ -241,8 +249,9 @@ mod tests {
                 stroke_w: 0.0,
             })],
             section_index: 0,
+            off_page: Vec::new(),
         };
-        let svg = render_page(&page, true, true);
+        let svg = render_page(&page, true, true, false);
         assert!(svg.starts_with("<svg "));
         assert!(svg.contains("viewBox=\"0 0 816 1056\""));
         assert!(svg.ends_with("</svg>\n"));
@@ -269,7 +278,9 @@ mod tests {
                 compress_punctuation: false,
                 following_non_space: None,
                 plain_space_factor: 1.0,
+                off_page: None,
             })],
+            off_page: Vec::new(),
         };
         let css = font_faces(&page);
         let source = face_source("Carlito", false, false).expect("carlito");

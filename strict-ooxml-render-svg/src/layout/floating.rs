@@ -9,7 +9,7 @@ use strict_ooxml_wml::model::props::Section;
 use crate::layout::exclusions::{Contour, PageExclusion};
 #[cfg(test)]
 use crate::layout::geometry_for;
-use crate::layout::{Geometry, Item, LayoutContext, PlacedPage};
+use crate::layout::{Geometry, Item, LayoutContext, OffPageReason, PlacedPage, OFF_PAGE_TOLERANCE};
 use crate::units::emu_to_px;
 use std::sync::Arc;
 
@@ -29,6 +29,7 @@ pub(crate) struct PendingAnchor {
 }
 
 /// Resolves pending anchors into paint items and inserts them into their pages.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn resolve(
     ctx: &LayoutContext<'_>,
     pages: &mut [PlacedPage],
@@ -106,11 +107,36 @@ pub(crate) fn resolve(
             }
             y = bottom;
         }
-        let items = crate::paint::graphics::anchor_items(ctx, &pending.anchor, x, y, w, h);
+        // A frame whose box leaves the sheet (cluster 3: a duplicate text box
+        // anchored far left, margin notes). The mark is diagnostic;
+        // `OffPageInk::Clamp` pulls the frame back onto the page.
+        let placement = clamp_frame(ctx, &geometry, x, y, w, h);
+        let mut items = crate::paint::graphics::anchor_items(
+            ctx,
+            &pending.anchor,
+            placement.x,
+            placement.y,
+            placement.w,
+            placement.h,
+        );
         if items.is_empty() {
             continue;
         }
-        occupied.push((pending.page, [x, y, w, h], pending.anchor.allow_overlap));
+        if placement.off_page {
+            mark_floating_items(&mut items);
+        }
+        if let Some(clip) = placement.clip {
+            items = clip_frame_items(
+                items,
+                clip,
+                [placement.x, placement.y, placement.w, placement.h],
+            );
+        }
+        occupied.push((
+            pending.page,
+            [placement.x, placement.y, placement.w, placement.h],
+            pending.anchor.allow_overlap,
+        ));
         let order = pending.anchor.relative_height.map_or(0, i64::from);
         let entry = (pending.page, order, items);
         if pending.anchor.behind_doc {
@@ -344,8 +370,107 @@ pub(crate) fn resolved_extent(
     }
 }
 
+/// Where a floating frame lands once [`crate::OffPageInk::Clamp`] has had its
+/// say. A frame the model places off the sheet is confined to it: an origin
+/// off the left/right or top/bottom is pulled back, and a box wider or taller
+/// than the sheet — which no origin can move on — is shrunk to the sheet
+/// (reflowing a wrapping box) and its ink clipped to the sheet.
+/// [`Self::off_page`] reports the source position so the frame's text can carry
+/// [`OffPageReason::Floating`].
+pub(crate) struct FramePlacement {
+    /// On-page origin x (the source x under `Keep`).
+    pub x: f64,
+    /// On-page origin y (the source y under `Keep`).
+    pub y: f64,
+    /// On-page width (the source width under `Keep`).
+    pub w: f64,
+    /// On-page height (the source height under `Keep`).
+    pub h: f64,
+    /// The source box left the page (so the mark is warranted).
+    pub off_page: bool,
+    /// A page-space box to which the frame's ink is clipped, when the frame is
+    /// larger than the sheet and `Clamp` asks for it. `None` keeps the ink.
+    pub clip: Option<[f64; 4]>,
+}
+
+/// Confines a floating frame to the sheet when [`crate::OffPageInk::Clamp`]
+/// asks for it, and reports whether its box left the page (so its text can
+/// carry [`OffPageReason::Floating`]). The three anchor placements — the body
+/// pass ([`resolve`]) and the two cell/row passes in `table.rs` — share this so
+/// the mark and the correction cannot disagree.
+pub(crate) fn clamp_frame(
+    ctx: &LayoutContext<'_>,
+    geometry: &Geometry,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) -> FramePlacement {
+    let off = x < -OFF_PAGE_TOLERANCE
+        || x + w > geometry.width + OFF_PAGE_TOLERANCE
+        || y < -OFF_PAGE_TOLERANCE
+        || y + h > geometry.height + OFF_PAGE_TOLERANCE;
+    if off && ctx.options.off_page_ink == crate::OffPageInk::Clamp {
+        // A frame the model places off the sheet is confined to it: the origin
+        // is pulled back, and a box wider or taller than the sheet — which no
+        // origin can bring in, and which a `wrap="none"` box cannot reflow — is
+        // clipped to the sheet so only its on-sheet ink is drawn. The text the
+        // clip cuts stays in the model (and carries its off-page mark), so it
+        // can be moved on later without loss.
+        let too_big =
+            w > geometry.width + OFF_PAGE_TOLERANCE || h > geometry.height + OFF_PAGE_TOLERANCE;
+        let clip = too_big.then_some([0.0, 0.0, geometry.width, geometry.height]);
+        let w = w.min(geometry.width);
+        let h = h.min(geometry.height);
+        FramePlacement {
+            x: x.clamp(0.0, (geometry.width - w).max(0.0)),
+            y: y.clamp(0.0, (geometry.height - h).max(0.0)),
+            w,
+            h,
+            off_page: off,
+            clip,
+        }
+    } else {
+        FramePlacement {
+            x,
+            y,
+            w,
+            h,
+            off_page: off,
+            clip: None,
+        }
+    }
+}
+
+/// Tags every text leaf of a frame's items with the [`OffPageReason::Floating`]
+/// origin reason; the layout's off-page pass keeps it only if the box really
+/// leaves the page.
+pub(crate) fn mark_floating_items(items: &mut [Item]) {
+    for item in items {
+        for leaf in item.leaves_mut() {
+            if let Item::Text(text) = leaf {
+                text.off_page = Some(OffPageReason::Floating);
+            }
+        }
+    }
+}
+
+/// Wraps a frame's items in a page-space clip so the ink outside the sheet is
+/// not drawn; a `wrap="none"` frame that cannot be brought on by position is
+/// confined this way under [`crate::OffPageInk::Clamp`].
+pub(crate) fn clip_frame_items(items: Vec<Item>, clip: [f64; 4], bounds: [f64; 4]) -> Vec<Item> {
+    vec![Item::Group(crate::layout::GroupItem {
+        matrix: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        items,
+        bounds,
+        clip: Some(clip),
+        clip_path: None,
+        clip_inverse: false,
+        opacity: 1.0,
+    })]
+}
+
 /// Wrap exclusion in absolute page coordinates, or `None` when text is not excluded.
-///
 /// Tight/Through use the source polygon rather than its bounding rectangle.
 pub(crate) fn page_exclusion(
     ctx: &LayoutContext<'_>,

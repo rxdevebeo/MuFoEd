@@ -43,7 +43,7 @@ Design documents live in [`docs/`](docs/):
 strict-ooxml inspect   <file.docx>
 strict-ooxml check     <file.docx> [--transitional]      # exit 0 / 1 / 2
 strict-ooxml report    <file.docx> [--json|--text] [--out <path>] [--transitional]
-strict-ooxml render    <file.docx> [--out <dir|page.svg>] [--pages 1-3] [--scale 96] [--wps-times]
+strict-ooxml render    <file.docx> [--out <dir|page.svg>] [--pages 1-3] [--scale 96] [--wps-times] [--off-page=keep|clamp] [--off-page-marks]
 strict-ooxml normalize <file.docx>                       # Loss Report for Transitional
 strict-ooxml to-pdf    <file.docx> --out <file.pdf>      # Stage 8B
 strict-ooxml from-pdf  <file.pdf>  --out <file.docx> [--pages 1-10] [--ocr]  # Stage 8C+
@@ -82,6 +82,18 @@ are shown as `\u{..}` instead of reaching the terminal. Commands run on a
 64 MiB worker thread. `render --wps-times` applies the Times-on-Tinos width
 calibration fitted to the Clio WPS audit (`RenderOptions::wps_times_calibration`);
 it is off by default because Tinos already has Times New Roman's metrics.
+
+Text a document places outside the sheet — a table-of-contents page number on a
+right tab wider than its column, or a floating text frame anchored off the page
+— is drawn where the model puts it by default, exactly as Word 2013+/WPS do
+(`RenderOptions::off_page_ink` = `Keep`). Every such fragment is still recorded
+(a `TabStop`, `Floating` or `Overflow` reason) on `Page::off_page`, and
+`--off-page-marks` tags it in the output (`data-off-page` on the SVG `<text>`, a
+`/<reason> BMC … EMC` marked-content sequence in the PDF) so a correction pass
+can find it. `--off-page=clamp` is the opt-in "keep it readable" correction: it
+pulls a tab stop past its text box back to the box (the dot leader shortens and
+the page number stays visible) and a floating frame back onto the page. The
+default is byte-for-byte unchanged.
 
 Hostile-input budgets (`ResourceLimits` for DOCX, `PdfLimits` for PDF) cover
 ZIP sizes and ratios, XML depth, block nesting, inline-wrapper nesting

@@ -684,6 +684,7 @@ impl Frame<'_, '_> {
             compress_punctuation: false,
             following_non_space: None,
             plain_space_factor: 1.0,
+            off_page: None,
         }));
         MathBox {
             inline_fraction: false,
@@ -2172,6 +2173,7 @@ fn delimiter_glyph(frame: &Frame<'_, '_>, character: char, x: f64) -> Option<Ite
         compress_punctuation: false,
         following_non_space: None,
         plain_space_factor: 1.0,
+        off_page: None,
     }))
 }
 
@@ -2204,6 +2206,7 @@ fn delimiter_item(
             compress_punctuation: false,
             following_non_space: None,
             plain_space_factor: 1.0,
+            off_page: None,
         }));
     }
     let d = shapes::delimiter(character, width, height)?;

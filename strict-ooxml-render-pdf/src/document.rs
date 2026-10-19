@@ -68,6 +68,8 @@ struct PageWriter<'a> {
     glyph_forms: &'a mut GlyphForms,
     /// The outline forms this page draws.
     glyph_names: std::collections::BTreeSet<String>,
+    /// Tag off-page text with a `/BDC` marked-content sequence (diagnostic).
+    mark_off_page: bool,
 }
 
 /// The bundled faces' metrics, parsed once per process.
@@ -143,6 +145,7 @@ pub fn render_with_source(
             report: &mut report,
             glyph_forms: &mut glyph_forms,
             glyph_names: std::collections::BTreeSet::new(),
+            mark_off_page: options.off_page_marks,
         };
         writer.draw_page(page, options.background);
         streams.push((
@@ -562,6 +565,7 @@ impl PageWriter<'_> {
     }
 
     #[allow(clippy::many_single_char_names)] // PDF `cm` operands a..f
+    #[allow(clippy::too_many_lines)]
     fn item(&mut self, item: &Item) {
         match item {
             Item::Group(group) => {
@@ -653,7 +657,20 @@ impl PageWriter<'_> {
             Item::Line(line) => self.line(line),
             Item::Path(path) => self.path(path),
             Item::Image(image) => self.image(image),
-            Item::Text(text) => self.text(text),
+            Item::Text(text) => {
+                // Tag text the layout placed off the page so a correction pass
+                // can find it; the mark draws nothing and moves nothing.
+                if self.mark_off_page {
+                    if let Some(reason) = text.off_page {
+                        self.content
+                            .begin_marked_content(Name(reason.as_str().as_bytes()));
+                        self.text(text);
+                        self.content.end_marked_content();
+                        return;
+                    }
+                }
+                self.text(text);
+            }
         }
     }
 

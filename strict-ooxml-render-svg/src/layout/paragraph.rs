@@ -11,11 +11,14 @@ use strict_ooxml_wml::model::{
 };
 
 use crate::layout::floating::{wrap_exclusion, WrapExclusion, WrapSide};
-use crate::layout::{Flow, Geometry, ImageItem, Item, LayoutContext, TextItem, TextLine};
+use crate::layout::{
+    Flow, Geometry, ImageItem, Item, LayoutContext, TextItem, TextLine, OFF_PAGE_TOLERANCE,
+};
 use crate::paint::image::layout_inline_image;
 use crate::style::{apply_caps, compute_paragraph, compute_run, ComputedParagraph, ComputedRun};
 use crate::units::{pt_to_px, twips_to_px};
 use crate::RevisionView;
+use crate::{OffPageInk, OffPageReason};
 
 /// Whether a run with the given revision marker is visible under `view` (ADR-0018).
 fn revision_visible(view: RevisionView, revision: Option<&Revision>) -> bool {
@@ -470,7 +473,14 @@ fn layout_paragraph_horizontal(
             && computed.character_indents[0].is_none()
         {
             if let Some(start) = marker.indent_start_pt {
-                computed.indent_start_pt = start;
+                // The level's `w:start` is the paragraph's *start* side: the
+                // physical left for LTR, but the physical right for RTL, whose
+                // indents were already swapped into `indent_end_pt`/`start`.
+                if computed.bidi {
+                    computed.indent_end_pt = start;
+                } else {
+                    computed.indent_start_pt = start;
+                }
             }
         }
         let direct_line =
@@ -1418,6 +1428,9 @@ struct LineBuilder {
     tab_anchors: Vec<(f64, f64, ComputedRun)>,
     /// Where the caret of an empty paragraph's line stands.
     empty_anchor: Option<f64>,
+    /// Set once a tab stop on this line resolved past the text box, so the
+    /// fragments the stop aligns carry [`OffPageReason::TabStop`].
+    off_page: Option<OffPageReason>,
 }
 
 impl LineBuilder {
@@ -1432,6 +1445,7 @@ impl LineBuilder {
             object_height: 0.0,
             tab_anchors: Vec::new(),
             empty_anchor: None,
+            off_page: None,
         }
     }
 
@@ -1596,10 +1610,14 @@ fn build_lines(
             normal_x,
             content_left,
             default_tab,
+            box_right: right_edge,
         },
     );
+    if marker_at.is_some_and(|(_, _, past)| past) {
+        current.off_page = Some(OffPageReason::TabStop);
+    }
     let mut x = match (&marker, marker_at) {
-        (_, Some((_, text_x))) => text_x,
+        (_, Some((_, text_x, _))) => text_x,
         (Some(_), None) => normal_x,
         (None, None) => first_x,
     };
@@ -1693,6 +1711,7 @@ fn build_lines(
                     default_tab,
                     scale,
                     content_left,
+                    right_edge,
                 ) {
                     // A right, centre or decimal stop past the right indent
                     // is kept, as Word 2013+ does: the text it aligns may run
@@ -1918,20 +1937,33 @@ fn build_lines(
                 .map_or_else(|| ctx.measure(marker_text, marker_run), |(_, width)| *width);
             let clearance = marker_clearance(ctx, marker_run, suffix.as_deref());
             // `w:lvlJc`: a right-aligned marker ends on the number position
-            // and a centred one straddles it.
+            // and a centred one straddles it. For an RTL paragraph the start is
+            // the right edge, so the number sits in the hanging gap to the right
+            // of the text — the mirror of the LTR placement; anchoring it on the
+            // left (as `first_x` does) would strand it across the line.
+            let anchor = if computed.bidi {
+                right_edge - first_offset
+            } else {
+                first_x
+            };
             let mut marker_x = match justification {
-                Some(strict_ooxml_wml::model::values::Justification::End) => first_x - width,
+                Some(strict_ooxml_wml::model::values::Justification::End) => anchor - width,
                 Some(strict_ooxml_wml::model::values::Justification::Center) => {
-                    first_x - width / 2.0
+                    anchor - width / 2.0
                 }
-                _ => first_x,
+                _ => anchor,
             };
             // The text anchor stays where the paragraph declared it. A
-            // hanging marker that would share that anchor, or that is wider
-            // than the hanging gap, moves left by the suffix clearance; one
-            // at or past the anchor keeps its place, the text following it.
-            if let Some((at, _)) = marker_at {
+            // marker that already sits at or past that anchor keeps its place
+            // and the text follows it. A hanging marker that would share the
+            // anchor, or that is wider than the hanging gap, moves away by
+            // the suffix clearance: left for LTR, right for RTL.
+            if let Some((at, _, _)) = marker_at {
                 marker_x = at;
+            } else if computed.bidi {
+                if marker_x < normal_x + 1e-6 {
+                    marker_x = normal_x + clearance;
+                }
             } else if marker_x + width + clearance > normal_x + 1e-6 {
                 marker_x = normal_x - clearance - width;
             }
@@ -1958,6 +1990,7 @@ fn build_lines(
                         compress_punctuation: false,
                         following_non_space: None,
                         plain_space_factor: 1.0,
+                        off_page: None,
                     },
                 );
             }
@@ -1976,19 +2009,22 @@ struct MarkerFrame {
     normal_x: f64,
     content_left: f64,
     default_tab: i32,
+    /// The first line's right edge, the same box a tab stop is confined to.
+    box_right: f64,
 }
 
 /// The marker of a list item numbered at or past its text indent (a first
 /// line indent, or none), and where the first line's text then starts: after
 /// the marker's suffix (`w:suff`), a tab to the next stop, a space or
-/// nothing. `None` for a hanging marker, whose text stays on the indent, and
+/// nothing. The third value is whether that tab stop lies past the text box.
+/// `None` for a hanging marker, whose text stays on the indent, and
 /// for a picture bullet or a right-to-left paragraph.
 fn marker_position(
     ctx: &LayoutContext<'_>,
     computed: &ComputedParagraph,
     marker: Option<&MarkerParts>,
     frame: &MarkerFrame,
-) -> Option<(f64, f64)> {
+) -> Option<(f64, f64, bool)> {
     let (text, run, suffix, picture, justification) = marker?;
     if computed.bidi || picture.is_some() || frame.first_x + 1e-6 < frame.normal_x {
         return None;
@@ -2000,21 +2036,22 @@ fn marker_position(
         _ => frame.first_x,
     };
     let end = marker_x + width;
-    let text_x = match suffix.as_deref().unwrap_or("tab") {
-        "space" => end + ctx.measure(" ", run),
-        "nothing" => end,
+    let (text_x, past) = match suffix.as_deref().unwrap_or("tab") {
+        "space" => (end + ctx.measure(" ", run), false),
+        "nothing" => (end, false),
         _ => {
-            resolve_tab(
+            let stop = resolve_tab(
                 end,
                 computed,
                 frame.default_tab,
                 ctx.options.scale,
                 frame.content_left,
             )
-            .x
+            .x;
+            confine_stop(ctx, stop, frame.box_right)
         }
     };
-    Some((marker_x, text_x.max(end)))
+    Some((marker_x, text_x.max(end), past))
 }
 
 /// A numbering marker: its text, run, suffix, picture bullet and alignment.
@@ -2717,6 +2754,7 @@ fn place_token(
         compress_punctuation: compress,
         following_non_space: following,
         plain_space_factor: plain,
+        off_page: current.off_page,
     });
     *x += width;
 }
@@ -3120,6 +3158,7 @@ fn push_piece(
         compress_punctuation,
         following_non_space: None,
         plain_space_factor,
+        off_page: current.off_page,
     });
 }
 
@@ -3758,6 +3797,7 @@ fn caret_anchors(
         compress_punctuation: false,
         following_non_space: None,
         plain_space_factor: 1.0,
+        off_page: None,
     };
     let mut out: Vec<TextItem> = tabs
         .iter()
@@ -3801,6 +3841,7 @@ fn push_note_marker(
         compress_punctuation: false,
         following_non_space: None,
         plain_space_factor: 1.0,
+        off_page: current.off_page,
     });
     *x += width;
 }
@@ -3840,6 +3881,7 @@ fn push_field_marker(
         compress_punctuation: false,
         following_non_space: None,
         plain_space_factor: 1.0,
+        off_page: current.off_page,
     });
     *x += width;
 }
@@ -4155,6 +4197,19 @@ fn decimal_offset(ctx: &LayoutContext<'_>, pending: &VecDeque<Seg>) -> f64 {
     width
 }
 
+/// A stop past the text box, and where it stands under [`OffPageInk::Clamp`]:
+/// the box edge when clamped, otherwise `x`. The flag stays set either way,
+/// so the fragments the stop aligns can be marked.
+fn confine_stop(ctx: &LayoutContext<'_>, x: f64, box_right: f64) -> (f64, bool) {
+    let past = x > box_right + OFF_PAGE_TOLERANCE;
+    let x = if past && ctx.options.off_page_ink == OffPageInk::Clamp {
+        box_right
+    } else {
+        x
+    };
+    (x, past)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn place_tab(
     ctx: &LayoutContext<'_>,
@@ -4165,8 +4220,9 @@ fn place_tab(
     default_tab: i32,
     scale: f64,
     content_left: f64,
+    box_right: f64,
 ) -> Option<f64> {
-    let tab = resolve_tab(*x, computed, default_tab, scale, content_left);
+    let mut tab = resolve_tab(*x, computed, default_tab, scale, content_left);
     if matches!(tab.alignment, TabAlignment::Bar) {
         current.graphics.push(Item::Line(crate::layout::LineItem {
             x1: tab.x,
@@ -4178,6 +4234,27 @@ fn place_tab(
             dashed: false,
         }));
         return None;
+    }
+    // A right/centre/decimal stop past the text box puts the text it aligns
+    // past the box — and, for a narrow column in a wide section, past the
+    // sheet (045/060). Word 2013+ keeps the stop (WQ-036); the reason is
+    // recorded either way, and `OffPageInk::Clamp` pulls the stop back to the
+    // box so the leader shortens and the text stays visible. A list number's
+    // suffix tab goes through the same confinement ([`confine_stop`]).
+    let past_box = match tab.alignment {
+        TabAlignment::Start
+        | TabAlignment::End
+        | TabAlignment::Center
+        | TabAlignment::Decimal
+        | TabAlignment::Num => {
+            let (x, past) = confine_stop(ctx, tab.x, box_right);
+            tab.x = x;
+            past
+        }
+        TabAlignment::Clear | TabAlignment::Bar => false,
+    };
+    if past_box {
+        current.off_page = Some(OffPageReason::TabStop);
     }
     let ink = following_ink(ctx, pending);
     let text_start = match tab.alignment {
