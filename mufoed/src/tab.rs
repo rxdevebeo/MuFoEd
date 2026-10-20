@@ -265,9 +265,9 @@ impl DocTab {
     /// Hands the worker a speller (or none, to stop marking words).
     pub(crate) fn set_speller(&mut self, speller: Option<std::sync::Arc<crate::spell::Speller>>) {
         self.speller.clone_from(&speller);
-        if speller.is_none() {
-            self.spelling.clear();
-        }
+        // The marks belong to the previous dictionaries. Drop them now; the
+        // worker sends the new ones when it has checked the text again.
+        self.spelling.clear();
         self.send(Request::Speller(speller));
     }
 
@@ -668,6 +668,7 @@ mod tests {
                 height_px: 1100.0,
                 items: vec![],
                 section_index: 0,
+                off_page: vec![],
             },
         })];
         tab.cursor = Some(Box::new(Cursor {
@@ -727,6 +728,7 @@ mod tests {
                 height_px: 1100.0,
                 items: vec![],
                 section_index: 0,
+                off_page: vec![],
             },
         })];
         tab.comments = vec![crate::worker::CommentView {

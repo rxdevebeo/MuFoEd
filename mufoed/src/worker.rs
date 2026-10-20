@@ -771,6 +771,21 @@ fn spell_gate(sync: &Mutex<SpellSync>) -> std::sync::MutexGuard<'_, SpellSync> {
     sync.lock().unwrap_or_else(|poison| poison.into_inner())
 }
 
+/// Writes a finished pass's verdicts only when it is still the current pass.
+/// A dictionary loaded since the pass started has moved the epoch, and its
+/// verdicts must not replace the new check.
+fn publish_spelling(
+    gate: &mut SpellSync,
+    epoch: u64,
+    cache: HashMap<String, Checked>,
+) -> bool {
+    if gate.epoch != epoch {
+        return false;
+    }
+    gate.cache = cache;
+    true
+}
+
 /// `None` when a newer pass has taken the epoch.
 fn spell_document(
     speller: Arc<crate::spell::Speller>,
@@ -4108,8 +4123,15 @@ impl<'a, 's> Worker<'a, 's> {
     // ----- spelling -----------------------------------------------------
 
     /// Drops remembered verdicts so the next pass checks every paragraph.
+    ///
+    /// The epoch moves with the cache. A pass already running still holds the
+    /// old number; it must not write its verdicts back after this, or the next
+    /// pass would trust them. That is what left every word underlined after a
+    /// dictionary had just been fetched: the new speller never saw the text.
     fn forget_spelling(&self) {
-        spell_gate(&self.spell_sync).cache.clear();
+        let mut gate = spell_gate(&self.spell_sync);
+        gate.cache.clear();
+        gate.epoch = gate.epoch.wrapping_add(1);
     }
 
     /// Asks for underlines again. Layout runs first when the pages are stale;
@@ -4172,10 +4194,9 @@ impl<'a, 's> Worker<'a, 's> {
                     return;
                 };
                 let mut gate = spell_gate(&sync);
-                if gate.epoch != epoch {
+                if !publish_spelling(&mut gate, epoch, done.cache) {
                     return;
                 }
-                gate.cache = done.cache;
                 let _ = replies.send(Reply::Spelling {
                     errors: done.errors,
                     missing: done.missing,
@@ -11618,6 +11639,74 @@ mod tests {
             .unwrap();
         assert_eq!(settle(&requests, &replies), "кот кот");
         requests.send(Request::Shutdown).unwrap();
+    }
+
+    /// A dictionary fetched while a pass is in flight has to be the one that
+    /// marks the open document. The pass that started earlier must not put its
+    /// verdicts back for the next one to reuse.
+    #[test]
+    fn a_fetched_dictionary_is_applied_to_the_open_document() {
+        let (requests, replies) = new_document();
+        send_all(&requests, typed("und Haus"));
+        let latin = |dic: &str| {
+            crate::spell::Speller::new(
+                vec![(
+                    crate::spell::Script::Latin,
+                    crate::spell::Dictionary::parse("SET UTF-8\n", dic),
+                )],
+                std::collections::HashSet::new(),
+                None,
+            )
+        };
+        requests
+            .send(Request::Speller(Some(Arc::new(latin("1\nthe\n")))))
+            .unwrap();
+        let (errors, _) = wait(&replies, |reply| match reply {
+            Reply::Spelling { errors, missing } if errors.len() == 2 => Some((errors, missing)),
+            _ => None,
+        });
+        assert_eq!(
+            errors.iter().map(|error| error.word.as_str()).collect::<Vec<_>>(),
+            ["und", "Haus"]
+        );
+        requests
+            .send(Request::Speller(Some(Arc::new(latin("2\nund\nHaus\n")))))
+            .unwrap();
+        let errors = wait(&replies, |reply| match reply {
+            Reply::Spelling { errors, .. } if errors.is_empty() => Some(errors),
+            _ => None,
+        });
+        assert!(errors.is_empty(), "{errors:?}");
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    /// The pass that started before a dictionary arrived must not put its
+    /// verdicts back afterwards.
+    #[test]
+    fn an_older_spelling_pass_does_not_keep_its_verdicts() {
+        let sync = std::sync::Mutex::new(SpellSync {
+            epoch: 1,
+            cache: std::collections::HashMap::new(),
+        });
+        let stale = std::collections::HashMap::from([(
+            "und".to_owned(),
+            Arc::new((
+                vec![crate::spell::Word {
+                    start: 0,
+                    end: 3,
+                    text: "und".to_owned(),
+                }],
+                Vec::new(),
+            )),
+        )]);
+        {
+            let mut gate = spell_gate(&sync);
+            gate.cache.clear();
+            gate.epoch = gate.epoch.wrapping_add(1);
+        }
+        let mut gate = spell_gate(&sync);
+        assert!(!publish_spelling(&mut gate, 1, stale));
+        assert!(gate.cache.is_empty());
     }
 
     /// A paragraph of words and an inline formula is sent with the formula
