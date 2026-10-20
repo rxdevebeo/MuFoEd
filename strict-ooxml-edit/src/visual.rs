@@ -85,6 +85,14 @@ struct Span {
     rect: VisualRect,
     stops: Vec<(usize, f64)>,
 }
+/// The path to the innermost text box a span's text is in, if any.
+fn boxed(s: &Span) -> Option<&[crate::Container]> {
+    let containers = &s.position.paragraph.containers;
+    containers
+        .iter()
+        .rposition(|c| matches!(c, crate::Container::TextBox { .. }))
+        .and_then(|last| containers.get(..=last))
+}
 struct Node {
     position: TextPosition,
     text: String,
@@ -232,6 +240,90 @@ impl VisualMap {
         if !x.is_finite() || !y.is_finite() {
             return Err(EditError::InvalidRange);
         }
+        Ok(self.nearest(page, x, y, |_| true))
+    }
+    /// Like [`hit_test`](Self::hit_test), among the lines of one text box's
+    /// own text: where a click inside the box puts the caret, as a word
+    /// processor does. The page-wide hit test cannot answer this: the box is
+    /// also a stretch of the paragraph that holds its anchor, drawn where the
+    /// box stands and starting where its first line does, and it wins the
+    /// tie. Text in boxes nested inside this one counts as its text. `None`
+    /// when the box has no text on this page.
+    pub fn hit_test_in_box(
+        &self,
+        revision: u64,
+        drawing: &DrawingPosition,
+        page: usize,
+        x: f64,
+        y: f64,
+    ) -> Result<Option<TextPosition>, EditError> {
+        self.check(revision)?;
+        if !x.is_finite() || !y.is_finite() {
+            return Err(EditError::InvalidRange);
+        }
+        let outer = &drawing.paragraph.containers;
+        Ok(self.nearest(page, x, y, |s| {
+            let address = &s.position.paragraph;
+            address.story == drawing.paragraph.story
+                && address.containers.starts_with(outer)
+                && matches!(
+                    address.containers.get(outer.len()),
+                    Some(crate::Container::TextBox { paragraph, inline, content, .. })
+                        if *paragraph == drawing.paragraph.block
+                            && *inline == drawing.inline
+                            && *content == drawing.content
+                )
+        }))
+    }
+    /// Where a click puts the caret when it falls on a text box that has
+    /// text: among the drawings under the point, topmost first, the first
+    /// that is a text box with lines on this page, and in it the position
+    /// [`hit_test_in_box`](Self::hit_test_in_box) gives. A drawing without
+    /// text over or under the box (a card behind it, a frame around it) does
+    /// not take the click from its text; nor does a line of the box's text
+    /// that runs past the box lose it. `None` when no text box with text is
+    /// under the point.
+    pub fn hit_box_text(
+        &self,
+        revision: u64,
+        page: usize,
+        x: f64,
+        y: f64,
+    ) -> Result<Option<TextPosition>, EditError> {
+        self.check(revision)?;
+        if !x.is_finite() || !y.is_finite() {
+            return Err(EditError::InvalidRange);
+        }
+        for (drawing, r) in self.objects.iter().rev() {
+            if r.page == page && x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height {
+                if let Some(position) = self.hit_test_in_box(revision, drawing, page, x, y)? {
+                    return Ok(Some(position));
+                }
+            }
+        }
+        // A line of a box's text that runs past the box (a PDF page's text
+        // set in a font wider than the original) is still that box's text.
+        let on_line = self.spans.iter().rev().find_map(|s| {
+            let r = &s.rect;
+            (r.page == page && x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height)
+                .then(|| boxed(s).map(|path| (s.position.paragraph.story.clone(), path)))
+                .flatten()
+        });
+        Ok(on_line.and_then(|(story, path)| {
+            self.nearest(page, x, y, |s| {
+                s.position.paragraph.story == story
+                    && s.position.paragraph.containers.starts_with(path)
+            })
+        }))
+    }
+    /// The caret position nearest a point among the spans `keep` admits.
+    fn nearest(
+        &self,
+        page: usize,
+        x: f64,
+        y: f64,
+        keep: impl Fn(&Span) -> bool,
+    ) -> Option<TextPosition> {
         let distance = |s: &Span| {
             if y < s.rect.y {
                 s.rect.y - y
@@ -239,10 +331,8 @@ impl VisualMap {
                 (y - s.rect.y - s.rect.height).max(0.0)
             }
         };
-        let on_page = || self.spans.iter().filter(|s| s.rect.page == page);
-        let Some(nearest) = on_page().map(distance).min_by(f64::total_cmp) else {
-            return Ok(None);
-        };
+        let on_page = || self.spans.iter().filter(|s| s.rect.page == page && keep(s));
+        let nearest = on_page().map(distance).min_by(f64::total_cmp)?;
         // Lines within a hundredth of a pixel of the nearest are as near.
         let line: Vec<&Span> = on_page().filter(|s| distance(s) - nearest < 1e-2).collect();
         let start = |s: &&Span| {
@@ -256,7 +346,7 @@ impl VisualMap {
             .filter(|s| start(s) <= x + 0.5)
             .max_by(|a, b| start(a).total_cmp(&start(b)))
             .or_else(|| line.iter().min_by(|a, b| start(a).total_cmp(&start(b))));
-        Ok(chosen.and_then(|s| {
+        chosen.and_then(|s| {
             s.stops
                 .iter()
                 .min_by(|a, b| (x - a.1).abs().total_cmp(&(x - b.1).abs()))
@@ -265,7 +355,7 @@ impl VisualMap {
                     p.offset = *offset;
                     p
                 })
-        }))
+        })
     }
     /// Geometry for one logical caret, including repeated header occurrences.
     pub fn caret(

@@ -2687,7 +2687,9 @@ impl<'a, 's> Worker<'a, 's> {
         let Some(map) = &self.map else {
             return Outcome::Quiet;
         };
-        // A click on a drawing selects it, the caret before it.
+        // A click on a drawing selects it, the caret before it; a click on
+        // the text of a text box puts the caret in that text, as Word does.
+        let mut in_box = None;
         if !extend && !column {
             if let Ok(Some(formula)) = map.hit_formula(revision, page, x, y) {
                 self.caret = Some(self.logical(&formula));
@@ -2697,11 +2699,13 @@ impl<'a, 's> Worker<'a, 's> {
                 self.cells = None;
                 return Outcome::Moved;
             }
+            in_box = map.hit_box_text(revision, page, x, y).ok().flatten();
             if let Some(object) = map
                 .hit_drawing(revision, page, x, y)
                 .ok()
                 .flatten()
                 .or_else(|| self.scheme_hit(page, x, y))
+                .filter(|_| in_box.is_none())
             {
                 if let Some(offset) = self.object_offset(&object) {
                     self.caret = Some(Logical {
@@ -2717,7 +2721,8 @@ impl<'a, 's> Worker<'a, 's> {
         }
         self.object = None;
         self.formula = None;
-        let Ok(Some(position)) = map.hit_test(revision, page, x, y) else {
+        let Some(position) = in_box.or_else(|| map.hit_test(revision, page, x, y).ok().flatten())
+        else {
             return Outcome::Quiet;
         };
         // The body and the headers are edited one at a time: a click in the
@@ -10552,6 +10557,98 @@ mod tests {
         let (requests, replies) = spawn(Source::New, false, OpenControl::new(), ctx);
         let _ = state(&replies);
         (requests, replies)
+    }
+
+    /// A one-page PDF with two blocks of text, set apart: opened as the
+    /// original laid it out, each block is a text box.
+    fn two_block_pdf() -> Vec<u8> {
+        let content = "BT /F1 10 Tf 72 700 Td (Alpha Alpha) Tj ET\n\
+                       BT /F1 10 Tf 300 500 Td (Bravo Charlie) Tj ET";
+        let objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_owned(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
+             /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+                .to_owned(),
+            format!(
+                "<< /Length {} >>\nstream\n{content}\nendstream",
+                content.len()
+            ),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
+        ];
+        let mut pdf = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (index, body) in objects.iter().enumerate() {
+            offsets.push(pdf.len());
+            pdf.extend_from_slice(format!("{} 0 obj\n{body}\nendobj\n", index + 1).as_bytes());
+        }
+        let xref = pdf.len();
+        let count = objects.len() + 1;
+        pdf.extend_from_slice(format!("xref\n0 {count}\n0000000000 65535 f \n").as_bytes());
+        for offset in offsets {
+            pdf.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+        }
+        pdf.extend_from_slice(
+            format!("trailer\n<< /Size {count} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n")
+                .as_bytes(),
+        );
+        pdf
+    }
+
+    fn selected_text(requests: &Sender<Request>, replies: &Receiver<Reply>) -> String {
+        requests.send(Request::Copy { cut: false }).unwrap();
+        wait(replies, |reply| match reply {
+            Reply::Clipboard(text) => Some(text),
+            _ => None,
+        })
+    }
+
+    /// A PDF opens as text boxes; a click on a box's text puts the caret in
+    /// it rather than selecting the box, a double click takes the word, and
+    /// typing replaces it there.
+    #[test]
+    fn a_click_on_a_text_box_text_edits_it() {
+        let path = std::env::temp_dir().join(format!("mufoed-box-{}.pdf", std::process::id()));
+        std::fs::write(&path, two_block_pdf()).expect("pdf");
+        let ctx = eframe::egui::Context::default();
+        let (requests, replies) = spawn(
+            Source::File {
+                path: path.clone(),
+                import: crate::formats::ImportOptions::as_original(),
+            },
+            false,
+            OpenControl::new(),
+            ctx,
+        );
+        let _ = state(&replies);
+        // "Bravo" stands at 300 pt from the left, its baseline 500 pt up a
+        // 792 pt page: in pixels (96 per inch) its middle is about here.
+        let (x, y) = (310.0 * 4.0 / 3.0, (792.0 - 504.0) * 4.0 / 3.0);
+        requests
+            .send(Request::Click {
+                page: 0,
+                x,
+                y,
+                extend: false,
+                column: false,
+            })
+            .unwrap();
+        assert!(object(&replies).is_none(), "the click went into the text");
+        requests
+            .send(Request::SelectWord { page: 0, x, y })
+            .unwrap();
+        assert!(object(&replies).is_none());
+        assert_eq!(selected_text(&requests, &replies).trim(), "Bravo");
+        for c in "Zulu".chars() {
+            requests.send(Request::Type(c.to_string())).unwrap();
+        }
+        requests
+            .send(Request::SelectWord { page: 0, x, y })
+            .unwrap();
+        assert!(object(&replies).is_none());
+        assert_eq!(selected_text(&requests, &replies).trim(), "Zulu");
+        requests.send(Request::Shutdown).unwrap();
+        let _ = std::fs::remove_file(&path);
     }
 
     /// A small picture's PNG bytes.

@@ -899,3 +899,89 @@ fn a_tab_between_runs_keeps_the_mark_size() {
     assert_eq!(map.caret(0, &before).unwrap().len(), 1);
     assert_eq!(map.caret(0, &after).unwrap().len(), 1);
 }
+
+/// A page with one text box at 96 px from the page's left and top edges,
+/// `width` EMU wide, its text set with `body_pr` attributes.
+fn text_box_page(width: u32, body_pr: &str) -> (Package, strict_ooxml_wml::model::Document) {
+    let shape = format!(
+        "<wps:wsp><wps:cNvPr id=\"2\" name=\"box\"/><wps:cNvSpPr/><wps:spPr>\
+<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{width}\" cy=\"914400\"/></a:xfrm>\
+<a:prstGeom prst=\"rect\"/></wps:spPr>\
+<wps:txbx><w:txbxContent><w:p><w:r><w:t>Bravo Charlie</w:t></w:r></w:p>\
+<w:p><w:r><w:t>Delta</w:t></w:r></w:p></w:txbxContent></wps:txbx>\
+<wps:bodyPr {body_pr}/></wps:wsp>"
+    );
+    let body = format!(
+        "<w:p><w:r><w:drawing><wp:anchor behindDoc=\"0\" relativeHeight=\"1\" simplePos=\"0\" \
+distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" allowOverlap=\"1\" layoutInCell=\"1\" locked=\"0\">\
+<wp:simplePos x=\"0\" y=\"0\"/>\
+<wp:positionH relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionH>\
+<wp:positionV relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionV>\
+<wp:extent cx=\"{width}\" cy=\"914400\"/><wp:wrapNone/><wp:docPr id=\"1\" name=\"box\"/>\
+<a:graphic><a:graphicData uri=\"http://purl.oclc.org/ooxml/drawingml/wordprocessingShape\">\
+{shape}</a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>"
+    );
+    let bytes = DocxBuilder::strict().body(&body).build();
+    let package = Package::open_reader(&bytes[..], &OpenOptions::default()).unwrap();
+    let document = parse_document(&package, &ParseOptions::default()).unwrap();
+    (package, document)
+}
+
+/// A click on a text box's text finds that text. The page-wide hit test gives
+/// the paragraph holding the box: the box is a stretch of it, drawn where the
+/// box stands, and starts where the box's first line does (a PDF page set as
+/// it was laid out has its text at the box's very edge).
+#[test]
+fn a_click_in_a_text_box_finds_its_own_text() {
+    use strict_ooxml_edit::Container;
+    let (package, mut document) =
+        text_box_page(1_828_800, "lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\"");
+    let editor = Editor::new(&mut document, EditLimits::default()).unwrap();
+    let map = editor
+        .visual_map(0, &RenderOptions::default(), Some(&package))
+        .unwrap();
+    let (x, y) = (98.0, 104.0);
+    let drawing = map.hit_drawing(0, 0, x, y).unwrap().expect("the box");
+    let page_wide = map.hit_test(0, 0, x, y).unwrap().expect("a position");
+    assert!(page_wide.paragraph.containers.is_empty(), "{page_wide:?}");
+    let hit = map
+        .hit_test_in_box(0, &drawing, 0, x, y)
+        .unwrap()
+        .expect("its text");
+    assert!(
+        matches!(
+            hit.paragraph.containers.as_slice(),
+            [Container::TextBox { .. }]
+        ),
+        "{hit:?}"
+    );
+    assert_eq!((hit.paragraph.block, hit.offset), (0, 0), "{hit:?}");
+    assert_eq!(map.hit_box_text(0, 0, x, y).unwrap(), Some(hit));
+    // Below its first line, the second; on another page, none.
+    let below = map
+        .hit_test_in_box(0, &drawing, 0, 100.0, 140.0)
+        .unwrap()
+        .expect("second line");
+    assert_eq!(below.paragraph.block, 1, "{below:?}");
+    assert_eq!(map.hit_test_in_box(0, &drawing, 1, x, y).unwrap(), None);
+}
+
+/// A line of a box's text that runs past the box is still its text: the
+/// click there goes into it, not into the page.
+#[test]
+fn a_click_on_box_text_past_the_box_finds_it() {
+    // 24 px wide, the text unwrapped: "Bravo Charlie" runs well past it.
+    let (package, mut document) = text_box_page(228_600, "wrap=\"none\" lIns=\"0\" tIns=\"0\"");
+    let editor = Editor::new(&mut document, EditLimits::default()).unwrap();
+    let map = editor
+        .visual_map(0, &RenderOptions::default(), Some(&package))
+        .unwrap();
+    let (x, y) = (150.0, 104.0);
+    assert!(
+        map.hit_drawing(0, 0, x, y).unwrap().is_none(),
+        "past the box"
+    );
+    let hit = map.hit_box_text(0, 0, x, y).unwrap().expect("its text");
+    assert_eq!(hit.paragraph.block, 0, "{hit:?}");
+    assert!(hit.offset > 5, "inside Charlie: {hit:?}");
+}
