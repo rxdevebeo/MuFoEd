@@ -5,6 +5,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+# An application, not a library: never published, so its sibling crates
+# are named by path alone (cargo-deny allows that only for a private crate).
+publish = false
 repository.workspace = true
 authors.workspace = true
 readme = "README.md"
