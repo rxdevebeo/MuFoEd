@@ -288,7 +288,7 @@ impl DocTab {
                     .map(|kind| OriginalSource {
                         path: path.clone(),
                         kind,
-                        first: import.pages.map(|(start, _)| start).unwrap_or(1),
+                        first: import.pages.map_or(1, |(start, _)| start),
                     }),
             ),
             Source::File { path, .. } => (Some(path.clone()), None),

@@ -264,11 +264,11 @@ fn original_bitmap(
         let png = crate::formats::original_png(source, index)?;
         let pixmap =
             crate::raster::picture_pixmap(&png).ok_or_else(|| "unreadable page".to_owned())?;
-        return Ok(crate::raster::Bitmap {
+        Ok(crate::raster::Bitmap {
             width: pixmap.width() as usize,
             height: pixmap.height() as usize,
             rgba: pixmap.data().to_vec(),
-        });
+        })
     }
     #[cfg(not(feature = "ocr"))]
     {

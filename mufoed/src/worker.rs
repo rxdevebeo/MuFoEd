@@ -207,6 +207,8 @@ pub(crate) enum Request {
         job: u64,
     },
     /// Every occurrence of `query`. The caret stays put and the text is unchanged.
+    /// Tests drive the search this way; the chat tool searches its snapshot itself.
+    #[cfg_attr(not(test), allow(dead_code))]
     ChatFind {
         /// The text to find.
         query: String,
@@ -768,17 +770,14 @@ struct SpellDone {
 }
 
 fn spell_gate(sync: &Mutex<SpellSync>) -> std::sync::MutexGuard<'_, SpellSync> {
-    sync.lock().unwrap_or_else(|poison| poison.into_inner())
+    sync.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Writes a finished pass's verdicts only when it is still the current pass.
 /// A dictionary loaded since the pass started has moved the epoch, and its
 /// verdicts must not replace the new check.
-fn publish_spelling(
-    gate: &mut SpellSync,
-    epoch: u64,
-    cache: HashMap<String, Checked>,
-) -> bool {
+fn publish_spelling(gate: &mut SpellSync, epoch: u64, cache: HashMap<String, Checked>) -> bool {
     if gate.epoch != epoch {
         return false;
     }
@@ -788,18 +787,18 @@ fn publish_spelling(
 
 /// `None` when a newer pass has taken the epoch.
 fn spell_document(
-    speller: Arc<crate::spell::Speller>,
-    paragraphs: Vec<SpellSource>,
-    map: Option<Arc<VisualMap>>,
+    speller: &crate::spell::Speller,
+    paragraphs: &[SpellSource],
+    map: Option<&VisualMap>,
     revision: u64,
-    cache: HashMap<String, Checked>,
+    cache: &HashMap<String, Checked>,
     sync: &Mutex<SpellSync>,
     epoch: u64,
 ) -> Option<SpellDone> {
     let mut errors = Vec::new();
     let mut unchecked: Vec<crate::spell::Script> = Vec::new();
     let mut seen: HashMap<String, Checked> = HashMap::new();
-    for source in &paragraphs {
+    for source in paragraphs {
         if spell_gate(sync).epoch != epoch {
             return None;
         }
@@ -807,7 +806,7 @@ fn spell_document(
             .get(&source.text)
             .or_else(|| seen.get(&source.text))
             .cloned();
-        let checked = cached.unwrap_or_else(|| verdicts(&speller, &source.text));
+        let checked = cached.unwrap_or_else(|| verdicts(speller, &source.text));
         seen.insert(source.text.clone(), Arc::clone(&checked));
         for script in &checked.1 {
             if !unchecked.contains(script) {
@@ -827,7 +826,6 @@ fn spell_document(
                 offset: word.end,
             };
             let rects = map
-                .as_ref()
                 .and_then(|map| {
                     map.selection_between(
                         revision,
@@ -846,7 +844,7 @@ fn spell_document(
         }
     }
     let mut sample = Vec::new();
-    for source in &paragraphs {
+    for source in paragraphs {
         if sample.len() >= 400 {
             break;
         }
@@ -1190,6 +1188,8 @@ pub(crate) enum Reply {
         view: Box<crate::chat::View>,
     },
     /// Where `query` occurs. The caret was not moved.
+    /// Only tests read it; the open document searches through its own snapshot.
+    #[cfg_attr(not(test), allow(dead_code))]
     ChatFind {
         /// One entry per occurrence.
         hits: Vec<crate::chat::Hit>,
@@ -1753,7 +1753,7 @@ impl<'a, 's> Worker<'a, 's> {
             "note.cannot_edit_here" => self.note("note.cannot_edit_here", String::new(), true),
             "note.no_paragraph" => self.note("note.no_paragraph", String::new(), true),
             "note.selection_structure" => {
-                self.note("note.selection_structure", String::new(), true)
+                self.note("note.selection_structure", String::new(), true);
             }
             _ => self.note("note.edit_refused", error.to_owned(), true),
         }
@@ -2135,7 +2135,7 @@ impl<'a, 's> Worker<'a, 's> {
                 Outcome::Quiet
             }
             Request::ChatFind { query } => {
-                self.chat_find(query);
+                self.chat_find(&query);
                 Outcome::Quiet
             }
             Request::ApplyChat(batch) => self.apply_chat(&batch),
@@ -4172,7 +4172,7 @@ impl<'a, 's> Worker<'a, 's> {
             gate.epoch = gate.epoch.wrapping_add(1);
             (gate.epoch, gate.cache.clone())
         };
-        let paragraphs = self
+        let paragraphs: Vec<SpellSource> = self
             .paragraphs(&Story::Body)
             .into_iter()
             .map(|address| {
@@ -4193,9 +4193,15 @@ impl<'a, 's> Worker<'a, 's> {
         let spawned = std::thread::Builder::new()
             .name("mufoed-spelling".to_owned())
             .spawn(move || {
-                let Some(done) =
-                    spell_document(speller, paragraphs, map, revision, cache, &sync, epoch)
-                else {
+                let Some(done) = spell_document(
+                    &speller,
+                    &paragraphs,
+                    map.as_deref(),
+                    revision,
+                    &cache,
+                    &sync,
+                    epoch,
+                ) else {
                     return;
                 };
                 let mut gate = spell_gate(&sync);
@@ -11763,7 +11769,10 @@ mod tests {
             _ => None,
         });
         assert_eq!(
-            errors.iter().map(|error| error.word.as_str()).collect::<Vec<_>>(),
+            errors
+                .iter()
+                .map(|error| error.word.as_str())
+                .collect::<Vec<_>>(),
             ["und", "Haus"]
         );
         requests

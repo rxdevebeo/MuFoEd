@@ -112,7 +112,8 @@ pub(crate) trait Model {
     fn complete(&mut self, history: &[Turn]) -> Result<ModelReply, String>;
 }
 
-/// A queue of replies, for tests and for a turn that must not touch the network.
+/// A queue of replies, for a test turn that must not touch the network.
+#[cfg(test)]
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Scripted {
     /// Replies, in order.
@@ -120,6 +121,7 @@ pub(crate) struct Scripted {
     next: usize,
 }
 
+#[cfg(test)]
 impl Model for Scripted {
     fn complete(&mut self, _history: &[Turn]) -> Result<ModelReply, String> {
         let Some(reply) = self.replies.get(self.next) else {
@@ -155,21 +157,21 @@ pub(crate) fn system_prompt(language: &str) -> String {
 /// The tools Ollama is offered.
 pub(crate) fn tool_schema() -> Value {
     json!([
-        schema_tool("outline", "Heading outline: index, level and text.", json!({"type": "object", "properties": {}})),
-        schema_tool("read_paragraphs", "Paragraph text. index is the paragraph's own index.", json!({
+        schema_tool("outline", "Heading outline: index, level and text.", &json!({"type": "object", "properties": {}})),
+        schema_tool("read_paragraphs", "Paragraph text. index is the paragraph's own index.", &json!({
             "type": "object",
             "properties": {"start": {"type": "integer"}, "count": {"type": "integer"}},
             "required": ["start", "count"]
         })),
-        schema_tool("read_selection", "The selected text, if any.", json!({"type": "object", "properties": {}})),
-        schema_tool("find_all", "Every occurrence of a string, as paragraph indexes. Does not change the document.", json!({
+        schema_tool("read_selection", "The selected text, if any.", &json!({"type": "object", "properties": {}})),
+        schema_tool("find_all", "Every occurrence of a string, as paragraph indexes. Does not change the document.", &json!({
             "type": "object",
             "properties": {"query": {"type": "string"}},
             "required": ["query"]
         })),
-        schema_tool("list_formulas", "Displayed formulas in document order: id, paragraph, LaTeX, current number.", json!({"type": "object", "properties": {}})),
-        schema_tool("list_tables", "Tables as rows of cell text, and which pictures there are.", json!({"type": "object", "properties": {}})),
-        schema_tool("propose", "Queue one change. kind is replace, range, forms, underline, kinds, numbers, comment, bookmark, join, split, move, cite, report, table_header, chart, caption or write. write adds the text of a new piece; separate its paragraphs with a blank line.", json!({
+        schema_tool("list_formulas", "Displayed formulas in document order: id, paragraph, LaTeX, current number.", &json!({"type": "object", "properties": {}})),
+        schema_tool("list_tables", "Tables as rows of cell text, and which pictures there are.", &json!({"type": "object", "properties": {}})),
+        schema_tool("propose", "Queue one change. kind is replace, range, forms, underline, kinds, numbers, comment, bookmark, join, split, move, cite, report, table_header, chart, caption or write. write adds the text of a new piece; separate its paragraphs with a blank line.", &json!({
             "type": "object",
             "properties": {
                 "kind": {"type": "string"},
@@ -196,7 +198,7 @@ pub(crate) fn tool_schema() -> Value {
     ])
 }
 
-fn schema_tool(name: &str, description: &str, parameters: Value) -> Value {
+fn schema_tool(name: &str, description: &str, parameters: &Value) -> Value {
     json!({
         "type": "function",
         "function": {"name": name, "description": description, "parameters": parameters}
@@ -1304,8 +1306,7 @@ fn propose_write(args: &Value, batch: &mut Batch, skipped: &mut u32) {
     for item in array(args, "items") {
         let text = item
             .as_str()
-            .map(str::to_owned)
-            .unwrap_or_else(|| string(item, "text"));
+            .map_or_else(|| string(item, "text"), str::to_owned);
         paragraphs.extend(paragraphs_of(&text));
     }
     if paragraphs.is_empty() {
@@ -1463,8 +1464,7 @@ fn paragraph_at(view: &View, index: Option<usize>) -> Option<&Paragraph> {
 fn array<'a>(args: &'a Value, key: &str) -> &'a [Value] {
     args.get(key)
         .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or(&[])
+        .map_or(&[], Vec::as_slice)
 }
 
 fn string(value: &Value, key: &str) -> String {

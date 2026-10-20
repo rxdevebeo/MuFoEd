@@ -167,7 +167,7 @@ pub(crate) fn style_buttons(ui: &mut egui::Ui) {
 /// egui uses selection.stroke for both the input frame and selected text;
 /// keeping that white preserves readable text selection and button styling.
 pub(crate) fn paint_input_focus(ctx: &egui::Context) {
-    let Some(id) = ctx.memory(|memory| memory.focused()) else {
+    let Some(id) = ctx.memory(eframe::egui::Memory::focused) else {
         return;
     };
     if egui::text_edit::TextEditState::load(ctx, id).is_none() {

@@ -7,9 +7,11 @@ use strict_ooxml::model::chart::{BarGrouping, ChartData, ChartKind, ChartSeries,
 use strict_ooxml::model::math::{MathExpression, MathNode, MathRun, MathRunProperties};
 use strict_ooxml::model::props::RunProperties;
 use strict_ooxml::model::values::{HalfPoints, StyleType, TriState, Underline};
+#[cfg(test)]
+use strict_ooxml::model::MathParagraph;
 use strict_ooxml::model::{
-    Block, Bookmark, BookmarkId, DrawingKind, Field, Graphic, Inline, MathParagraph, Paragraph,
-    RunContent, StyleId,
+    Block, Bookmark, BookmarkId, DrawingKind, Field, Graphic, Inline, Paragraph, RunContent,
+    StyleId,
 };
 use strict_ooxml_core::error::SourceLocation;
 
@@ -20,7 +22,7 @@ use crate::chat::{
 };
 use crate::nav;
 
-impl<'a, 's> Worker<'a, 's> {
+impl Worker<'_, '_> {
     /// A read-only picture of the body. The caret stays where it is.
     pub(crate) fn chat_snapshot(&mut self, job: u64) {
         let view = self.chat_view();
@@ -31,9 +33,9 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     /// Search, without moving the caret or changing the document.
-    pub(crate) fn chat_find(&mut self, query: String) {
+    pub(crate) fn chat_find(&mut self, query: &str) {
         let view = self.chat_view();
-        let hits = crate::chat::find_all(&view, &query);
+        let hits = crate::chat::find_all(&view, query);
         let caret = view.caret;
         self.send(super::Reply::ChatFind { hits, caret });
     }
@@ -75,8 +77,7 @@ impl<'a, 's> Worker<'a, 's> {
                 } => self.comment_on(
                     *index,
                     old,
-                    *start,
-                    *end,
+                    *start..*end,
                     text,
                     &mut definitions,
                     &mut commands,
@@ -155,6 +156,7 @@ impl<'a, 's> Worker<'a, 's> {
     }
 
     /// A displayed formula at the caret, for tests that need one.
+    #[cfg(test)]
     pub(crate) fn insert_display(&mut self, latex: &str) -> bool {
         let Ok(expression) = crate::formula::from_latex(latex) else {
             return false;
@@ -416,12 +418,12 @@ impl<'a, 's> Worker<'a, 's> {
         &self,
         index: usize,
         old: &str,
-        start: usize,
-        end: usize,
+        span: std::ops::Range<usize>,
         text: &str,
         definitions: &mut Vec<Definition>,
         commands: &mut Vec<Edit>,
     ) {
+        let std::ops::Range { start, end } = span;
         let Some(at) = self.paragraph_reads(index, old) else {
             return;
         };

@@ -1,6 +1,9 @@
 //! Click targets belong to the editor, not to the document format. Attribute
 //! their ink on a disposable colour-only copy using the public renderer.
-use super::*;
+use super::{
+    nav, Address, Block, Color, Container, HashMap, Logical, Outcome, Paragraph, PlacedPage,
+    RenderOptions, Reply, Request, Session, SourceLocation, Story, VisualRect, Worker,
+};
 use strict_ooxml::model::{Inline, Run, RunContent};
 use strict_ooxml_core::part::PartId;
 use strict_ooxml_render_svg::{Item, MediaSource, TextItem};
@@ -81,7 +84,7 @@ impl Tags<'_> {
                         strict_ooxml_core::opc::rels::parse_relationships(
                             bytes,
                             part,
-                            &Default::default(),
+                            &strict_ooxml_core::limits::ResourceLimits::default(),
                         )
                         .ok()
                     })
@@ -127,7 +130,7 @@ impl Tags<'_> {
                         .find(|(a, _)| *a == at)
                         .map(|(_, to)| Target::Paragraph(to.clone()));
                     let mut offset = 0;
-                    self.inlines(&mut p.inlines, &at, &mut offset, inherited);
+                    self.inlines(&mut p.inlines, &at, &mut offset, inherited.as_ref());
                 }
                 Block::Table(t) => {
                     for (row, r) in t.rows.iter_mut().enumerate() {
@@ -156,7 +159,7 @@ impl Tags<'_> {
         inlines: &mut Vec<Inline>,
         at: &Address,
         offset: &mut usize,
-        inherited: Option<Target>,
+        inherited: Option<&Target>,
     ) {
         for inline in std::mem::take(inlines) {
             let mut inline = inline;
@@ -202,7 +205,7 @@ impl Tags<'_> {
                         };
                         let active = note
                             .or_else(|| self.fields.iter().rev().find_map(|f| f.target.clone()))
-                            .or_else(|| inherited.clone());
+                            .or_else(|| inherited.cloned());
                         let mut piece = run.clone();
                         piece.content = vec![content];
                         if let Some(target) = active {
@@ -222,23 +225,23 @@ impl Tags<'_> {
                     continue;
                 }
                 Inline::Hyperlink(h) => {
-                    let target = self.hyperlink(h).or_else(|| inherited.clone());
-                    self.inlines(&mut h.inlines, at, offset, target);
+                    let target = self.hyperlink(h).or_else(|| inherited.cloned());
+                    self.inlines(&mut h.inlines, at, offset, target.as_ref());
                 }
                 Inline::Field(f) => {
                     let target = f
                         .instruction
                         .as_deref()
                         .and_then(field_target)
-                        .or_else(|| inherited.clone());
+                        .or_else(|| inherited.cloned());
                     // Cached simple-field text is protected by the editing
                     // map and consumes no editable scalar positions.
                     let mut local = *offset;
-                    self.inlines(&mut f.inlines, at, &mut local, target);
+                    self.inlines(&mut f.inlines, at, &mut local, target.as_ref());
                 }
-                Inline::SdtInline(s) => self.inlines(&mut s.inlines, at, offset, inherited.clone()),
+                Inline::SdtInline(s) => self.inlines(&mut s.inlines, at, offset, inherited),
                 Inline::Directional(d) => {
-                    self.inlines(&mut d.inlines, at, offset, inherited.clone())
+                    self.inlines(&mut d.inlines, at, offset, inherited);
                 }
                 Inline::FootnoteRef(_) | Inline::EndnoteRef(_) => {
                     // The two standard spellings render identically. A run
@@ -254,12 +257,12 @@ impl Tags<'_> {
                         RunContent::EndnoteRef(id)
                     };
                     let mut one = vec![Inline::Run(Run {
-                        props: Default::default(),
+                        props: strict_ooxml::model::props::RunProperties::default(),
                         content: vec![content],
                         revision: None,
                         location: SourceLocation::unknown(),
                     })];
-                    self.inlines(&mut one, at, offset, inherited.clone());
+                    self.inlines(&mut one, at, offset, inherited);
                     inlines.extend(one);
                     continue;
                 }
@@ -280,9 +283,9 @@ impl Tags<'_> {
 
 fn empty_paragraph() -> Paragraph {
     Paragraph {
-        props: Default::default(),
+        props: strict_ooxml::model::props::ParagraphProperties::default(),
         inlines: vec![],
-        rsids: Default::default(),
+        rsids: strict_ooxml::model::values::Rsids::default(),
         revision: None,
         para_id: None,
         text_id: None,
@@ -504,11 +507,12 @@ impl Worker<'_, '_> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::{styles_of, Arc, OpenOptions, ReferenceCommand, Source, StrictDocument};
     use super::*;
 
     fn text(s: &str) -> Inline {
         Inline::Run(Run {
-            props: Default::default(),
+            props: strict_ooxml::model::props::RunProperties::default(),
             content: vec![RunContent::Text(strict_ooxml::model::TextNode {
                 text: s.into(),
                 space: strict_ooxml::model::values::Space::Preserve,
@@ -529,7 +533,7 @@ mod tests {
             Some(Target::Bookmark("Chapter".into()))
         );
         assert_eq!(
-            field_target(r#"PAGEREF Chapter \h"#),
+            field_target(r"PAGEREF Chapter \h"),
             Some(Target::Bookmark("Chapter".into()))
         );
         assert_eq!(field_target("PAGE"), None);
@@ -670,7 +674,7 @@ mod tests {
                         dirty: false,
                         form_data: None,
                     })],
-                    props: Default::default(),
+                    props: strict_ooxml::model::props::RunProperties::default(),
                     revision: None,
                     location: SourceLocation::unknown(),
                 })
@@ -780,7 +784,13 @@ mod tests {
                         ..Default::default()
                     },
                     |ui| {
-                        crate::canvas::show(ui, &mut tab, crate::theme::palette(false), true, &i18n)
+                        crate::canvas::show(
+                            ui,
+                            &mut tab,
+                            crate::theme::palette(false),
+                            true,
+                            &i18n,
+                        );
                     },
                 );
                 pointer = tab.view.page_screens[0].unwrap().min + egui::vec2(130.0, 110.0) * zoom;
