@@ -332,19 +332,13 @@ fn authored_cell_height(
 
 /// Paints the laid-out rows (shading, cell content, borders) into row flows.
 ///
-/// Kept out of [`layout_table`], which recurses once per nested table: in a
-/// debug build every local of a function occupies its frame, and the
-/// temporaries built here (rect and row-flow values) used to be paid at every
-/// nesting level of a 1 MiB stack (`hostile` `twelve_nested_tables_*`).
-#[inline(never)]
-fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flow> {
-    // A row is divided only when it cannot fit a page: a shorter row is moved
-    // whole, and only a taller one may break at a zero-gap boundary (033).
-    let page_height = ctx
-        .document
+/// The height a page of the current section has for text; unbounded when
+/// the document has no such section.
+fn page_content_height(ctx: &LayoutContext<'_>) -> f64 {
+    ctx.document
         .sections
         .get(ctx.current_section.get())
-        .map(|section| {
+        .map_or(f64::INFINITY, |section| {
             crate::layout::geometry_for(
                 Some(&section.properties),
                 ctx.options.scale,
@@ -354,7 +348,17 @@ fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flo
             )
             .content_height()
         })
-        .unwrap_or(f64::INFINITY);
+}
+
+/// Kept out of [`layout_table`], which recurses once per nested table: in a
+/// debug build every local of a function occupies its frame, and the
+/// temporaries built here (rect and row-flow values) used to be paid at every
+/// nesting level of a 1 MiB stack (`hostile` `twelve_nested_tables_*`).
+#[inline(never)]
+fn row_flows(ctx: &LayoutContext<'_>, table: &Table, rows: &[RawRow]) -> Vec<Flow> {
+    // A row is divided only when it cannot fit a page: a shorter row is moved
+    // whole, and only a taller one may break at a zero-gap boundary (033).
+    let page_height = page_content_height(ctx);
     let mut flows = Vec::with_capacity(rows.len());
     for (row_index, row) in rows.iter().enumerate() {
         let mut items = Vec::new();
