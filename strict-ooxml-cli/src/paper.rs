@@ -73,7 +73,10 @@ fn windows_paper() -> Option<i32> {
         return None;
     }
     let len = usize::try_from(written).ok()?.saturating_sub(1);
-    String::from_utf16_lossy(buffer.get(..len)?).trim().parse().ok()
+    String::from_utf16_lossy(buffer.get(..len)?)
+        .trim()
+        .parse()
+        .ok()
 }
 
 #[cfg(test)]

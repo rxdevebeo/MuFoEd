@@ -169,7 +169,8 @@ fn a_justified_word_boundary_is_one_caret() {
         let rects = map.caret(0, &pos).unwrap();
         let mut lines = Vec::new();
         for rect in &rects {
-            #[allow(clippy::cast_possible_truncation)] // Bounded page coordinates, quantized to tenths.
+            #[allow(clippy::cast_possible_truncation)]
+            // Bounded page coordinates, quantized to tenths.
             let y = (rect.y * 10.0).round() as i64;
             assert!(
                 !lines.contains(&(rect.page, y)),

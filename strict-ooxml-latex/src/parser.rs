@@ -2798,7 +2798,11 @@ impl<'a> Parser<'a> {
 
     /// Graphics declarations are configuration, never document prose. Consume
     /// without expansion so style bodies cannot execute nested commands.
-    fn skip_graphic_configuration(&mut self, word: &str, span: LatexSpan) -> Result<(), LatexError> {
+    fn skip_graphic_configuration(
+        &mut self,
+        word: &str,
+        span: LatexSpan,
+    ) -> Result<(), LatexError> {
         self.loss(span, &format!("graphic:configuration:{word}"))?;
         let expanding = std::mem::replace(&mut self.expanding, false);
         let result = (|| {
@@ -3983,8 +3987,13 @@ impl<'a> Parser<'a> {
 fn is_graphic_configuration(word: &str) -> bool {
     matches!(
         word,
-        "tikzset" | "tikzstyle" | "pgfkeys" | "pgfplotsset"
-            | "usetikzlibrary" | "usepgflibrary" | "usepgfplotslibrary"
+        "tikzset"
+            | "tikzstyle"
+            | "pgfkeys"
+            | "pgfplotsset"
+            | "usetikzlibrary"
+            | "usepgflibrary"
+            | "usepgfplotslibrary"
     )
 }
 

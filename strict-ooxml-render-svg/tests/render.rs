@@ -14,9 +14,7 @@ use common::{
     build_docx, content_types, document, open_body, open_bytes, render_body, root_rels,
     without_font_faces, W,
 };
-use strict_ooxml_render_svg::{
-    place_pages, render, DefaultPaper, PageSelection, RenderOptions,
-};
+use strict_ooxml_render_svg::{place_pages, render, DefaultPaper, PageSelection, RenderOptions};
 
 #[test]
 fn simple_paragraph_renders_text_and_formatting() {

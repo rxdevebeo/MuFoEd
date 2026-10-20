@@ -317,8 +317,8 @@ fn f05_placed_pages_keep_every_page() {
         }
         let bytes = pdf.build();
         let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
-        let converted = convert(&mut reader, &PdfOptions::default().place_every_page(true))
-            .expect("convert");
+        let converted =
+            convert(&mut reader, &PdfOptions::default().place_every_page(true)).expect("convert");
         let mut bag = strict_ooxml_write::package::MediaBag::new();
         for (part, media) in &converted.media {
             bag.insert(part.clone(), media.clone());
@@ -332,8 +332,8 @@ fn f05_placed_pages_keep_every_page() {
         let package =
             Package::open_reader(&written.bytes[..], &OpenOptions::default()).expect("reopen");
         let document = parse_document(&package, &ParseOptions::default()).expect("parse");
-        let pages = place_pages(&document, &RenderOptions::default(), Some(&package))
-            .expect("place");
+        let pages =
+            place_pages(&document, &RenderOptions::default(), Some(&package)).expect("place");
         assert_eq!(pages.len(), count, "{count} source pages");
         for (page, word) in pages.iter().zip(words) {
             let items = format!("{:?}", page.items);
