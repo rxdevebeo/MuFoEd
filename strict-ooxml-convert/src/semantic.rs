@@ -236,16 +236,21 @@ pub(crate) fn build(
         // keeps its text where it stood, in text boxes; as one flow its
         // blocks stacked onto page after page.
         if !rebuilt
-            && !matches!(column_plan, crate::columns::ColumnPlan::Two { .. })
-            && crate::designed::is_designed(&lines, page.geometry.height)
+            && (options.place_every_page
+                || (!matches!(column_plan, crate::columns::ColumnPlan::Two { .. })
+                    && crate::designed::is_designed(&lines, page.geometry.height)))
         {
             let frames = crate::designed::text_frames(&lines, pitch / body, push_runs);
+            let why = if options.place_every_page {
+                "is set as the original laid it out,"
+            } else {
+                "its text stands in blocks side by side rather than in one column, and is set"
+            };
             report.record(
                 "layout.designed",
                 Severity::Inferred,
                 format!(
-                    "page {}: its text stands in blocks side by side rather than in one \
-                     column, and is set as {} text box(es) at their places on the page",
+                    "page {}: {why} as {} text box(es) at their places on the page",
                     index + 1,
                     frames.len()
                 ),

@@ -171,6 +171,7 @@ impl Mode {
 
 /// Everything the conversion needs beyond the PDF.
 #[derive(Clone)]
+#[allow(clippy::struct_excessive_bools)] // independent switches, each with its own builder
 pub struct PdfOptions {
     /// Which document to build.
     pub mode: Mode,
@@ -297,6 +298,13 @@ pub struct PdfOptions {
     /// but is one with the diacritics a model dropped restored, is restored
     /// ([`strict_ooxml_ocr::Lexicon`]). The report counts the repairs.
     pub recovery_lexicon: Option<std::sync::Arc<strict_ooxml_ocr::Lexicon>>,
+    /// Set every page as the original laid it out (semantic mode only): its
+    /// text in text boxes where its blocks stood, its pictures and shapes where
+    /// they stood, one PDF page to a page. What the semantic mode does on its
+    /// own only for a page laid out as a design. Default off: the text re-flows
+    /// into paragraphs, which is what an import wants and an editor opening a
+    /// PDF does not — it wants the page to look as it did.
+    pub place_every_page: bool,
 }
 
 /// The name of the paragraph style a recovered paragraph carries, as a reader
@@ -336,6 +344,7 @@ impl Default for PdfOptions {
             #[cfg(feature = "raster")]
             recovery_flow: false,
             recovery_lexicon: None,
+            place_every_page: false,
         }
     }
 }
@@ -373,6 +382,14 @@ impl PdfOptions {
     #[must_use]
     pub fn embed_images(mut self, embed: bool) -> Self {
         self.embed_images = embed;
+        self
+    }
+
+    /// Sets whether every page is set as the original laid it out
+    /// ([`PdfOptions::place_every_page`]).
+    #[must_use]
+    pub fn place_every_page(mut self, place: bool) -> Self {
+        self.place_every_page = place;
         self
     }
 

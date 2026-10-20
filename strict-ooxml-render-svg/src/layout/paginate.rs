@@ -2796,13 +2796,17 @@ impl<'a> Paginator<'a> {
     fn flush(&mut self) -> Result<()> {
         let keep_empty = self.keep_empty_page;
         self.keep_empty_page = false;
+        let page = self.pages.len();
         if self.current.is_empty()
             && !self.has_page_notes()
             && !self.pages.is_empty()
             && !keep_empty
+            && !self.anchors.iter().any(|anchor| anchor.page == page)
         {
             // AUD-75: skip only when the page was not opened by an explicit
-            // page/section break.
+            // page/section break. A page that holds only drawings anchored to
+            // it (a PDF page set as it was laid out: text boxes and pictures)
+            // is not empty: dropping it lost the last page of such a document.
             return Ok(());
         }
         if self.has_page_notes() {

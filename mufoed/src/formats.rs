@@ -88,6 +88,24 @@ pub(crate) struct ImportOptions {
     /// `1`-based inclusive page span.
     pub(crate) pages: Option<(usize, usize)>,
     pub(crate) ocr: Option<OcrSettings>,
+    /// Every page set as the original laid it out (PDF): text in boxes where
+    /// its blocks stood, one PDF page to a page.
+    pub(crate) placed: bool,
+}
+
+impl ImportOptions {
+    /// How an opened (not imported) PDF or DjVu is read: as the original
+    /// looks - every page at its own size, its text in boxes where its blocks
+    /// stood, its pictures and shapes where they stood. Re-flowing the text
+    /// into paragraphs is an import's choice to make, not an open's; and the
+    /// visual mode, a paragraph per line, stacked a designed page's side by
+    /// side blocks under each other and set a one-page leaflet on five.
+    pub(crate) fn as_original() -> Self {
+        Self {
+            placed: true,
+            ..Self::default()
+        }
+    }
 }
 
 impl Default for ImportOptions {
@@ -97,6 +115,7 @@ impl Default for ImportOptions {
             images: true,
             pages: None,
             ocr: None,
+            placed: false,
         }
     }
 }
@@ -344,7 +363,8 @@ fn open_pdf(path: &Path, import: &ImportOptions) -> Result<Loaded, String> {
         .map_err(|error| error.to_string())?;
     let mut options = strict_ooxml::PdfOptions::default()
         .mode(import.mode)
-        .embed_images(import.images);
+        .embed_images(import.images)
+        .place_every_page(import.placed);
     options.pages = import.pages;
     if let Some(settings) = &import.ocr {
         #[cfg(feature = "ocr")]

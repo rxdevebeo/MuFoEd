@@ -294,3 +294,50 @@ fn f05_semantic_blocks_keep_their_page_size() {
     let text = body_text(&document);
     assert!(text.find("Page one") < text.find("Page two"), "{text}");
 }
+
+/// Every page set as the original laid it out (how the editor opens a PDF)
+/// keeps one page to a page. Pages of the same size hold only their text boxes
+/// and are one section: the renderer dropped the last of them as empty, and a
+/// two-page leaflet opened as one.
+#[test]
+fn f05_placed_pages_keep_every_page() {
+    for count in 1..=3 {
+        let mut pdf = PdfBuilder::new();
+        let widths = vec!["500"; 95].join(" ");
+        let font = pdf.object(format!(
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding \
+             /FirstChar 32 /LastChar 126 /Widths [{widths}] >>"
+        ));
+        pdf.set_media_box([0, 0, 612, 792]);
+        let resources = format!("<< /Font << /F1 {font} 0 R >> >>");
+        let words = ["Alpha", "Bravo", "Charlie"];
+        for word in words.iter().take(count) {
+            let stream = format!("BT /F1 10 Tf 72 700 Td ({word}) Tj ET");
+            pdf.page_with(stream.as_bytes(), &resources);
+        }
+        let bytes = pdf.build();
+        let mut reader = PdfDocument::open(&bytes, PdfLimits::default()).expect("open pdf");
+        let converted = convert(&mut reader, &PdfOptions::default().place_every_page(true))
+            .expect("convert");
+        let mut bag = strict_ooxml_write::package::MediaBag::new();
+        for (part, media) in &converted.media {
+            bag.insert(part.clone(), media.clone());
+        }
+        let written = strict_ooxml_write::write_package(
+            &converted.document,
+            Some(&bag),
+            &strict_ooxml_write::WriteOptions::default(),
+        )
+        .expect("write");
+        let package =
+            Package::open_reader(&written.bytes[..], &OpenOptions::default()).expect("reopen");
+        let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+        let pages = place_pages(&document, &RenderOptions::default(), Some(&package))
+            .expect("place");
+        assert_eq!(pages.len(), count, "{count} source pages");
+        for (page, word) in pages.iter().zip(words) {
+            let items = format!("{:?}", page.items);
+            assert!(items.contains(word), "{word} is on its own page");
+        }
+    }
+}

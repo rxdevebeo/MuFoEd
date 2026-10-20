@@ -591,12 +591,11 @@ impl App {
                     .tf("error.unknown_format", &[("file", &path.display())]);
                 self.say(text, true, now);
             }
-            Some(kind) if kind.converted() => {
-                self.dialog = Some(Dialog::Import(Box::new(ImportDialog::new(
-                    path, kind, false,
-                ))));
-            }
-            Some(_) => {
+            // A PDF or DjVu opens like any other document, without a question:
+            // converted into the editing model at once, every page as the
+            // original laid it out. The choices (re-flowed text, page span,
+            // recognition) belong to Import, which still asks.
+            Some(kind) => {
                 self.settings.remember(&path);
                 self.settings.save();
                 let title = file_name(&path);
@@ -604,7 +603,11 @@ impl App {
                     ctx,
                     Source::File {
                         path,
-                        import: ImportOptions::default(),
+                        import: if kind.converted() {
+                            ImportOptions::as_original()
+                        } else {
+                            ImportOptions::default()
+                        },
                     },
                     title,
                 );
@@ -678,6 +681,7 @@ impl App {
             pages: (!import.all_pages)
                 .then_some((import.first.max(1), import.last.max(import.first.max(1)))),
             ocr,
+            placed: false,
         };
         self.settings.remember(&import.path);
         self.settings.save();
