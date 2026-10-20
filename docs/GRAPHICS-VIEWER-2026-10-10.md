@@ -79,7 +79,7 @@
 Единицы wrapPolygon задаются явно через
 `RenderOptions::wrap_coordinates(WrapCoordinates::Office21600)` для Office,
 либо `Emu` (по умолчанию) для стандартной модели и VML-нормализации.
-По размеру координат режим не угадывается; текущий просмотрщик использует Emu.
+По умолчанию режим берётся из самих точек: контур, укладывающийся в 21600 при extent заметно больше, читается как Office-пространство, иначе — EMU (VML-нормализованные контуры).
 Office использует пространство 21600 × 21600 вместо единиц EMU стандарта:
 [разъяснение Microsoft Open Specifications](https://learn.microsoft.com/en-us/answers/questions/405731/unit-for-coordinates-of-points-in-wrappolygon).
 
