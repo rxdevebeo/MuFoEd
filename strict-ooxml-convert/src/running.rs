@@ -904,12 +904,12 @@ mod tests {
     const HEIGHT: f64 = 800.0;
 
     fn line(text: &str, x: f64, baseline: f64) -> GlyphLine {
-        let glyphs = text
+        let glyphs: Vec<Glyph> = text
             .chars()
-            .enumerate()
-            .map(|(index, ch)| Glyph {
+            .zip(0u32..)
+            .map(|(ch, index)| Glyph {
                 text: ch.to_string(),
-                x: x + index as f64 * 5.0,
+                x: x + f64::from(index) * 5.0,
                 y: baseline,
                 width: 5.0,
                 ascent: 8.0,
@@ -926,7 +926,7 @@ mod tests {
             baseline,
             size: 10.0,
             ascent: 8.0,
-            width: text.chars().count() as f64 * 5.0,
+            width: glyphs.iter().map(|glyph| glyph.width).sum(),
             glyphs,
         }
     }

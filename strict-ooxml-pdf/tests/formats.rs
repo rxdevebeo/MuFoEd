@@ -48,6 +48,7 @@ fn centre_pixel(part_name: &str, bytes: Vec<u8>) -> [u8; 3] {
         width_px: 72.0,
         height_px: 72.0,
         section_index: 0,
+        off_page: Vec::new(),
         items: vec![Item::Image(ImageItem {
             x: 0.0,
             y: 0.0,

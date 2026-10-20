@@ -356,6 +356,7 @@ pub(crate) fn image_cut(ctm: Matrix, rect: Rect) -> ImageCut {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)] // exact corners, computed from exact inputs
 mod tests {
     use super::*;
 
