@@ -771,12 +771,13 @@ fn an_equation_array_row_spacing_is_twips() {
         (wide_pitch - narrow_pitch - 8.0).abs() < 1.0,
         "120 twips must add 8px of row pitch: {narrow_pitch} -> {wide_pitch}"
     );
-    // Automatic spacing now adds a font-relative ink clearance to the line
-    // grid; an explicit additive 120-twip skip must still add exactly 8 px.
-    let clearance = font_size_near(&narrow, ">a</text>").unwrap() * 0.3;
+    // Automatic spacing keeps one natural line for rows whose ink already
+    // clears its neighbour's ("a" over "b"): the font-relative clearance is a
+    // floor for taller ink (a fraction, a root), not a gap added on top of
+    // every row. The nested-equation test checks that floor.
     assert!(
-        narrow_pitch - clearance > 14.0 && narrow_pitch - clearance < 20.0,
-        "row pitch includes one natural line plus clearance, got {narrow_pitch}"
+        narrow_pitch > 14.0 && narrow_pitch < 20.0,
+        "row pitch is one natural line, got {narrow_pitch}"
     );
 }
 

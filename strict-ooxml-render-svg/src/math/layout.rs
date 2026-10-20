@@ -2448,6 +2448,10 @@ struct Grid {
     column_widths: Vec<f64>,
     row_heights: Vec<f64>,
     row_depths: Vec<f64>,
+    /// Each row's drawn ink above and below its baseline (`None` for a row
+    /// that draws nothing), from [`Grid::fit_ink`]. The row metrics above are
+    /// the line grid's; the ink is what the clearance between rows is about.
+    row_ink: Vec<Option<(f64, f64)>>,
     column_gap: f64,
     /// Distance between consecutive row baselines, in px.
     row_pitch: f64,
@@ -2458,6 +2462,16 @@ struct Grid {
 
 impl Grid {
     fn fit_ink(&mut self, frame: &Frame<'_, '_>) {
+        self.row_ink = self
+            .rows
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .filter_map(|cell| ink_bounds(frame, &cell.items))
+                    .map(|ink| (-ink[1], ink[3]))
+                    .reduce(|a, b| (a.0.max(b.0), a.1.max(b.1)))
+            })
+            .collect();
         for (index, row) in self.rows.iter_mut().enumerate() {
             for cell in row {
                 fit_math_ink(frame, cell);
@@ -2511,6 +2525,7 @@ impl Grid {
             column_widths,
             row_heights,
             row_depths,
+            row_ink: Vec::new(),
             column_gap,
             row_pitch,
             base,
@@ -2541,6 +2556,25 @@ impl Grid {
         MathAlignment::Center
     }
 
+    /// Distance from row `index`'s baseline to the next one: the line grid's
+    /// [`row_advance`], and never so little that the two rows' drawn ink comes
+    /// closer than `gap`. A row that fits the pitch keeps it; one whose
+    /// fraction, root or script reaches toward its neighbour moves apart just
+    /// enough to clear it.
+    fn advance(&self, index: usize, gap: f64) -> f64 {
+        let grid = row_advance(
+            self.row_pitch,
+            self.row_depths.get(index).copied().unwrap_or(0.0),
+            self.row_heights.get(index + 1).copied().unwrap_or(0.0),
+            gap,
+        );
+        let ink = |row: usize| self.row_ink.get(row).copied().flatten();
+        match (ink(index), ink(index + 1)) {
+            (Some((_, below)), Some((above, _))) => grid.max(below + above + gap),
+            _ => grid,
+        }
+    }
+
     fn audit_clearance(&self, frame: &Frame<'_, '_>, gap: f64) {
         let mut baseline = 0.0;
         let mut previous_bottom = None;
@@ -2566,12 +2600,7 @@ impl Grid {
                 }
                 previous_bottom = Some(bottom);
             }
-            baseline += row_advance(
-                self.row_pitch,
-                self.row_depths.get(index).copied().unwrap_or(0.0),
-                self.row_heights.get(index + 1).copied().unwrap_or(0.0),
-                gap,
-            );
+            baseline += self.advance(index, gap);
         }
     }
 
@@ -2583,7 +2612,6 @@ impl Grid {
         let mut widest: f64 = 0.0;
         for (row_index, row) in self.rows.iter().enumerate() {
             last_baseline = top;
-            let row_depth = self.row_depths.get(row_index).copied().unwrap_or(0.0);
             let mut x = 0.0f64;
             for (column_index, cell) in row.iter().enumerate() {
                 let column = self.column_widths.get(column_index).copied().unwrap_or(0.0);
@@ -2600,8 +2628,7 @@ impl Grid {
             widest = widest.max(x - self.column_gap);
             // Baseline distance must clear the previous descent AND the next
             // ascent, which may differ greatly (fractions, roots, limits).
-            let next_height = self.row_heights.get(row_index + 1).copied().unwrap_or(0.0);
-            top += row_advance(self.row_pitch, row_depth, next_height, minimum_gap);
+            top += self.advance(row_index, minimum_gap);
         }
         let first_baseline = self.row_heights.first().copied().unwrap_or(0.0);
         out.size.width = widest.max(out.size.width);

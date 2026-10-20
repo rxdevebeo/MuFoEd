@@ -131,7 +131,10 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // 2 -> 7 (2026-10-19): ordinary equation lines keep the glyph depth that
     // exceeds the nominal pitch, without a second 0.3 em gap. The page is
     // inside the 18 px class bound; SSIM 0.9605.
-    ("10-strict-math-eqarr", 0, 0.0, 7.0),
+    // 7 -> 8 (2026-10-20): the pitch stays, but a row whose ink comes closer
+    // than 0.3 em to its neighbour's moves apart by the difference (the
+    // clearance audit found rows 0.1 px apart). Inside the 18 px class bound.
+    ("10-strict-math-eqarr", 0, 0.0, 8.0),
 ];
 
 /// Repository path to the real Strict corpus (`tests/strict/`).

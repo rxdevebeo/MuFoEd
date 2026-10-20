@@ -319,7 +319,9 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // 2 -> 7 (2026-10-19): ordinary equation lines keep the glyph depth that
     // exceeds the nominal pitch, without a second 0.3 em gap. Same pin as the
     // SVG gate; the class bound is 18 px.
-    ("10-strict-math-eqarr", 0, 0.0, 7.0),
+    // 7 -> 8 (2026-10-20): a row whose ink comes closer than 0.3 em to its
+    // neighbour's moves apart by the difference. Same pin as the SVG gate.
+    ("10-strict-math-eqarr", 0, 0.0, 8.0),
     // Correct delimiter centring above the baseline reduces 12 -> 5 px.
     // 5 -> -4 (2026-10-12): inline formula lines reserve glyph ink, inline
     // n-ary limits at the side, groupChr base on the baseline (as the SVG gate).
