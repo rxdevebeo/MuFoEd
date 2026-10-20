@@ -1,5 +1,5 @@
-#![cfg(feature = "html")]
 //! The facade owns image bytes after the importer and resolver return.
+#![cfg(feature = "html")]
 #[test]
 fn html_roundtrips_through_the_shared_strict_package() {
     let opened = strict_ooxml::StrictDocument::import_html(

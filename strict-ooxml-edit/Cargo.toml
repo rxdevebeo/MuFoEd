@@ -42,3 +42,7 @@ required-features = ["save"]
 [[test]]
 name = "visual"
 required-features = ["visual"]
+
+[[example]]
+name = "map_probe"
+required-features = ["visual"]

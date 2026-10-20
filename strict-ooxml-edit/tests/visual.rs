@@ -1,5 +1,5 @@
-#![cfg(feature = "visual")]
 //! Caret regressions use the actual shared renderer's placement.
+#![cfg(feature = "visual")]
 use strict_ooxml_core::opc::{OpenOptions, Package};
 use strict_ooxml_edit::{
     scalar_to_utf16, utf16_to_scalar, Address, EditError, EditLimits, Editor, TextPosition,

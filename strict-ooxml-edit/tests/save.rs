@@ -1,5 +1,5 @@
-#![cfg(feature = "save")]
 //! Saved bytes are independently reopened and their text/media inspected.
+#![cfg(feature = "save")]
 use strict_ooxml_core::{
     opc::{OpenOptions, Package},
     pipeline::{PipelineIssue, PipelineOutcome, PipelineStage, PipelineSummary},

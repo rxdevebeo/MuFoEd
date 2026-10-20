@@ -1,5 +1,5 @@
-#![cfg(feature = "docx")]
 //! Real public-model -> Strict writer -> OPC reader -> editor conversions.
+#![cfg(feature = "docx")]
 use diagram_editor::{Dash, Diagram, DiagramEditor, Point, ShapeKind, TextAlign};
 
 #[test]
