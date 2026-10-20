@@ -1,5 +1,7 @@
 #[path = "manual.rs"]
 mod manual;
+#[path = "psd.rs"]
+mod psd;
 pub use manual::{BrushStyle, Shape};
 use std::{collections::VecDeque, io::Read, path::Path};
 
@@ -544,12 +546,20 @@ impl Document {
         std::fs::File::open(path)?
             .take(MAX_PROJECT_BYTES + 1)
             .read_to_end(&mut bytes)?;
-        Self::from_json(&bytes)
+        if bytes.starts_with(b"8BPS") {
+            Self::from_psd(&bytes)
+        } else {
+            Self::from_json(&bytes)
+        }
     }
     /// Save the complete project through a temporary file in the destination directory.
     pub fn save_project(&self, path: impl AsRef<Path>) -> Result<(), EditError> {
         let path = path.as_ref();
-        let bytes = self.to_json()?;
+        let bytes = match path.extension().and_then(std::ffi::OsStr::to_str) {
+            Some(ext) if ext.eq_ignore_ascii_case("psd") => self.to_psd()?,
+            Some(ext) if ext.eq_ignore_ascii_case("json") => self.to_json()?,
+            _ => return Err(invalid("Save the project as .psd (or legacy .json)")),
+        };
         if bytes.len() as u64 > MAX_PROJECT_BYTES {
             return Err(invalid("Serialized project exceeds size limit"));
         }

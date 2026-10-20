@@ -92,3 +92,7 @@ Inpaint проверен функционально: корректный раз
 ## R03–R05
 
 Актуальная приёмка shared memory admission, resident cache и recovery: [R345_VALIDATION.md](../model-runtime/R345_VALIDATION.md). Предыдущие разделы — исторические проверки ранних адаптеров.
+
+## PSD
+
+PSD стал форматом сохранения в демо; JSON остаётся legacy. [Профиль, проверки и ограничения](PSD-VALIDATION.md).

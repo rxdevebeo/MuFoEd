@@ -468,7 +468,7 @@ impl ImageEditor {
                     ui.separator();
                     for (label, action) in [
                         ("Открыть", FileAction::OpenImage),
-                        ("Проект", FileAction::OpenProject),
+                        ("Открыть PSD", FileAction::OpenProject),
                         ("Сохранить", FileAction::SaveProject),
                         ("Экспорт PNG", FileAction::ExportPng),
                     ] {

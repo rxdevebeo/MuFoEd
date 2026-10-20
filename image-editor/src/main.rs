@@ -53,10 +53,9 @@ fn main() -> eframe::Result {
             }
             if let Some(path) = std::env::args_os().nth(1) {
                 let path = std::path::Path::new(&path);
-                let result = if path
-                    .extension()
-                    .is_some_and(|e| e.eq_ignore_ascii_case("json"))
-                {
+                let result = if path.extension().is_some_and(|e| {
+                    e.eq_ignore_ascii_case("json") || e.eq_ignore_ascii_case("psd")
+                }) {
                     Document::open_project(path)
                 } else {
                     Raster::open(path).and_then(Document::from_raster)
@@ -168,7 +167,7 @@ impl Demo {
             }
             FileAction::OpenProject => {
                 if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Image Studio project", &["json"])
+                    .add_filter("Photoshop PSD / legacy project", &["psd", "json"])
                     .pick_file()
                 {
                     self.editor.replace(Document::open_project(path)?);
@@ -176,12 +175,13 @@ impl Demo {
             }
             FileAction::SaveProject => {
                 if let Some(path) = rfd::FileDialog::new()
-                    .set_file_name("image-project.json")
+                    .set_file_name("image-project.psd")
+                    .add_filter("Photoshop PSD", &["psd"])
                     .save_file()
                 {
                     self.editor.document().save_project(path)?;
                     self.editor.mark_saved();
-                    self.editor.set_status("Project saved");
+                    self.editor.set_status("PSD-проект сохранён");
                 }
             }
             FileAction::ExportPng => {
