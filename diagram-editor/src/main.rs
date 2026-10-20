@@ -5,6 +5,7 @@ use std::io::Read as _;
 
 fn main() -> eframe::Result {
     let locale = Locale::new(&std::env::var("DIAGRAM_LANGUAGE").unwrap_or_else(|_| "en".into()));
+    #[cfg_attr(not(windows), allow(unused_mut))] // Its renderer is tuned on Windows.
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 780.0])

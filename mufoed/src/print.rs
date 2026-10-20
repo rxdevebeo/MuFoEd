@@ -6,8 +6,10 @@
 //! printed is what is shown. Elsewhere the document goes to CUPS as a PDF
 //! (`lp`), which prints it at its own size.
 
+#[cfg(windows)]
 use std::sync::Arc;
 
+#[cfg(windows)]
 use crate::worker::PageData;
 
 /// What to print.
@@ -21,7 +23,9 @@ pub(crate) struct Job {
     /// Zero-based pages, in order.
     pub(crate) pages: Vec<usize>,
     pub(crate) title: String,
-    /// Print to this file instead of the device (a PDF printer, say).
+    /// Print to this file instead of the device (a PDF printer, say). Only
+    /// the GDI path has such a choice; `lp` prints to the queue.
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) output: Option<std::path::PathBuf>,
 }
 
@@ -58,7 +62,9 @@ pub(crate) fn parse_range(text: &str, count: usize) -> Option<Vec<usize>> {
     (!pages.is_empty()).then_some(pages)
 }
 
-/// The order pages go to the printer: copies collated or not.
+/// The order pages go to the printer: copies collated or not. CUPS orders
+/// them itself (`lp -n`, `collate`).
+#[cfg(any(windows, test))]
 pub(crate) fn sheets(job: &Job) -> Vec<usize> {
     let copies = job.copies.max(1) as usize;
     if job.collate {
@@ -452,7 +458,12 @@ pub(crate) fn start_pdf(
 /// How a print job is going.
 #[derive(Clone, Debug)]
 pub(crate) enum Progress {
-    Sheets { done: usize, total: usize },
+    /// Sheets sent so far; only GDI counts them, `lp` takes the whole file.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Sheets {
+        done: usize,
+        total: usize,
+    },
     Done(Result<(), String>),
 }
 

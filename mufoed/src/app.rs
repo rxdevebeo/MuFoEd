@@ -353,6 +353,14 @@ struct FindState {
     focus: bool,
 }
 
+/// A print job waiting for its PDF, and where its progress goes (CUPS).
+#[cfg(not(windows))]
+type PendingPrint = (
+    crate::print::Job,
+    PathBuf,
+    Box<dyn Fn(crate::print::Progress) + Send>,
+);
+
 /// A line in the status bar.
 struct StatusLine {
     text: String,
@@ -411,11 +419,7 @@ pub(crate) struct App {
     print_progress: Option<std::sync::mpsc::Receiver<crate::print::Progress>>,
     /// A print job waiting for its PDF (CUPS).
     #[cfg(not(windows))]
-    pending_print: Option<(
-        crate::print::Job,
-        PathBuf,
-        Box<dyn Fn(crate::print::Progress) + Send>,
-    )>,
+    pending_print: Option<PendingPrint>,
     /// Pictures open in an outside editor.
     external: Vec<ExternalEdit>,
     /// When they were last looked at.

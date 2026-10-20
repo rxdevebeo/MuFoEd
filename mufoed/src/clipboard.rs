@@ -1,6 +1,7 @@
 //! Bounded rich clipboard snapshots. Import and external image I/O run on the
 //! document worker, after the clipboard's memory has been copied and released.
 use std::io::Read as _;
+#[cfg(windows)]
 pub(crate) const MAX_BYTES: usize = 32 * 1024 * 1024;
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Rich {
@@ -66,6 +67,7 @@ pub(crate) fn read() -> Result<Option<Rich>, String> {
     }
 }
 #[cfg(not(windows))]
+#[allow(clippy::unnecessary_wraps)] // The Windows reader can fail; one signature.
 pub(crate) fn read() -> Result<Option<Rich>, String> {
     Ok(None)
 }

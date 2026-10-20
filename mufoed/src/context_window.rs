@@ -272,6 +272,8 @@ fn adapter_vram() -> Option<u64> {
 }
 
 /// The largest integer in `text`, in bytes. MiB conversion is separate.
+/// Only the Windows and Linux probes read adapter memory from text.
+#[cfg(any(windows, target_os = "linux", test))]
 fn largest_integer(text: &str) -> Option<u64> {
     text.split(|c: char| !c.is_ascii_digit())
         .filter(|digits| !digits.is_empty())

@@ -169,6 +169,8 @@ mod tests {
 pub(crate) struct Limit;
 #[cfg(not(windows))]
 impl Limit {
+    // The Windows limit can fail to attach; callers handle that one signature.
+    #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn attach(_child: &std::process::Child, _bytes: usize) -> std::io::Result<Self> {
         Ok(Self)
     }
