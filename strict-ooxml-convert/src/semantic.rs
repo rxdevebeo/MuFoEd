@@ -141,6 +141,9 @@ pub(crate) fn build(
     // The page before was set as a design, in anchored boxes that take no room
     // in the flow: this page starts a page of its own.
     let mut break_next = false;
+    // The last line of the previous page's body text, for whether this page
+    // starts a paragraph of its own.
+    let mut previous_end: Option<String> = None;
     // A page rebuilt by a model was rebuilt because its own text layer could
     // not be read; that layer's lines in the flow as well put the page's
     // text in the document twice, the model's copy on a page of its own.
@@ -383,6 +386,18 @@ pub(crate) fn build(
             text_right,
         );
         blocks.extend(figures.map(|(_, figure)| figure));
+        // A page that starts a paragraph of its own starts a page of its own
+        // too. Run on, a page's text that came out a little shorter than the
+        // source pulled the next page's first lines up onto it, and every page
+        // after it moved (`PDF-CORPUS-RUN-2026-10-19.md`); a paragraph that
+        // runs over the page boundary still runs on.
+        if index > 0
+            && !break_next
+            && plan.starts_table(0).is_none()
+            && starts_paragraph(previous_end.as_deref(), &lines, page.geometry.height)
+        {
+            break_next = true;
+        }
         // Only where the page starts at the top: the document's first page, or
         // one after a hard break. In a flow a page's first line follows the
         // last one before it.
@@ -403,6 +418,7 @@ pub(crate) fn build(
         // broke the page (a slide, a chapter's last page): the next page
         // starts a page of its own rather than running on under it.
         break_next = ends_short(&lines, page.geometry.height);
+        previous_end = body_end(&lines, page.geometry.height);
         // A blank page is a page: with nothing in the flow it vanished, and
         // every page after it was one page early.
         if blocks.len() == page_start && recovered.page(index).is_empty() {
@@ -1460,6 +1476,9 @@ impl FontName {
             family.push(ch);
             previous = Some(ch);
         }
+        // A family whose own name has a capital inside a word: split at its
+        // capitals, `DejaVuSans` named `Deja Vu Sans`, which no machine has.
+        let family = family.replace("Deja Vu", "DejaVu");
         Self {
             family: if family.is_empty() {
                 name.to_owned()
@@ -1784,6 +1803,37 @@ fn ends_short(lines: &[GlyphLine], page_height: f64) -> bool {
         .map(|line| line.baseline)
         .reduce(f64::max);
     last.is_some_and(|last| last < page_height * (1.0 - SHORT_PAGE_SHARE))
+}
+
+/// The text of a page's last line of body text (its foot's margin lines aside).
+fn body_end(lines: &[GlyphLine], page_height: f64) -> Option<String> {
+    let foot = page_height * 0.9;
+    lines
+        .iter()
+        .filter(|line| !line.text().trim().is_empty() && line.baseline < foot)
+        .max_by(|a, b| a.baseline.total_cmp(&b.baseline))
+        .map(|line| line.text().trim().to_owned())
+}
+
+/// Whether a page starts a paragraph of its own: the page before ended a
+/// sentence, and this one does not open with a small letter. A page that
+/// continues a sentence - no full stop before it, a hyphen, a small letter
+/// after it - is the same paragraph and runs on.
+fn starts_paragraph(previous_end: Option<&str>, lines: &[GlyphLine], page_height: f64) -> bool {
+    let Some(end) = previous_end.and_then(|end| end.chars().last()) else {
+        return false;
+    };
+    let ended = matches!(
+        end,
+        '.' | '!' | '?' | ':' | '\u{2026}' | '"' | '\u{BB}' | '\u{201D}' | ')'
+    );
+    let foot = page_height * 0.9;
+    let first = lines
+        .iter()
+        .filter(|line| !line.text().trim().is_empty() && line.baseline < foot)
+        .min_by(|a, b| a.baseline.total_cmp(&b.baseline))
+        .and_then(|line| line.text().trim().chars().next());
+    ended && first.is_some_and(|first| !first.is_lowercase())
 }
 
 /// An empty paragraph.
@@ -2521,6 +2571,22 @@ mod fragment_tests {
         assert!((12.5..13.1).contains(&pitch), "pitch {pitch}");
     }
 
+    /// A page whose previous page ended a sentence, and which opens with a
+    /// capital, starts a page of its own; a sentence running over the page
+    /// boundary does not.
+    #[test]
+    fn a_page_that_starts_a_paragraph_starts_a_page() {
+        let mut first = run("Next chapter", 72.0, 100.0);
+        first.glyphs[0].text = "Next chapter".to_owned();
+        let lines = [first];
+        assert!(super::starts_paragraph(Some("the end."), &lines, 800.0));
+        assert!(!super::starts_paragraph(Some("runs on and"), &lines, 800.0));
+        assert!(!super::starts_paragraph(None, &lines, 800.0));
+        let mut lower = run("continues", 72.0, 100.0);
+        lower.glyphs[0].text = "continues here".to_owned();
+        assert!(!super::starts_paragraph(Some("Mr."), &[lower], 800.0));
+    }
+
     /// The short-line edge is the one the line's own column keeps, not the
     /// page's rightmost ink: a footer or the other column does not make a
     /// full line look short.
@@ -2620,6 +2686,10 @@ mod fragment_tests {
         assert_eq!(
             (name.family.as_str(), name.bold, name.italic),
             ("Times New Roman", true, true)
+        );
+        assert_eq!(
+            super::FontName::of("BAAAAA+DejaVuSans-Bold").family,
+            "DejaVu Sans"
         );
         let name = super::FontName::of("ArialMT");
         assert_eq!((name.family.as_str(), name.bold), ("Arial", false));

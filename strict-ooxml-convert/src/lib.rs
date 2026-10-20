@@ -545,7 +545,21 @@ pub fn convert(pdf: &mut PdfDocument, options: &PdfOptions) -> Result<Converted,
     sanitize_xml_text(&mut document, &mut report);
     // W1: the families the runs name, with what their descriptors state, so a
     // renderer without the face substitutes a similar one.
-    document.font_table = fonts::table(&pdf.font_faces());
+    let fonts = fonts::table(&pdf.font_faces(), &fonts::width_ratios(&pages));
+    fonts::rename(&mut document, &fonts.renames);
+    for (family, widths, stand_in) in &fonts.stand_ins {
+        report.record(
+            "font.stand-in",
+            report::Severity::Inferred,
+            format!(
+                "{family}: its letters run {:.2} times Arial's and {:.2} times Times's; \
+                 {stand_in} stands in where it is not installed",
+                widths.arial.unwrap_or(1.0),
+                widths.times.unwrap_or(1.0)
+            ),
+        );
+    }
+    document.font_table = fonts.table;
     Ok(Converted {
         document,
         report,

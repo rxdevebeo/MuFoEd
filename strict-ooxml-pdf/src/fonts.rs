@@ -162,6 +162,11 @@ pub struct PdfFont {
     /// The ten PANOSE bytes of the descriptor's `/Style /Panose`, without the
     /// two-byte family class in front of them.
     pub panose: Option<[u8; 10]>,
+    /// The family the font says it belongs to: the descriptor's `/FontFamily`,
+    /// or the family name inside the embedded program. `/BaseFont` only spells
+    /// it without spaces (`DejaVuSans`), and splitting that at its capitals
+    /// gave `Deja Vu Sans`, a font no machine has.
+    pub family: Option<String>,
     /// What reading this font cost: `(report id, detail)`, one entry per thing.
     ///
     /// Carried on the font rather than pushed into a report the font builder has
@@ -196,6 +201,7 @@ impl PdfFont {
             descent: None,
             flags: None,
             panose: None,
+            family: None,
             notes: Vec::new(),
         }
     }
@@ -238,6 +244,7 @@ impl PdfFont {
             descent: None,
             flags: None,
             panose: None,
+            family: None,
             notes: Vec::new(),
         };
 
@@ -314,6 +321,7 @@ impl PdfFont {
                 .filter(|flags| flags.is_finite() && *flags >= 0.0 && *flags <= f64::from(u32::MAX))
                 .map(|flags| flags as u32);
             font.panose = panose_of(&inner, resolve);
+            font.family = family_of(&inner, resolve, limits);
         }
 
         if let Ok(to_unicode) = dictionary.get(b"ToUnicode") {
@@ -1060,6 +1068,67 @@ pub fn string_of(object: Option<&Object>, resolve: Resolver<'_>) -> Option<Strin
     }
 }
 
+/// The family a font names: `/FontFamily`, or the family name in its embedded
+/// TrueType / OpenType (`name` 16, else 1, Windows English first) or Type 1
+/// program. `None` when none of them says, or what they say is not a name.
+fn family_of(
+    descriptor: &lopdf::Dictionary,
+    resolve: Resolver<'_>,
+    limits: &PdfLimits,
+) -> Option<String> {
+    let clean = |name: String| {
+        let name = name.trim().trim_matches(char::from(0)).to_owned();
+        (!name.is_empty() && name.chars().all(|ch| !ch.is_control())).then_some(name)
+    };
+    if let Some(name) = string_of(descriptor.get(b"FontFamily").ok(), resolve).and_then(clean) {
+        return Some(name);
+    }
+    let program = |key: &[u8]| {
+        descriptor
+            .get(key)
+            .ok()
+            .and_then(|file| stream_bytes(file, resolve, limits.max_content_bytes))
+    };
+    if let Some(bytes) = program(b"FontFile2").or_else(|| program(b"FontFile3")) {
+        if let Some(name) = sfnt_family(&bytes).and_then(clean) {
+            return Some(name);
+        }
+    }
+    let bytes = program(b"FontFile")?;
+    let font = read_fonts::ps::type1::Type1Font::new(&bytes).ok()?;
+    font.family_name().map(str::to_owned).and_then(clean)
+}
+
+/// The family name in a TrueType / OpenType program's `name` table.
+fn sfnt_family(bytes: &[u8]) -> Option<String> {
+    use read_fonts::TableProvider as _;
+    let font = read_fonts::FontRef::new(bytes).ok()?;
+    let table = font.name().ok()?;
+    let data = table.string_data();
+    let records = table.name_record();
+    for id in [16_u16, 1] {
+        let mut found: Vec<(u8, String)> = records
+            .iter()
+            .filter(|record| record.name_id().to_u16() == id)
+            .filter_map(|record| {
+                let text = record.string(data).ok()?.to_string();
+                // Windows English first, then any Windows, then the rest.
+                let rank = match (record.platform_id(), record.language_id()) {
+                    (3, 0x409) => 0,
+                    (3, _) => 1,
+                    _ => 2,
+                };
+                Some((rank, text))
+            })
+            .collect();
+        found.sort_by_key(|(rank, _)| *rank);
+        if let Some((_, text)) = found.into_iter().next() {
+            return Some(text);
+        }
+    }
+    None
+}
+
 /// The ten PANOSE bytes of a descriptor's `/Style << /Panose <12 bytes> >>`.
 ///
 /// The string is the two-byte `sFamilyClass` followed by the ten-byte PANOSE
@@ -1096,6 +1165,12 @@ pub struct FontFace {
     pub panose: Option<[u8; 10]>,
     /// Whether the font program is embedded.
     pub embedded: bool,
+    /// The family the font names, when it names one ([`PdfFont::family`]).
+    pub family: Option<String>,
+    /// Whether the font states its glyphs' widths (`/Widths`, `/W` or `/DW`).
+    /// Without them every glyph advances by an estimate, and the advances say
+    /// nothing about the face.
+    pub widths_stated: bool,
 }
 
 impl FontFace {
@@ -1131,6 +1206,8 @@ impl PdfFont {
             flags: self.flags,
             panose: self.panose,
             embedded: self.embedded,
+            family: self.family.clone(),
+            widths_stated: !self.widths.is_empty() || self.default_width_stated,
         }
     }
 }
@@ -1305,6 +1382,7 @@ endcmap";
             descent: None,
             flags: None,
             panose: None,
+            family: None,
             notes: Vec::new(),
         };
         assert!(font.width(65).is_estimated());
@@ -1334,6 +1412,7 @@ endcmap";
             descent: None,
             flags: None,
             panose: None,
+            family: None,
             notes: Vec::new(),
         };
         assert!(
