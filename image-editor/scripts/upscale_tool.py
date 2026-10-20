@@ -44,7 +44,7 @@ def download(args):
     print(f"{args.variant} downloaded; SHA256 verified", flush=True)
 
 
-def ultrasharp(image, path, tile_size, device):
+def ultrasharp(image, path, tile_size, device, keep_size=False):
     import numpy as np
     import torch
     from PIL import Image
@@ -65,7 +65,7 @@ def ultrasharp(image, path, tile_size, device):
     worker_cache.stage("loading", "UltraSharp: weights / placement")
     model = worker_cache.cached(("ultrasharp", worker_cache.key(path)), load_model).to(device)
     tensor = torch.from_numpy(np.asarray(image, np.float32).copy() / 255).permute(2, 0, 1).unsqueeze(0)
-    result = torch.zeros((1, 3, image.height * 4, image.width * 4))
+    result = Image.new("RGB", image.size) if keep_size else torch.zeros((1, 3, image.height * 4, image.width * 4))
     padding = 32
     worker_cache.stage("running", "UltraSharp: tiled inference")
     with torch.inference_mode():
@@ -75,7 +75,15 @@ def ultrasharp(image, path, tile_size, device):
                 x2, y2 = min(image.width, x + tile_size + padding), min(image.height, y + tile_size + padding)
                 output = model(tensor[:, :, y1:y2, x1:x2].to(device)).float().cpu()
                 height, width = min(tile_size, image.height - y), min(tile_size, image.width - x)
-                result[:, :, y*4:(y+height)*4, x*4:(x+width)*4] = output[:, :, (y-y1)*4:(y-y1+height)*4, (x-x1)*4:(x-x1+width)*4]
+                if keep_size:
+                    # Resize the padded 4x tile before cropping: Lanczos sees neighboring pixels at seams.
+                    array = output[0].clamp(0, 1).permute(1, 2, 0).numpy()
+                    tile = Image.fromarray(np.rint(array * 255).astype(np.uint8)).resize((x2-x1, y2-y1), Image.Resampling.LANCZOS)
+                    result.paste(tile.crop((x-x1, y-y1, x-x1+width, y-y1+height)), (x, y))
+                else:
+                    result[:, :, y*4:(y+height)*4, x*4:(x+width)*4] = output[:, :, (y-y1)*4:(y-y1+height)*4, (x-x1)*4:(x-x1+width)*4]
+    if keep_size:
+        return result
     array = result[0].clamp(0, 1).permute(1, 2, 0).numpy()
     return Image.fromarray(np.rint(array * 255).astype(np.uint8))
 
@@ -115,11 +123,11 @@ def upscale(args):
         raise ValueError("CUDA is unavailable; explicitly select CPU")
     device = "cuda" if args.device == "auto" else "cpu"
     image = Image.open(args.input).convert("RGBA")
-    if image.width * image.height * 16 > 16777216:
+    if image.width * image.height * (1 if args.keep_size else 16) > 16777216:
         raise ValueError("4x output exceeds editor's 16,777,216-pixel limit; crop/resize the source first")
     rgb = Image.alpha_composite(Image.new("RGBA", image.size, "white"), image).convert("RGB")
     if args.variant == "ultrasharp":
-        result = ultrasharp(rgb, args.model, args.tile, device)
+        result = ultrasharp(rgb, args.model, args.tile, device, args.keep_size)
     elif args.variant == "aurasr":
         result = aurasr(rgb, args.model, device)
     else:
@@ -131,12 +139,13 @@ def upscale(args):
         worker_cache.offload()
         second = aurasr(rgb, args.aura_model, device) if weights[1] > 0 else None
         result = second if first is None else first if second is None else Image.blend(first, second, weights[1] / sum(weights))
-    if result.size != (image.width*4, image.height*4):
+    expected = image.size if args.keep_size else (image.width*4, image.height*4)
+    if result.size != expected:
         raise ValueError("Upscaler returned an unexpected output size")
     result = result.convert("RGBA")
-    result.putalpha(image.getchannel("A").resize(result.size, Image.Resampling.LANCZOS))
+    result.putalpha(image.getchannel("A") if args.keep_size else image.getchannel("A").resize(result.size, Image.Resampling.LANCZOS))
     result.save(args.output, format="PNG")
-    print(f"{args.variant}: 4x on {device}; weights={args.ultrasharp_weight}/{args.aura_weight}, alpha=Lanczos, output {result.width}x{result.height}", flush=True)
+    print(f"{args.variant}: {'1x (4x tile + Lanczos)' if args.keep_size else '4x'} on {device}; weights={args.ultrasharp_weight}/{args.aura_weight}, alpha=Lanczos, output {result.width}x{result.height}", flush=True)
 
 
 def parse_args(arguments=None):
@@ -151,12 +160,15 @@ def parse_args(arguments=None):
     parser.add_argument("--input", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--device", choices=["auto", "cpu"], default="auto")
+    parser.add_argument("--keep-size", action="store_true", help="UltraSharp 4x tiles downsampled to original size")
     parser.add_argument("--tile", type=int, choices=[128, 256, 512], default=256)
     if arguments is not None:
         def invalid(message):
             raise ValueError(message)
         parser.error = invalid
     args = parser.parse_args(arguments)
+    if args.keep_size and (args.action != "upscale" or args.variant != "ultrasharp"):
+        parser.error("--keep-size requires UltraSharp inference")
     if args.action == "download" and args.variant == "blend":
         parser.error("Download the two models individually")
     return args

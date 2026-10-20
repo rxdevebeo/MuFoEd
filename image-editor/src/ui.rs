@@ -1,6 +1,6 @@
 //! Embeddable egui editor. The host handles file dialogs through returned actions.
 use crate::{
-    generation::{Candidate, Job, Mode, Request},
+    generation::{Candidate, Mode, Request},
     Document, EditError, History, Raster,
 };
 use egui::{Color32, TextureHandle};
@@ -101,50 +101,7 @@ fn panel_header(ui: &mut egui::Ui, title: &str, subtitle: &str) {
     ui.add_space(4.0);
 }
 
-enum RunningJob {
-    Process(Box<Job>),
-    #[cfg(feature = "plakat")]
-    Library(crate::generation::NativeJob),
-}
-impl RunningJob {
-    fn start(
-        library: bool,
-        executable: &str,
-        request: Request,
-        doc: &Document,
-        runtime: &mufoed_model_runtime::Runtime,
-    ) -> Result<Self, EditError> {
-        #[cfg(feature = "plakat")]
-        if library {
-            return crate::generation::NativeJob::start_with_runtime(request, doc, runtime)
-                .map(Self::Library);
-        }
-        #[cfg(not(feature = "plakat"))]
-        let _ = library;
-        Job::start_with_runtime(executable, request, doc, runtime)
-            .map(|j| Self::Process(Box::new(j)))
-    }
-    fn poll(&mut self) -> Result<Option<Candidate>, EditError> {
-        match self {
-            Self::Process(j) => j.poll(),
-            #[cfg(feature = "plakat")]
-            Self::Library(j) => j.poll(),
-        }
-    }
-    fn cancel(&mut self) -> bool {
-        match self {
-            Self::Process(j) => {
-                j.cancel();
-                true
-            }
-            #[cfg(feature = "plakat")]
-            Self::Library(j) => {
-                j.cancel();
-                false
-            }
-        }
-    }
-}
+type RunningJob = crate::generation::PipelineJob;
 
 /// File operation requested by the editor, to be handled by its host.
 #[derive(Clone, Copy)]
@@ -264,6 +221,7 @@ impl ImageEditor {
             radius: 12.0,
             zoom: 1.0,
             request: Request {
+                postprocess: Some(crate::generation::Postprocess::default()),
                 model,
                 family: Some(family),
                 output_size: Some([family.size(); 2]),
@@ -392,6 +350,7 @@ impl ImageEditor {
                     self.job = None;
                 }
                 Ok(None) => {
+                    self.status = job.stage().into();
                     context.request_repaint_after(std::time::Duration::from_millis(100));
                 }
             }
@@ -715,6 +674,7 @@ impl ImageEditor {
             });
         if self.confirm_new {
             egui::Window::new("Create new canvas?")
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
                 .collapsible(false)
                 .show(&context, |ui| {
                     ui.label(
@@ -749,6 +709,7 @@ impl ImageEditor {
             let mut accept = false;
             let mut discard = false;
             egui::Window::new("Generation result — preview")
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
                 .default_width(520.0)
                 .show(&context, |ui| {
                     ui.label(format!(

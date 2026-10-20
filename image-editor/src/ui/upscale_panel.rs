@@ -89,6 +89,9 @@ impl ImageEditor {
     /// Select local `UltraSharp` tensor weights.
     pub fn set_ultrasharp_model(&mut self, path: &Path) {
         self.upscale_ui.ultrasharp = path.display().to_string();
+        if let Some(post) = &mut self.request.postprocess {
+            path.clone_into(&mut post.ultrasharp);
+        }
     }
     /// Select local `AuraSR` v2 safetensors/config directory.
     pub fn set_aurasr_model(&mut self, path: &Path) {
@@ -136,6 +139,11 @@ impl ImageEditor {
                 .to_string();
         } else {
             self.upscale_ui.aurasr = self.upscale_ui.root.join("aurasr").display().to_string();
+        }
+        if kind == "ultrasharp" {
+            if let Some(post) = &mut self.request.postprocess {
+                post.ultrasharp = self.upscale_ui.ultrasharp.clone().into();
+            }
         }
     }
     fn upscale_start(&mut self) {

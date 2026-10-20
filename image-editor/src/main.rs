@@ -115,10 +115,11 @@ impl Demo {
             }
         }
     }
-    fn file_action(&mut self, action: FileAction) -> Result<(), EditError> {
+    fn file_action(&mut self, action: FileAction, frame: &eframe::Frame) -> Result<(), EditError> {
         match action {
             FileAction::UltraSharpModel => {
                 if let Some(path) = rfd::FileDialog::new()
+                    .set_parent(frame)
                     .set_directory("D:/Models")
                     .add_filter("Upscaler weights", &["safetensors", "pth", "pt"])
                     .pick_file()
@@ -127,17 +128,18 @@ impl Demo {
                 }
             }
             FileAction::AuraSrModel => {
-                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                if let Some(path) = rfd::FileDialog::new().set_parent(frame).pick_folder() {
                     self.editor.set_aurasr_model(&path);
                 }
             }
             FileAction::SegmentationModel => {
-                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                if let Some(path) = rfd::FileDialog::new().set_parent(frame).pick_folder() {
                     self.editor.set_segmentation_model(&path)?;
                 }
             }
             FileAction::BackgroundModel => {
                 if let Some(path) = rfd::FileDialog::new()
+                    .set_parent(frame)
                     .add_filter("BiRefNet ONNX", &["onnx"])
                     .pick_file()
                 {
@@ -146,6 +148,7 @@ impl Demo {
             }
             FileAction::AddAsset => {
                 if let Some(path) = rfd::FileDialog::new()
+                    .set_parent(frame)
                     .set_directory("D:/Models")
                     .add_filter("Safetensors", &["safetensors"])
                     .pick_file()
@@ -155,6 +158,7 @@ impl Demo {
             }
             FileAction::OpenImage => {
                 if let Some(path) = rfd::FileDialog::new()
+                    .set_parent(frame)
                     .add_filter(
                         "Raster image",
                         &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"],
@@ -167,6 +171,7 @@ impl Demo {
             }
             FileAction::OpenProject => {
                 if let Some(path) = rfd::FileDialog::new()
+                    .set_parent(frame)
                     .add_filter("Photoshop PSD / legacy project", &["psd", "json"])
                     .pick_file()
                 {
@@ -175,6 +180,7 @@ impl Demo {
             }
             FileAction::SaveProject => {
                 if let Some(path) = rfd::FileDialog::new()
+                    .set_parent(frame)
                     .set_file_name("image-project.psd")
                     .add_filter("Photoshop PSD", &["psd"])
                     .save_file()
@@ -186,6 +192,7 @@ impl Demo {
             }
             FileAction::ExportPng => {
                 if let Some(path) = rfd::FileDialog::new()
+                    .set_parent(frame)
                     .set_file_name("image.png")
                     .add_filter("PNG", &["png"])
                     .save_file()
@@ -199,7 +206,7 @@ impl Demo {
     }
 }
 impl eframe::App for Demo {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         for action in self.editor.show(ui) {
             if matches!(action, FileAction::OpenImage | FileAction::OpenProject)
                 && self.editor.has_unsaved_changes()
@@ -207,7 +214,7 @@ impl eframe::App for Demo {
                 self.pending_open = Some(action);
                 continue;
             }
-            if let Err(e) = self.file_action(action) {
+            if let Err(e) = self.file_action(action, frame) {
                 self.editor.set_status(e.to_string());
             }
         }
@@ -224,7 +231,7 @@ impl eframe::App for Demo {
         if self.pending_open.is_some() || self.confirm_close {
             let mut discard = false;
             let mut cancel = false;
-            egui::Window::new("Unsaved project").collapsible(false).show(ui.ctx(), |ui| {
+            egui::Window::new("Unsaved project").anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).collapsible(false).show(ui.ctx(), |ui| {
                 ui.label("This project contains unsaved changes. Save it before continuing, or discard the changes.");
                 discard = ui.button("Discard changes and continue").clicked(); cancel = ui.button("Cancel").clicked();
             });
@@ -238,7 +245,7 @@ impl eframe::App for Demo {
                     self.confirm_close = false;
                     self.begin_shutdown();
                 } else if let Some(action) = self.pending_open.take() {
-                    if let Err(e) = self.file_action(action) {
+                    if let Err(e) = self.file_action(action, frame) {
                         self.editor.set_status(e.to_string());
                     }
                 }

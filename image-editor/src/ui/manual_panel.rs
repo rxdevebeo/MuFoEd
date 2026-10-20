@@ -906,6 +906,7 @@ impl ImageEditor {
         let (mut save, mut cancel) = (false, false);
         if let Some((_, name, focus)) = &mut self.manual_ui.rename {
             egui::Window::new("Имя слоя")
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
                 .collapsible(false)
                 .resizable(false)
                 .default_width(300.0)

@@ -52,3 +52,7 @@ workspace = true
 [[example]]
 name = "residency_smoke"
 required-features = ["plakat"]
+
+[[example]]
+name = "postprocess_smoke"
+required-features = ["plakat"]

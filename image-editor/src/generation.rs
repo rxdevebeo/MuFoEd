@@ -2,6 +2,8 @@
 //! A job owns an isolated temporary directory and kills its process on cancellation/drop.
 
 use crate::{Document, EditError, Raster};
+mod pipeline;
+pub use pipeline::{PipelineJob, Postprocess};
 #[cfg(feature = "plakat")]
 mod managed_sd;
 #[cfg(feature = "plakat")]
@@ -71,6 +73,9 @@ pub enum Mode {
 /// Reproducible generation parameters. Models and weights belong to Plakat.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Request {
+    /// Completed postprocessing recipe; use `PipelineJob` to execute it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub postprocess: Option<Postprocess>,
     /// Architecture established by checkpoint inspection or explicit model selection.
     #[serde(default)]
     pub family: Option<crate::assets::Family>,
@@ -111,6 +116,7 @@ pub struct Request {
 impl Default for Request {
     fn default() -> Self {
         Self {
+            postprocess: None,
             family: None,
             output_size: None,
             loras: Vec::new(),
@@ -328,6 +334,11 @@ impl Job {
             *cache = std::path::absolute(&*cache)?;
         }
         request.validate(doc)?;
+        if request.postprocess.is_some() {
+            return Err(EditError::Invalid(
+                "Use PipelineJob for generation with postprocessing".into(),
+            ));
+        }
         let directory = tempfile::tempdir()?;
         let args = request.arguments(doc, directory.path())?;
         let source = doc.flatten();

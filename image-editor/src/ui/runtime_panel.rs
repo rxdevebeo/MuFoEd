@@ -91,7 +91,7 @@ impl ImageEditor {
             }
         }
         let mut open = self.runtime_ui.open;
-        egui::Window::new("Модели и память").open(&mut open).default_width(610.0).default_height(610.0).max_height(650.0).vscroll(true).show(ctx,|ui|{
+        egui::Window::new("Модели и память").anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).open(&mut open).default_width(610.0).default_height(610.0).max_height(650.0).vscroll(true).show(ctx,|ui|{
             ui.label("Общий менеджер MuFoEd: текст · OCR · изображения");
             if let Some(error)=self.runtime.blocked_reason(){ui.colored_label(egui::Color32::from_rgb(235,145,145),format!("Новые загрузки заблокированы: {error}"));}
             let state=self.runtime.snapshot();

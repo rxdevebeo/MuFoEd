@@ -520,6 +520,20 @@ impl ImageEditor {
             .truncate(),
         );
         ui.add_space(6.0);
+        ui.collapsing("Постобработка после генерации", |ui| {
+            let mut enabled=self.request.postprocess.is_some();
+            if ui.checkbox(&mut enabled,"Img2Img → UltraSharp без увеличения").changed() {
+                self.request.postprocess=enabled.then(crate::generation::Postprocess::default);
+            }
+            if let Some(post)=&mut self.request.postprocess {
+                ui.add(egui::Slider::new(&mut post.denoise,0.0..=0.5).text("Denoise"));
+                ui.horizontal(|ui|{ui.label("Шаги Img2Img");ui.add(egui::DragValue::new(&mut post.steps).range(1..=150));});
+                ui.checkbox(&mut post.auto_device,"UltraSharp на GPU");
+                ui.add(egui::Label::new(post.ultrasharp.display().to_string()).truncate());
+                if ui.button("Выбрать 4x-UltraSharp…").clicked(){actions.push(FileAction::UltraSharpModel);}
+                ui.small("Модель 4× обрабатывает тайлы; результат возвращается к исходному размеру. Модель генерации, prompt, LoRA, VAE и seed сохраняются.");
+            }
+        });
         ui.collapsing("Engine settings", |ui| {
             #[cfg(feature = "plakat")]
             ui.add_enabled(
@@ -541,7 +555,7 @@ impl ImageEditor {
         if self.job.is_some() {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label("Generating…");
+                ui.label(self.job.as_ref().map_or("Генерация…", RunningJob::stage));
             });
             if ui
                 .add_sized(
@@ -550,12 +564,11 @@ impl ImageEditor {
                 )
                 .clicked()
             {
-                if self.job.as_mut().is_some_and(RunningJob::cancel) {
-                    self.job = None;
-                    self.status = "Generation cancelled".into();
-                } else {
-                    self.status="Cancellation requested; current library call finishes before discarding its result".into();
+                if let Some(job) = &mut self.job {
+                    job.cancel();
                 }
+                self.job = None;
+                self.status = "Отмена цепочки; ожидаем завершения активного backend…".into();
             }
         } else if ui
             .add_enabled_ui(
@@ -581,7 +594,7 @@ impl ImageEditor {
             .clicked()
             && self.resolve_seed()
         {
-            match RunningJob::start(
+            match RunningJob::start_with_runtime(
                 self.use_library,
                 &self.executable,
                 self.request.clone(),

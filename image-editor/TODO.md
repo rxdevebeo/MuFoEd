@@ -25,3 +25,6 @@ checkpoint; возможное удержание device-моделей при �
 
 - [x] PSD RGB8 как формат проекта: растровые слои, свойства, merged preview, private mask/recipe metadata; legacy JSON import и независимые fixtures. [Приёмка](PSD-VALIDATION.md).
 - [ ] Расширение PSD: ICC/цветоуправление, layer masks/groups и off-canvas layers; каждый профиль требует отдельной приёмки.
+
+- [x] После генерации: low-denoise Img2Img и UltraSharp 1×, отмена/ошибки без частичного применения, сохранение recipe в PSD.
+- [x] Центрирование всех egui-диалогов; parent window для системных файловых диалогов demo.

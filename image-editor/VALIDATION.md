@@ -96,3 +96,7 @@ Inpaint проверен функционально: корректный раз
 ## PSD
 
 PSD стал форматом сохранения в демо; JSON остаётся legacy. [Профиль, проверки и ограничения](PSD-VALIDATION.md).
+
+## Постобработка и диалоги
+
+[POSTPROCESS-VALIDATION.md](POSTPROCESS-VALIDATION.md): цепочка, UltraSharp 1×, GPU и центрирование окон.

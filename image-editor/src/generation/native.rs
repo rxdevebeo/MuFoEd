@@ -38,6 +38,11 @@ impl NativeJob {
         manager: &mufoed_model_runtime::Runtime,
     ) -> Result<Self, EditError> {
         request.validate(doc)?;
+        if request.postprocess.is_some() {
+            return Err(EditError::Invalid(
+                "Use PipelineJob for generation with postprocessing".into(),
+            ));
+        }
         if let Some(cache) = request.cache_dir.as_mut() {
             *cache = std::path::absolute(&*cache)?;
             let configured = std::env::var_os("PLAKAT_CACHE_DIR")
@@ -83,7 +88,7 @@ impl NativeJob {
         std::thread::Builder::new()
             .name("image-studio-plakat".into())
             .spawn(move || {
-                let _permit = permit;
+                let worker_permit = permit;
                 let result = ticket
                     .wait(&worker_cancelled, std::time::Duration::from_secs(900))
                     .map_err(|e| EditError::Invalid(e.to_string()))
@@ -106,6 +111,7 @@ impl NativeJob {
                             )))
                         })
                     });
+                drop(worker_permit); // The next pipeline stage may start as soon as the result is received.
                 let _ = sender.send(result);
             })?;
         Ok(Self {
