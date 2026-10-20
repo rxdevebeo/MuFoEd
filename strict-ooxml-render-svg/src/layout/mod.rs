@@ -1031,6 +1031,14 @@ pub(crate) struct LayoutContext<'a> {
     /// rather than on the header distance (`021`: the logo sat 10 pt above the
     /// sheet). `None` everywhere else, including footers and table cells.
     pub(crate) region_shift: std::cell::Cell<Option<f64>>,
+    /// Whether the blocks being laid out are a table cell's own content.
+    ///
+    /// Set by the cell layout, cleared again for a text box or a header and
+    /// footer inside it. A picture anchored in a cell (`layoutInCell`) pushes
+    /// the cell's next block below it (082); the same blocks laid out as a
+    /// header, a footer or a text box are not pushed: a bare footer box
+    /// below the footer's text lifted the whole footer into the body (095).
+    pub(crate) table_cell: std::cell::Cell<bool>,
     /// Section whose body is currently being measured, including nested cells.
     pub(crate) current_section: std::cell::Cell<usize>,
     /// Numbered headings active on each page, carried between layout passes.

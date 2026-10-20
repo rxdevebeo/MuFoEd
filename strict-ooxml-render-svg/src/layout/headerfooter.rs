@@ -516,6 +516,7 @@ fn layout_region(
     let mut items = Vec::new();
     let mut y = 0.0;
     let mut page_frames = Vec::new();
+    let in_cell = ctx.table_cell.replace(false);
     layout_blocks_inline(
         ctx,
         blocks,
@@ -528,6 +529,7 @@ fn layout_region(
         false,
         &mut page_frames,
     );
+    ctx.table_cell.set(in_cell);
     ctx.field_env.set(None);
     // A header/footer of only floating objects has no flow height (`y` stays
     // 0). Its `ink_bottom` is where those objects actually reach, so a

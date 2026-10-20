@@ -1642,6 +1642,7 @@ fn layout_cell_content(
     let mut items = Vec::new();
     let mut frames = Vec::new();
     let mut y = 0.0;
+    let outer = ctx.table_cell.replace(true);
     layout_blocks_inline(
         ctx,
         blocks,
@@ -1654,6 +1655,7 @@ fn layout_cell_content(
         escape_frames,
         &mut frames,
     );
+    ctx.table_cell.set(outer);
     (items, y, frames)
 }
 
@@ -1885,9 +1887,10 @@ fn place_cell_paragraph(
             } else {
                 placement.y
             };
-            if anchor.layout_in_cell {
+            if anchor.layout_in_cell && ctx.table_cell.get() {
                 // The picture hangs from this paragraph. A later row must start
-                // below it, or its text runs through the picture (082).
+                // below it, or its text runs through the picture (082). Only
+                // in a table cell: a header, footer or text box is not pushed.
                 anchor_bottom = anchor_bottom.max(paint_y + placement.h);
             }
             let mut anchor_items = crate::paint::graphics::anchor_items(

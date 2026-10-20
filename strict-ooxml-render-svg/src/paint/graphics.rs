@@ -1181,6 +1181,8 @@ fn text_box_items(
     // stack. The over-deep case is already refused by the model walk in
     // `layout_document`; this is the layout's own accounting.
     let mut page_frames = Vec::new();
+    // A text box in a table cell is not the cell's content.
+    let in_cell = ctx.table_cell.replace(false);
     layout_blocks_inline(
         ctx,
         &text.blocks,
@@ -1193,6 +1195,7 @@ fn text_box_items(
         false,
         &mut page_frames,
     );
+    ctx.table_cell.set(in_cell);
     if columns > 1 {
         let bands = items
             .iter()
