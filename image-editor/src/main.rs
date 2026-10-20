@@ -13,9 +13,21 @@ fn main() -> eframe::Result {
             std::env::set_var("PLAKAT_CACHE_DIR", cache);
         }
     }
+    let shot_size = std::env::var_os("IMAGE_STUDIO_SHOT")
+        .and_then(|_| {
+            std::env::var("IMAGE_STUDIO_SHOT_SIZE")
+                .ok()?
+                .split_once('x')
+                .and_then(|(w, h)| Some([w.parse::<f32>().ok()?, h.parse::<f32>().ok()?]))
+        })
+        .filter(|s| {
+            s.iter()
+                .all(|v| v.is_finite() && (700.0..=3840.0).contains(v))
+        })
+        .unwrap_or([1440.0, 900.0]);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1440.0, 900.0])
+            .with_inner_size(shot_size)
             .with_min_inner_size([1100.0, 700.0]),
         ..Default::default()
     };

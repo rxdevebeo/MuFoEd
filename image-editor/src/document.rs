@@ -1,3 +1,6 @@
+#[path = "manual.rs"]
+mod manual;
+pub use manual::{BrushStyle, Shape};
 use std::{collections::VecDeque, io::Read, path::Path};
 
 use image::{ImageReader, RgbaImage};
@@ -130,6 +133,8 @@ impl Raster {
 /// A full-canvas layer; order in the document is bottom to top.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
+    #[serde(default)]
+    locked: bool,
     name: String,
     visible: bool,
     opacity: u8,
@@ -138,6 +143,10 @@ pub struct Layer {
     recipe: Option<crate::generation::Request>,
 }
 impl Layer {
+    /// Whether pixel edits and destructive layer operations are blocked.
+    pub fn locked(&self) -> bool {
+        self.locked
+    }
     /// Original inference parameters, when this layer came from a generation candidate.
     pub fn recipe(&self) -> Option<&crate::generation::Request> {
         self.recipe.as_ref()
@@ -246,6 +255,7 @@ impl Document {
                 opacity: 255,
                 raster,
                 recipe: None,
+                locked: false,
             }],
             active: 0,
             mask: vec![0; byte_len(width, height)? / 4],
@@ -306,6 +316,7 @@ impl Document {
             opacity: 255,
             raster,
             recipe: None,
+            locked: false,
         });
         self.active = self.layers.len() - 1;
         Ok(())
@@ -323,6 +334,7 @@ impl Document {
     }
     /// Remove the active layer, retaining at least one layer.
     pub fn remove_layer(&mut self) -> Result<(), EditError> {
+        self.require_unlocked()?;
         if self.layers.len() == 1 {
             return Err(invalid("Cannot remove the last layer"));
         }
@@ -400,57 +412,12 @@ impl Document {
         color: [u8; 4],
         tool: Tool,
     ) -> Result<(), EditError> {
-        if !from
-            .iter()
-            .chain(to.iter())
-            .all(|v| v.is_finite() && v.abs() <= 32768.0)
-            || !radius.is_finite()
-            || !(0.5..=256.0).contains(&radius)
-        {
-            return Err(invalid("Invalid stroke coordinates or radius"));
-        }
-        // Distance-to-segment coverage paints each pixel once, independent of event density.
-        let x0 = (from[0].min(to[0]) - radius).floor().max(0.0) as u32;
-        let y0 = (from[1].min(to[1]) - radius).floor().max(0.0) as u32;
-        let x1 = ((from[0].max(to[0]) + radius).ceil().max(0.0) as u32).min(self.width);
-        let y1 = ((from[1].max(to[1]) + radius).ceil().max(0.0) as u32).min(self.height);
-        let dx = to[0] - from[0];
-        let dy = to[1] - from[1];
-        let length = dx * dx + dy * dy;
-        for y in y0..y1 {
-            for x in x0..x1 {
-                let px = x as f32 + 0.5;
-                let py = y as f32 + 0.5;
-                let t = if length == 0.0 {
-                    0.0
-                } else {
-                    ((px - from[0]) * dx + (py - from[1]) * dy) / length
-                }
-                .clamp(0.0, 1.0);
-                if (px - from[0] - t * dx).hypot(py - from[1] - t * dy) > radius {
-                    continue;
-                }
-                let index = y as usize * self.width as usize + x as usize;
-                match tool {
-                    Tool::Mask => self.mask[index] = 255,
-                    Tool::MaskEraser => self.mask[index] = 0,
-                    Tool::Brush => blend(
-                        &mut self.layers[self.active].raster.pixels[index * 4..index * 4 + 4],
-                        color,
-                        1.0,
-                    ),
-                    Tool::Eraser => {
-                        let a = &mut self.layers[self.active].raster.pixels[index * 4 + 3];
-                        *a = (u16::from(*a) * u16::from(255 - color[3]) / 255) as u8;
-                    }
-                }
-            }
-        }
-        Ok(())
+        self.stroke_with_style(from, to, radius, color, tool, BrushStyle::default())
     }
     /// Apply a photo operation to the active layer, keeping alpha unchanged.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // Rounded luminance is 0..255.
     pub fn adjust(&mut self, adjustment: Adjustment) -> Result<(), EditError> {
+        self.require_unlocked()?;
         let original = self.layers[self.active].raster.image();
         let mut result = match adjustment {
             Adjustment::Brightness(value) if (-255..=255).contains(&value) => {

@@ -8,4 +8,6 @@ pub mod generation;
 pub mod model_tools;
 pub mod ui;
 
-pub use document::{Adjustment, Document, EditError, History, Layer, Raster, Tool};
+pub use document::{
+    Adjustment, BrushStyle, Document, EditError, History, Layer, Raster, Shape, Tool,
+};

@@ -1,6 +1,4 @@
-use super::{
-    Color32, Document, EditError, FileAction, ImageEditor, Mode, Raster, TextureHandle, Tool,
-};
+use super::{Color32, Document, EditError, FileAction, ImageEditor, Mode, Raster, TextureHandle};
 use crate::model_tools::ModelJob;
 use std::{
     ffi::OsString,
@@ -275,7 +273,7 @@ impl ImageEditor {
             self.request.mode = Mode::Inpaint;
             self.active_tab = super::StudioTab::Edit;
             self.request.mask_invert = false;
-            self.tool = Tool::Mask;
+            self.select_manual_tool(super::ManualTool::Mask);
             self.segmentation_ui.point_mode = None;
             self.segmentation_ui.texture = None;
         }

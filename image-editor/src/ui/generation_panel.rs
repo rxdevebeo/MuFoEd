@@ -1,6 +1,4 @@
-use super::{
-    panel_header, Color32, EditError, FileAction, ImageEditor, Mode, RunningJob, Tool, ACCENT,
-};
+use super::{panel_header, Color32, EditError, FileAction, ImageEditor, Mode, RunningJob, ACCENT};
 use crate::{
     assets::{self, Asset, Family, Kind, Preparation},
     civitai::{self, Page, Resource},
@@ -217,7 +215,9 @@ impl ImageEditor {
                 Ok(None) => {}
             }
         }
-        if self.generation_ui.worker.is_some() || self.generation_ui.prepare.is_some() {
+        if self.generation_ui.worker.is_some()
+            || self.generation_ui.prepare.is_some()
+        {
             context.request_repaint_after(Duration::from_millis(100));
         }
     }
@@ -340,7 +340,8 @@ impl ImageEditor {
     }
     /// Whether the resource browser is still scanning, searching, preparing, or downloading.
     pub fn resource_operation_active(&self) -> bool {
-        self.generation_ui.worker.is_some() || self.generation_ui.prepare.is_some()
+        self.generation_ui.worker.is_some()
+            || self.generation_ui.prepare.is_some()
     }
     #[allow(clippy::too_many_lines)] // Immediate-mode controls share editor state.
     pub(super) fn generation_panel(&mut self, ui: &mut egui::Ui, actions: &mut Vec<FileAction>) {
@@ -435,11 +436,11 @@ impl ImageEditor {
             ui.label(egui::RichText::new("Mask").strong());
             ui.horizontal(|ui| {
                 if ui.button("Paint mask").clicked() {
-                    self.tool = Tool::Mask;
+                    self.select_manual_tool(super::ManualTool::Mask);
                     self.stop_segmentation_points();
                 }
                 if ui.button("Erase mask").clicked() {
-                    self.tool = Tool::MaskEraser;
+                    self.select_manual_tool(super::ManualTool::Unmask);
                     self.stop_segmentation_points();
                 }
                 if ui.button("Clear").clicked() {
@@ -701,7 +702,7 @@ impl ImageEditor {
         };
         egui::Window::new(title).id(egui::Id::new("resource-dialog")).open(&mut open).anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).default_size([760.0,560.0]).min_width(600.0).min_height(480.0).collapsible(false).show(context,|ui|{
             ui.horizontal(|ui|{ui.selectable_value(&mut self.generation_ui.online,false,"Local library");if kind!=Kind::Vae {ui.selectable_value(&mut self.generation_ui.online,true,"Civitai");}});ui.separator();
-            let busy=self.generation_ui.worker.is_some() || self.generation_ui.prepare.is_some();
+            let busy=self.generation_ui.worker.is_some() || self.generation_ui.prepare.is_some() || self.runtime_ui.pending.is_some();
             if let Some(worker)=&self.generation_ui.worker {
                 ui.horizontal(|ui|{ui.spinner();ui.label(&worker.label);if ui.button("Cancel").clicked(){worker.cancelled.store(true,Ordering::Release);}});
                 if let Some((n,total))=self.generation_ui.progress {

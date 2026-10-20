@@ -1,10 +1,12 @@
 //! Embeddable egui editor. The host handles file dialogs through returned actions.
 use crate::{
     generation::{Candidate, Job, Mode, Request},
-    Adjustment, Document, EditError, History, Raster, Tool,
+    Document, EditError, History, Raster,
 };
 use egui::{Color32, TextureHandle};
 mod generation_panel;
+mod manual_panel;
+pub use manual_panel::ManualTool;
 mod model_panel;
 mod segmentation_panel;
 mod upscale_panel;
@@ -177,11 +179,10 @@ pub struct ImageEditor {
     changed: bool,
     unsaved: bool,
     confirm_new: bool,
-    tool: Tool,
+    manual_ui: manual_panel::ManualUi,
     color: Color32,
     radius: f32,
     zoom: f32,
-    previous: Option<[f32; 2]>,
     request: Request,
     executable: String,
     job: Option<RunningJob>,
@@ -255,11 +256,10 @@ impl ImageEditor {
             changed: true,
             unsaved: false,
             confirm_new: false,
-            tool: Tool::Brush,
+            manual_ui: manual_panel::ManualUi::default(),
             color: Color32::from_rgb(80, 160, 240),
             radius: 12.0,
             zoom: 1.0,
-            previous: None,
             request: Request {
                 model,
                 family: Some(family),
@@ -271,7 +271,7 @@ impl ImageEditor {
             job: None,
             use_library: cfg!(feature = "plakat"),
             candidate: None,
-            status: "Ready — paint, import a photo, or generate with Plakat".into(),
+            status: "Готово · рисуйте, откройте изображение или запустите генерацию".into(),
             dimensions,
             crop: [0, 0, dimensions[0], dimensions[1]],
             brightness: 10,
@@ -334,6 +334,7 @@ impl ImageEditor {
                 if self.document != before {
                     self.history.checkpoint(&before);
                     self.changed = true;
+                    self.manual_ui.thumbnails.clear();
                     self.unsaved = true;
                     if self.document.layers() != before.layers() {
                         self.clear_segmentation_points();
@@ -363,6 +364,7 @@ impl ImageEditor {
     pub fn show(&mut self, ui: &mut egui::Ui) -> Vec<FileAction> {
         let mut actions = Vec::new();
         let mut fit_canvas = false;
+        self.manual_shortcuts(ui);
         let context = ui.ctx().clone();
         if self.job.is_none() && self.plakat_active() {
             self.status="Plakat завершает отменённую задачу; модели будут доступны после освобождения runtime".into();
@@ -425,25 +427,25 @@ impl ImageEditor {
                         .request_repaint_after(std::time::Duration::from_millis(100));
                 }
             });
-        if ui.input_mut(|i| {
-            i.consume_shortcut(&egui::KeyboardShortcut::new(
-                egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
-                egui::Key::Z,
-            ))
-        }) {
-            let changed = self.history.redo(&mut self.document);
-            self.changed |= changed;
-            self.unsaved |= changed;
+        if !ui.ctx().egui_wants_keyboard_input()
+            && ui.input_mut(|i| {
+                i.consume_shortcut(&egui::KeyboardShortcut::new(
+                    egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                    egui::Key::Z,
+                ))
+            })
+        {
+            self.restore_history(true);
         }
-        if ui.input_mut(|i| {
-            i.consume_shortcut(&egui::KeyboardShortcut::new(
-                egui::Modifiers::COMMAND,
-                egui::Key::Z,
-            ))
-        }) {
-            let changed = self.history.undo(&mut self.document);
-            self.changed |= changed;
-            self.unsaved |= changed;
+        if !ui.ctx().egui_wants_keyboard_input()
+            && ui.input_mut(|i| {
+                i.consume_shortcut(&egui::KeyboardShortcut::new(
+                    egui::Modifiers::COMMAND,
+                    egui::Key::Z,
+                ))
+            })
+        {
+            self.restore_history(false);
         }
         egui::Frame::new()
             .fill(PANEL)
@@ -454,224 +456,36 @@ impl ImageEditor {
                     ui.label(egui::RichText::new("Image Studio").strong().size(16.0));
                     ui.separator();
                     for (label, action) in [
-                        ("Open image", FileAction::OpenImage),
-                        ("Open project", FileAction::OpenProject),
-                        ("Save project", FileAction::SaveProject),
-                        ("Export PNG", FileAction::ExportPng),
+                        ("Открыть", FileAction::OpenImage),
+                        ("Проект", FileAction::OpenProject),
+                        ("Сохранить", FileAction::SaveProject),
+                        ("Экспорт PNG", FileAction::ExportPng),
                     ] {
                         if ui.button(label).clicked() {
                             actions.push(action);
                         }
                     }
                     ui.separator();
-                    if ui.button("Undo").clicked() {
-                        let changed = self.history.undo(&mut self.document);
-                        self.changed |= changed;
-                        self.unsaved |= changed;
+                    if ui.button("Отменить").clicked() {
+                        self.restore_history(false);
                     }
-                    if ui.button("Redo").clicked() {
-                        let changed = self.history.redo(&mut self.document);
-                        self.changed |= changed;
-                        self.unsaved |= changed;
+                    if ui.button("Повторить").clicked() {
+                        self.restore_history(true);
                     }
-                    ui.add(egui::Slider::new(&mut self.zoom, 0.1..=4.0).text("Zoom"));
-                    if ui.button("Fit").clicked() {
+                    ui.add(egui::Slider::new(&mut self.zoom, 0.02..=8.0).text("Масштаб"));
+                    if ui.button("По размеру").clicked() {
                         fit_canvas = true;
                     }
                 });
             });
         ui.separator();
+        self.manual_options(ui);
         egui::Panel::right("image-editing")
             .resizable(true)
-            .default_size(300.0)
-            .min_size(270.0)
+            .default_size(310.0)
+            .min_size(285.0)
             .frame(panel_frame())
-            .show(ui, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("editing-scroll")
-                    .show(ui, |ui| {
-                        panel_header(ui, "Ручная работа", "Tools, adjustments and layers");
-                        ui.label(egui::RichText::new("TOOLS").small().strong().weak());
-                        let tool_width = (ui.available_width() - 8.0) * 0.5;
-                        for row in [
-                            [(Tool::Brush, "Brush"), (Tool::Eraser, "Eraser")],
-                            [(Tool::Mask, "Mask"), (Tool::MaskEraser, "Unmask")],
-                        ] {
-                            ui.horizontal(|ui| {
-                                for (tool, label) in row {
-                                    if ui
-                                        .add_sized(
-                                            [tool_width, 36.0],
-                                            egui::Button::new(label).selected(
-                                                self.tool == tool
-                                                    && !self.segmentation_point_mode(),
-                                            ),
-                                        )
-                                        .clicked()
-                                    {
-                                        self.tool = tool;
-                                        self.stop_segmentation_points();
-                                    }
-                                }
-                            });
-                        }
-                        ui.horizontal(|ui| {
-                            ui.label("Color");
-                            ui.color_edit_button_srgba(&mut self.color);
-                        });
-                        ui.add(egui::Slider::new(&mut self.radius, 0.5..=128.0).text("Radius"));
-                        ui.label(
-                            egui::RichText::new("The red mask marks the area to regenerate.")
-                                .small()
-                                .weak(),
-                        );
-                        if ui.button("Clear mask").clicked() {
-                            self.edit(|d| {
-                                d.clear_mask();
-                                Ok(())
-                            });
-                        }
-                        ui.add_space(8.0);
-                        ui.collapsing("Canvas", |ui| {
-                            ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::DragValue::new(&mut self.dimensions[0])
-                                        .range(8..=8192)
-                                        .prefix("W "),
-                                );
-                                ui.add(
-                                    egui::DragValue::new(&mut self.dimensions[1])
-                                        .range(8..=8192)
-                                        .prefix("H "),
-                                );
-                            });
-                            ui.horizontal(|ui| {
-                                if ui.button("New").clicked() {
-                                    self.confirm_new = true;
-                                }
-                                if ui.button("Resize").clicked() {
-                                    let [w, h] = self.dimensions;
-                                    self.edit(|d| d.resize(w, h));
-                                }
-                                if ui.button("Rotate 90°").clicked() {
-                                    self.edit(|d| {
-                                        d.rotate90();
-                                        Ok(())
-                                    });
-                                }
-                            });
-                            ui.label("Crop: X / Y / width / height");
-                            ui.horizontal_wrapped(|ui| {
-                                for v in &mut self.crop {
-                                    ui.add(egui::DragValue::new(v).range(0..=8192));
-                                }
-                            });
-                            if ui.button("Apply crop").clicked() {
-                                let [x, y, w, h] = self.crop;
-                                self.edit(|d| d.crop(x, y, w, h));
-                            }
-                        });
-                        ui.collapsing("Photo adjustments", |ui| {
-                            ui.label(
-                                egui::RichText::new("Applied to the selected layer")
-                                    .small()
-                                    .weak(),
-                            );
-                            ui.add(
-                                egui::Slider::new(&mut self.brightness, -255..=255)
-                                    .text("Brightness"),
-                            );
-                            if ui.button("Apply brightness").clicked() {
-                                let v = self.brightness;
-                                self.edit(|d| d.adjust(Adjustment::Brightness(v)));
-                            }
-                            ui.add(
-                                egui::Slider::new(&mut self.contrast, -100.0..=100.0)
-                                    .text("Contrast"),
-                            );
-                            if ui.button("Apply contrast").clicked() {
-                                let v = self.contrast;
-                                self.edit(|d| d.adjust(Adjustment::Contrast(v)));
-                            }
-                            ui.add(egui::Slider::new(&mut self.blur, 0.1..=20.0).text("Blur"));
-                            if ui.button("Apply blur").clicked() {
-                                let v = self.blur;
-                                self.edit(|d| d.adjust(Adjustment::Blur(v)));
-                            }
-                            if ui.button("Grayscale").clicked() {
-                                self.edit(|d| d.adjust(Adjustment::Grayscale));
-                            }
-                            if ui.button("Median denoise").clicked() {
-                                self.edit(|d| d.adjust(Adjustment::Median));
-                            }
-                        });
-                        ui.add_space(8.0);
-                        ui.separator();
-                        ui.separator();
-                        ui.heading("Layers");
-                        let mut selected = self.document.active();
-                        for (index, layer) in self.document.layers().iter().enumerate().rev() {
-                            if ui
-                                .add_sized(
-                                    [ui.available_width(), 36.0],
-                                    egui::Button::new(layer.name()).selected(selected == index),
-                                )
-                                .clicked()
-                            {
-                                selected = index;
-                            }
-                        }
-                        let _ = self.document.select(selected);
-                        let layer = &self.document.layers()[selected];
-                        let (mut name, mut visible, mut opacity) =
-                            (layer.name().to_owned(), layer.visible(), layer.opacity());
-                        ui.add_space(4.0);
-                        ui.label(egui::RichText::new("Layer properties").small().weak());
-                        let a = ui
-                            .add_sized(
-                                [ui.available_width(), 32.0],
-                                egui::TextEdit::singleline(&mut name)
-                                    .desired_width(f32::INFINITY)
-                                    .margin(egui::Margin::symmetric(8, 7)),
-                            )
-                            .changed();
-                        let b = ui.checkbox(&mut visible, "Visible").changed();
-                        let c = ui
-                            .add(egui::Slider::new(&mut opacity, 0..=255).text("Opacity"))
-                            .changed();
-                        if a || b || c {
-                            self.edit(|d| {
-                                d.set_layer(name, visible, opacity);
-                                Ok(())
-                            });
-                        }
-                        ui.horizontal_wrapped(|ui| {
-                            if ui.button("+ Layer").clicked() {
-                                self.edit(|d| {
-                                    d.add_layer(
-                                        format!("Layer {}", d.layers().len() + 1),
-                                        Raster::solid(d.width(), d.height(), [0; 4])?,
-                                    )
-                                });
-                            }
-                            if ui.button("Delete").clicked() {
-                                self.edit(Document::remove_layer);
-                            }
-                            if ui.button("Up").clicked() {
-                                self.edit(|d| {
-                                    d.move_layer(true);
-                                    Ok(())
-                                });
-                            }
-                            if ui.button("Down").clicked() {
-                                self.edit(|d| {
-                                    d.move_layer(false);
-                                    Ok(())
-                                });
-                            }
-                        });
-                    });
-            });
+            .show(ui, |ui| self.manual_dock(ui));
         egui::Panel::left("image-generation")
             .resizable(true)
             .default_size(380.0)
@@ -740,6 +554,16 @@ impl ImageEditor {
                     self.generation_action(ui);
                 }
             });
+        egui::Panel::left("manual-tool-strip")
+            .resizable(false)
+            .exact_size(50.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(PANEL)
+                    .stroke(egui::Stroke::new(1.0, BORDER))
+                    .inner_margin(6),
+            )
+            .show(ui, |ui| self.manual_palette(ui));
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
@@ -747,18 +571,19 @@ impl ImageEditor {
                     .inner_margin(14),
             )
             .show(ui, |ui| {
-                if fit_canvas {
+                if fit_canvas || self.manual_ui.fit_once {
+                    self.manual_ui.fit_once = false;
                     let available = ui.available_size();
                     self.zoom = ((available.x - 16.0) / self.document.width() as f32)
                         .min((available.y - 40.0) / self.document.height() as f32)
-                        .clamp(0.1, 4.0);
+                        .clamp(0.02, 8.0);
                 }
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Canvas").strong().size(16.0));
+                    ui.label(egui::RichText::new("Холст").strong().size(16.0));
                     ui.separator();
                     ui.label(
                         egui::RichText::new(format!(
-                            "{} × {} · {} layers",
+                            "{} × {} · {} слоёв",
                             self.document.width(),
                             self.document.height(),
                             self.document.layers().len()
@@ -797,6 +622,14 @@ impl ImageEditor {
                 }
                 let canvas_space = ui.available_size();
                 egui::ScrollArea::both()
+                    .scroll_source(egui::scroll_area::ScrollSource {
+                        drag: if self.manual_ui.tool == ManualTool::Hand {
+                            egui::scroll_area::DragScroll::Always
+                        } else {
+                            egui::scroll_area::DragScroll::Never
+                        },
+                        ..Default::default()
+                    })
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         let size =
@@ -811,7 +644,13 @@ impl ImageEditor {
                                 self.texture.as_ref().expect("canvas texture").id(),
                                 size,
                             ))
-                            .sense(egui::Sense::click_and_drag()),
+                            .sense(
+                                if self.manual_ui.tool == ManualTool::Hand {
+                                    egui::Sense::hover()
+                                } else {
+                                    egui::Sense::click_and_drag()
+                                },
+                            ),
                         );
                         // Checkerboard shows actual alpha; it is never written to the image.
                         let painter = ui
@@ -856,39 +695,8 @@ impl ImageEditor {
                             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                             Color32::WHITE,
                         );
-                        let down = ui.input(|i| i.pointer.primary_down());
                         self.segmentation_canvas(ui, &response);
-                        if !self.segmentation_point_mode()
-                            && (response.hovered() && down || response.dragged())
-                        {
-                            if let Some(position) = response
-                                .interact_pointer_pos()
-                                .or_else(|| ui.input(|i| i.pointer.hover_pos()))
-                            {
-                                let point = [
-                                    (position.x - response.rect.left()) / self.zoom,
-                                    (position.y - response.rect.top()) / self.zoom,
-                                ];
-                                if self.previous.is_none() {
-                                    self.history.checkpoint(&self.document);
-                                }
-                                if let Err(e) = self.document.stroke(
-                                    self.previous.unwrap_or(point),
-                                    point,
-                                    self.radius,
-                                    self.color.to_srgba_unmultiplied(),
-                                    self.tool,
-                                ) {
-                                    self.status = e.to_string();
-                                }
-                                self.previous = Some(point);
-                                self.changed = true;
-                                self.unsaved = true;
-                                context.request_repaint();
-                            }
-                        } else if !down {
-                            self.previous = None;
-                        }
+                        self.manual_canvas(ui, &response);
                     });
             });
         if self.confirm_new {
