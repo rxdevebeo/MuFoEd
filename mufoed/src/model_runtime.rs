@@ -2,15 +2,50 @@
 use mufoed_model_runtime::{ollama::Client, Runtime};
 use std::sync::atomic::AtomicBool;
 
+fn runtime() -> Runtime {
+    #[cfg(not(test))]
+    {
+        Runtime::global()
+    }
+    #[cfg(test)]
+    {
+        struct Physical;
+        impl mufoed_model_runtime::telemetry::Telemetry for Physical {
+            fn observe(&self) -> mufoed_model_runtime::telemetry::Observation {
+                mufoed_model_runtime::telemetry::Observation {
+                    at: std::time::Instant::now(),
+                    ram_total: Some(64 << 30),
+                    ram_available: Some(60 << 30),
+                    gpus: vec![mufoed_model_runtime::telemetry::Gpu {
+                        uuid: "GPU-fixture".into(),
+                        ordinal: 0,
+                        total: 16 << 30,
+                        free: 14 << 30,
+                    }],
+                    diagnostic: None,
+                }
+            }
+        }
+        Runtime::managed(
+            mufoed_model_runtime::Policy::default(),
+            mufoed_model_runtime::residency::MemoryPolicy::default(),
+            std::sync::Arc::new(Physical),
+        )
+    }
+}
+
 /// Execute on a worker and retain admission until Ollama confirms model release.
 pub(crate) fn run<T>(
     endpoint: &str,
     model: &str,
     owner: &str,
     cancel: &AtomicBool,
-    operation: impl FnOnce() -> Result<T, String>,
+    context: u32,
+    operation: impl FnMut() -> Result<T, String>,
 ) -> Result<T, String> {
-    Client::new(endpoint, model, &Runtime::global())?.run(owner, cancel, operation)
+    Client::new(endpoint, model, &runtime())?
+        .with_context(context)
+        .run(owner, cancel, operation)
 }
 
 /// Wrap the existing library recognizer without changing its prompts or parsing contracts.
@@ -27,18 +62,33 @@ impl ManagedVision {
     }
     fn call<T>(
         &self,
-        operation: impl FnOnce(&strict_ooxml::OllamaVision) -> Result<T, strict_ooxml::VisionError>,
+        mut operation: impl FnMut(&strict_ooxml::OllamaVision) -> Result<T, strict_ooxml::VisionError>,
     ) -> Result<T, strict_ooxml::VisionError> {
         let config = self.backend.config();
-        // Keep library parsing/refusal errors intact when release succeeds.
-        run(
-            &config.endpoint,
-            &config.model,
-            "vision",
-            &AtomicBool::new(false),
-            || Ok(operation(&self.backend)),
-        )
-        .map_err(strict_ooxml::VisionError::Unreachable)?
+        let client = Client::new(&config.endpoint, &config.model, &runtime())
+            .map_err(strict_ooxml::VisionError::Unreachable)?
+            .with_context(config.context_tokens);
+        let mut cause = None;
+        let result = client.run("vision", &AtomicBool::new(false), || {
+            match operation(&self.backend) {
+                Ok(value) => {
+                    cause = None;
+                    Ok(value)
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    cause = Some(error);
+                    Err(message)
+                }
+            }
+        });
+        match result {
+            Ok(value) => Ok(value),
+            Err(message) => match cause {
+                Some(error) if error.to_string() == message => Err(error),
+                _ => Err(strict_ooxml::VisionError::Unreachable(message)),
+            },
+        }
     }
 }
 #[cfg(feature = "ocr")]
@@ -123,11 +173,12 @@ pub(crate) mod test_support {
                     }
                     Err(error) => panic!("{error}"),
                 };
+                stream.set_nonblocking(false).unwrap();
                 let (path, body) = read(&mut stream);
                 let response = match path.as_str() {
-                    "/api/tags" => json!({"models": [{"name": model, "digest": "fixture-digest"}]}),
+                    "/api/tags" => json!({"models": [{"name": model, "digest": "fixture-digest", "size":1024}]}),
                     "/api/ps" => json!({"models": []}),
-                    "/api/show" => json!({"details": {"digest": "fixture-digest"}}),
+                    "/api/show" => json!({"details": {"digest": "fixture-digest"}, "model_info":{"llama.block_count":2,"llama.embedding_length":8,"llama.attention.head_count":2,"llama.attention.head_count_kv":1,"llama.context_length":8192}}),
                     "/api/chat" => {
                         assert_eq!(body["model"], model);
                         chat(body)

@@ -216,7 +216,7 @@ pub(crate) fn request_body(model: &str, history: &[Turn], num_ctx: u32) -> Value
     json!({
         "model": model,
         "stream": false,
-        "keep_alive": 0,
+        "keep_alive": 300,
         "messages": history.iter().map(message_json).collect::<Vec<_>>(),
         "tools": tool_schema(),
         "options": {"temperature": 0.2, "num_ctx": num_ctx},
@@ -274,7 +274,7 @@ fn post_cancellable(
     num_ctx: u32,
     cancel: &AtomicBool,
 ) -> Result<Value, String> {
-    crate::model_runtime::run(endpoint, model, "text", cancel, || {
+    crate::model_runtime::run(endpoint, model, "text", cancel, num_ctx, || {
         post_unmanaged(endpoint, model, history, num_ctx)
     })
 }
@@ -1794,7 +1794,7 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let server = crate::model_runtime::test_support::server(listener, "test-model", |json| {
             assert!(json.get("tools").is_some());
-            assert_eq!(json["keep_alive"], 0);
+            assert_eq!(json["keep_alive"], 300);
             let messages = json["messages"].as_array().unwrap();
             assert!(messages.iter().any(|message| message["role"] == "tool"
                 && message["content"] == "previous-result-token"));

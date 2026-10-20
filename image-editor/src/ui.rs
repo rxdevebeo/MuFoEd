@@ -6,6 +6,7 @@ use crate::{
 use egui::{Color32, TextureHandle};
 mod generation_panel;
 mod manual_panel;
+mod runtime_panel;
 pub use manual_panel::ManualTool;
 mod model_panel;
 mod segmentation_panel;
@@ -180,6 +181,7 @@ pub struct ImageEditor {
     unsaved: bool,
     confirm_new: bool,
     manual_ui: manual_panel::ManualUi,
+    runtime_ui: runtime_panel::RuntimeUi,
     color: Color32,
     radius: f32,
     zoom: f32,
@@ -257,6 +259,7 @@ impl ImageEditor {
             unsaved: false,
             confirm_new: false,
             manual_ui: manual_panel::ManualUi::default(),
+            runtime_ui: runtime_panel::RuntimeUi::default(),
             color: Color32::from_rgb(80, 160, 240),
             radius: 12.0,
             zoom: 1.0,
@@ -307,6 +310,7 @@ impl ImageEditor {
         let use_library = self.use_library;
         let active_tab = self.active_tab;
         let generation_ui = std::mem::take(&mut self.generation_ui);
+        let runtime_ui = std::mem::take(&mut self.runtime_ui);
         let mut model_ui = std::mem::take(&mut self.model_ui);
         model_ui.reset_project();
         let mut segmentation_ui = std::mem::take(&mut self.segmentation_ui);
@@ -319,6 +323,7 @@ impl ImageEditor {
         self.use_library = use_library;
         self.active_tab = active_tab;
         self.generation_ui = generation_ui;
+        self.runtime_ui = runtime_ui;
         self.model_ui = model_ui;
         self.segmentation_ui = segmentation_ui;
         self.upscale_ui = upscale_ui;
@@ -408,6 +413,12 @@ impl ImageEditor {
                             "ожидание подтверждения выгрузки"
                         }
                         Some(mufoed_model_runtime::Phase::Releasing) => "освобождение модели",
+                        Some(mufoed_model_runtime::Phase::Checking) => "проверка памяти",
+                        Some(mufoed_model_runtime::Phase::Loading) => "загрузка",
+                        Some(mufoed_model_runtime::Phase::Offloading) => "GPU → CPU",
+                        Some(mufoed_model_runtime::Phase::Retrying) => "повтор после OOM",
+                        Some(mufoed_model_runtime::Phase::Failed) => "ошибка",
+                        Some(mufoed_model_runtime::Phase::Ready) => "готово",
                         _ => "выполнение",
                     };
                     ui.small(format!(
@@ -475,6 +486,9 @@ impl ImageEditor {
                     ui.add(egui::Slider::new(&mut self.zoom, 0.02..=8.0).text("Масштаб"));
                     if ui.button("По размеру").clicked() {
                         fit_canvas = true;
+                    }
+                    if ui.button("Память моделей").clicked() {
+                        self.open_memory_panel();
                     }
                 });
             });
@@ -794,6 +808,7 @@ impl ImageEditor {
         self.background_preview(&context);
         self.segmentation_preview(&context);
         self.upscale_preview(&context);
+        self.runtime_panel(&context);
         actions
     }
 }

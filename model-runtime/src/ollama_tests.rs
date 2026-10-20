@@ -4,6 +4,7 @@ use std::{sync::atomic::AtomicUsize, time::Instant};
 #[derive(Default)]
 struct Mock {
     resident: AtomicBool,
+    expiry: AtomicUsize,
     release: AtomicBool,
     calls: Mutex<Vec<String>>,
     unloads: AtomicUsize,
@@ -14,11 +15,14 @@ impl Transport for Mock {
     fn request(&self, _: &str, path: &str, body: Option<&Value>) -> Result<Value, String> {
         self.calls.lock().unwrap().push(path.into());
         match path {
-            "/api/tags" => {
-                Ok(json!({"models": [{"name": "test:latest", "digest": "weights-digest"}]}))
-            }
+            "/api/tags" => Ok(
+                json!({"models": [{"name": "test:latest", "digest": "weights-digest", "size": 1024, "size_vram":1024, "expires_at":self.expiry.load(Ordering::Acquire)}]}),
+            ),
+            "/api/show" => Ok(
+                json!({"model_info":{"llama.block_count":2,"llama.embedding_length":8,"llama.attention.head_count":2,"llama.attention.head_count_kv":1,"llama.context_length":8192}}),
+            ),
             "/api/ps" => Ok(if self.resident.load(Ordering::Acquire) {
-                json!({"models": [{"name": "another-alias:latest", "digest": "weights-digest"}]})
+                json!({"models": [{"name": "another-alias:latest", "digest": "weights-digest", "size": 1024, "size_vram":1024, "expires_at":self.expiry.load(Ordering::Acquire)}]})
             } else {
                 json!({"models": []})
             }),
@@ -198,4 +202,108 @@ fn endpoint_validation_rejects_credentials_and_keeps_remote_memory_separate() {
     assert!(endpoint_domain("http://[::1]:11434").unwrap().1);
     assert!(endpoint_domain("http://127.0.0.2:11434").unwrap().1);
     assert!(!endpoint_domain("http://192.0.2.1:11434").unwrap().1);
+}
+
+struct Physical;
+impl crate::telemetry::Telemetry for Physical {
+    fn observe(&self) -> crate::telemetry::Observation {
+        crate::telemetry::Observation {
+            at: Instant::now(),
+            ram_total: Some(64 << 30),
+            ram_available: Some(60 << 30),
+            gpus: vec![crate::telemetry::Gpu {
+                uuid: "GPU-test".into(),
+                ordinal: 0,
+                total: 16 << 30,
+                free: 14 << 30,
+            }],
+            diagnostic: None,
+        }
+    }
+}
+fn managed() -> (Runtime, Arc<Mock>, Client) {
+    let runtime = Runtime::managed(
+        Policy::default(),
+        crate::residency::MemoryPolicy::default(),
+        Arc::new(Physical),
+    );
+    let mock = Arc::new(Mock::default());
+    *mock.runtime.lock().unwrap() = Some(runtime.clone());
+    mock.release.store(true, Ordering::Release);
+    let client = Client::new("http://localhost:11434", "test", &runtime)
+        .unwrap()
+        .with_context(8192)
+        .with_transport(mock.clone());
+    (runtime, mock, client)
+}
+#[test]
+fn managed_ollama_retains_compatible_model_and_releases_on_command() {
+    let (runtime, mock, client) = managed();
+    for _ in 0..2 {
+        client
+            .run("text", &AtomicBool::new(false), || {
+                mock.resident.store(true, Ordering::Release);
+                Ok(())
+            })
+            .unwrap();
+    }
+    assert_eq!(mock.unloads.load(Ordering::Acquire), 0);
+    assert_eq!(runtime.residents().len(), 1);
+    assert!(runtime.residents()[0].hits > 0);
+    runtime
+        .release_idle_async()
+        .recv_timeout(Duration::from_secs(3))
+        .unwrap()
+        .unwrap();
+    assert!(runtime.residents().is_empty());
+    assert!(!mock.resident.load(Ordering::Acquire));
+}
+#[test]
+fn changed_external_residency_is_disowned_without_unloading_foreign_work() {
+    let (runtime, mock, client) = managed();
+    client
+        .run("text", &AtomicBool::new(false), || {
+            mock.resident.store(true, Ordering::Release);
+            Ok(())
+        })
+        .unwrap();
+    mock.expiry.store(999, Ordering::Release);
+    assert!(client
+        .run::<()>("text", &AtomicBool::new(false), || panic!(
+            "foreign compute"
+        ))
+        .unwrap_err()
+        .contains("outside this manager"));
+    assert!(runtime.residents().is_empty());
+    assert_eq!(mock.unloads.load(Ordering::Acquire), 0);
+    assert!(mock.resident.load(Ordering::Acquire));
+}
+
+#[test]
+fn host_shutdown_waits_for_owned_remote_domain_without_blocking_local_inference() {
+    let host = Runtime::new(Policy::default());
+    let remote = Client::new("http://192.0.2.99:19999", "test-shutdown", &host).unwrap();
+    let lease = remote
+        .runtime()
+        .enqueue(Task::new("remote", "test"))
+        .unwrap()
+        .try_start()
+        .unwrap()
+        .unwrap();
+    let local = host
+        .enqueue(Task::new("local", "test"))
+        .unwrap()
+        .try_start()
+        .unwrap()
+        .unwrap();
+    drop(local);
+    let shutdown = host.shutdown_async();
+    assert!(shutdown.try_recv().is_err());
+    assert!(remote.runtime().is_shutting_down());
+    drop(lease);
+    shutdown
+        .recv_timeout(Duration::from_secs(3))
+        .unwrap()
+        .unwrap();
+    assert!(Client::new("http://192.0.2.99:19999", "test-shutdown", &host).is_err());
 }

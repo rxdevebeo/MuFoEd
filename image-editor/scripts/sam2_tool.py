@@ -61,21 +61,37 @@ def segment(args):
     for x, y, label in points:
         if not math.isfinite(x) or not math.isfinite(y) or not 0 <= x < image.width or not 0 <= y < image.height or label not in [0, 1]:
             raise ValueError("Invalid segmentation point")
-    device = "cuda" if args.device == "auto" and torch.cuda.is_available() else "cpu"
+    if args.device == "auto" and not torch.cuda.is_available():
+        raise ValueError("CUDA is unavailable; explicitly select CPU")
+    device = "cuda" if args.device == "auto" else "cpu"
     config = json.loads((args.model / "config.json").read_text(encoding="utf-8"))
     if config.get("model_type") not in ("sam2", "sam2_video"):
         raise ValueError("Expected native SAM2 Transformers model config")
     # The official checkpoint config includes video-memory fields. The image predictor
     # uses the same vision/prompt/mask components; verify that none are left uninitialized.
-    model, loading = Sam2Model.from_pretrained(str(args.model), config=Sam2Config.from_dict(config),
-        local_files_only=True, use_safetensors=True, output_loading_info=True)
-    if loading.get("missing_keys") or loading.get("mismatched_keys") or loading.get("error_msgs"):
-        raise ValueError(f"Incomplete SAM2 image weights: {loading}")
-    model = model.to(device).eval()
-    processor = Sam2Processor.from_pretrained(str(args.model), local_files_only=True)
+    import worker_cache
+    def load_model():
+        model, loading = Sam2Model.from_pretrained(str(args.model), config=Sam2Config.from_dict(config),
+            local_files_only=True, use_safetensors=True, output_loading_info=True)
+        if loading.get("missing_keys") or loading.get("mismatched_keys") or loading.get("error_msgs"):
+            raise ValueError(f"Incomplete SAM2 image weights: {loading}")
+        return model.eval(), Sam2Processor.from_pretrained(str(args.model), local_files_only=True)
+    worker_cache.stage("loading", "SAM 2.1: weights / placement")
+    model, processor = worker_cache.cached(("sam2", worker_cache.key(args.model / "model.safetensors")), load_model)
+    model.to(device)
     inputs = processor(images=image, input_points=[[[[x, y] for x, y, _ in points]]], input_labels=[[[int(p[2]) for p in points]]], return_tensors="pt").to(device)
     with torch.inference_mode(), (torch.autocast("cuda", dtype=torch.bfloat16) if device == "cuda" else nullcontext()):
-        output = model(**inputs)
+        image_key = hashlib.sha256(image.tobytes() + str(image.size).encode()).hexdigest()
+        if image_key not in worker_cache.EMBEDDINGS:
+            worker_cache.stage("running", "SAM 2.1: image encoder")
+            worker_cache.EMBEDDINGS.clear()
+            worker_cache.EMBEDDINGS[image_key] = [v.cpu() for v in model.get_image_embeddings(inputs["pixel_values"])]
+        else:
+            worker_cache.EMBED_HITS += 1
+        embeddings = [v.to(device) for v in worker_cache.EMBEDDINGS[image_key]]
+        inputs.pop("pixel_values")
+        worker_cache.stage("running", "SAM 2.1: mask decoder")
+        output = model(**inputs, image_embeddings=embeddings)
     masks = processor.post_process_masks(output.pred_masks.float().cpu(), inputs["original_sizes"].cpu())[0]
     index = int(output.iou_scores[0, 0].argmax().item())
     mask = masks[0, index].numpy().astype(np.uint8) * 255
@@ -83,7 +99,7 @@ def segment(args):
     print(f"SAM 2.1 Hiera Large: {len(points)} points, device={device}, mask={index}", flush=True)
 
 
-def main():
+def parse_args(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["download", "segment"])
     parser.add_argument("--model", type=Path, required=True)
@@ -92,7 +108,16 @@ def main():
     parser.add_argument("--output", type=Path)
     parser.add_argument("--device", choices=["cpu", "auto"], default="auto")
     parser.add_argument("--points", default="[]")
-    args = parser.parse_args()
+    if arguments is not None:
+        def invalid(message):
+            raise ValueError(message)
+        parser.error = invalid
+    args = parser.parse_args(arguments)
+    return args
+
+
+def main():
+    args = parse_args()
     if args.action == "download":
         download(args)
     else:

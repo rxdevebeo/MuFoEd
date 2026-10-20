@@ -127,12 +127,14 @@ fn chat_with_cancel(
     images: &[String],
     cancel: &AtomicBool,
 ) -> Result<String, String> {
+    let context = crate::context_window::num_ctx(&config.endpoint, &config.model);
     crate::model_runtime::run(
         &config.endpoint,
         &config.model,
         if images.is_empty() { "text" } else { "vision" },
         cancel,
-        || chat_unmanaged(config, system, prompt, images),
+        context,
+        || chat_unmanaged(config, system, prompt, images, context),
     )
 }
 
@@ -141,6 +143,7 @@ fn chat_unmanaged(
     system: &str,
     prompt: &str,
     images: &[String],
+    num_ctx: u32,
 ) -> Result<String, String> {
     let body = |think: bool| {
         let mut user = json!({"role": "user", "content": prompt});
@@ -154,11 +157,10 @@ fn chat_unmanaged(
             messages.push(json!({"role": "system", "content": system}));
         }
         messages.push(user);
-        let num_ctx = crate::context_window::num_ctx(&config.endpoint, &config.model);
         let mut body = json!({
             "model": config.model,
             "stream": false,
-            "keep_alive": 0,
+            "keep_alive": 300,
             "messages": messages,
             "options": {"temperature": 0.2, "num_ctx": num_ctx},
         });
@@ -877,7 +879,7 @@ mod cleanup_tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let server = crate::model_runtime::test_support::server(listener, "test-model", |json| {
-            assert_eq!(json["keep_alive"], 0);
+            assert_eq!(json["keep_alive"], 300);
             let data: serde_json::Value =
                 serde_json::from_str(json["messages"][1]["content"].as_str().unwrap()).unwrap();
             assert!(data[0]["left_tail"]

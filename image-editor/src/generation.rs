@@ -3,9 +3,9 @@
 
 use crate::{Document, EditError, Raster};
 #[cfg(feature = "plakat")]
-mod native;
+mod managed_sd;
 #[cfg(feature = "plakat")]
-mod vae_compat;
+mod native;
 #[cfg(feature = "plakat")]
 pub use native::NativeJob;
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,43 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
+
+/// Conservative staged SD peak, including CPU tensor cache and activation workspace.
+/// Recalibrate for other architectures; an unknown family must not claim a measured bound.
+pub fn memory_estimate(request: &Request, size: [u32; 2]) -> mufoed_model_runtime::Memory {
+    let pixels = u64::from(size[0]) * u64::from(size[1]);
+    let xl = match request.family {
+        Some(crate::assets::Family::Sdxl) => true,
+        Some(crate::assets::Family::Sd15) => false,
+        _ => request.model.to_lowercase().contains("xl"),
+    };
+    let weights = if xl { 7_u64 << 30 } else { 3_u64 << 30 };
+    let loras = request
+        .loras
+        .iter()
+        .filter(|l| l.enabled)
+        .filter_map(|l| std::fs::metadata(&l.path).ok())
+        .map(|m| m.len())
+        .sum::<u64>();
+    mufoed_model_runtime::Memory {
+        ram: Some(weights * 2 + loras * 3 + (2 << 30)),
+        vram: Some(
+            (if xl { 6_u64 << 30 } else { 2_u64 << 30 })
+                + pixels.saturating_mul(3 * 1024)
+                + (1 << 30),
+        ),
+    }
+}
+
+fn save_mask(mask: &Raster, path: &Path) -> Result<(), EditError> {
+    // Plakat interprets RGBA masks by alpha, so opaque grayscale RGBA would
+    // regenerate the entire image. Persist L8 to preserve the actual mask values.
+    let pixels = mask.pixels().chunks_exact(4).map(|p| p[0]).collect();
+    image::GrayImage::from_raw(mask.width(), mask.height(), pixels)
+        .expect("validated mask dimensions")
+        .save(path)?;
+    Ok(())
+}
 
 /// Upstream revision used to verify the CLI contract.
 pub const PLAKAT_REFERENCE: &str = "ce0d67a45bc9b5f742c3772aef85afe0d15890f6";
@@ -295,8 +332,7 @@ impl Job {
         let args = request.arguments(doc, directory.path())?;
         let source = doc.flatten();
         source.save_png(directory.path().join("input.png"))?;
-        doc.mask_raster()
-            .save_png(directory.path().join("mask.png"))?;
+        save_mask(&doc.mask_raster(), &directory.path().join("mask.png"))?;
         std::fs::create_dir(directory.path().join("out"))?;
         let log = File::create(directory.path().join("process.log"))?;
         let executable = executable.as_ref();
@@ -319,11 +355,12 @@ impl Job {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         }
+        let mut task =
+            mufoed_model_runtime::Task::new("image", format!("plakat-cli:{}", request.model));
+        task.memory = memory_estimate(&request, request.size(doc));
+        task.memory.vram = task.memory.vram.map(|peak| peak + (2 << 30)); // CLI keeps all SD components resident.
         let ticket = runtime
-            .enqueue(mufoed_model_runtime::Task::new(
-                "image",
-                format!("plakat-cli:{}", request.model),
-            ))
+            .enqueue(task)
             .map_err(|e| EditError::Invalid(e.to_string()))?;
         Ok(Self {
             child: None,
@@ -564,5 +601,16 @@ mod tests {
             Document::open_project(path).unwrap().layers()[0].recipe(),
             Some(&request)
         );
+    }
+    #[test]
+    fn backend_mask_is_luma_not_opaque_alpha() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut doc = Document::new(16, 16).unwrap();
+        doc.select_rectangle([2.0, 2.0], [6.0, 6.0]).unwrap();
+        let path = dir.path().join("mask.png");
+        save_mask(&doc.mask_raster(), &path).unwrap();
+        let image = image::open(path).unwrap();
+        assert_eq!(image.color(), image::ColorType::L8);
+        assert_eq!(image.to_luma8().as_raw(), doc.mask());
     }
 }

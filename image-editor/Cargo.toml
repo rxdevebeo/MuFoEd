@@ -10,10 +10,14 @@ license.workspace = true
 default = []
 ollama = ["mufoed-model-runtime/ollama"]
 demo = ["dep:eframe", "dep:rfd"]
-plakat = ["dep:plakat", "dep:tokio", "dep:candle-core"]
+plakat = ["dep:plakat", "dep:tokio", "dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:anyhow"]
 plakat-cuda = ["plakat", "plakat/cuda"]
 
 [dependencies]
+anyhow = { version = "1", optional = true }
+candle-nn = { version = "0.10.2", optional = true }
+candle-transformers = { version = "0.10.2", optional = true }
+tokenizers = { version = "0.20", default-features = false, features = ["onig"], optional = true }
 mufoed-model-runtime = { path = "../model-runtime" }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff"] }
 imageproc = { version = "0.25", default-features = false }
@@ -42,3 +46,7 @@ required-features = ["plakat"]
 
 [lints]
 workspace = true
+
+[[example]]
+name = "residency_smoke"
+required-features = ["plakat"]

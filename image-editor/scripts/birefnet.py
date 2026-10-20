@@ -74,10 +74,11 @@ def remove_background(args):
     if args.device == "auto":
         if "CUDAExecutionProvider" in available:
             providers.insert(0, "CUDAExecutionProvider")
-        elif "DmlExecutionProvider" in available:
-            providers.insert(0, "DmlExecutionProvider")
-            options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-    session = ort.InferenceSession(str(args.model), sess_options=options, providers=providers)
+        else:
+            raise ValueError("CUDA ONNX provider unavailable; explicitly select CPU")
+    import worker_cache
+    worker_cache.stage("loading", "BiRefNet: ONNX session")
+    session = worker_cache.cached(("birefnet", worker_cache.key(args.model), tuple(providers)), lambda: ort.InferenceSession(str(args.model), sess_options=options, providers=providers))
     tensor = session.get_inputs()[0]
     height = tensor.shape[2] if isinstance(tensor.shape[2], int) else 1024
     width = tensor.shape[3] if isinstance(tensor.shape[3], int) else 1024
@@ -88,6 +89,7 @@ def remove_background(args):
     array = np.asarray(rgb.resize((width, height), Image.Resampling.BILINEAR), dtype=np.float32) / 255.0
     array = (array - np.array([0.485, 0.456, 0.406], np.float32)) / np.array([0.229, 0.224, 0.225], np.float32)
     dtype = np.float16 if tensor.type == "tensor(float16)" else np.float32
+    worker_cache.stage("running", "BiRefNet: inference")
     prediction = session.run(None, {tensor.name: array.transpose(2, 0, 1)[None].astype(dtype)})[-1]
     alpha = 1.0 / (1.0 + np.exp(-np.clip(prediction[0, 0].astype(np.float32), -40, 40)))
     mask = Image.fromarray(np.rint(alpha * 255).astype(np.uint8)).resize(image.size, Image.Resampling.BILINEAR)
@@ -97,7 +99,7 @@ def remove_background(args):
     print(f"Background removed locally via {session.get_providers()[0]}", flush=True)
 
 
-def main():
+def parse_args(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["download", "remove"])
     parser.add_argument("--model", type=Path, required=True)
@@ -106,12 +108,21 @@ def main():
     parser.add_argument("--input", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--device", choices=["auto", "cpu"], default="cpu")
-    args = parser.parse_args()
+    if arguments is not None:
+        def invalid(message):
+            raise ValueError(message)
+        parser.error = invalid
+    args = parser.parse_args(arguments)
+    if args.action == "remove" and (not args.input or not args.output):
+        parser.error("Input and output images are required")
+    return args
+
+
+def main():
+    args = parse_args()
     if args.action == "download":
         download(args)
     else:
-        if not args.input or not args.output:
-            parser.error("Input and output images are required")
         remove_background(args)
 
 

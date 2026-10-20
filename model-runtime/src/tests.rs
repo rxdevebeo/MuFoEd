@@ -173,3 +173,32 @@ fn concurrent_backends_never_overlap() {
     }
     assert_eq!(runtime.snapshot(), Snapshot::default());
 }
+
+#[test]
+fn shutdown_rejects_new_producers_and_waits_for_active_lease() {
+    let runtime = Runtime::new(Policy {
+        queue_capacity: 1,
+        ..Policy::default()
+    });
+    let lease = runtime
+        .enqueue(task("active"))
+        .unwrap()
+        .try_start()
+        .unwrap()
+        .unwrap();
+    let mut waiting = runtime.enqueue(task("queued")).unwrap();
+    let released = runtime.shutdown_async();
+    assert!(matches!(
+        runtime.enqueue(task("new")),
+        Err(Error::ShuttingDown)
+    ));
+    assert!(matches!(waiting.try_start(), Err(Error::ShuttingDown)));
+    drop(waiting);
+    assert!(released.try_recv().is_err());
+    drop(lease);
+    released
+        .recv_timeout(Duration::from_secs(3))
+        .unwrap()
+        .unwrap();
+    assert!(runtime.snapshot().active.is_none());
+}

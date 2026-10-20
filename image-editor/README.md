@@ -23,7 +23,7 @@ Plakat — настоящий inference backend и опциональная Git-
 - Яркость, контраст, grayscale, Gaussian blur (`image`), median denoise (`imageproc`) активного слоя; alpha сохраняется.
 - Undo/redo, Ctrl+Z / Ctrl+Shift+Z.
 - Самодостаточный JSON-проект со слоями/маской и атомарной заменой файла; экспорт PNG без наложения маски и шахматной подложки.
-- Text-to-image / image-to-image / inpaint через `plakat::api::Generate` / `Img2img` либо CLI, параметры model/prompt/negative/seed/steps/guidance/strength/cache.
+- Text-to-image / image-to-image / inpaint через staged adapter публичных компонентов Plakat либо CLI, параметры model/prompt/negative/seed/steps/guidance/strength/cache.
 - Результат принимается новым слоем вместе с использованными параметрами генерации. Для img2img/inpaint отвергается принятие результата, если исходный холст уже изменён.
 - За пределами inpaint-mask адаптер восстанавливает исходные пиксели, даже если модель изменила весь кадр.
 
@@ -77,7 +77,7 @@ BiRefNet, SAM и апскейлеры запускаются через **нео
 python -m pip install --target image-editor/.runtime/python-packages --no-deps spandrel==0.4.2 aura-sr==0.0.4
 ```
 
-Скачанные веса находятся в игнорируемых `.runtime/BiRefNet`, `.runtime/SAM2`, `.runtime/Upscale`; последующий inference выполняется локально. Отмена Python-задачи завершает процесс и удаляет принадлежащий bridge временный каталог. Preview защищён проверкой исходных пикселей/слоя от применения к изменившемуся изображению. Resident inference cache пока отсутствует, включая SAM image embeddings и ONNX sessions; см. [TODO.md](TODO.md).
+Скачанные веса находятся в игнорируемых `.runtime/BiRefNet`, `.runtime/SAM2`, `.runtime/Upscale`; последующий inference выполняется локально. Отмена Python-задачи завершает и reap-ит принадлежащий worker; временный каталог живёт до окончания cleanup. Preview защищён проверкой исходных пикселей/слоя от применения к изменившемуся изображению. В managed runtime сохраняются совместимые ONNX sessions, SAM model/image embeddings и апскейлеры; см. [R03–R05](../model-runtime/R345_VALIDATION.md).
 
 ## Plakat и локальные веса
 
@@ -122,7 +122,7 @@ cargo +1.92.0 run -p image-editor --features plakat-cuda --example native_smoke 
 ```
 
 `IMAGE_STUDIO_SHOT=<absolute png path>` включает автоматический снимок настоящего окна и закрытие после получения снимка.
-`IMAGE_STUDIO_SHOT_DIALOG=model|lora|civitai|img2img|edit|upscale` выбирает проверяемый диалог/вкладку. Снимок ждёт завершения сканирования ресурсов.
+`IMAGE_STUDIO_SHOT_DIALOG=model|lora|civitai|img2img|edit|upscale|memory` выбирает проверяемый диалог/вкладку. Снимок ждёт завершения сканирования ресурсов.
 
 `examples/civitai_smoke.rs` проверяет живой поиск и следующую страницу каталога. `model_tools_smoke` запускает BiRefNet/SAM через тот же Rust bridge, что UI. `upscale_smoke` проверяет смесь 65/35 через bridge, включая прозрачный PNG. Примеры требуют заранее загруженные веса; `native_smoke` принимает `IMAGE_STUDIO_SMOKE_IMG2IMG`, `IMAGE_STUDIO_SMOKE_LORA`, `IMAGE_STUDIO_SMOKE_VAE`, `IMAGE_STUDIO_SMOKE_WIDE`, `IMAGE_STUDIO_SMOKE_INVERT` для соответствующих реальных проверок.
 
@@ -134,19 +134,45 @@ cargo +1.92.0 run -p image-editor --features plakat-cuda --example native_smoke 
 - Коррекция работает в RGBA8/sRGB, без ICC/EXIF workflow, HDR/16-bit RAW и неразрушающего стека adjustment layers. Blur не является цветометрически точной обработкой полупрозрачных краёв.
 - В демо есть подтверждение замены/закрытия несохранённого проекта; PNG export не сбрасывает признак несохранённых слоёв.
 - Нет outpaint, ControlNet/reference/regional layers, графа workflow и параллельной очереди задач. GUI и генерация используют один активный проект/одну задачу.
-- Прогресс inference пока статус/лог без процентов и промежуточных изображений; builder API заново загружает модели на каждый вызов. Сам факт библиотечного встраивания ещё не даёт resident model cache.
-- Отмена NativeJob помечает результат для удаления: API Plakat не прерывает текущий denoising pass. Пока вызов не завершится, новая библиотечная задача отвергается. В режиме CLI отмена завершает отдельный процесс.
+- Прогресс показывает подтверждённые стадии без процентов и промежуточных изображений. Native сохраняет CPU-веса и заново создаёт отдельные device-модели по стадиям.
+- Отмена native проверяется между компонентами и denoising steps; worker сохраняет lease до завершения cleanup. CLI завершает отдельный процесс.
 
 ## Следующие этапы и критерии готовности
 
-Отдельные обязательные доработки ведутся в [TODO.md](TODO.md), включая кэш загруженных моделей.
+Статус доработок: [TODO.md](TODO.md). Общий manager и resident-кэш реализованы в R03–R05.
 
 1. **Расширенное ручное редактирование.** Выделения и заливка, трансформации/перемещение слоя, JPEG export с явным flatten background. Приёмка: отмена каждого действия и восстановление проекта после перезапуска, UI-проверки на фото и прозрачном PNG.
 2. **Canvas pipeline по образцу Invoke.** Generation rectangle, outpaint с расширением всех слоёв/маски, staging нескольких вариантов. Приёмка: неизменность защищённых пикселей, явные координаты и разрешение, отмена не меняет документ.
-3. **Управляемое локальное inference.** Model registry с семейством/совместимостью/локальными файлами, resident model cache при поддержке upstream, прогресс/cooperative cancel/VRAM limits. Приёмка: веса загружаются один раз, независимые результаты двух последовательных задач, воспроизводимый seed в пределах backend, проверка на RTX 5070 Ti.
+3. **Управляемое локальное inference.** Model registry с семейством/совместимостью/локальными файлами, resident model cache, стадии/cooperative cancel/VRAM limits реализованы; следующие расширения требуют отдельной приёмки. Приёмка: веса загружаются один раз, независимые результаты двух последовательных задач, воспроизводимый seed в пределах backend, проверка на RTX 5070 Ti.
 4. **Workflow и conditioning.** Типизированный DAG с версиями узлов, ControlNet/reference/regional guidance и сохранением recipe рядом с результатом. Приёмка: валидация до запуска, поведение неподдерживаемого узла явно описано, повторное выполнение сохранённого проекта.
 5. **Интеграция MuFoEd.** Отдельный адаптер экспорта PNG/метаданных и вставки через существующие контракты StrictLib. Начинать после приёмки автономного редактора; библиотечные крейты не менять.
 
 Референсы: [Plakat supported API](https://github.com/vulogov/plakat/blob/ce0d67a45bc9b5f742c3772aef85afe0d15890f6/src/api/mod.rs), [Invoke Canvas](https://invoke-ai.github.io/InvokeAI-7/users-guide/canvas/introduction/), [image](https://github.com/image-rs/image), [imageproc](https://github.com/image-rs/imageproc). От Invoke заимствована организация workflow; его код не копировался.
 
 API и модели: [Civitai catalog](https://github.com/civitai/civitai-developer-docs/blob/main/site/reference/models.md), [BiRefNet](https://github.com/ZhengPeng7/BiRefNet), [SAM2 Transformers](https://huggingface.co/docs/transformers/model_doc/sam2), [UltraSharp](https://huggingface.co/Kim2091/UltraSharp), [AuraSR v2](https://huggingface.co/fal/AuraSR-v2), [Spandrel](https://github.com/chaiNNer-org/spandrel). Условия использования конкретных весов проверяются на их страницах.
+
+## Ручная работа (UI01)
+
+Узкая палитра расположена слева от холста; ИИ-панель остаётся отдельной. Цвет переднего/заднего плана, образцы цвета и слои расположены справа. Кисть поддерживает радиус, жёсткость и непрозрачность; заливка — допуск RGBA, фигуры — ширину и заполнение. Опция «По маске» ограничивает рисование общей маской; её белая область также означает изменение при inpaint. Прямоугольное выделение заменяет именно эту маску. Кадрирование требует Enter/«Применить», Escape отменяет текущий жест. Один мазок, фигура или перетаскивание opacity — один шаг Undo.
+
+Горячие клавиши: V — перемещение, M — выделение, B/E — кисть/ластик, Q/Shift+Q — добавить/стереть маску, G/Shift+G — заливка/градиент, L — линия, U/Shift+U — прямоугольник/эллипс, I — пипетка, C — кадрирование, H — рука, Z — масштаб (левая/правая кнопка). `[`/`]` меняют радиус, X меняет цвета местами, D сбрасывает их. Ctrl+D снимает маску и отключает ограничение по ней; Ctrl+J копирует слой, Ctrl+E объединяет с нижним, Ctrl+Shift+N добавляет слой. Сочетания инструментов не срабатывают при вводе текста.
+
+Блокировка защищает пиксели, удаление и объединение слоя; имя, видимость и opacity остаются доступны. Общие crop/resize/rotate преобразуют весь документ, включая заблокированные слои. Объединение требует двух видимых незаблокированных слоёв и запекает opacity; RGBA8 округление может менять отдельные каналы композита при наличии нижележащих слоёв. Старые проекты без поля `locked` открываются с незаблокированными слоями. Поддерживается обычный source-over, других режимов смешивания пока нет.
+
+Воспроизводимый многослойный пример (использует ранее полученный локальный cutout): `cargo +1.92.0 run -p image-editor --example manual_workbench`. Результат — `image-editor/artifacts/manual-workbench.json`; его можно передать BAT-файлу для открытия.
+
+## Общий менеджер моделей R03–R05
+
+`Runtime::global` теперь managed: проверяет RAM/VRAM до allocation, сохраняет
+совместимые собственные ресурсы и освобождает idle-кэш под давлением памяти.
+При встраивании передавайте runtime MuFoEd через `ImageEditor::with_runtime`.
+Native использует CPU-кэш весов и последовательные CLIP → UNet → VAE; Python
+инструменты — persistent workers; Ollama — собственную residency с проверкой
+model digest/context и подтверждённым unload. Один OOM-retry сохраняет параметры.
+Подробности и аппаратные ограничения: [отчёт R03–R05](../model-runtime/R345_VALIDATION.md).
+
+Кнопка «Память моделей» открывает замеры ОС/драйвера, оценки пика, список кэша и
+последние стадии. Обновление и освобождение работают через общий manager вне UI.
+`shutdown_models()` отменяет собственные image-задачи и возвращает receiver
+освобождения idle-кэша. При закрытии всего host вызовите `Runtime::shutdown_async()`
+и дождитесь подтверждения; standalone demo делает это автоматически.

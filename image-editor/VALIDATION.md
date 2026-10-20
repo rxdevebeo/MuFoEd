@@ -88,3 +88,7 @@ Worktree: `C:/Users/gamer/.codex/worktrees/image-studio/StrictLib-mufoed`, ве�
 Inpaint проверен функционально: корректный размер и побитовая сохранность пикселей вне маски. Визуальное качество замены и стыка на границе маски не принято как production-ready; текущая маска имеет жёсткий край. Полный UI-сценарий рисования мышью → генерация → accept → сохранение не автоматизирован целиком. Отмена активного native inference и долговременная работа под ограничением VRAM требуют отдельной приёмки. [TODO по кэшу](TODO.md).
 
 Изменения: только новый `image-editor/`, запись member в `Cargo.toml` и зависимости в `Cargo.lock`. Исходники существующих библиотечных крейтов StrictLib и MuFoEd не менялись.
+
+## R03–R05
+
+Актуальная приёмка shared memory admission, resident cache и recovery: [R345_VALIDATION.md](../model-runtime/R345_VALIDATION.md). Предыдущие разделы — исторические проверки ранних адаптеров.

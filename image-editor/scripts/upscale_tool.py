@@ -51,18 +51,23 @@ def ultrasharp(image, path, tile_size, device):
     from spandrel import ModelLoader, ImageModelDescriptor
     if path.is_dir():
         path = path / "4x-UltraSharp.safetensors"
-    if path.suffix.lower() == ".safetensors":
-        from safetensors.torch import load_file
-        state = load_file(str(path), device="cpu")
-    else:
-        state = torch.load(str(path), map_location="cpu", weights_only=True)
-    model = ModelLoader().load_from_state_dict(state)
-    if not isinstance(model, ImageModelDescriptor) or model.scale != 4 or model.input_channels != 3 or model.output_channels != 3:
-        raise ValueError("Expected RGB 4x-UltraSharp architecture")
-    model = model.to(device).eval()
+    import worker_cache
+    def load_model():
+        if path.suffix.lower() == ".safetensors":
+            from safetensors.torch import load_file
+            state = load_file(str(path), device="cpu")
+        else:
+            state = torch.load(str(path), map_location="cpu", weights_only=True)
+        model = ModelLoader().load_from_state_dict(state)
+        if not isinstance(model, ImageModelDescriptor) or model.scale != 4 or model.input_channels != 3 or model.output_channels != 3:
+            raise ValueError("Expected RGB 4x-UltraSharp architecture")
+        return model.eval()
+    worker_cache.stage("loading", "UltraSharp: weights / placement")
+    model = worker_cache.cached(("ultrasharp", worker_cache.key(path)), load_model).to(device)
     tensor = torch.from_numpy(np.asarray(image, np.float32).copy() / 255).permute(2, 0, 1).unsqueeze(0)
     result = torch.zeros((1, 3, image.height * 4, image.width * 4))
     padding = 32
+    worker_cache.stage("running", "UltraSharp: tiled inference")
     with torch.inference_mode():
         for y in range(0, image.height, tile_size):
             for x in range(0, image.width, tile_size):
@@ -82,14 +87,21 @@ def aurasr(image, path, device):
     from safetensors.torch import load_file
     from PIL import Image
     root = path if path.is_dir() else path.parent
-    model = AuraSR(json.loads((root / "config.json").read_text(encoding="utf-8")), device=device)
-    model.upsampler.load_state_dict(load_file(str(root / "model.safetensors"), device="cpu"), strict=True)
-    model.upsampler.eval()
+    import worker_cache
+    def load_model():
+        model = AuraSR(json.loads((root / "config.json").read_text(encoding="utf-8")), device="cpu")
+        model.upsampler.load_state_dict(load_file(str(root / "model.safetensors"), device="cpu"), strict=True)
+        model.upsampler.eval()
+        return model
+    worker_cache.stage("loading", "AuraSR v2: weights / placement")
+    model = worker_cache.cached(("aurasr-v2", worker_cache.key(root / "model.safetensors")), load_model)
+    model.upsampler.to(device)
     padded = image
     if image.width < 64 or image.height < 64:
         import numpy as np
         array = np.asarray(image)
         padded = Image.fromarray(np.pad(array, ((0, max(0, 64-image.height)), (0, max(0, 64-image.width)), (0, 0)), mode="edge"))
+    worker_cache.stage("running", "AuraSR v2: overlapped inference")
     return model.upscale_4x_overlapped(padded, max_batch_size=1).crop((0, 0, image.width*4, image.height*4))
 
 
@@ -99,7 +111,9 @@ def upscale(args):
     from PIL import Image
     torch.set_num_threads(min(8, os.cpu_count() or 2))
     torch.manual_seed(0)
-    device = "cuda" if args.device == "auto" and torch.cuda.is_available() else "cpu"
+    if args.device == "auto" and not torch.cuda.is_available():
+        raise ValueError("CUDA is unavailable; explicitly select CPU")
+    device = "cuda" if args.device == "auto" else "cpu"
     image = Image.open(args.input).convert("RGBA")
     if image.width * image.height * 16 > 16777216:
         raise ValueError("4x output exceeds editor's 16,777,216-pixel limit; crop/resize the source first")
@@ -113,8 +127,8 @@ def upscale(args):
         if not all(math.isfinite(w) and 0 <= w <= 1 for w in weights) or sum(weights) <= 0:
             raise ValueError("Mix weights must be in 0..1 with a positive sum")
         first = ultrasharp(rgb, args.model, args.tile, device) if weights[0] > 0 else None
-        if device == "cuda":
-            torch.cuda.empty_cache()
+        import worker_cache
+        worker_cache.offload()
         second = aurasr(rgb, args.aura_model, device) if weights[1] > 0 else None
         result = second if first is None else first if second is None else Image.blend(first, second, weights[1] / sum(weights))
     if result.size != (image.width*4, image.height*4):
@@ -125,7 +139,7 @@ def upscale(args):
     print(f"{args.variant}: 4x on {device}; weights={args.ultrasharp_weight}/{args.aura_weight}, alpha=Lanczos, output {result.width}x{result.height}", flush=True)
 
 
-def main():
+def parse_args(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["download", "upscale"])
     parser.add_argument("--model", type=Path, required=True)
@@ -138,10 +152,19 @@ def main():
     parser.add_argument("--output", type=Path)
     parser.add_argument("--device", choices=["auto", "cpu"], default="auto")
     parser.add_argument("--tile", type=int, choices=[128, 256, 512], default=256)
-    args = parser.parse_args()
+    if arguments is not None:
+        def invalid(message):
+            raise ValueError(message)
+        parser.error = invalid
+    args = parser.parse_args(arguments)
+    if args.action == "download" and args.variant == "blend":
+        parser.error("Download the two models individually")
+    return args
+
+
+def main():
+    args = parse_args()
     if args.action == "download":
-        if args.variant == "blend":
-            parser.error("Download the two models individually")
         download(args)
     else:
         upscale(args)

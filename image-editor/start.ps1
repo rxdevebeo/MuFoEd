@@ -11,10 +11,10 @@ $env:WGPU_BACKEND = 'dx12'
 $executable = Join-Path $workspaceRoot 'target/debug/image-editor-demo.exe'
 Push-Location $workspaceRoot
 try {
-    if ($Cli) { cargo +1.92.0 build -p image-editor --features demo --bin image-editor-demo }
+    if ($Cli) { cargo +1.92.0 build -p image-editor --features demo --bin image-editor-demo --config 'profile.dev.package.sha2.opt-level=3' }
     else {
         . (Join-Path $PSScriptRoot 'scripts/enter-cuda.ps1')
-        cargo +1.92.0 build -p image-editor --features demo,plakat-cuda --bin image-editor-demo --config 'profile.dev.package.plakat.opt-level=2'
+        cargo +1.92.0 build -p image-editor --features demo,plakat-cuda --bin image-editor-demo --config 'profile.dev.package.plakat.opt-level=2' --config 'profile.dev.package.sha2.opt-level=3'
     }
     if ($LASTEXITCODE) { throw 'Editor build failed' }
 } finally { Pop-Location }

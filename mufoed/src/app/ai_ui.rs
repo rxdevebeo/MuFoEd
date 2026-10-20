@@ -181,6 +181,15 @@ struct ChatDone {
 }
 
 impl App {
+    pub(super) fn ai_cancel_for_shutdown(&mut self) {
+        if let Some(job) = &self.ai.job {
+            job.cancel.store(true, Ordering::Release);
+        }
+        if let Some(cancel) = &self.ai.chat_cancel {
+            cancel.store(true, Ordering::Release);
+        }
+    }
+
     pub(crate) fn ai_cleanup_result(&mut self, tab: u64, applied: bool) {
         if let Some(job) = self
             .ai

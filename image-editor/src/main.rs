@@ -39,6 +39,7 @@ fn main() -> eframe::Result {
             let mut editor = ImageEditor::default();
             if std::env::var_os("IMAGE_STUDIO_SHOT").is_some() {
                 match std::env::var("IMAGE_STUDIO_SHOT_DIALOG").as_deref() {
+                    Ok("memory") => editor.open_memory_panel(),
                     Ok("edit") => editor.select_tab(image_editor::ui::StudioTab::Edit),
                     Ok("upscale") => editor.select_tab(image_editor::ui::StudioTab::Upscale),
                     Ok("img2img") => {
@@ -71,6 +72,8 @@ fn main() -> eframe::Result {
                 shot: std::env::var_os("IMAGE_STUDIO_SHOT").map(Into::into),
                 pending_open: None,
                 confirm_close: false,
+                releasing: None,
+                close_ready: false,
             }))
         }),
     )
@@ -81,8 +84,38 @@ struct Demo {
     shot: Option<std::path::PathBuf>,
     pending_open: Option<FileAction>,
     confirm_close: bool,
+    releasing: Option<std::sync::mpsc::Receiver<Result<(), String>>>,
+    close_ready: bool,
 }
 impl Demo {
+    fn begin_shutdown(&mut self) {
+        drop(self.editor.shutdown_models());
+        self.releasing = Some(mufoed_model_runtime::Runtime::global().shutdown_async());
+    }
+    fn poll_shutdown(&mut self, ctx: &egui::Context) {
+        if let Some(receiver) = &self.releasing {
+            match receiver.try_recv() {
+                Ok(Ok(())) => {
+                    self.close_ready = true;
+                    self.releasing = None;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                Ok(Err(error)) => {
+                    self.editor.set_status(format!("Model shutdown: {error}"));
+                    self.releasing = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.editor.set_status("Model shutdown worker stopped");
+                    self.releasing = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    self.editor
+                        .set_status("Завершение вычислений и освобождение моделей…");
+                    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                }
+            }
+        }
+    }
     fn file_action(&mut self, action: FileAction) -> Result<(), EditError> {
         match action {
             FileAction::UltraSharpModel => {
@@ -178,11 +211,16 @@ impl eframe::App for Demo {
                 self.editor.set_status(e.to_string());
             }
         }
-        if ui.input(|i| i.viewport().close_requested()) && self.editor.has_unsaved_changes() {
+        if ui.input(|i| i.viewport().close_requested()) && !self.close_ready {
             ui.ctx()
                 .send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.confirm_close = true;
+            if self.editor.has_unsaved_changes() {
+                self.confirm_close = true;
+            } else if self.releasing.is_none() {
+                self.begin_shutdown();
+            }
         }
+        self.poll_shutdown(ui.ctx());
         if self.pending_open.is_some() || self.confirm_close {
             let mut discard = false;
             let mut cancel = false;
@@ -198,7 +236,7 @@ impl eframe::App for Demo {
                 if self.confirm_close {
                     self.editor.mark_saved();
                     self.confirm_close = false;
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                    self.begin_shutdown();
                 } else if let Some(action) = self.pending_open.take() {
                     if let Err(e) = self.file_action(action) {
                         self.editor.set_status(e.to_string());
@@ -238,6 +276,7 @@ impl eframe::App for Demo {
                 if let Err(e) = result {
                     self.editor.set_status(e.to_string());
                 }
+                self.shot = None;
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             }
             ui.ctx().request_repaint();

@@ -1,36 +1,45 @@
 # mufoed-model-runtime
 
-Общий прикладной координатор модельных backend для MuFoEd. Независим от UI и
-inference-библиотек. [План, состояния этапов и критерии](PLAN.md).
+Общий host-owned менеджер текста, vision/OCR и изображений MuFoEd. Независим от
+UI, StrictLib и tensor backend. [План](PLAN.md), [приёмка R03–R05](R345_VALIDATION.md).
 
 ```rust
-use mufoed_model_runtime::{Policy, Runtime, Task};
+use mufoed_model_runtime::{Memory, Runtime, Task};
 use std::{sync::atomic::AtomicBool, time::Duration};
-
-let runtime = Runtime::new(Policy::default()); // один на host, передавать clone()
-let task = runtime.enqueue(Task::new("text", "ollama:model"))?;
-let lease = task.wait(&AtomicBool::new(false), Duration::from_secs(60))?;
-// На worker: inference и подтверждённая выгрузка/освобождение ресурсов backend.
+let runtime = Runtime::global(); // managed, OS RAM + NVIDIA VRAM
+let mut task = Task::new("example", "backend:model");
+task.device = "cpu".into();
+task.memory = Memory { ram: Some(128 << 20), vram: Some(0) };
+let lease = runtime.enqueue(task)?.wait(&AtomicBool::new(false), Duration::from_secs(60))?;
+// На worker: inference; lease удерживается до завершения вычислений/cleanup.
 drop(lease);
 # Ok::<(), mufoed_model_runtime::Error>(())
 ```
 
-Для GUI использовать `Ticket::try_start`, возвращающий `None` при ожидании.
-Передать тот же runtime в `ImageEditor::with_runtime(document, runtime.clone())`.
-Не удерживать общий lease снаружи адаптера, который сам запрашивает такой же lease:
-повторный вход приведёт к ожиданию самого себя.
+GUI использует неблокирующий `Ticket::try_start`. Один clone runtime передаётся
+в text/OCR adapters и `ImageEditor::with_runtime`. Повторный вход с удерживаемым
+lease недопустим. `Runtime::new(Policy)` — только резервирование без телеметрии;
+`Runtime::managed(Policy, MemoryPolicy, Arc<dyn Telemetry>)` — политика host.
 
-Без настроенных лимитов менеджер сериализует задачи, но не проверяет фактическую
-свободную память. Настроенный лимит требует явной оценки пика; неизвестное значение
-не заменяется нулём. Бюджеты относятся к одному локальному resource domain.
+Допуск проверяет полный peak и фактическую свободную память с резервом. Совместимая
+собственная residency вычитается только под lease; после eviction пересчитывается.
+`Lease::cached` возвращает pin, связанный временем жизни с lease. Контроллер
+`Resource` подтверждает offload/unload; неудачная выгрузка блокирует новые allocation.
+Адаптеры вызываются вне mutex менеджера. `Lease::retry` допускает один повтор
+только OOM после подтверждённого cleanup, сохраняя seed/параметры.
 
-Процессный singleton — удобный default для отдельных виджетов одного приложения.
-Для взаимодействия нескольких OS-процессов нужен отдельный broker (ещё не реализован).
+`residents`, `admission`, `events`, `snapshot`, `blocked_reason` доступны UI.
+`release_idle_async` освобождает собственный idle-кэш, не прерывая активные задачи.
+`shutdown_async` запрещает новый inference и ждёт собственные local/remote domains;
+host должен дождаться receiver, прежде чем завершать процесс.
 
-С feature `ollama` доступен `ollama::Client`: loopback использует переданный host
-runtime, удалённые endpoint — отдельные очереди. `run` оборачивает синхронный вызов
-существующего HTTP-клиента или OCR-адаптера. Выгрузка подтверждается сервером до
-освобождения lease; при обрыве соединения cleanup остаётся у recovery worker.
-`ollama::owned_models()` и `Runtime::snapshot().phase` позволяют показать это в UI.
-Ранее загруженная сторонним клиентом модель не принимается во владение автоматически.
-Кэш между запросами пока не сохраняется. Ограничения и протокол описаны в [R02](PLAN.md#r02-реальные-точки-интеграции).
+Feature `ollama`: loopback использует host runtime, remote endpoint имеет отдельный
+resource domain, связанный с lifecycle host. Ключ учитывает model digest/context;
+`/api/ps` проверяет владение, unload требует acknowledgement и отсутствие residency.
+Неопределённый исход удерживает lease в recovery. RAM Ollama неизвестна, VRAM —
+серверное `size_vram`, а допуск использует отдельную оценку weights/KV/workspace.
+
+SHA256 fingerprint имеет ограниченный stat-кэш. Модели должны быть неизменяемыми
+во время inference. При намеренной перезаписи с сохранением размера/времён вызовите
+`fingerprint::invalidate()`; замену файлов host сериализует с inference.
+Отдельные OS-процессы не разделяют singleton; broker пока отсутствует.

@@ -14,8 +14,8 @@ impl Drop for Permit {
     }
 }
 
-/// A direct in-process Plakat job. Cancellation discards results at the next API boundary.
-/// Plakat's supported API cannot interrupt an active denoising pass.
+/// A staged in-process Plakat job. Cancellation stops between components/denoise steps.
+/// The current kernel finishes before admission or its buffers can be released.
 pub struct NativeJob {
     receiver: mpsc::Receiver<Result<Candidate, EditError>>,
     cancelled: Arc<AtomicBool>,
@@ -62,11 +62,17 @@ impl NativeJob {
             ));
         }
         let permit = Permit;
+        let mut task =
+            mufoed_model_runtime::Task::new("image", format!("plakat:{}", request.model));
+        // Resolve immutable model identities before reserving the actual cold/warm peak.
+        // Metadata itself needs no tensor allocations and uses a small CPU admission.
+        task.device = "cpu".into();
+        task.memory = mufoed_model_runtime::Memory {
+            ram: Some(16 << 20),
+            vram: Some(0),
+        };
         let ticket = manager
-            .enqueue(mufoed_model_runtime::Task::new(
-                "image",
-                format!("plakat:{}", request.model),
-            ))
+            .enqueue(task)
             .map_err(|e| EditError::Invalid(e.to_string()))?;
         let source = doc.flatten();
         let mask = doc.mask().to_vec();
@@ -81,8 +87,24 @@ impl NativeJob {
                 let result = ticket
                     .wait(&worker_cancelled, std::time::Duration::from_secs(900))
                     .map_err(|e| EditError::Invalid(e.to_string()))
-                    .and_then(|_lease| {
-                        run(request, source, &mask, &mask_raster, &worker_cancelled)
+                    .and_then(|lease| {
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            run(
+                                request,
+                                source,
+                                &mask,
+                                &mask_raster,
+                                &worker_cancelled,
+                                &lease,
+                            )
+                        }))
+                        .unwrap_or_else(|_| {
+                            lease.set_phase(mufoed_model_runtime::Phase::Failed);
+                            let cleanup = lease.release_idle();
+                            Err(EditError::Invalid(format!(
+                                "Plakat worker panicked; cleanup: {cleanup:?}"
+                            )))
+                        })
                     });
                 let _ = sender.send(result);
             })?;
@@ -131,83 +153,65 @@ impl Drop for NativeJob {
     }
 }
 
+pub(super) fn estimate(request: &Request, size: [u32; 2]) -> mufoed_model_runtime::Memory {
+    let memory = super::memory_estimate(request, size);
+    #[cfg(feature = "plakat-cuda")]
+    {
+        memory
+    }
+    #[cfg(not(feature = "plakat-cuda"))]
+    {
+        mufoed_model_runtime::Memory {
+            ram: memory
+                .ram
+                .map(|v| v + (4 << 30) + u64::from(size[0]) * u64::from(size[1]) * 12 * 1024),
+            vram: Some(0),
+        }
+    }
+}
+
 fn run(
     request: Request,
     source: Raster,
     mask: &[u8],
     mask_raster: &Raster,
     cancelled: &AtomicBool,
+    lease: &mufoed_model_runtime::Lease,
 ) -> Result<Candidate, EditError> {
-    let error = |e: String| EditError::Invalid(format!("Plakat library: {e}"));
+    if request.mode != Mode::TextToImage && request.strength == 0.0 {
+        return super::finish_candidate(source.clone(), request, source, mask);
+    }
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
     let input = tempfile::tempdir()?;
     source.save_png(input.path().join("input.png"))?;
-    mask_raster.save_png(input.path().join("mask.png"))?;
-    if cancelled.load(Ordering::Acquire) {
-        return Err(error("Cancelled before inference".into()));
-    }
-    if request.vae.is_some() {
-        let raster = runtime.block_on(super::vae_compat::run(&request, &source, input.path()))?;
-        return super::finish_candidate(raster, request, source, mask);
-    }
-    let images = runtime
-        .block_on(async {
-            if request.mode == Mode::TextToImage {
-                let mut builder = plakat::api::Generate::new(&request.model)
-                    .prompt(&request.prompt)
-                    .negative(&request.negative)
-                    .size(
-                        request
-                            .output_size
-                            .unwrap_or([source.width(), source.height()])[0],
-                        request
-                            .output_size
-                            .unwrap_or([source.width(), source.height()])[1],
-                    )
-                    .steps(request.steps as usize)
-                    .guidance(f64::from(request.guidance))
-                    .seed(request.seed);
-                for lora in request.loras.iter().filter(|l| l.enabled) {
-                    builder = builder.lora(lora.path.to_string_lossy(), lora.weight);
-                }
-                builder.run().await
+    super::save_mask(mask_raster, &input.path().join("mask.png"))?;
+    let estimate = mufoed_model_runtime::Memory {
+        ram: Some(16 << 20),
+        vram: Some(0),
+    };
+    let raster = lease
+        .retry(
+            estimate,
+            if estimate.vram == Some(0) {
+                "cpu"
             } else {
-                let mut builder =
-                    plakat::api::Img2img::new(&request.model, input.path().join("input.png"))
-                        .prompt(&request.prompt)
-                        .negative(&request.negative)
-                        .strength(request.strength)
-                        .steps(request.steps as usize)
-                        .guidance(f64::from(request.guidance))
-                        .seed(request.seed);
-                if request.mode == Mode::Inpaint {
-                    builder = builder
-                        .mask(input.path().join("mask.png"))
-                        .mask_feather(request.mask_feather)
-                        .mask_invert(request.mask_invert);
-                }
-                for lora in request.loras.iter().filter(|l| l.enabled) {
-                    builder = builder.lora(lora.path.to_string_lossy(), lora.weight);
-                }
-                builder.run().await
-            }
-        })
-        .map_err(|e| error(format!("{e:#}")))?;
-    if images.len() != 1 {
-        return Err(error(format!("Expected one image, got {}", images.len())));
-    }
-    let image = &images[0];
-    let rgba = image
-        .pixels()
-        .chunks_exact(3)
-        .flat_map(|p| [p[0], p[1], p[2], 255])
-        .collect();
-    super::finish_candidate(
-        Raster::new(image.width(), image.height(), rgba)?,
-        request,
-        source,
-        mask,
-    )
+                "auto"
+            },
+            cancelled,
+            |_| {
+                runtime
+                    .block_on(super::managed_sd::run(
+                        &request,
+                        &source,
+                        input.path(),
+                        lease,
+                        cancelled,
+                    ))
+                    .map_err(|e| format!("Plakat staged: {e:#}"))
+            },
+        )
+        .map_err(EditError::Invalid)?;
+    super::finish_candidate(raster, request, source, mask)
 }

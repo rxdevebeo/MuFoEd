@@ -1,5 +1,8 @@
 //! Cancellable subprocess tools for optional segmentation runtimes.
 use crate::{EditError, Raster};
+#[path = "persistent.rs"]
+mod persistent;
+use std::sync::Arc;
 use std::{
     ffi::OsString,
     fs::File,
@@ -10,12 +13,13 @@ use std::{
 
 /// One background process. Its scratch files are removed after termination.
 pub struct ModelJob {
+    managed: Option<persistent::Job>,
     child: Option<Child>,
     command: Option<Command>,
     ticket: Option<mufoed_model_runtime::Ticket>,
     lease: Option<mufoed_model_runtime::Lease>,
     finished: bool,
-    directory: tempfile::TempDir,
+    directory: Arc<tempfile::TempDir>,
 }
 /// Completed model operation. Downloads return no raster.
 pub struct Output {
@@ -59,6 +63,7 @@ impl ModelJob {
     }
     /// Use a host-owned runtime shared with text and other model backends.
     /// Downloads (`source == None`) do not request inference admission.
+    #[allow(clippy::too_many_lines)] // Queue and isolated download/inference transports share setup.
     pub fn start_with_runtime(
         script: &str,
         args: &[OsString],
@@ -66,7 +71,8 @@ impl ModelJob {
         staging_root: Option<&Path>,
         runtime: &mufoed_model_runtime::Runtime,
     ) -> Result<Self, EditError> {
-        let ticket = if source.is_some() {
+        let mut estimate = mufoed_model_runtime::Memory::default();
+        let mut ticket = if source.is_some() {
             let mut task = mufoed_model_runtime::Task::new("image", script);
             if args
                 .windows(2)
@@ -75,6 +81,26 @@ impl ModelJob {
                 task.device = "cpu".into();
                 task.memory.vram = Some(0);
             }
+            let pixels = source.map_or(0, |s| u64::from(s.width()) * u64::from(s.height()));
+            let weight = args
+                .windows(2)
+                .filter(|a| a[0] == "--model" || a[0] == "--aura-model")
+                .map(|a| {
+                    std::fs::metadata(&a[1])
+                        .map_or(0, |m| if m.is_file() { m.len() } else { 3 << 30 })
+                })
+                .sum::<u64>();
+            task.memory.ram = Some((4 << 30) + weight * 3 + pixels * 160);
+            if task.memory.vram != Some(0) {
+                task.memory.vram = Some(if script == "sam2_tool.py" {
+                    5 << 30
+                } else if script == "upscale_tool.py" {
+                    8 << 30
+                } else {
+                    6 << 30
+                });
+            }
+            estimate = task.memory;
             Some(
                 runtime
                     .enqueue(task)
@@ -89,6 +115,29 @@ impl ModelJob {
         } else {
             tempfile::tempdir()?
         };
+        let directory = Arc::new(directory);
+        if let Some(source) = source.filter(|_| {
+            runtime.is_managed()
+                && matches!(script, "birefnet.py" | "sam2_tool.py" | "upscale_tool.py")
+        }) {
+            source.save_png(directory.path().join("input.png"))?;
+            let managed = persistent::Job::start(
+                ticket.take().expect("inference ticket"),
+                script,
+                args,
+                directory.clone(),
+                estimate,
+            )?;
+            return Ok(Self {
+                managed: Some(managed),
+                child: None,
+                command: None,
+                ticket: None,
+                lease: None,
+                finished: false,
+                directory,
+            });
+        }
         let mut command = Command::new(python());
         let packages = Path::new(env!("CARGO_MANIFEST_DIR")).join(".runtime/python-packages");
         if packages.is_dir() {
@@ -130,6 +179,7 @@ impl ModelJob {
             command.creation_flags(0x0800_0000);
         }
         Ok(Self {
+            managed: None,
             child: None,
             command: Some(command),
             ticket,
@@ -142,6 +192,13 @@ impl ModelJob {
     pub fn poll(&mut self) -> Result<Option<Output>, EditError> {
         if self.finished {
             return Ok(None);
+        }
+        if let Some(job) = &mut self.managed {
+            let result = job.poll();
+            if !matches!(result, Ok(None)) {
+                self.finished = true;
+            }
+            return result;
         }
         if let Some(ticket) = &mut self.ticket {
             let Some(lease) = ticket

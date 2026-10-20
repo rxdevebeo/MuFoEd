@@ -217,6 +217,7 @@ impl ImageEditor {
         }
         if self.generation_ui.worker.is_some()
             || self.generation_ui.prepare.is_some()
+            || self.runtime_ui.pending.is_some()
         {
             context.request_repaint_after(Duration::from_millis(100));
         }
@@ -342,6 +343,7 @@ impl ImageEditor {
     pub fn resource_operation_active(&self) -> bool {
         self.generation_ui.worker.is_some()
             || self.generation_ui.prepare.is_some()
+            || self.runtime_ui.pending.is_some()
     }
     #[allow(clippy::too_many_lines)] // Immediate-mode controls share editor state.
     pub(super) fn generation_panel(&mut self, ui: &mut egui::Ui, actions: &mut Vec<FileAction>) {
