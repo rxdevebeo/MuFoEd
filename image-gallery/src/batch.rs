@@ -1039,7 +1039,7 @@ mod tests {
             .map(|n| folder.picture(&format!("{n}.png"), 4, 4))
             .collect();
         let job = Job::start(
-            Task::Process(Box::new(Recipe::default())),
+            Task::Process(Box::default()),
             sources,
             Tools::default(),
             || {},
