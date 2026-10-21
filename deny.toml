@@ -6,7 +6,19 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
-ignore = []
+# Unmaintained crates (not vulnerabilities) that only MuFoEd's GUI stack pulls
+# in, on Linux, and that have no maintained release to move to yet. The
+# libraries do not depend on them. Drop each line once egui/winit/accesskit
+# move off it.
+ignore = [
+    # ttf-parser: winit's Wayland window decorations (sctk-adwaita -> ab_glyph).
+    { id = "RUSTSEC-2026-0192", reason = "GUI-only (winit Wayland decorations); no maintained successor in winit 0.30" },
+    # zvariant, zbus_names, zvariant_derive: the AT-SPI accessibility bridge
+    # (accesskit_unix -> atspi -> zbus).
+    { id = "RUSTSEC-2026-0370", reason = "GUI-only (accesskit AT-SPI on Linux); zbus has no safe upgrade yet" },
+    { id = "RUSTSEC-2026-0371", reason = "GUI-only (accesskit AT-SPI on Linux); zbus has no safe upgrade yet" },
+    { id = "RUSTSEC-2026-0372", reason = "GUI-only (accesskit AT-SPI on Linux); zbus has no safe upgrade yet" },
+]
 
 [licenses]
 version = 2
@@ -28,14 +40,30 @@ unused-allowed-license = "warn"
 # §4.1) are files, not Cargo dependencies, so no licence scanner sees them and the
 # allow-list has nothing to say about them. Listing MPL here would let an MPL crate
 # into the dependency graph silently, which is the opposite of the intent.
+# - BSD-2-Clause, BSL-1.0: arrive with MuFoEd's GUI stack (`arrayref` under
+#   tiny-skia; `clipboard-win` and `error-code` under the clipboard on Windows).
+#   Both permissive and OSI-approved, as BSD-3-Clause is.
 allow = [
     "MIT",
     "Apache-2.0",
+    "BSD-2-Clause",
     "BSD-3-Clause",
+    "BSL-1.0",
     "Unicode-3.0",
     "Zlib",
     "ISC",
     "CDLA-Permissive-2.0",
+]
+
+# Licences allowed for one crate each, not for the graph.
+# - egui's default fonts ship under the fonts' own licences (Noto/Hack under
+#   OFL-1.1, Ubuntu under Ubuntu-font-1.0): font data, not code, like the
+#   OFL faces the renderer bundles.
+# - `hexf-parse` (under naga, the GPU shader translator of the editor's
+#   renderer) is CC0-1.0, a public-domain dedication.
+exceptions = [
+    { crate = "epaint_default_fonts", allow = ["OFL-1.1", "Ubuntu-font-1.0"] },
+    { crate = "hexf-parse", allow = ["CC0-1.0"] },
 ]
 
 [bans]
