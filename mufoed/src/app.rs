@@ -817,10 +817,10 @@ impl App {
                     }
                 }
             }
-            Action::Paste => match self
-                .rich_clipboard(String::new(), now)
-                .or_else(|| self.drawings_paste())
-            {
+            Action::Paste => match self.rich_clipboard(String::new(), now).map_or_else(
+                || self.drawings_paste(),
+                |request| self.own_picture_paste(request),
+            ) {
                 Some(request) => {
                     if let Some(tab) = self.active_tab() {
                         tab.send(request);
@@ -1496,6 +1496,30 @@ impl App {
             .map(|clip| Request::PasteObjects(clip.clone()))
     }
 
+    /// A picture this editor copied comes back as itself - its own file and
+    /// size - rather than as the pixels it also put on the clipboard for other
+    /// programs. It is taken for ours when the clipboard holds nothing but a
+    /// picture the size of the one copied last.
+    fn own_picture_paste(&self, request: Request) -> Option<Request> {
+        let ours = match &request {
+            Request::PasteRich { content, .. } => {
+                content.rtf.is_none()
+                    && content.html.is_none()
+                    && self.clip.as_ref().is_some_and(|clip| {
+                        clip.image.as_ref().is_some_and(|(width, height, _)| {
+                            content.image_size == Some((*width, *height))
+                        })
+                    })
+            }
+            _ => false,
+        };
+        if ours {
+            self.drawings_paste().or(Some(request))
+        } else {
+            Some(request)
+        }
+    }
+
     fn rich_clipboard(&mut self, fallback: String, now: f64) -> Option<Request> {
         match crate::clipboard::read() {
             Ok(content) => content.map(|content| Request::PasteRich { content, fallback }),
@@ -1644,9 +1668,34 @@ impl App {
                             motion: Motion::PageDown,
                             extend: shift,
                         }),
+                        // Ctrl+Backspace and Ctrl+Delete take the word beside the
+                        // caret; a selection goes as it would with the plain key.
+                        Key::Backspace | Key::Delete if command && !shift => {
+                            let selected = self
+                                .active_tab()
+                                .and_then(|tab| tab.cursor.as_ref())
+                                .is_some_and(|cursor| !cursor.selection.is_empty());
+                            let back = key == Key::Backspace;
+                            if !selected {
+                                actions.push(Action::Doc(Request::Move {
+                                    motion: if back {
+                                        Motion::WordLeft
+                                    } else {
+                                        Motion::WordRight
+                                    },
+                                    extend: true,
+                                }));
+                            }
+                            Some(if back {
+                                Request::Backspace
+                            } else {
+                                Request::Delete
+                            })
+                        }
                         Key::Backspace => Some(Request::Backspace),
                         Key::Delete => Some(Request::Delete),
                         Key::Enter if command => Some(Request::Insert(Insert::PageBreak)),
+                        Key::Enter if shift => Some(Request::Insert(Insert::LineBreak)),
                         Key::Enter => Some(Request::Enter),
                         Key::Tab if !command => Some(Request::Tab { back: shift }),
                         Key::B if command => Some(Request::Format(FormatChange::Bold)),
@@ -1666,6 +1715,13 @@ impl App {
                         Key::Equals if command => Some(Request::Format(FormatChange::Subscript)),
                         Key::CloseBracket if command => Some(Request::Format(FormatChange::Grow)),
                         Key::OpenBracket if command => Some(Request::Format(FormatChange::Shrink)),
+                        // Ctrl+Shift+> and Ctrl+Shift+<, as Word has them.
+                        Key::Period if command && shift => {
+                            Some(Request::Format(FormatChange::Grow))
+                        }
+                        Key::Comma if command && shift => {
+                            Some(Request::Format(FormatChange::Shrink))
+                        }
                         Key::Space if command => Some(Request::Format(FormatChange::Clear)),
                         _ => None,
                     };

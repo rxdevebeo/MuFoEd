@@ -43,8 +43,8 @@ unicode-segmentation = "1.12"
 ureq = "3"
 pulldown-latex = "0.8"
 url = "2.5"
-
-[dev-dependencies]
+# The clipboard's HTML and pictures on every platform (egui already links it).
+arboard = { version = "3.7", default-features = false, features = ["image-data"] }
 png.workspace = true
 
 [target.'cfg(windows)'.dependencies]

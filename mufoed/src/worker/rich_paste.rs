@@ -66,7 +66,17 @@ impl Worker<'_, '_> {
                 Err(error) => failures.push(error),
             }
         }
-        self.note("note.clipboard_failed", failures.join("; "), true);
+        // A picture as pixels (a screenshot, an image copied from a viewer)
+        // when no formatted text came with it, or that text did not import.
+        if let Some(png) = content.image {
+            if !failures.is_empty() {
+                self.note("note.clipboard_failed", failures.join("; "), true);
+            }
+            return self.insert_picture(png, "clipboard");
+        }
+        if !failures.is_empty() {
+            self.note("note.clipboard_failed", failures.join("; "), true);
+        }
         if fallback.is_empty() {
             Outcome::Quiet
         } else {

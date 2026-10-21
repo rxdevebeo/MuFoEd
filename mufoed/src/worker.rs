@@ -464,6 +464,8 @@ pub(crate) enum Align {
 #[derive(Clone, Debug)]
 pub(crate) enum Insert {
     PageBreak,
+    /// A new line in the same paragraph (Shift+Enter).
+    LineBreak,
     /// The text after the caret starts the next column.
     ColumnBreak,
     Table {
@@ -7144,16 +7146,20 @@ impl<'a, 's> Worker<'a, 's> {
 
     fn insert(&mut self, insert: Insert) -> Outcome {
         match insert {
-            Insert::ColumnBreak => {
+            Insert::ColumnBreak | Insert::LineBreak => {
+                use strict_ooxml::model::BreakKind;
+                let kind = if matches!(insert, Insert::LineBreak) {
+                    BreakKind::TextWrapping
+                } else {
+                    BreakKind::Column
+                };
                 let Some(caret) = self.caret.clone() else {
                     return Outcome::Quiet;
                 };
                 self.delete_selection();
                 let caret = self.caret.clone().unwrap_or(caret);
-                let commands = self.inline_at_caret(
-                    &caret,
-                    strict_ooxml::model::Inline::Break(strict_ooxml::model::BreakKind::Column),
-                );
+                let commands =
+                    self.inline_at_caret(&caret, strict_ooxml::model::Inline::Break(kind));
                 if self.transact(&commands) {
                     self.caret = Some(Logical {
                         offset: caret.offset + 1,
@@ -9141,14 +9147,14 @@ mod tests {
                 let depth = worker.undo_depth;
                 let image = png(30, 15);
                 let content = if html {
-                    crate::clipboard::Rich{html:Some(format!("<p><b>left</b><img src='data:image/png;base64,{}'>right</p><p>end</p>",crate::raster::base64(&image)).into_bytes()),rtf:None}
+                    crate::clipboard::Rich{html:Some(format!("<p><b>left</b><img src='data:image/png;base64,{}'>right</p><p>end</p>",crate::raster::base64(&image)).into_bytes()),rtf:None,image:None,image_size:None}
                 } else {
                     use std::fmt::Write as _;
                     let hex = image.iter().fold(String::new(), |mut hex, b| {
                         write!(&mut hex, "{b:02x}").unwrap();
                         hex
                     });
-                    crate::clipboard::Rich{rtf:Some(format!("{{\\rtf1\\ansi {{\\b left}}{{\\pict\\pngblip\\picwgoal450\\pichgoal225 {hex}}}right\\par end}}").into_bytes()),html:None}
+                    crate::clipboard::Rich{rtf:Some(format!("{{\\rtf1\\ansi {{\\b left}}{{\\pict\\pngblip\\picwgoal450\\pichgoal225 {hex}}}right\\par end}}").into_bytes()),html:None,image:None,image_size:None}
                 };
                 assert!(matches!(
                     worker.handle(Request::PasteRich {
@@ -9195,7 +9201,7 @@ mod tests {
             });
             let before = worker.session.document().body.clone();
             let depth = worker.undo_depth;
-            let content=crate::clipboard::Rich{html:Some(b"<p style='text-align:center'>before</p><table><tr><td>A</td><td>B</td></tr></table><ol><li>one<li>two</ol>".to_vec()),rtf:None};
+            let content=crate::clipboard::Rich{html:Some(b"<p style='text-align:center'>before</p><table><tr><td>A</td><td>B</td></tr></table><ol><li>one<li>two</ol>".to_vec()),rtf:None,image:None,image_size:None};
             assert!(matches!(
                 worker.handle(Request::PasteRich {
                     content,
@@ -10675,6 +10681,94 @@ mod tests {
             Reply::Note(note) if note.error => panic!("{}: {}", note.key, note.detail),
             _ => None,
         })
+    }
+
+    /// Shift+Enter breaks the line inside the paragraph; Undo takes it back.
+    #[test]
+    fn a_line_break_stays_in_its_paragraph() {
+        with_worker_replies(|worker, _| {
+            worker.handle(Request::Type("ab".into()));
+            worker.handle(Request::Insert(Insert::LineBreak));
+            worker.handle(Request::Type("cd".into()));
+            let blocks = &worker.session.document().body.blocks;
+            assert_eq!(blocks.len(), 1, "one paragraph");
+            let Block::Paragraph(paragraph) = &blocks[0] else {
+                panic!("a paragraph");
+            };
+            let breaks = paragraph
+                .inlines
+                .iter()
+                .filter(|inline| {
+                    matches!(
+                        inline,
+                        strict_ooxml::model::Inline::Run(run)
+                            if run.content.iter().any(|content| matches!(
+                                content,
+                                strict_ooxml::model::RunContent::Break(
+                                    strict_ooxml::model::BreakKind::TextWrapping
+                                )
+                            ))
+                    ) || matches!(
+                        inline,
+                        strict_ooxml::model::Inline::Break(
+                            strict_ooxml::model::BreakKind::TextWrapping
+                        )
+                    )
+                })
+                .count();
+            assert_eq!(breaks, 1, "{:?}", paragraph.inlines);
+            assert_eq!(
+                document_text(blocks),
+                "ab
+cd"
+            );
+        });
+    }
+
+    /// A picture on the clipboard as pixels (a screenshot) goes in at the
+    /// caret, selected, at its own size.
+    #[test]
+    fn a_clipboard_picture_is_pasted_as_a_picture() {
+        let (requests, replies) = new_document();
+        requests.send(Request::Type("ab".to_owned())).unwrap();
+        requests
+            .send(Request::PasteRich {
+                content: crate::clipboard::Rich {
+                    image: Some(png(40, 20)),
+                    image_size: Some((40, 20)),
+                    ..crate::clipboard::Rich::default()
+                },
+                fallback: String::new(),
+            })
+            .unwrap();
+        let pasted = loop {
+            if let Some(view) = object(&replies) {
+                break view;
+            }
+        };
+        assert!(pasted.picture);
+        assert_eq!((pasted.width, pasted.height), (40 * 9525, 20 * 9525));
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    /// Formatted text that comes with a picture of itself (a spreadsheet's
+    /// cells, a page's selection) is pasted as text, not as the picture.
+    #[test]
+    fn clipboard_html_wins_over_its_picture() {
+        let (requests, replies) = new_document();
+        requests
+            .send(Request::PasteRich {
+                content: crate::clipboard::Rich {
+                    html: Some(b"<p>From the page</p>".to_vec()),
+                    image: Some(png(40, 20)),
+                    image_size: Some((40, 20)),
+                    ..crate::clipboard::Rich::default()
+                },
+                fallback: String::new(),
+            })
+            .unwrap();
+        assert_eq!(body_text(&requests, &replies).trim(), "From the page");
+        requests.send(Request::Shutdown).unwrap();
     }
 
     /// A picture goes in at the caret selected; a click on it selects it,

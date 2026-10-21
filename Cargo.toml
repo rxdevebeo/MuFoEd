@@ -119,6 +119,10 @@ hayro = { path = "vendor/hayro" }
 hayro-interpret = { path = "vendor/hayro-interpret" }
 hayro-syntax = { path = "vendor/hayro-syntax" }
 
+# Ctrl+V on a clipboard without text reaches the application (MuFoEd's
+# picture paste); see vendor/egui-winit/NOTICE.md.
+egui-winit = { path = "vendor/egui-winit" }
+
 djvu-bzz = { path = "vendor/djvu-bzz" }
 djvu-jb2 = { path = "vendor/djvu-jb2" }
 
