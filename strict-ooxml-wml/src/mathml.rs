@@ -283,7 +283,9 @@ fn closing_index(children: &[&Element], from: usize, close: char) -> Option<usiz
         let Some(c) = fence_char(element) else {
             continue;
         };
-        if c == close && (depth == 0 || open == close) {
+        // A fence that opens and closes alike (`|`) cannot nest: the next one
+        // closes it.
+        if c == close {
             if depth == 0 {
                 return Some(index);
             }
@@ -713,5 +715,258 @@ mod tests {
         assert!(matrix.rows.iter().all(|row| row.len() == 2));
         assert_eq!(math_from_mathml("no formula"), Err(MathMlReadError::NoMath));
         assert!(math_from_mathml("<math><mi>x</mo></math>").is_err());
+    }
+
+    fn read(body: &str) -> Vec<MathNode> {
+        math_from_mathml(&format!("<math>{body}</math>"))
+            .expect("reads")
+            .nodes
+    }
+
+    #[test]
+    fn tokens_take_their_variant_and_drop_invisible_operators() {
+        let nodes = read(
+            "<mi mathvariant=\"bold\">x</mi><mi mathvariant=\"bold-italic\">y</mi>\
+             <mn mathvariant=\"italic\">2</mn><mi mathvariant=\"normal\">z</mi><mi>w</mi>\
+             <mtext>if  so</mtext><ms>s</ms><mi>\u{2061}</mi><mo>\u{2062}</mo>\
+             <mspace width=\"1em\"/><none/><mprescripts/>",
+        );
+        let styles: Vec<_> = nodes
+            .iter()
+            .map(|node| match node {
+                MathNode::Run(run) => (
+                    run.text.clone(),
+                    run.properties.style,
+                    run.properties.normal,
+                ),
+                _ => panic!("run"),
+            })
+            .collect();
+        assert_eq!(
+            styles,
+            [
+                ("x".to_owned(), Some(MathStyle::Bold), false),
+                ("y".to_owned(), Some(MathStyle::BoldItalic), false),
+                ("2".to_owned(), Some(MathStyle::Italic), false),
+                ("z".to_owned(), Some(MathStyle::Plain), false),
+                ("w".to_owned(), None, false),
+                ("if so".to_owned(), None, true),
+                ("s".to_owned(), None, true),
+            ]
+        );
+    }
+
+    #[test]
+    fn fractions_radicals_and_scripts() {
+        let nodes = read(
+            "<mfrac linethickness=\"0\"><mi>n</mi><mi>k</mi></mfrac>\
+             <mfrac linethickness=\"0pt\"><mi>n</mi></mfrac>\
+             <mfrac><mi>a</mi><mi>b</mi></mfrac>\
+             <mroot><mi>x</mi><mn>3</mn></mroot>\
+             <msup><mi>x</mi><mn>2</mn></msup><msub><mi>x</mi><mi>i</mi></msub>\
+             <msubsup><mi>x</mi><mi>i</mi><mn>2</mn></msubsup>",
+        );
+        assert_eq!(
+            kinds(&nodes),
+            [
+                "m:f",
+                "m:f",
+                "m:f",
+                "m:rad",
+                "m:sSup",
+                "m:sSub",
+                "m:sSubSup"
+            ]
+        );
+        let bars: Vec<_> = nodes
+            .iter()
+            .take(3)
+            .map(|node| match node {
+                MathNode::Fraction(fraction) => fraction.bar_type.as_deref().map(str::to_owned),
+                _ => panic!("fraction"),
+            })
+            .collect();
+        assert_eq!(
+            bars,
+            [Some("noBar".to_owned()), Some("noBar".to_owned()), None]
+        );
+        let Some(MathNode::Fraction(missing)) = nodes.get(1) else {
+            panic!("fraction")
+        };
+        assert!(missing.denominator.nodes.is_empty());
+        let Some(MathNode::Radical(root)) = nodes.get(3) else {
+            panic!("radical")
+        };
+        assert!(!root.hide_degree);
+        assert_eq!(kinds(&root.degree.nodes), ["m:r"]);
+    }
+
+    #[test]
+    fn scripts_on_large_operators_are_nary_operators() {
+        let nodes = read(
+            "<msup><mo>\u{222B}</mo><mn>1</mn></msup>\
+             <msub><mrow><mo>\u{2211}</mo></mrow><mi>i</mi></msub>\
+             <msubsup><mo>\u{220F}</mo><mi>i</mi><mi>n</mi></msubsup>\
+             <munder><mo>\u{22C3}</mo><mi>i</mi></munder>\
+             <mover><mo>\u{22C2}</mo><mi>n</mi></mover>",
+        );
+        assert_eq!(kinds(&nodes), ["m:nary"; 5]);
+        let hidden: Vec<_> = nodes
+            .iter()
+            .map(|node| match node {
+                MathNode::NaryOperator(nary) => (nary.hide_sub, nary.hide_sup, nary.limit_location),
+                _ => panic!("nary"),
+            })
+            .collect();
+        assert_eq!(
+            hidden,
+            [
+                (true, false, Some(LimitLocation::SubSup)),
+                (false, true, Some(LimitLocation::SubSup)),
+                (false, false, Some(LimitLocation::SubSup)),
+                (false, true, Some(LimitLocation::UnderOver)),
+                (true, false, Some(LimitLocation::UnderOver)),
+            ]
+        );
+    }
+
+    #[test]
+    fn marks_over_and_under_are_bars_accents_or_limits() {
+        let nodes = read(
+            "<munderover><mi>lim</mi><mi>a</mi><mi>b</mi></munderover>\
+             <mover><mi>x</mi><mo>\u{00AF}</mo></mover>\
+             <munder><mi>x</mi><mo>_</mo></munder>\
+             <mover><mi>x</mi><mo>^</mo></mover>\
+             <mover accent=\"false\"><mi>x</mi><mo>^</mo></mover>\
+             <munder><mi>x</mi><mo>~</mo></munder>\
+             <munder><mi>lim</mi><mrow><mi>n</mi></mrow></munder>",
+        );
+        assert_eq!(
+            kinds(&nodes),
+            ["m:limUpp", "m:bar", "m:bar", "m:acc", "m:limUpp", "m:limLow", "m:limLow"]
+        );
+        let Some(MathNode::Limit(outer)) = nodes.first() else {
+            panic!("limit")
+        };
+        assert!(outer.above);
+        assert_eq!(kinds(&outer.base.nodes), ["m:limLow"]);
+        let positions: Vec<_> = nodes
+            .iter()
+            .filter_map(|node| match node {
+                MathNode::Bar(bar) => bar.position,
+                _ => None,
+            })
+            .collect();
+        assert_eq!(positions, [MathPosition::Top, MathPosition::Bottom]);
+        let Some(MathNode::Accent(accent)) = nodes.get(3) else {
+            panic!("accent")
+        };
+        assert_eq!(accent.chr, Some('\u{0302}'));
+    }
+
+    #[test]
+    fn spacing_marks_become_combining_ones() {
+        for (mark, expected) in [
+            ('^', '\u{0302}'),
+            ('\u{02C6}', '\u{0302}'),
+            ('~', '\u{0303}'),
+            ('\u{02DC}', '\u{0303}'),
+            ('\u{02D9}', '\u{0307}'),
+            ('.', '\u{0307}'),
+            ('\u{00A8}', '\u{0308}'),
+            ('\u{2192}', '\u{20D7}'),
+            ('\u{02C7}', '\u{030C}'),
+            ('\u{00B4}', '\u{0301}'),
+            ('`', '\u{0300}'),
+            ('\u{02D8}', '\u{0306}'),
+            ('*', '*'),
+        ] {
+            assert_eq!(combining(mark), expected, "{mark}");
+        }
+    }
+
+    #[test]
+    fn fences_nest_split_and_stay_runs_when_unmatched() {
+        let nodes = read(
+            "<mo>[</mo><mo>(</mo><mi>a</mi><mo>)</mo><mo>;</mo><mi>b</mi><mo>]</mo>\
+             <mo>|</mo><mi>x</mi><mo>|</mo>\
+             <mo>(</mo><mi>c</mi>",
+        );
+        assert_eq!(kinds(&nodes), ["m:d", "m:d", "m:r", "m:r"]);
+        let Some(MathNode::Delimiter(outer)) = nodes.first() else {
+            panic!("delimiter")
+        };
+        assert_eq!(
+            (outer.begin, outer.end, outer.separator),
+            (Some('['), Some(']'), Some(';'))
+        );
+        assert_eq!(outer.arguments.len(), 2);
+        assert_eq!(kinds(&outer.arguments[0].nodes), ["m:d"]);
+        // Nested fences of one kind close in order.
+        let nested = read("<mo>(</mo><mo>(</mo><mi>a</mi><mo>)</mo><mo>)</mo>");
+        assert_eq!(kinds(&nested), ["m:d"]);
+    }
+
+    #[test]
+    fn fenced_tables_boxes_phantoms_and_semantics() {
+        let nodes = read(
+            "<mfenced><mi>a</mi><mi>b</mi></mfenced>\
+             <mfenced open=\"[\" close=\"]\" separators=\" ;\"/>\
+             <mtable><mlabeledtr><mtd><mtext>(1)</mtext></mtd><mtd><mi>x</mi></mtd></mlabeledtr>\
+             <mtr><mtd><mi>a</mi></mtd><mtd><mi>b</mi></mtd></mtr><mi>stray</mi></mtable>\
+             <menclose notation=\"box\"><mi>x</mi></menclose>\
+             <mphantom><mi>x</mi></mphantom>\
+             <semantics><mi>y</mi><annotation encoding=\"TeX\">y</annotation></semantics>\
+             <semantics/>\
+             <mstyle><mpadded><unknown><mi>z</mi></unknown></mpadded></mstyle>",
+        );
+        assert_eq!(
+            kinds(&nodes),
+            ["m:d", "m:d", "m:m", "m:borderBox", "m:phant", "m:r", "m:r"]
+        );
+        let Some(MathNode::Delimiter(fenced)) = nodes.first() else {
+            panic!("delimiter")
+        };
+        assert_eq!(
+            (fenced.begin, fenced.end, fenced.separator),
+            (Some('('), Some(')'), Some(','))
+        );
+        assert_eq!(fenced.arguments.len(), 2);
+        let Some(MathNode::Delimiter(empty)) = nodes.get(1) else {
+            panic!("delimiter")
+        };
+        assert_eq!(
+            (empty.begin, empty.end, empty.separator),
+            (Some('['), Some(']'), Some(';'))
+        );
+        assert_eq!(empty.arguments.len(), 1);
+        let Some(MathNode::Matrix(matrix)) = nodes.get(2) else {
+            panic!("matrix")
+        };
+        assert_eq!(matrix.rows.len(), 2);
+        assert_eq!(matrix.rows[0].len(), 2);
+        assert_eq!(kinds(&matrix.rows[0][0].nodes), ["m:r"]);
+        assert!(matrix.rows[0][1].nodes.is_empty());
+    }
+
+    #[test]
+    fn what_is_not_a_formula_is_refused() {
+        assert!(math_from_mathml("<math/>").expect("empty").nodes.is_empty());
+        assert_eq!(math_from_mathml("<mathx/>"), Err(MathMlReadError::NoMath));
+        assert_eq!(math_from_mathml("<math"), Err(MathMlReadError::NoMath));
+        let deep = format!(
+            "<math>{}<mi>x</mi>{}</math>",
+            "<mrow>".repeat(70),
+            "</mrow>".repeat(70)
+        );
+        assert_eq!(math_from_mathml(&deep), Err(MathMlReadError::TooDeep));
+        let bad = math_from_mathml("<math><mi>x</mo></math>").expect_err("not XML");
+        for (error, expected) in [
+            (bad, "not well-formed"),
+            (MathMlReadError::NoMath, "no <math>"),
+            (MathMlReadError::TooDeep, "too deep"),
+        ] {
+            assert!(error.to_string().contains(expected), "{error}");
+        }
     }
 }
