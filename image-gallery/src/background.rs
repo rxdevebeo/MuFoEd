@@ -448,7 +448,7 @@ impl Remover {
     }
 
     /// Makes the background of `image` transparent.
-    pub fn remove(&self, image: DynamicImage) -> Result<DynamicImage, Error> {
+    pub fn remove(&self, image: &DynamicImage) -> Result<DynamicImage, Error> {
         let settings = self
             .settings
             .lock()
@@ -470,9 +470,9 @@ impl Remover {
             ));
         };
         let (width, height) = (worker.width, worker.height);
-        let input = tensor(&image, width, height);
+        let input = tensor(image, width, height);
         match worker.run(&input) {
-            Ok(logits) => Ok(apply_mask(&image, &logits, width, height)),
+            Ok(logits) => Ok(apply_mask(image, &logits, width, height)),
             Err(error) => {
                 // A failed worker is started afresh for the next picture.
                 *guard = None;
@@ -734,7 +734,7 @@ mod tests {
             ..Settings::default()
         };
         let error = Remover::new(settings)
-            .remove(half_red())
+            .remove(&half_red())
             .expect_err("no model");
         assert!(error.to_string().contains("not found"), "{error}");
     }
@@ -758,7 +758,7 @@ mod tests {
             FAKE,
         );
         for _ in 0..2 {
-            let cut = remover.remove(half_red()).expect("removes");
+            let cut = remover.remove(&half_red()).expect("removes");
             let rgba = cut.to_rgba8();
             assert_eq!(rgba.get_pixel(20, 50).0[3], 255);
             assert_eq!(rgba.get_pixel(180, 50).0[3], 0);
@@ -771,7 +771,7 @@ mod tests {
             gpu: true,
             ..Settings::default()
         });
-        let error = remover.remove(half_red()).expect_err("fails");
+        let error = remover.remove(&half_red()).expect_err("fails");
         assert!(error.to_string().contains("broken model"), "{error}");
         remover.shut_down();
         let _ = std::fs::remove_dir_all(&folder);

@@ -302,7 +302,7 @@ impl Gallery {
         let remover = Arc::clone(&self.remover);
         self.tools
             .register(TOOL_ID, "Remove background", move |image| {
-                remover.remove(image)
+                remover.remove(&image)
             });
         self
     }
