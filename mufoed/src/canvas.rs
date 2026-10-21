@@ -8,7 +8,6 @@
 //! never shows a blank page, and a re-laid page whose SVG did not change keeps
 //! its bitmap.
 
-use std::hash::{Hash, Hasher};
 use std::sync::OnceLock;
 
 use eframe::egui::{self, pos2, vec2, Color32, Rect, Sense, Stroke};
@@ -22,7 +21,13 @@ use crate::worker::{ObjectCommand, PictureEdit, Request};
 /// embedded in each page.
 fn paint_options() -> &'static strict_ooxml::RenderOptions {
     static OPTIONS: OnceLock<strict_ooxml::RenderOptions> = OnceLock::new();
-    OPTIONS.get_or_init(|| strict_ooxml::RenderOptions::default().embed_fonts(false))
+    // Text as glyph outlines: the rasterizer then shapes nothing and looks up
+    // no font, which made a keystroke's redraw a third of a second.
+    OPTIONS.get_or_init(|| {
+        strict_ooxml::RenderOptions::default()
+            .embed_fonts(false)
+            .text_outlines(true)
+    })
 }
 
 /// Gap between pages and around the column, in points.
@@ -174,9 +179,9 @@ fn receive_bitmaps(ctx: &egui::Context, tab: &mut DocTab) {
     while let Ok(Rastered {
         index,
         generation,
-        svg,
         scale,
-        bitmap,
+        base,
+        raster,
     }) = tab.view.raster_rx.try_recv()
     {
         tab.view.pending.remove(&(index, generation, scale));
@@ -184,18 +189,37 @@ fn receive_bitmaps(ctx: &egui::Context, tab: &mut DocTab) {
         if current != Some(generation) {
             continue;
         }
-        let Some(bitmap) = bitmap else {
-            // The new layout painted the same SVG: the bitmap stands.
-            if let Some(texture) = tab.view.textures.get_mut(&index) {
-                if texture.svg == svg && texture.scale == scale {
-                    texture.generation = generation;
-                }
+        let Ok(raster) = raster else {
+            continue;
+        };
+        let size = [raster.width, raster.height];
+        if !raster.full {
+            // Changes against the bands this texture shows: only those rows
+            // are uploaded. Against an older state (another result came in
+            // between) they are not enough, and the page is asked for again.
+            let Some(texture) = tab.view.textures.get_mut(&index) else {
+                continue;
+            };
+            if texture.scale != scale
+                || texture.size != size
+                || Some(&texture.bands) != base.as_ref()
+            {
+                continue;
             }
+            for (first, band) in &raster.bands {
+                let image = egui::ColorImage::from_rgba_premultiplied(
+                    [band.width, band.height],
+                    &band.rgba,
+                );
+                texture
+                    .texture
+                    .set_partial([0, *first], image, egui::TextureOptions::LINEAR);
+            }
+            texture.bands = raster.hashes;
+            texture.generation = generation;
             continue;
-        };
-        let Ok(bitmap) = bitmap else {
-            continue;
-        };
+        }
+        let bitmap = raster.assemble();
         let image =
             egui::ColorImage::from_rgba_premultiplied([bitmap.width, bitmap.height], &bitmap.rgba);
         let texture = ctx.load_texture(
@@ -207,7 +231,8 @@ fn receive_bitmaps(ctx: &egui::Context, tab: &mut DocTab) {
             index,
             PageTexture {
                 generation,
-                svg,
+                bands: raster.hashes,
+                size,
                 scale,
                 texture,
             },
@@ -287,27 +312,24 @@ fn request_bitmap(ctx: &egui::Context, tab: &mut DocTab, index: usize, scale: f3
     }
     tab.view.pending.insert(job);
     let page = std::sync::Arc::clone(page);
-    // The SVG the bitmap at this scale was made from, if there is one.
-    let known = tab
+    // The bands the bitmap at this scale shows, if there is one: only the
+    // bands that differ from them are drawn again.
+    let base = tab
         .view
         .textures
         .get(&index)
         .filter(|texture| texture.scale == key)
-        .map(|texture| texture.svg);
+        .map(|texture| texture.bands.clone());
     let sender = tab.view.raster_tx.clone();
     let ctx = ctx.clone();
     rayon::spawn(move || {
-        let svg = strict_ooxml::paint_page(&page.placed, paint_options());
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        svg.hash(&mut hasher);
-        let hash = hasher.finish();
-        let bitmap = (known != Some(hash)).then(|| raster::rasterize(&svg, scale));
+        let raster = raster::rasterize_page(&page.placed, paint_options(), scale, base.as_deref());
         let _ = sender.send(Rastered {
             index,
             generation: page.generation,
-            svg: hash,
             scale: key,
-            bitmap,
+            base,
+            raster,
         });
         ctx.request_repaint();
     });

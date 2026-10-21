@@ -91,8 +91,10 @@ pub(crate) enum AfterSave {
 pub(crate) struct PageTexture {
     /// The layout generation it shows.
     pub(crate) generation: u64,
-    /// A hash of the SVG it was made from.
-    pub(crate) svg: u64,
+    /// The SVG hash of each band it shows (see `raster::rasterize_page`).
+    pub(crate) bands: Vec<u64>,
+    /// Its size in pixels.
+    pub(crate) size: [usize; 2],
     pub(crate) scale: u32,
     pub(crate) texture: egui::TextureHandle,
 }
@@ -101,10 +103,10 @@ pub(crate) struct PageTexture {
 pub(crate) struct Rastered {
     pub(crate) index: usize,
     pub(crate) generation: u64,
-    pub(crate) svg: u64,
     pub(crate) scale: u32,
-    /// `None` when the page's SVG is the one the bitmap already shows.
-    pub(crate) bitmap: Option<Result<Bitmap, String>>,
+    /// The band hashes the changes were found against; `None` drew it whole.
+    pub(crate) base: Option<Vec<u64>>,
+    pub(crate) raster: Result<crate::raster::PageRaster, String>,
 }
 
 /// The canvas's own state.

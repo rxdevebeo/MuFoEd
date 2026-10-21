@@ -5,7 +5,8 @@
 //! the layout's advances. Installed fonts come after them, for scripts the
 //! bundle does not draw.
 
-use std::sync::{Arc, OnceLock};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use resvg::usvg;
 use strict_ooxml_render_svg::font::builtin::{bundled_families, face_source};
@@ -21,36 +22,122 @@ pub(crate) struct Bitmap {
     pub(crate) rgba: Vec<u8>,
 }
 
+/// The bundled faces, the programs the layout measured with.
+fn bundled_database() -> usvg::fontdb::Database {
+    let mut database = usvg::fontdb::Database::new();
+    let mut seen: Vec<*const u8> = Vec::new();
+    for family in bundled_families() {
+        for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
+            let Some(source) = face_source(family, bold, italic) else {
+                continue;
+            };
+            let pointer = source.data.as_ptr();
+            if seen.contains(&pointer) {
+                continue;
+            }
+            seen.push(pointer);
+            let data: &'static [u8] = source.data;
+            database.load_font_source(usvg::fontdb::Source::Binary(Arc::new(data)));
+        }
+    }
+    database
+}
+
+fn with_database(mut database: usvg::fontdb::Database) -> usvg::Options<'static> {
+    database.set_serif_family("Tinos");
+    database.set_sans_serif_family("Arimo");
+    database.set_monospace_family("Cousine");
+    let mut options = usvg::Options {
+        fontdb: Arc::new(database),
+        ..usvg::Options::default()
+    };
+    "Arimo".clone_into(&mut options.font_family);
+    options
+}
+
+/// Every face: the bundled ones, then the machine's installed fonts. The
+/// catalog of what is installed, and how an installed face is found; pages
+/// are not drawn with it (see [`page_options`]).
 fn options() -> &'static usvg::Options<'static> {
     static OPTIONS: OnceLock<usvg::Options<'static>> = OnceLock::new();
     OPTIONS.get_or_init(|| {
-        let mut database = usvg::fontdb::Database::new();
-        let mut seen: Vec<*const u8> = Vec::new();
-        for family in bundled_families() {
-            for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
-                let Some(source) = face_source(family, bold, italic) else {
-                    continue;
-                };
-                let pointer = source.data.as_ptr();
-                if seen.contains(&pointer) {
-                    continue;
-                }
-                seen.push(pointer);
-                let data: &'static [u8] = source.data;
-                database.load_font_source(usvg::fontdb::Source::Binary(Arc::new(data)));
-            }
-        }
+        let mut database = bundled_database();
         database.load_system_fonts();
-        database.set_serif_family("Tinos");
-        database.set_sans_serif_family("Arimo");
-        database.set_monospace_family("Cousine");
-        let mut options = usvg::Options {
-            fontdb: Arc::new(database),
-            ..usvg::Options::default()
-        };
-        "Arimo".clone_into(&mut options.font_family);
-        options
+        with_database(database)
     })
+}
+
+/// The font database a page is drawn with: the bundled faces, and in memory
+/// the installed families the page names in `font-family`. Drawing with the
+/// whole installed catalog read font files from disk for every run of text,
+/// and every file in turn while it looked for a face with a missing
+/// character: half a second a page, at every keystroke. Kept per set of
+/// families.
+fn page_options(svg: &str) -> Arc<usvg::Options<'static>> {
+    static CACHE: OnceLock<Mutex<HashMap<Vec<String>, Arc<usvg::Options<'static>>>>> =
+        OnceLock::new();
+    let families = named_families(svg);
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(options) = cache
+        .lock()
+        .ok()
+        .and_then(|map| map.get(&families).cloned())
+    {
+        return options;
+    }
+    let mut database = bundled_database();
+    let catalog = &options().fontdb;
+    let mut read: Vec<std::path::PathBuf> = Vec::new();
+    for face in catalog.faces() {
+        let usvg::fontdb::Source::File(path) = &face.source else {
+            continue;
+        };
+        let named = face.families.iter().any(|(name, _)| {
+            families
+                .iter()
+                .any(|wanted| wanted.eq_ignore_ascii_case(name))
+        });
+        if !named || read.contains(path) {
+            continue;
+        }
+        read.push(path.clone());
+        if let Ok(bytes) = std::fs::read(path) {
+            database.load_font_source(usvg::fontdb::Source::Binary(Arc::new(bytes)));
+        }
+    }
+    let options = Arc::new(with_database(database));
+    if let Ok(mut map) = cache.lock() {
+        // A long session with many documents: start the cache over.
+        if map.len() >= 32 {
+            map.clear();
+        }
+        map.insert(families, Arc::clone(&options));
+    }
+    options
+}
+
+/// The families an SVG names in `font-family`, lowercase, sorted, each once.
+fn named_families(svg: &str) -> Vec<String> {
+    const KEY: &str = "font-family=\"";
+    let mut families: Vec<String> = svg
+        .match_indices(KEY)
+        .filter_map(|(at, _)| {
+            let rest = svg.get(at + KEY.len()..)?;
+            rest.get(..rest.find('"')?)
+        })
+        .flat_map(|list| list.split(','))
+        .map(|name| {
+            name.trim()
+                .trim_matches(|c| c == '\'' || c == '"')
+                .replace("&apos;", "")
+                .replace("&quot;", "")
+                .to_lowercase()
+        })
+        .filter(|name| !name.is_empty())
+        .collect();
+    families.sort();
+    families.dedup();
+    families
 }
 
 /// Warms the font database up on a worker so the first page does not wait.
@@ -60,7 +147,7 @@ pub(crate) fn prepare() {
 
 /// Rasterizes `svg` at `scale` device pixels per SVG pixel.
 pub(crate) fn rasterize(svg: &str, scale: f32) -> Result<Bitmap, String> {
-    let tree = usvg::Tree::from_str(svg, options()).map_err(|error| error.to_string())?;
+    let tree = usvg::Tree::from_str(svg, &page_options(svg)).map_err(|error| error.to_string())?;
     let size = tree.size();
     let limit = |side: f32| {
         let pixels = (side * scale).ceil();
@@ -85,6 +172,225 @@ pub(crate) fn rasterize(svg: &str, scale: f32) -> Result<Bitmap, String> {
     Ok(Bitmap {
         width: width as usize,
         height: height as usize,
+        rgba: pixmap.take(),
+    })
+}
+
+// ----- pages in bands ---------------------------------------------------------
+//
+// A keystroke changes a line or two of a page, and turning the whole page's
+// text into outlines again took a third of a second with an installed face
+// (Calibri: 361 runs, a millisecond each). The page is drawn in horizontal
+// bands instead: each band's own SVG, of the items that reach into it, is
+// hashed, and only bands whose SVG changed are drawn again.
+
+/// Band height in page pixels (96 per inch): about four lines of body text.
+const BAND: f64 = 64.0;
+
+/// A page drawn in bands, or the bands of it that changed.
+pub(crate) struct PageRaster {
+    pub(crate) width: usize,
+    pub(crate) height: usize,
+    /// Each band's SVG hash, top to bottom.
+    pub(crate) hashes: Vec<u64>,
+    /// The bands drawn: first pixel row, and its rows. All of them when no
+    /// earlier state was given, else those whose hash differs from it.
+    pub(crate) bands: Vec<(usize, Bitmap)>,
+    /// Every band was drawn: the page as a whole, not changes to one.
+    pub(crate) full: bool,
+}
+
+impl PageRaster {
+    /// The whole page from its bands, white where none was drawn.
+    pub(crate) fn assemble(&self) -> Bitmap {
+        let stride = self.width * 4;
+        let mut rgba = vec![255u8; stride * self.height];
+        for (first, band) in &self.bands {
+            let start = first * stride;
+            let end = (start + band.rgba.len()).min(rgba.len());
+            if let (Some(target), Some(source)) = (
+                rgba.get_mut(start..end),
+                band.rgba.get(..end.saturating_sub(start)),
+            ) {
+                target.copy_from_slice(source);
+            }
+        }
+        Bitmap {
+            width: self.width,
+            height: self.height,
+            rgba,
+        }
+    }
+}
+
+/// Draws `placed` at `scale`, all of it or, against `known` hashes of the
+/// same size, the bands that changed.
+pub(crate) fn rasterize_page(
+    placed: &strict_ooxml::PlacedPage,
+    options: &strict_ooxml::RenderOptions,
+    scale: f32,
+    known: Option<&[u64]>,
+) -> Result<PageRaster, String> {
+    use rayon::prelude::*;
+    let page_width = placed.width_px.max(1.0);
+    let page_height = placed.height_px.max(1.0);
+    // Sized as `rasterize` sizes a page, so a page drawn in bands is the page
+    // drawn whole: whole pixels, and the scale that fills them.
+    let side = f64::from(MAX_SIDE);
+    let pixels = |length: f64| -> usize {
+        let value = (length * f64::from(scale)).ceil();
+        if value.is_finite() && value >= 1.0 {
+            // At most MAX_SIDE, so the cast cannot truncate.
+            value.min(side) as usize
+        } else {
+            1
+        }
+    };
+    let (width, height) = (pixels(page_width), pixels(page_height));
+    // In f32, as `rasterize` computes it: the same transform to the bit.
+    let effective32 = (width as f32 / page_width as f32).min(height as f32 / page_height as f32);
+    let effective = f64::from(effective32).max(1e-3);
+    let row = |y: f64| -> usize {
+        let value = (y * effective).round();
+        if value.is_finite() && value > 0.0 {
+            (value as usize).min(height)
+        } else {
+            0
+        }
+    };
+    let count = (page_height / BAND).ceil().max(1.0);
+    // Bounded by the page's height in bands.
+    let count = count as usize;
+    let bands: Vec<(usize, usize, String)> = (0..count)
+        .map(|band| {
+            let top = band as f64 * BAND;
+            let bottom = (top + BAND).min(page_height);
+            let (first, last) = (
+                row(top),
+                if band + 1 == count {
+                    height
+                } else {
+                    row(bottom)
+                },
+            );
+            // The rows the band paints, in page pixels, and a pixel around them
+            // for antialiasing that spills over.
+            let (from, to) = (
+                first as f64 / effective - 2.0,
+                last as f64 / effective + 2.0,
+            );
+            let items: Vec<strict_ooxml_render_svg::Item> = placed
+                .items
+                .iter()
+                .filter(|item| item_rows(item).is_none_or(|(a, b)| b >= from && a <= to))
+                .cloned()
+                .collect();
+            let band_page = strict_ooxml::PlacedPage {
+                width_px: placed.width_px,
+                height_px: placed.height_px,
+                items,
+                section_index: placed.section_index,
+                off_page: placed.off_page.clone(),
+            };
+            (first, last, strict_ooxml::paint_page(&band_page, options))
+        })
+        .collect();
+    let hashes: Vec<u64> = bands
+        .iter()
+        .map(|(first, last, svg)| {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            (width, *first, *last, svg).hash(&mut hasher);
+            hasher.finish()
+        })
+        .collect();
+    let known = known.filter(|known| known.len() == hashes.len());
+    let drawn: Result<Vec<(usize, Bitmap)>, String> = bands
+        .par_iter()
+        .zip(hashes.par_iter())
+        .enumerate()
+        .filter(|(band, (_, hash))| known.is_none_or(|known| known.get(*band) != Some(*hash)))
+        .filter(|(_, ((first, last, _), _))| last > first)
+        .map(|(_, ((first, last, svg), _))| {
+            draw_rows(svg, effective32, width, *first, *last).map(|bitmap| (*first, bitmap))
+        })
+        .collect();
+    Ok(PageRaster {
+        width,
+        height,
+        hashes,
+        bands: drawn?,
+        full: known.is_none(),
+    })
+}
+
+/// The page-pixel rows an item can paint, or `None` when that is not known
+/// (a rotated or transformed one): such an item goes into every band.
+fn item_rows(item: &strict_ooxml_render_svg::Item) -> Option<(f64, f64)> {
+    use strict_ooxml_render_svg::Item;
+    let finite = |(a, b): (f64, f64)| (a.is_finite() && b.is_finite()).then_some((a, b));
+    match item {
+        // Ascenders, accents and marks above, descenders below.
+        Item::Text(text) => finite((
+            text.baseline - text.size_px * 1.6,
+            text.baseline + text.size_px * 0.9,
+        )),
+        Item::Rect(rect) => {
+            let pad = rect.stroke_w.abs() / 2.0;
+            finite((
+                rect.y.min(rect.y + rect.h) - pad,
+                rect.y.max(rect.y + rect.h) + pad,
+            ))
+        }
+        Item::Line(line) => {
+            let pad = line.width.abs() / 2.0 + 1.0;
+            finite((line.y1.min(line.y2) - pad, line.y1.max(line.y2) + pad))
+        }
+        Item::Path(path) if path.rotate_deg == 0.0 => {
+            let pad = path.stroke_w.abs() / 2.0 + 1.0;
+            finite((
+                path.y.min(path.y + path.h) - pad,
+                path.y.max(path.y + path.h) + pad,
+            ))
+        }
+        Item::Image(image) if image.transform.is_none() => finite((
+            image.y.min(image.y + image.h),
+            image.y.max(image.y + image.h),
+        )),
+        Item::Group(group) if group.bounds[3] > 0.0 => {
+            let [_, y, _, h] = group.bounds;
+            finite((y - 1.0, y + h + 1.0))
+        }
+        _ => None,
+    }
+}
+
+/// Draws the rows `first..last` of a page SVG `width` pixels wide.
+fn draw_rows(
+    svg: &str,
+    scale: f32,
+    width: usize,
+    first: usize,
+    last: usize,
+) -> Result<Bitmap, String> {
+    let tree = usvg::Tree::from_str(svg, &page_options(svg)).map_err(|error| error.to_string())?;
+    let rows = last.saturating_sub(first);
+    let (Ok(pixmap_width), Ok(pixmap_rows)) = (u32::try_from(width), u32::try_from(rows)) else {
+        return Err("page band too large".to_owned());
+    };
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(pixmap_width, pixmap_rows)
+        .ok_or_else(|| "page band could not be allocated".to_owned())?;
+    pixmap.fill(resvg::tiny_skia::Color::WHITE);
+    // The first row is bounded by MAX_SIDE: exact in f32.
+    let shift = first as f32;
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, 0.0, -shift),
+        &mut pixmap.as_mut(),
+    );
+    Ok(Bitmap {
+        width,
+        height: rows,
         rgba: pixmap.take(),
     })
 }
@@ -143,7 +449,7 @@ pub(crate) fn region_png(svg: &str, x: f64, y: f64, width: f64, height: f64) -> 
     if ![x, y, width, height].iter().all(|v| v.is_finite()) || width <= 0.0 || height <= 0.0 {
         return None;
     }
-    let tree = usvg::Tree::from_str(svg, options()).ok()?;
+    let tree = usvg::Tree::from_str(svg, &page_options(svg)).ok()?;
     let scale = 2.0_f64.min(f64::from(MAX_SIDE) / width.max(height));
     let mut pixmap = resvg::tiny_skia::Pixmap::new(
         (width * scale).ceil().max(1.0) as u32,

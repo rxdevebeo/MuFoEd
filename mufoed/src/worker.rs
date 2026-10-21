@@ -1636,6 +1636,10 @@ struct Worker<'a, 's> {
     /// The cell a click started in, for selecting cells by dragging.
     cell_origin: Option<CellRef>,
     goal_x: Option<f64>,
+    /// The line a caret was put on, by its page and a y on it: a position at
+    /// a soft line break is both the end of one line and the start of the
+    /// next, and only one of them shows. Holds while the caret stays there.
+    line_hint: Option<(Logical, usize, f64)>,
     scroll_at_top: bool,
     /// The selected drawing.
     object: Option<DrawingPosition>,
@@ -1694,6 +1698,7 @@ impl<'a, 's> Worker<'a, 's> {
             cells: None,
             cell_origin: None,
             goal_x: None,
+            line_hint: None,
             scroll_at_top: false,
             object: None,
             formula: None,
@@ -1945,7 +1950,11 @@ impl<'a, 's> Worker<'a, 's> {
                 y,
                 extend,
                 column,
-            } => self.click(page, x, y, extend, column),
+            } => {
+                let outcome = self.click(page, x, y, extend, column);
+                self.line_hint = self.caret.clone().map(|caret| (caret, page, y));
+                outcome
+            }
             Request::Table(command) if command.selects() => self.table_command(command),
             Request::SelectWord { page, x, y } => self.select_word(page, x, y),
             Request::Move { motion, extend } => self.motion(motion, extend),
@@ -2486,7 +2495,41 @@ impl<'a, 's> Worker<'a, 's> {
         let rects = map
             .caret(self.session.revision(), &self.position(caret))
             .unwrap_or_default();
+        let rects = if matches!(self.story, Story::HeaderFooter(_)) {
+            rects
+        } else {
+            self.one_line(caret, rects)
+        };
         self.on_edited_page(self.chem_carets(self.scheme_carets(rects)))
+    }
+
+    /// One caret per page where a position stands on two lines of it: at a
+    /// soft line break the end of one line is the start of the next. The line
+    /// it was put on when that is known (a click, End, Up/Down), else the
+    /// later one - the next line's start, where typing goes on, as Word shows
+    /// it. Other pages keep theirs (a table's repeated header row).
+    fn one_line(&self, caret: &Logical, rects: Vec<VisualRect>) -> Vec<VisualRect> {
+        if rects.len() < 2 {
+            return rects;
+        }
+        let hint = self
+            .line_hint
+            .as_ref()
+            .filter(|(at, _, _)| at == caret)
+            .map(|(_, page, y)| (*page, *y));
+        let mut pages: Vec<usize> = rects.iter().map(|rect| rect.page).collect();
+        pages.dedup();
+        pages
+            .into_iter()
+            .filter_map(|page| {
+                let here = rects.iter().copied().filter(|rect| rect.page == page);
+                let hinted = hint.filter(|(at, _)| *at == page).and_then(|(_, y)| {
+                    here.clone()
+                        .find(|rect| y >= rect.y - 0.5 && y <= rect.y + rect.height + 0.5)
+                });
+                hinted.or_else(|| here.max_by(|a, b| a.y.total_cmp(&b.y).then(a.x.total_cmp(&b.x))))
+            })
+            .collect()
     }
 
     /// Drops copies of an open header or footer that belong to other pages.
@@ -2517,6 +2560,11 @@ impl<'a, 's> Worker<'a, 's> {
                 let carets = map
                     .caret(revision, &self.position(caret))
                     .unwrap_or_default();
+                let carets = if matches!(self.story, Story::HeaderFooter(_)) {
+                    carets
+                } else {
+                    self.one_line(caret, carets)
+                };
                 let selection = self
                     .anchor
                     .as_ref()
@@ -3096,7 +3144,12 @@ impl<'a, 's> Worker<'a, 's> {
                 };
                 let width = self.page_sizes.get(rect.page).map_or(rect.x, |size| size.0);
                 let x = if motion == Motion::Home { 0.0 } else { width };
-                self.hit(rect.page, x, rect.y + rect.height / 2.0)
+                let y = rect.y + rect.height / 2.0;
+                let target = self.hit(rect.page, x, y);
+                // End stays on this line even where its end is the next
+                // line's start.
+                self.line_hint = target.clone().map(|target| (target, rect.page, y));
+                target
             }
             Motion::DocStart => self
                 .paragraphs(&self.story)
@@ -3175,6 +3228,7 @@ impl<'a, 's> Worker<'a, 's> {
                 continue;
             };
             if self.caret.as_ref() != Some(&target) && !self.same_line(&target, &rect) {
+                self.line_hint = Some((target.clone(), page, y));
                 self.place(target, extend);
                 return Outcome::Moved;
             }
@@ -10681,6 +10735,128 @@ mod tests {
             Reply::Note(note) if note.error => panic!("{}: {}", note.key, note.detail),
             _ => None,
         })
+    }
+
+    /// A page drawn in bands is the page drawn whole, and an edit redraws only
+    /// the bands it changed: put over the old bitmap they give the new page.
+    #[test]
+    fn a_page_drawn_in_bands_matches_it_drawn_whole() {
+        let (requests, replies) = new_document();
+        for line in 0..12 {
+            requests
+                .send(Request::Type(format!("Line {line} with some words in it ")))
+                .unwrap();
+            requests.send(Request::Enter).unwrap();
+        }
+        let pages = |requests: &Sender<Request>| {
+            requests.send(Request::Type(String::new())).unwrap();
+            loop {
+                if let Some(pages) = wait(&replies, |reply| match reply {
+                    Reply::Pages { pages, .. } => Some(Some(pages)),
+                    Reply::Cursor(_) => Some(None),
+                    _ => None,
+                }) {
+                    break pages;
+                }
+            }
+        };
+        // As the editor paints: text as glyph outlines.
+        let options = strict_ooxml::RenderOptions::default()
+            .embed_fonts(false)
+            .text_outlines(true);
+        let whole = |page: &PageData| {
+            crate::raster::rasterize(&strict_ooxml::paint_page(&page.placed, &options), 1.5)
+                .expect("whole")
+        };
+        let before = pages(&requests);
+        let first =
+            crate::raster::rasterize_page(&before[0].placed, &options, 1.5, None).expect("bands");
+        assert!(first.full);
+        let mut bitmap = first.assemble();
+        let reference = whole(&before[0]);
+        assert_eq!(
+            (bitmap.width, bitmap.height),
+            (reference.width, reference.height)
+        );
+        // Drawn in bands, a glyph's antialiasing can differ by a shade in a few
+        // pixels (an integer row shift); nothing is missing.
+        let differing = bitmap
+            .rgba
+            .iter()
+            .zip(&reference.rgba)
+            .filter(|(a, b)| a != b)
+            .count();
+        let worst = bitmap
+            .rgba
+            .iter()
+            .zip(&reference.rgba)
+            .map(|(a, b)| a.abs_diff(*b))
+            .max()
+            .unwrap_or(0);
+        assert!(
+            differing * 2000 <= bitmap.rgba.len() && worst <= 48,
+            "bands differ from the whole page: {differing} bytes, by up to {worst}"
+        );
+        // One word more on the last line.
+        requests.send(Request::Type("more".into())).unwrap();
+        let after = pages(&requests);
+        let changed =
+            crate::raster::rasterize_page(&after[0].placed, &options, 1.5, Some(&first.hashes))
+                .expect("changes");
+        assert!(!changed.full);
+        assert!(!changed.bands.is_empty(), "the edit changed a band");
+        assert!(
+            changed.bands.len() < first.hashes.len() / 2,
+            "{} of {} bands redrawn",
+            changed.bands.len(),
+            first.hashes.len()
+        );
+        let stride = bitmap.width * 4;
+        for (row, band) in &changed.bands {
+            let start = row * stride;
+            bitmap.rgba[start..start + band.rgba.len()].copy_from_slice(&band.rgba);
+        }
+        // The old bitmap with the changed bands put in is the new page drawn
+        // in bands, to the byte: edits never drift.
+        let fresh = crate::raster::rasterize_page(&after[0].placed, &options, 1.5, None)
+            .expect("new page")
+            .assemble();
+        assert!(
+            bitmap.rgba == fresh.rgba,
+            "patched bitmap differs from the new page"
+        );
+        requests.send(Request::Shutdown).unwrap();
+    }
+
+    /// A position at a soft line break is the end of one line and the start of
+    /// the next: one caret shows, on the line the caret was put on.
+    #[test]
+    fn a_soft_line_break_shows_one_caret() {
+        let (requests, replies) = new_document();
+        requests.send(Request::Type("word ".repeat(60))).unwrap();
+        let carets = |motion: Motion| {
+            requests
+                .send(Request::Move {
+                    motion,
+                    extend: false,
+                })
+                .unwrap();
+            wait(&replies, |reply| match reply {
+                Reply::Cursor(cursor) => Some(cursor.carets),
+                _ => None,
+            })
+        };
+        let start = carets(Motion::DocStart);
+        assert_eq!(start.len(), 1);
+        let end = carets(Motion::End);
+        assert_eq!(end.len(), 1, "End shows one caret: {end:?}");
+        assert!((end[0].y - start[0].y).abs() < 0.5, "End stays on line 1");
+        assert!(end[0].x > start[0].x + 100.0, "at the line's end");
+        let _ = carets(Motion::Home);
+        let down = carets(Motion::Down);
+        assert_eq!(down.len(), 1);
+        assert!(down[0].y > start[0].y + 5.0, "Down is on line 2");
+        requests.send(Request::Shutdown).unwrap();
     }
 
     /// Shift+Enter breaks the line inside the paragraph; Undo takes it back.
