@@ -1172,3 +1172,126 @@ fn explicitly_tight_formula_rows_produce_a_clearance_diagnostic() {
         "{warnings:?}"
     );
 }
+
+/// Every OMML construct projects to its MathML element, and every layout
+/// schema has the number of children MathML gives it: an argument of several
+/// tokens is one `mrow`, and an n-ary operator is the operator, then its
+/// limits, with the operand after.
+#[test]
+#[allow(clippy::too_many_lines)] // One formula holding every construct.
+fn every_construct_projects_with_the_children_mathml_requires() {
+    let expression = first_formula(
+        "<w:p><m:oMath>\
+<m:f><m:num><m:r><m:t>a+b</m:t></m:r><m:r><m:t>c</m:t></m:r></m:num><m:den><m:r><m:t>2</m:t></m:r></m:den></m:f>\
+<m:rad><m:deg><m:r><m:t>3</m:t></m:r></m:deg><m:e><m:r><m:t>x</m:t></m:r></m:e></m:rad>\
+<m:sSup><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup>\
+<m:sSub><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sub><m:r><m:t>i</m:t></m:r></m:sub></m:sSub>\
+<m:sSubSup><m:e><m:r><m:t>x</m:t></m:r></m:e><m:sub><m:r><m:t>i</m:t></m:r></m:sub><m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSubSup>\
+<m:sPre><m:sub><m:r><m:t>1</m:t></m:r></m:sub><m:sup><m:r><m:t>2</m:t></m:r></m:sup><m:e><m:r><m:t>C</m:t></m:r></m:e></m:sPre>\
+<m:nary><m:naryPr><m:chr m:val=\"∑\"/></m:naryPr><m:sub><m:r><m:t>i</m:t></m:r></m:sub><m:sup><m:r><m:t>n</m:t></m:r></m:sup><m:e><m:r><m:t>k</m:t></m:r></m:e></m:nary>\
+<m:nary><m:naryPr><m:supHide m:val=\"1\"/></m:naryPr><m:sub><m:r><m:t>D</m:t></m:r></m:sub><m:sup/><m:e><m:r><m:t>f</m:t></m:r></m:e></m:nary>\
+<m:nary><m:naryPr><m:chr m:val=\"∏\"/><m:subHide m:val=\"1\"/></m:naryPr><m:sub/><m:sup><m:r><m:t>n</m:t></m:r></m:sup><m:e><m:r><m:t>k</m:t></m:r></m:e></m:nary>\
+<m:nary><m:naryPr><m:subHide m:val=\"1\"/><m:supHide m:val=\"1\"/></m:naryPr><m:sub/><m:sup/><m:e><m:r><m:t>g</m:t></m:r></m:e></m:nary>\
+<m:d><m:dPr><m:begChr m:val=\"[\"/><m:sepChr m:val=\";\"/><m:endChr m:val=\"]\"/></m:dPr><m:e><m:r><m:t>a</m:t></m:r></m:e><m:e><m:r><m:t>b</m:t></m:r></m:e></m:d>\
+<m:func><m:fName><m:r><m:t>sin</m:t></m:r></m:fName><m:e><m:r><m:t>x</m:t></m:r></m:e></m:func>\
+<m:limLow><m:e><m:r><m:t>lim</m:t></m:r></m:e><m:lim><m:r><m:t>n</m:t></m:r></m:lim></m:limLow>\
+<m:limUpp><m:e><m:r><m:t>x</m:t></m:r></m:e><m:lim><m:r><m:t>y</m:t></m:r></m:lim></m:limUpp>\
+<m:m><m:mr><m:e><m:r><m:t>1</m:t></m:r></m:e><m:e><m:r><m:t>0</m:t></m:r></m:e></m:mr></m:m>\
+<m:eqArr><m:e><m:r><m:t>a</m:t></m:r></m:e><m:e><m:r><m:t>b</m:t></m:r></m:e></m:eqArr>\
+<m:acc><m:accPr><m:chr m:val=\"̃\"/></m:accPr><m:e><m:r><m:t>n</m:t></m:r></m:e></m:acc>\
+<m:acc><m:e><m:r><m:t>a</m:t></m:r></m:e></m:acc>\
+<m:bar><m:barPr><m:pos m:val=\"bot\"/></m:barPr><m:e><m:r><m:t>u</m:t></m:r></m:e></m:bar>\
+<m:bar><m:e><m:r><m:t>o</m:t></m:r></m:e></m:bar>\
+<m:groupChr><m:e><m:r><m:t>abc</m:t></m:r></m:e></m:groupChr>\
+<m:groupChr><m:groupChrPr><m:chr m:val=\"⏞\"/><m:pos m:val=\"top\"/></m:groupChrPr><m:e><m:r><m:t>d</m:t></m:r></m:e></m:groupChr>\
+<m:groupChr><m:groupChrPr><m:pos m:val=\"bot\"/></m:groupChrPr><m:e><m:r><m:t>e</m:t></m:r></m:e></m:groupChr>\
+<m:box><m:e><m:r><m:t>b</m:t></m:r></m:e></m:box>\
+<m:borderBox><m:e><m:r><m:t>c</m:t></m:r></m:e></m:borderBox>\
+<m:phant><m:e><m:r><m:t>p</m:t></m:r></m:e></m:phant>\
+<m:r><m:rPr><m:scr m:val=\"script\"/><m:sty m:val=\"b\"/></m:rPr><m:t>L</m:t></m:r>\
+<m:r><m:rPr><m:scr m:val=\"fraktur\"/><m:sty m:val=\"bi\"/></m:rPr><m:t>g</m:t></m:r>\
+<m:r><m:rPr><m:scr m:val=\"double-struck\"/></m:rPr><m:t>R</m:t></m:r>\
+<m:r><m:rPr><m:scr m:val=\"script\"/></m:rPr><m:t>S</m:t></m:r>\
+<m:r><m:rPr><m:scr m:val=\"fraktur\"/></m:rPr><m:t>F</m:t></m:r>\
+<m:r><m:rPr><m:scr m:val=\"sans-serif\"/><m:sty m:val=\"bi\"/></m:rPr><m:t>A</m:t></m:r>\
+<m:r><m:rPr><m:scr m:val=\"sans-serif\"/><m:sty m:val=\"i\"/></m:rPr><m:t>B</m:t></m:r>\
+<m:r><m:rPr><m:scr m:val=\"sans-serif\"/><m:sty m:val=\"b\"/></m:rPr><m:t>C</m:t></m:r>\
+<m:r><m:rPr><m:scr m:val=\"sans-serif\"/></m:rPr><m:t>D</m:t></m:r>\
+<m:r><m:rPr><m:scr m:val=\"monospace\"/></m:rPr><m:t>E</m:t></m:r>\
+<m:r><m:rPr><m:sty m:val=\"bi\"/></m:rPr><m:t>G</m:t></m:r>\
+<m:r><m:rPr><m:sty m:val=\"b\"/></m:rPr><m:t>H</m:t></m:r>\
+<m:r><m:rPr><m:sty m:val=\"i\"/></m:rPr><m:t>I</m:t></m:r>\
+<m:r><m:rPr><m:scr m:val=\"roman\"/></m:rPr><m:t>J</m:t></m:r>\
+<m:r><m:rPr><m:sty m:val=\"p\"/></m:rPr><m:t>K</m:t></m:r>\
+<m:r><m:rPr><m:lit/></m:rPr><m:t>lit</m:t></m:r>\
+<m:r><m:rPr><m:nor/></m:rPr><m:t>if</m:t></m:r>\
+<m:r><m:t>αβ</m:t></m:r><m:r><m:t>x1</m:t></m:r><m:r><m:t> </m:t></m:r>\
+</m:oMath></w:p>",
+    );
+    let mathml = math_expression_to_mathml(&expression).expect("mathml");
+    let tree = roxmltree::Document::parse(&mathml).expect("valid MathML");
+    let count = |tag: &str| {
+        tree.descendants()
+            .filter(|node| node.tag_name().name() == tag)
+            .count()
+    };
+    for (tag, at_least) in [
+        ("mfrac", 1),
+        ("mroot", 1),
+        ("msup", 1),
+        ("msub", 1),
+        ("msubsup", 1),
+        ("mmultiscripts", 1),
+        ("munderover", 1),
+        ("munder", 3),
+        ("mover", 6),
+        ("mtable", 2),
+        ("mphantom", 1),
+    ] {
+        assert!(count(tag) >= at_least, "{tag} in {mathml}");
+    }
+    let arity = |tag: &str| -> Vec<usize> {
+        tree.descendants()
+            .filter(|node| node.tag_name().name() == tag)
+            .map(|node| node.children().filter(roxmltree::Node::is_element).count())
+            .collect()
+    };
+    assert!(arity("mfrac").iter().all(|n| *n == 2), "{mathml}");
+    assert!(arity("mroot").iter().all(|n| *n == 2), "{mathml}");
+    assert!(arity("msubsup").iter().all(|n| *n == 3), "{mathml}");
+    assert!(arity("munderover").iter().all(|n| *n == 3), "{mathml}");
+    let first_child = tree
+        .descendants()
+        .find(|node| node.tag_name().name() == "munderover")
+        .and_then(|node| node.children().find(roxmltree::Node::is_element))
+        .expect("operator");
+    assert_eq!(first_child.tag_name().name(), "mo");
+    assert_eq!(first_child.text(), Some("∑"));
+    for expected in [
+        "mathvariant=\"bold-script\"",
+        "mathvariant=\"bold-fraktur\"",
+        "mathvariant=\"double-struck\"",
+        "mathvariant=\"script\"",
+        "mathvariant=\"fraktur\"",
+        "mathvariant=\"sans-serif-bold-italic\"",
+        "mathvariant=\"sans-serif-italic\"",
+        "mathvariant=\"bold-sans-serif\"",
+        "mathvariant=\"sans-serif\"",
+        "mathvariant=\"monospace\"",
+        "mathvariant=\"bold-italic\"",
+        "mathvariant=\"bold\"",
+        "mathvariant=\"italic\"",
+        "mathvariant=\"normal\"",
+        "<mtext mathvariant=\"normal\">lit</mtext>",
+        "<mi>αβ</mi>",
+        "<mtext>x1</mtext>",
+        "<mo>[</mo>",
+        "<mo>;</mo>",
+        "data-boxed=\"true\"",
+        "data-border=\"true\"",
+        "<mtable columnalign=\"left\">",
+        "<mo>\u{2061}</mo>",
+    ] {
+        assert!(mathml.contains(expected), "{expected} in {mathml}");
+    }
+}

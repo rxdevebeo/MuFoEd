@@ -101,20 +101,24 @@ fn write_nodes(out: &mut String, nodes: &[MathNode]) -> Result<(), MathMlError> 
     Ok(())
 }
 
-/// Writes the children of an `m:e`-like argument.
+/// Writes an `m:e`-like argument as one `mrow`.
+///
+/// `mfrac`, `msup`, `munderover` and the other layout schemata take a fixed
+/// number of children, so an argument of several tokens (`a+b`) must be one
+/// element, or the numerator's tokens become the fraction's extra children.
 fn write_argument(out: &mut String, argument: &MathArgument) -> Result<(), MathMlError> {
-    let alignment = argument.properties.alignment;
-    if let Some(alignment) = alignment {
-        let _ = write!(
-            out,
-            "<mrow data-alignment=\"{}\">",
-            alignment_name(alignment)
-        );
-        write_nodes(out, &argument.nodes)?;
-        out.push_str("</mrow>");
-    } else {
-        write_nodes(out, &argument.nodes)?;
+    match argument.properties.alignment {
+        Some(alignment) => {
+            let _ = write!(
+                out,
+                "<mrow data-alignment=\"{}\">",
+                alignment_name(alignment)
+            );
+        }
+        None => out.push_str("<mrow>"),
     }
+    write_nodes(out, &argument.nodes)?;
+    out.push_str("</mrow>");
     Ok(())
 }
 
@@ -389,7 +393,9 @@ fn write_node(out: &mut String, node: &MathNode) -> Result<(), MathMlError> {
     Ok(())
 }
 
-/// Writes an n-ary operator as `munderover`/`munder`/`mover` plus its glyph.
+/// Writes an n-ary operator: the operator with its limits (`munderover`,
+/// `munder`, `mover`: base first, then under, then over), followed by its
+/// operand, in one `mrow`.
 fn write_nary(
     out: &mut String,
     node: &strict_ooxml_wml::model::math::NaryOperator,
@@ -402,24 +408,25 @@ fn write_nary(
         (false, true) => "mover",
         (false, false) => "mrow",
     };
-    out.push('<');
+    out.push_str("<mrow><");
     out.push_str(tag);
     out.push('>');
+    let _ = write!(
+        out,
+        "<mo>{}</mo>",
+        escape(&node.chr.unwrap_or('\u{222B}').to_string())
+    );
     if has_lower {
         write_argument(out, &node.subscript)?;
     }
     if has_upper {
         write_argument(out, &node.superscript)?;
     }
-    let _ = write!(
-        out,
-        "<mo>{}</mo>",
-        escape(&node.chr.unwrap_or('\u{222B}').to_string())
-    );
-    write_argument(out, &node.operand)?;
     out.push_str("</");
     out.push_str(tag);
     out.push('>');
+    write_argument(out, &node.operand)?;
+    out.push_str("</mrow>");
     Ok(())
 }
 

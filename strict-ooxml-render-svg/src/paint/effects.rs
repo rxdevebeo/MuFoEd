@@ -39,9 +39,14 @@ fn read(ctx: &LayoutContext<'_>, markup: &str) -> Vec<Effect> {
                         .find(|attr| attr.name.local == key)
                         .map(|attr| attr.value.as_str())
                 };
+                // Strict writes a percentage as `45%` (ST_Percentage); the
+                // thousandths Transitional writes (`45000`) are read as well.
                 let number = |key: &str, fallback: f64| {
                     value(key)
-                        .and_then(|v| v.parse::<f64>().ok())
+                        .and_then(|v| match v.strip_suffix('%') {
+                            Some(percent) => percent.parse::<f64>().ok().map(|p| p * 1000.0),
+                            None => v.parse::<f64>().ok(),
+                        })
                         .filter(|v| v.is_finite())
                         .unwrap_or(fallback)
                 };
@@ -93,7 +98,8 @@ fn read(ctx: &LayoutContext<'_>, markup: &str) -> Vec<Effect> {
                                 .as_ref()
                                 .and_then(|theme| theme.color(color))
                             {
-                                effect.color = format!("#{color}");
+                                // The theme already gives `#rrggbb`.
+                                color.clone_into(&mut effect.color);
                             }
                         }
                     }

@@ -286,3 +286,305 @@ fn vertical_overflow_ellipsis_ends_the_last_visible_line() {
         .expect("a visible line");
     assert!(last.2.ends_with('\u{2026}'), "{ellipsis:?}");
 }
+
+/// Every group on the page, nested ones included.
+fn groups(items: &[Item]) -> Vec<&strict_ooxml_render_svg::layout::GroupItem> {
+    let mut out = Vec::new();
+    for item in items {
+        if let Item::Group(group) = item {
+            out.push(group);
+            out.extend(groups(&group.items));
+        }
+    }
+    out
+}
+
+/// A filled, outlined rectangle with `effects` in its `a:effectLst`.
+fn shape_with_effects(effects: &str, extra: &str) -> PlacedPage {
+    placed(shape_docx(&format!(
+        "<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>\
+         <a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>\
+         <a:solidFill><a:srgbClr val=\"00FF00\"/></a:solidFill>\
+         <a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"0000FF\"/></a:solidFill></a:ln>\
+         <a:effectLst>{effects}</a:effectLst></wps:spPr>{extra}<wps:bodyPr/></wps:wsp>"
+    )))
+}
+
+/// A blurred outer shadow is nine offset copies in the shadow colour, each
+/// carrying its share of the alpha, beneath the shape; the shape stays on top
+/// in its own colours.
+#[test]
+fn an_outer_shadow_is_blurred_copies_beneath_the_shape() {
+    let page = shape_with_effects(
+        "<a:outerShdw blurRad=\"50800\" dist=\"38100\" dir=\"2700000\" sx=\"90000\" sy=\"90000\">\
+         <a:srgbClr val=\"FF0000\"><a:alpha val=\"45000\"/></a:srgbClr></a:outerShdw>\
+         <a:blur rad=\"1000\"/><a:reflection/>",
+        "",
+    );
+    let shadows: Vec<_> = groups(&page.items)
+        .into_iter()
+        .filter(|group| (group.opacity - 0.05).abs() < 1e-9)
+        .collect();
+    assert_eq!(shadows.len(), 9, "{:?}", page.items);
+    for shadow in &shadows {
+        let leaves: Vec<_> = shadow.items.iter().flat_map(Item::leaves).collect();
+        assert!(leaves.iter().any(|leaf| matches!(
+            leaf,
+            Item::Path(path) if path.fill.as_deref() == Some("#FF0000")
+                && path.stroke.as_deref() == Some("#FF0000")
+        )));
+        // Scaled to 90% about the centre and moved down-right.
+        assert!((shadow.matrix[0] - 0.9).abs() < 1e-9 && (shadow.matrix[3] - 0.9).abs() < 1e-9);
+        assert!(
+            shadow.matrix[4] > 0.0 && shadow.matrix[5] > 0.0,
+            "{:?}",
+            shadow.matrix
+        );
+    }
+    let shape = paths(&page).into_iter().last().expect("the shape");
+    assert_eq!(shape.fill.as_deref(), Some("#00ff00"));
+}
+
+/// A glow widens the outline of every copy instead of filling it, and takes a
+/// theme colour; an effect without blur is one copy at full alpha.
+#[test]
+fn a_glow_strokes_wider_copies_in_its_theme_colour() {
+    let page = shape_with_effects(
+        "<a:glow rad=\"63500\"><a:schemeClr val=\"accent2\"/></a:glow>\
+         <a:outerShdw dist=\"12700\" dir=\"5400000\"><a:srgbClr val=\"zz\"/></a:outerShdw>",
+        "",
+    );
+    let all = groups(&page.items);
+    let glow: Vec<_> = all
+        .iter()
+        .flat_map(|group| group.items.iter().flat_map(Item::leaves))
+        .filter_map(|leaf| match leaf {
+            Item::Path(path) if path.stroke.as_deref() == Some("#ed7d31") => Some(path),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(glow.len(), 9, "{:?}", page.items);
+    assert!(glow.iter().all(|path| path.fill.is_none()));
+    let widths: Vec<f64> = glow.iter().map(|path| path.stroke_w).collect();
+    assert!(
+        widths.windows(2).all(|pair| pair[1] > pair[0]),
+        "each sample is wider: {widths:?}"
+    );
+    // The unblurred shadow: one copy, full alpha, still black (a bad colour
+    // value keeps the default).
+    let shadow = all
+        .iter()
+        .find(|group| (group.opacity - 1.0).abs() < 1e-9 && group.matrix[5] > 0.0)
+        .expect("one shadow copy");
+    assert!(shadow
+        .items
+        .iter()
+        .flat_map(Item::leaves)
+        .any(|leaf| matches!(
+            leaf,
+            Item::Path(path) if path.fill.as_deref() == Some("#000000")
+        )));
+}
+
+/// An inner shadow is drawn over the shape, clipped to its silhouette and
+/// cut out by the shifted silhouette.
+#[test]
+fn an_inner_shadow_is_clipped_inside_the_shape() {
+    let page = shape_with_effects(
+        "<a:innerShdw blurRad=\"25400\" dist=\"25400\" dir=\"0\">\
+         <a:srgbClr val=\"0000FF\"><a:alpha val=\"90000\"/></a:srgbClr></a:innerShdw>",
+        "",
+    );
+    let all = groups(&page.items);
+    let outer: Vec<_> = all
+        .iter()
+        .filter(|group| group.clip_path.is_some() && !group.clip_inverse)
+        .collect();
+    assert_eq!(outer.len(), 9, "{:?}", page.items);
+    assert!(outer.iter().all(|group| (group.opacity - 0.1).abs() < 1e-9));
+    let cut: Vec<_> = all.iter().filter(|group| group.clip_inverse).collect();
+    assert_eq!(cut.len(), 9);
+    assert!(cut.iter().all(|group| group.clip.is_some()));
+    // Drawn after the shape it shades.
+    let last = page.items.last().expect("items");
+    assert!(matches!(last, Item::Group(_)), "{last:?}");
+}
+
+/// Text in a shape with a shadow is copied into the shadow too, in the
+/// shadow's colour and without its shading.
+#[test]
+fn a_shadow_copies_the_shapes_text_in_its_colour() {
+    let page = shape_with_effects(
+        "<a:outerShdw dist=\"25400\" dir=\"5400000\"><a:srgbClr val=\"808080\"/></a:outerShdw>",
+        "<wps:txbx><w:txbxContent><w:p><w:r><w:rPr><w:shd w:val=\"clear\" w:fill=\"FFFF00\"/></w:rPr>\
+         <w:t>Shade</w:t></w:r></w:p></w:txbxContent></wps:txbx>",
+    );
+    let texts: Vec<_> = page
+        .items
+        .iter()
+        .flat_map(Item::leaves)
+        .filter_map(|leaf| match leaf {
+            Item::Text(text) if text.text.contains("Shade") => Some(text),
+            _ => None,
+        })
+        .collect();
+    assert!(!texts.is_empty());
+    let shadowed: Vec<_> = groups(&page.items)
+        .into_iter()
+        .flat_map(|group| group.items.iter())
+        .filter_map(|item| match item {
+            Item::Text(text) if text.text.contains("Shade") => Some(text),
+            _ => None,
+        })
+        .collect();
+    if let Some(text) = shadowed.first() {
+        assert_eq!(text.run.color.as_deref(), Some("#808080"));
+        assert!(text.run.shading.is_none());
+    }
+}
+
+/// A connector's glow widens its line.
+#[test]
+fn a_glow_on_a_line_widens_it() {
+    let page = placed(shape_docx(
+        "<wps:wsp><wps:cNvCnPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"0\"/></a:xfrm>\
+         <a:prstGeom prst=\"straightConnector1\"><a:avLst/></a:prstGeom>\
+         <a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"FF0000\"/></a:solidFill></a:ln>\
+         <a:effectLst><a:glow rad=\"25400\"><a:srgbClr val=\"00FFFF\"/></a:glow></a:effectLst>\
+         </wps:spPr><wps:bodyPr/></wps:wsp>",
+    ));
+    let glow: Vec<_> = groups(&page.items)
+        .into_iter()
+        .flat_map(|group| group.items.iter().flat_map(Item::leaves))
+        .filter(|leaf| match leaf {
+            Item::Path(path) => path.stroke.as_deref() == Some("#00FFFF"),
+            Item::Line(line) => line.color == "#00FFFF",
+            _ => false,
+        })
+        .collect();
+    assert!(!glow.is_empty(), "{:?}", page.items);
+}
+
+/// A rectangle filled with `fill`, rotated by `rot` (60000ths of a degree).
+fn filled_shape(fill: &str, rot: i32) -> Option<strict_ooxml_render_svg::layout::PathPaint> {
+    let page = placed(shape_docx(&format!(
+        "<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm rot=\"{rot}\"><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>\
+         <a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>{fill}</wps:spPr><wps:bodyPr/></wps:wsp>"
+    )));
+    let paint = page
+        .items
+        .iter()
+        .flat_map(Item::leaves)
+        .find_map(|leaf| match leaf {
+            Item::Path(path) => Some(path.paint.clone()),
+            _ => None,
+        })
+        .expect("the shape");
+    paint
+}
+
+#[test]
+fn a_linear_gradient_spans_the_box_with_padded_and_merged_stops() {
+    use strict_ooxml_render_svg::layout::PathPaint;
+    let paint = filled_shape(
+        "<a:gradFill rotWithShape=\"0\"><a:gsLst>\
+         <a:gs pos=\"60%\"><a:srgbClr val=\"0000FF\"/></a:gs>\
+         <a:gs pos=\"20%\"><a:srgbClr val=\"FF0000\"/></a:gs>\
+         <a:gs pos=\"60%\"><a:srgbClr val=\"00FF00\"/></a:gs>\
+         </a:gsLst><a:lin ang=\"5400000\" scaled=\"1\"/></a:gradFill>",
+        5_400_000,
+    );
+    let Some(PathPaint::LinearGradient { stops, start, end }) = paint else {
+        panic!("a linear gradient: {paint:?}");
+    };
+    let positions: Vec<f64> = stops.iter().map(|stop| stop.0).collect();
+    assert_eq!(positions, [0.0, 0.2, 0.6, 1.0], "{stops:?}");
+    assert_eq!(stops.first().map(|stop| stop.1.as_str()), Some("#ff0000"));
+    // The shape's own 90° cancels the gradient's 90° (rotWithShape="0").
+    assert!((start.1 - end.1).abs() < 1e-6, "{start:?} {end:?}");
+    assert!(end.0 > start.0);
+
+    let single = filled_shape(
+        "<a:gradFill><a:gsLst><a:gs pos=\"100%\"><a:srgbClr val=\"123456\"/></a:gs></a:gsLst>\
+         <a:lin ang=\"0\" scaled=\"0\"/></a:gradFill>",
+        0,
+    );
+    let Some(PathPaint::LinearGradient { stops, .. }) = single else {
+        panic!("{single:?}");
+    };
+    assert_eq!(stops.len(), 2);
+    assert!(stops.iter().all(|stop| stop.1 == "#123456"));
+}
+
+#[test]
+fn a_path_gradient_falls_back_to_a_flat_fill() {
+    let paint = filled_shape(
+        "<a:gradFill><a:gsLst><a:gs pos=\"0%\"><a:srgbClr val=\"FF0000\"/></a:gs>\
+         <a:gs pos=\"100%\"><a:srgbClr val=\"0000FF\"/></a:gs></a:gsLst>\
+         <a:path path=\"circle\"><a:fillToRect l=\"50%\" t=\"50%\" r=\"50%\" b=\"50%\"/></a:path></a:gradFill>",
+        0,
+    );
+    assert!(paint.is_none(), "{paint:?}");
+}
+
+#[test]
+fn pattern_presets_draw_their_tiles() {
+    use strict_ooxml_render_svg::layout::PathPaint;
+    let pattern = |preset: &str| {
+        filled_shape(
+            &format!(
+                "<a:pattFill prst=\"{preset}\"><a:fgClr><a:srgbClr val=\"FF0000\"/></a:fgClr>\
+                 <a:bgClr><a:srgbClr val=\"FFFFFF\"/></a:bgClr></a:pattFill>"
+            ),
+            0,
+        )
+    };
+    for (preset, lines, rectangles) in [
+        ("horz", 1, 0),
+        ("dkHorz", 2, 0),
+        ("narVert", 1, 0),
+        ("dkVert", 2, 0),
+        ("cross", 2, 0),
+        ("lgGrid", 2, 0),
+        ("dnDiag", 3, 0),
+        ("wdUpDiag", 3, 0),
+        ("dkDnDiag", 6, 0),
+        ("diagCross", 2, 0),
+        ("smCheck", 0, 2),
+        ("pct50", 0, 32),
+        ("pct0", 0, 0),
+    ] {
+        let Some(PathPaint::Pattern {
+            foreground,
+            background,
+            size,
+            lines: drawn,
+            rectangles: cells,
+        }) = pattern(preset)
+        else {
+            panic!("{preset}: a pattern");
+        };
+        assert_eq!(foreground, "#ff0000", "{preset}");
+        assert_eq!(background, "#ffffff", "{preset}");
+        assert_eq!(drawn.len(), lines, "{preset}");
+        assert_eq!(cells.len(), rectangles, "{preset}");
+        assert!(size > 0.0);
+    }
+    // Presets this renderer does not draw fall back to a flat fill.
+    for preset in ["pct250", "trellis"] {
+        assert!(pattern(preset).is_none(), "{preset}");
+    }
+    // No colours: black on white.
+    let Some(PathPaint::Pattern {
+        foreground,
+        background,
+        ..
+    }) = filled_shape("<a:pattFill prst=\"pct25\"/>", 0)
+    else {
+        panic!("a pattern");
+    };
+    assert_eq!(
+        (foreground.as_str(), background.as_str()),
+        ("#000000", "#ffffff")
+    );
+}

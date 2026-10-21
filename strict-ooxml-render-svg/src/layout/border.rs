@@ -378,6 +378,121 @@ mod tests {
     }
 
     #[test]
+    fn every_style_fills_its_band_on_every_side() {
+        use BorderStyle as S;
+        for style in [
+            S::Single,
+            S::Thick,
+            S::Double,
+            S::DoubleWave,
+            S::Wave,
+            S::ThreeDEmboss,
+            S::ThreeDEngrave,
+            S::Triple,
+            S::ThinThickSmallGap,
+            S::ThickThinSmallGap,
+            S::ThinThickMediumGap,
+            S::ThickThinMediumGap,
+            S::ThinThickLargeGap,
+            S::ThickThinLargeGap,
+            S::ThinThickThinSmallGap,
+            S::ThinThickThinMediumGap,
+            S::ThinThickThinLargeGap,
+            S::Dotted,
+            S::Dashed,
+            S::DashSmallGap,
+            S::DotDash,
+            S::DotDotDash,
+            S::DashDotStroked,
+        ] {
+            let mut resolved = resolve_border(&border(style, 16), None).expect("style");
+            for frame in [false, true] {
+                resolved.frame = frame;
+                for side in [Side::Top, Side::Bottom, Side::Left, Side::Right] {
+                    let items = edge_items(&resolved, side, 50.0, 10.0, 90.0, 1.0);
+                    assert_eq!(
+                        items.len(),
+                        lines_of(style).len(),
+                        "{style:?} {side:?} frame {frame}"
+                    );
+                    let band = resolved.band_pt();
+                    for item in &items {
+                        let across = match (item, side) {
+                            (Item::Line(line), Side::Top | Side::Bottom) => line.y1,
+                            (Item::Line(line), _) => line.x1,
+                            (Item::Path(path), Side::Top | Side::Bottom) => path.y + path.h / 2.0,
+                            (Item::Path(path), _) => path.x + path.w / 2.0,
+                            other => panic!("{other:?}"),
+                        };
+                        let inside = match side {
+                            Side::Top | Side::Left => (50.0 - band..=50.0).contains(&across),
+                            Side::Bottom | Side::Right => (50.0..=50.0 + band).contains(&across),
+                        };
+                        assert!(inside, "{style:?} {side:?}: {across} outside the band");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn three_d_borders_shade_their_outer_lines_and_shadows_are_grey() {
+        let mut resolved = resolve_border(&border(BorderStyle::ThreeDEmboss, 8), None).expect("3d");
+        let colors = |items: &[Item]| -> Vec<String> {
+            items
+                .iter()
+                .map(|item| match item {
+                    Item::Line(line) => line.color.clone(),
+                    other => panic!("{other:?}"),
+                })
+                .collect()
+        };
+        let top = colors(&edge_items(&resolved, Side::Top, 20.0, 0.0, 10.0, 1.0));
+        assert_eq!(top, ["#ff7f7f", "#ff0000", "#7f0000"]);
+        let bottom = colors(&edge_items(&resolved, Side::Bottom, 20.0, 0.0, 10.0, 1.0));
+        assert_eq!(bottom, ["#7f0000", "#ff0000", "#ff7f7f"]);
+        resolved.style = BorderStyle::ThreeDEngrave;
+        let engraved = colors(&edge_items(&resolved, Side::Top, 20.0, 0.0, 10.0, 1.0));
+        assert_eq!(engraved, ["#7f0000", "#ff0000", "#ff7f7f"]);
+        assert_eq!(shade_color("red", true), "red");
+
+        resolved.style = BorderStyle::Single;
+        resolved.shadow = true;
+        let shadowed = edge_items(&resolved, Side::Top, 20.0, 0.0, 10.0, 1.0);
+        assert_eq!(colors(&shadowed), ["#808080", "#ff0000"]);
+        resolved.style = BorderStyle::Dashed;
+        let dashed = edge_items(&resolved, Side::Top, 20.0, 0.0, 10.0, 1.0);
+        assert!(matches!(
+            dashed.first(),
+            Some(Item::Path(path)) if path.stroke.as_deref() == Some("#808080")
+        ));
+        // Nothing to draw along an empty extent.
+        assert!(edge_items(&resolved, Side::Top, 20.0, 10.0, 10.0, 1.0).is_empty());
+    }
+
+    #[test]
+    fn a_border_has_a_quarter_point_floor_and_defaults_to_black() {
+        let hairline = Border {
+            style: Some(BorderStyle::Single),
+            size: Some(EighthsPoint(1)),
+            ..Border::default()
+        };
+        let resolved = resolve_border(&hairline, None).expect("single");
+        assert_eq!(resolved.width_pt, 0.25);
+        assert_eq!(resolved.color, "#000000");
+        assert_eq!(resolved.space_pt, 0.0);
+        let no_size = Border {
+            style: Some(BorderStyle::Single),
+            ..Border::default()
+        };
+        assert_eq!(
+            resolve_border(&no_size, None).expect("single").width_pt,
+            0.5
+        );
+        assert!(resolve_border(&Border::default(), None).is_none());
+    }
+
+    #[test]
     fn a_dotted_border_is_a_dashed_path() {
         let resolved = resolve_border(&border(BorderStyle::Dotted, 8), None).expect("dotted");
         let items = edge_items(&resolved, Side::Left, 10.0, 0.0, 50.0, 1.0);
