@@ -1,0 +1,47 @@
+[package]
+name = "image-gallery"
+description = "Folder image gallery for egui: previews, viewer and batch processing (convert, rotate, resize, adjust, rename)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+# An application component, not a library: never published.
+publish = false
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["image", "gallery", "batch", "egui", "converter"]
+categories = ["gui", "multimedia::images"]
+
+[features]
+default = ["avif", "jxl", "svg"]
+# AVIF writing through the pure-Rust rav1e encoder. Reading AVIF needs the
+# native dav1d decoder and is deliberately not offered.
+avif = ["image/avif"]
+# JPEG XL reading through jxl-oxide.
+jxl = ["dep:jxl-oxide"]
+# SVG/SVGZ reading through resvg.
+svg = ["dep:resvg"]
+# Standalone demo window with folder dialogs.
+demo = ["dep:eframe", "dep:rfd"]
+
+[dependencies]
+egui = "0.35"
+image = { version = "0.25.10", default-features = false, features = ["rayon", "bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "png", "pnm", "qoi", "tga", "tiff", "webp"] }
+jxl-oxide = { version = "0.12", default-features = false, features = ["image", "rayon"], optional = true }
+resvg = { workspace = true, optional = true }
+miniz_oxide.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+eframe = { version = "0.35", optional = true }
+rfd = { version = "0.17", optional = true }
+
+[[bin]]
+name = "image-gallery-demo"
+path = "src/main.rs"
+required-features = ["demo"]
+
+[lints]
+workspace = true

@@ -32,6 +32,7 @@ members = [
     "mathml-editor",
     "diagram-editor",
     "chem-editor",
+    "image-gallery",
     "strict-ooxml-testkit",
     "xtool",
 ]
