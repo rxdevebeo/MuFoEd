@@ -160,6 +160,17 @@ entry — the gate then checks that the observed amber set matches the register
 in both directions, so the entry cannot be left behind after the fix.
 """
 opened = "2026-09-29"
+closed = "2026-10-21"
+closed_by = """
+`strict-ooxml-render-svg/src/math/opentype.rs`: radicals, display operators and
+accents are drawn from STIX Two Math's MATH table (size cuts, glyph assemblies,
+top-accent attachment, radical and script constants) instead of stroked paths,
+and the radical is sized from its radicand's ink. Worst SSIM 0.9567 -> 0.9601,
+margin +0.0101, so the page leaves the amber band; `EXTENT_RATCHET` pins its
+drift at (1, -1) and (-1, 17). The margin is one ten-thousandth wide, which is
+the risk this entry named: if a runtime measures it back inside the band, the
+register has to take it back.
+"""
 
 [[waivers]]
 id = "07-AMBER"
@@ -346,6 +357,11 @@ As `5C-C3` and `5C-C4`: the substitution residual and the block geometry, the
 same two causes, measured through a second renderer now.
 """
 opened = "2026-10-01"
+closed = "2026-10-21"
+closed_by = """
+The MATH-table formulas of `5C-AMBER`, through the PDF backend: worst SSIM
+0.9602, margin +0.0102, out of the amber band.
+"""
 
 # ---------------------------------------------------------------------------
 # Process gaps. No code binding, so the test only checks that a `process:`

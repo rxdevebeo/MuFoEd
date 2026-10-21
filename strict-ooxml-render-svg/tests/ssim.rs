@@ -103,7 +103,10 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // 5 -> -4 (2026-10-12): an inline formula line reserves its glyph ink, not
     // the loose font boxes of a group; inline n-ary limits sit at the side and a
     // groupChr base keeps the baseline, as WPS draws them. SSIM 0.948 -> 0.956.
-    ("strict-stage5c", 0, 1.0, -4.0),
+    // -4 -> -1 (2026-10-21): radicals, display operators and accents come from
+    // STIX Two Math's MATH table (size cuts, assemblies, accent attachment)
+    // instead of stroked paths. SSIM 0.9567 -> 0.9601, out of the amber band.
+    ("strict-stage5c", 0, 1.0, -1.0),
     // WPS probes (2026-10-11): adjacent m:oMath objects share a baseline;
     // explicit math-run breaks create lines. Removing implicit breaks improves
     // the bottom drift from +193 px to +24 px, while preserving separate objects.
@@ -112,7 +115,8 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // 25 -> 20 (2026-10-19): a row that already fills the nominal pitch no
     // longer takes another 0.3 em of clearance, so this equation array sits
     // 5 px closer to the reference.
-    ("strict-stage5c", 1, 1.0, 20.0),
+    // (1, 20) -> (-1, 17) (2026-10-21): the MATH-table radicals and operators.
+    ("strict-stage5c", 1, -1.0, 17.0),
     // -2 -> 4: the same trade on the simplest formula page, where one fraction gets
     // 6 px taller. The page's SSIM went from 0.9632 to 0.9747.
     // Compact inline fraction parts bring the former +4 px bottom drift to zero.
@@ -124,7 +128,10 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // 5 -> -8 (2026-10-19): fraction and radical boxes follow the glyph ink,
     // so the formulas are shorter and the page ends 8 px above the reference.
     // SSIM stays at 0.9735, inside the class bound.
-    ("06-strict-math-display", 0, 0.0, -8.0),
+    // -8 -> -5 (2026-10-21): the display `∑` and `∫` are the math face's own
+    // display cuts at Word's height and the radical is sized from its
+    // radicand's ink. SSIM 0.9735 -> 0.9730.
+    ("06-strict-math-display", 0, 0.0, -5.0),
     ("07-strict-drawingml-shapes", 0, 0.0, 1.0),
     // -3 -> 7: the same trade on the equation-array page. SSIM 0.9573 -> 0.9695.
     // 7 -> 2 (2026-10-12): display grids centred on the math axis. SSIM -> 0.9715.

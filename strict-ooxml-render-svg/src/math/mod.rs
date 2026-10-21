@@ -12,6 +12,7 @@
 mod clearance;
 pub(crate) mod layout;
 pub(crate) mod mathml;
+mod opentype;
 pub(crate) mod shapes;
 
 pub(crate) use layout::{layout_display, layout_inline_wrapped};

@@ -726,6 +726,41 @@ impl Frame<'_, '_> {
         }))
     }
 
+    /// Emits a math-face outline (a size cut or an assembly) with its origin
+    /// at `(x, baseline)`.
+    fn glyph(&self, shape: &super::opentype::Shape, x: f64, baseline: f64) -> Option<Item> {
+        let (d, width, height) = shape.local_path(self.size_px);
+        self.charge(Item::Path(PathItem {
+            paint: None,
+            x: crate::units::finite(x + shape.bounds[0] * self.size_px),
+            y: crate::units::finite(baseline - shape.bounds[3] * self.size_px),
+            w: crate::units::finite(width),
+            h: crate::units::finite(height),
+            d,
+            fill: Some(self.color()),
+            stroke: None,
+            stroke_w: 0.0,
+            dash: None,
+            rotate_deg: 0.0,
+            flip_h: false,
+            flip_v: false,
+        }))
+    }
+
+    /// Emits a horizontal rule `thickness` px thick whose top edge is at `top`.
+    fn rule_at(&self, x: f64, top: f64, width: f64, thickness: f64) -> Option<Item> {
+        let y = top + thickness / 2.0;
+        self.charge(Item::Line(LineItem {
+            x1: crate::units::finite(x),
+            y1: crate::units::finite(y),
+            x2: crate::units::finite(x + width),
+            y2: crate::units::finite(y),
+            color: self.color(),
+            width: crate::units::finite(thickness),
+            dashed: false,
+        }))
+    }
+
     /// Emits a stroked line from `(x1, y1)` to `(x2, y2)`.
     fn segment(&self, x1: f64, y1: f64, x2: f64, y2: f64) -> Option<Item> {
         self.charge(Item::Line(LineItem {
@@ -1730,6 +1765,26 @@ fn layout_radical(frame: &Frame<'_, '_>, radical: &Radical) -> MathBox {
     } else {
         layout_argument(&degree_frame, &radical.degree)
     };
+    if let Some(constants) = super::opentype::constants() {
+        let em = frame.em();
+        let gap = if frame.display {
+            constants.radical_display_style_vertical_gap
+        } else {
+            constants.radical_vertical_gap
+        } * em;
+        let rule = (constants.radical_rule_thickness * em).max(MIN_RULE_PX);
+        // The gap is measured from the radicand's ink (OpenType `MATH`), not
+        // from the font's line box, which would take a taller sign for every
+        // radicand and lift `√(b²−4ac)` above where Word draws it.
+        let ink = ink_bounds(frame, &radicand.items)
+            .map_or((radicand.size.height, radicand.size.depth), |ink| {
+                (-ink[1], ink[3].max(0.0))
+            });
+        let needed = ink.0 + ink.1 + gap + rule;
+        if let Some(sign) = super::opentype::vertical('\u{221A}', needed / em, true) {
+            return place_radical(frame, &constants, &sign, radicand, ink, degree, (gap, rule));
+        }
+    }
     let gap = RADICAL_GAP * frame.em();
     let bar_y = -radicand.size.height - gap;
     // The hook reaches the bottom of the radicand, including what hangs below
@@ -1765,6 +1820,62 @@ fn layout_radical(frame: &Frame<'_, '_>, radical: &Radical) -> MathBox {
     let total_width = radicand_x + radicand.size.width;
     out.place(radicand, radicand_x, 0.0);
     out.size.width = total_width.max(out.size.width);
+    out
+}
+
+/// Places a radical drawn with the math face's own sign, as the `MATH` table
+/// sets it: the sign is the smallest cut (or an assembly) covering the
+/// radicand, the gap and the rule; what the sign has to spare is shared out
+/// equally above and below the radicand; the rule continues the sign's top
+/// stroke; the degree sits in the notch, raised by
+/// `RadicalDegreeBottomRaisePercent` of the sign and kerned into it.
+fn place_radical(
+    frame: &Frame<'_, '_>,
+    constants: &super::opentype::Constants,
+    sign: &super::opentype::Shape,
+    radicand: MathBox,
+    (ink_height, ink_depth): (f64, f64),
+    degree: MathBox,
+    (gap, rule): (f64, f64),
+) -> MathBox {
+    let em = frame.em();
+    let sign_height = sign.height() * em;
+    let needed = ink_height + ink_depth + gap + rule;
+    let gap = gap + ((sign_height - needed) / 2.0).max(0.0);
+    // The top of the sign and of the rule.
+    let top = -(ink_height + gap + rule);
+    let bottom = top + sign_height;
+    let (degree_x, sign_x) = if degree.is_empty() {
+        (0.0, 0.0)
+    } else {
+        let before = constants.radical_kern_before_degree * em;
+        let after = constants.radical_kern_after_degree * em;
+        (before, (before + degree.size.width + after).max(0.0))
+    };
+    let mut out = MathBox::empty();
+    if let Some(item) = frame.glyph(sign, sign_x, top + sign.bounds[3] * em) {
+        out.items.push(item);
+    }
+    let radicand_x = sign_x + sign.advance.max(sign.bounds[2]) * em;
+    // The rule starts inside the sign's last stroke, so the join shows no seam.
+    let rule_x = sign_x + sign.bounds[2] * em - rule;
+    if let Some(item) = frame.rule_at(rule_x, top, radicand_x + radicand.size.width - rule_x, rule)
+    {
+        out.items.push(item);
+    }
+    if !degree.is_empty() {
+        let raise = constants.radical_degree_bottom_raise * sign_height;
+        let dy = bottom - raise - degree.size.depth;
+        out.place(degree, degree_x, dy);
+    }
+    let width = radicand_x + radicand.size.width;
+    out.place(radicand, radicand_x, 0.0);
+    out.size.width = out.size.width.max(width);
+    out.size.height = out
+        .size
+        .height
+        .max(-top + constants.radical_extra_ascender * em);
+    out.size.depth = out.size.depth.max(bottom);
     out
 }
 
@@ -1925,7 +2036,7 @@ fn layout_nary(frame: &Frame<'_, '_>, nary: &NaryOperator) -> MathBox {
     } else {
         0.0
     } + 2.0 * LIMIT_GAP * frame.em();
-    let mut operator = nary_operator(
+    let (mut operator, italic) = nary_operator(
         frame,
         character,
         // An absent `m:grow` is off (ISO/IEC 29500-1 §22.1.2.43, CT_OnOff).
@@ -1963,11 +2074,15 @@ fn layout_nary(frame: &Frame<'_, '_>, nary: &NaryOperator) -> MathBox {
         // A large operator carries its limits at its own extremes; a plain one
         // keeps them at the ordinary script positions.
         if operator.size.height > frame.row_ascent() {
-            let lower_y = operator.size.depth + LIMIT_GAP * frame.em() + lower.size.height;
-            let upper_y = -(operator.size.height + LIMIT_GAP * frame.em()) - upper.size.depth;
+            let (lower_y, upper_y) = side_limit_baselines(frame, &operator, &lower, &upper);
+            // The ink of a slanted sign (an integral) leans past its advance
+            // by the italic correction.
+            let ink_right = operator.size.width + italic;
             head.place(operator, 0.0, 0.0);
             head.place(lower, script_x, lower_y);
-            head.place(upper, script_x, upper_y);
+            // The upper limit follows the sign's top, the lower one its foot.
+            head.place(upper, script_x + italic, upper_y);
+            head.size.width = head.size.width.max(ink_right);
         } else {
             head.place(operator, 0.0, 0.0);
             head.place(lower, script_x, SUB_SHIFT * frame.em());
@@ -1981,21 +2096,46 @@ fn layout_nary(frame: &Frame<'_, '_>, nary: &NaryOperator) -> MathBox {
     out
 }
 
+/// The baselines of the limits beside a tall operator: lower, then upper.
+///
+/// With the math face's script drops the limits stand beside the sign's ends,
+/// as Word sets an integral's; without them, clear of the sign.
+fn side_limit_baselines(
+    frame: &Frame<'_, '_>,
+    operator: &MathBox,
+    lower: &MathBox,
+    upper: &MathBox,
+) -> (f64, f64) {
+    let em = frame.em();
+    match super::opentype::constants() {
+        Some(constants) => (
+            operator.size.depth + constants.subscript_baseline_drop_min * em,
+            -(operator.size.height - constants.superscript_baseline_drop_max * em),
+        ),
+        None => (
+            operator.size.depth + LIMIT_GAP * em + lower.size.height,
+            -(operator.size.height + LIMIT_GAP * em) - upper.size.depth,
+        ),
+    }
+}
+
 /// Builds the `m:nary` operator glyph, stretched as Word draws it.
 ///
 /// ISO/IEC 29500-1 §22.1.2.35: `m:grow` (on by default) makes the operator grow
 /// to cover its limits and operand. Word only takes that decision in *display*
 /// math — the inline style keeps the text cut of the math font, which is what
 /// the two WPS references show (`∑` measures ≈ 0.9 em inline and ≈ 1.98 em
-/// inside `m:oMathPara`). STIX Two Math has no display cut, so a grown operator
-/// is stroked as a deterministic path of the tabulated height and proportions.
+/// inside `m:oMathPara`). A display operator is the math face's own display
+/// cut from its `MATH` table, a taller cut or an assembly when it grows; the
+/// stroked path of the tabulated height stands in only when the table cannot
+/// be read. Returns the operator and its italic correction in px.
 fn nary_operator(
     frame: &Frame<'_, '_>,
     character: char,
     grow: bool,
     operand_extent: f64,
     limit_extent: f64,
-) -> MathBox {
+) -> (MathBox, f64) {
     let run = frame.math_run(MathStyle::Plain);
     let text = character.to_string();
     let ink_frame = Frame {
@@ -2005,7 +2145,49 @@ fn nary_operator(
     let plain = ink_frame.text_size(&text, &run);
     let em = frame.em();
     if !frame.display {
-        return ink_frame.text(0.0, 0.0, &text, run);
+        return (ink_frame.text(0.0, 0.0, &text, run), 0.0);
+    }
+    if let Some(constants) = super::opentype::constants() {
+        // The display cut of the math face (`DisplayOperatorMinHeight`), at
+        // least as tall as Word's display operator measures (`NARY_DISPLAY`:
+        // Cambria Math's display `∑` is 1.98 em, STIX Two Math's 1.33 em);
+        // `m:grow` takes a taller cut, or assembles one, over the operand.
+        let stretch = if grow {
+            (operand_extent + 2.0 * NARY_GAP * em).max(limit_extent)
+        } else {
+            0.0
+        };
+        let target = (constants.display_operator_min_height * em)
+            .max(nary_display(character).0 * em)
+            .max(stretch);
+        if let Some(mut shape) = super::opentype::vertical(character, target / em, grow) {
+            // Unstretched, the operator is as tall as Word's display operator,
+            // whichever way the face's display cut differs (STIX Two Math's
+            // `∫` is 2.35 em to Word's 2.18 em, its `∑` 1.33 em to 1.98 em):
+            // the height is what sets the formula's line. A sign with no cut
+            // tall enough for a stretch and no parts to build one from is its
+            // largest cut scaled up, as Word scales a grown `∑`.
+            let display = nary_display(character).0 * em;
+            if shape.height() > 0.0 {
+                let height = shape.height() * em;
+                if stretch <= display || height < target {
+                    shape = shape.scaled(target / height);
+                }
+            }
+            let height = shape.height() * em;
+            // A large operator is centred on the math axis, as Word draws it.
+            let top = -frame.axis() - height / 2.0;
+            // The advance: the italic correction is where the top leans past it.
+            let width = shape.advance * em;
+            let item = frame.glyph(&shape, 0.0, top + shape.bounds[3] * em);
+            let boxed = MathBox {
+                inline_fraction: false,
+                alignment_points: Vec::new(),
+                size: Size::new(width, -top, (top + height).max(0.0)),
+                items: item.into_iter().collect(),
+            };
+            return (boxed, shape.italic * em);
+        }
     }
     // A display operator has the display cut's size; only `m:grow` stretches
     // it further over its operand and limits.
@@ -2019,11 +2201,11 @@ fn nary_operator(
         .max(stretch)
         .max(display_height * em);
     if height <= plain.height + plain.depth {
-        return ink_frame.text(0.0, 0.0, &text, run);
+        return (ink_frame.text(0.0, 0.0, &text, run), 0.0);
     }
     let box_width = height * aspect;
     let Some(d) = shapes::nary_operator(character, box_width, height) else {
-        return ink_frame.text(0.0, 0.0, &text, run);
+        return (ink_frame.text(0.0, 0.0, &text, run), 0.0);
     };
     let width = box_width.max(plain.width);
     // A large operator is centred on the math axis, as Word draws it.
@@ -2043,12 +2225,13 @@ fn nary_operator(
         flip_h: false,
         flip_v: false,
     }));
-    MathBox {
+    let boxed = MathBox {
         inline_fraction: false,
         alignment_points: Vec::new(),
         size: Size::new(width, height / 2.0 + axis, (height / 2.0 - axis).max(0.0)),
         items: item.into_iter().collect(),
-    }
+    };
+    (boxed, 0.0)
 }
 
 /// Lays out `m:d`.
@@ -2892,6 +3075,31 @@ fn layout_accent(frame: &Frame<'_, '_>, accent: &Accent) -> MathBox {
     if let Some(control) = accent.control.as_deref() {
         apply_control(frame, &mut base, control);
     }
+    if let Some(constants) = super::opentype::constants() {
+        let em = frame.em();
+        let ink = ink_bounds(frame, &base.items);
+        let (left, ink_top, right) = ink.map_or((0.0, base.size.height, base.size.width), |ink| {
+            (ink[0], -ink[1], ink[2])
+        });
+        // A wider cut is chosen by the base's advance, as TeX does: the ink
+        // of an italic `f` spans its tail and would widen a plain hat.
+        let span = base.size.width.min(right - left);
+        if let Some(shape) = super::opentype::accent(character, span / em) {
+            // An accent is drawn for a base `AccentBaseHeight` tall and rises
+            // only by what a taller base has above that.
+            let raise = (ink_top - constants.accent_base_height * em).max(0.0);
+            let anchor = accent_anchor(&base).unwrap_or(f64::midpoint(left, right));
+            let x = anchor - super::opentype::top_accent_attachment(&shape) * em;
+            let mut out = MathBox::empty();
+            if let Some(item) = frame.glyph(&shape, x, -raise) {
+                out.items.push(item);
+            }
+            let height = raise + shape.bounds[3] * em;
+            out.place(base, 0.0, 0.0);
+            out.size.height = out.size.height.max(height);
+            return out;
+        }
+    }
     let run = frame.math_run(MathStyle::Plain);
     let text = character.to_string();
     let accent_size = frame.text_size(&text, &run);
@@ -2903,6 +3111,22 @@ fn layout_accent(frame: &Frame<'_, '_>, accent: &Accent) -> MathBox {
     out.place(frame.text(dx, dy, &text, run), 0.0, 0.0);
     out.place(base, 0.0, 0.0);
     out
+}
+
+/// Where an accent attaches over a base that is one letter of the math face:
+/// the letter's `MATH` top-accent attachment, which follows an italic
+/// letter's slant. `None` for any other base, which takes its ink's centre.
+fn accent_anchor(base: &MathBox) -> Option<f64> {
+    let [Item::Text(text)] = base.items.as_slice() else {
+        return None;
+    };
+    let mut chars = text.text.chars();
+    let ch = chars.next()?;
+    if chars.next().is_some() || !text.run.family.contains("Math") {
+        return None;
+    }
+    let attachment = super::opentype::top_accent_attachment_of_char(ch, text.run.italic)?;
+    Some(text.x + attachment * text.size_px)
 }
 
 /// Lays out `m:bar`.
@@ -2923,12 +3147,13 @@ fn layout_bar(frame: &Frame<'_, '_>, bar: &Bar) -> MathBox {
         }
         out.size.depth = out.size.depth.max(y + thickness / 2.0);
     } else {
-        let y = -(base.size.height + gap);
+        // The base first: the rule then lies over it, not after it.
+        out.append(base);
+        let y = -(out.size.height + gap);
         if let Some(rule) = frame.rule(0.0, y, width) {
             out.items.push(rule);
         }
-        out.size = Size::new(width, -y + thickness / 2.0, 0.0);
-        out.append(base);
+        out.size.height = out.size.height.max(-y + thickness / 2.0);
     }
     out
 }

@@ -38,7 +38,9 @@ ssim_margin = 0.01
 # Each entry is outstanding debt with a named defect, and each has a waiver in
 # `docs/waivers.toml`. Removing an entry is progress; adding one is a decision
 # that has to be made on purpose.
-amber = ["strict-stage5c"]
+#
+# `strict-stage5c` left on 2026-10-21 (MATH-table formulas, worst SSIM 0.9601).
+amber = []
 
 # ---------------------------------------------------------------------------
 # The same criterion for the PDF backend (SC-6's pixel half, O-2).
@@ -69,6 +71,7 @@ amber = ["strict-stage5c"]
 #   and named the reason as unembedded fonts (`L-3`); that reason was wrong — the
 #   PDF backend embeds every face it uses (`every_used_font_is_embedded`), so the
 #   rasterizer draws our own subset — and the measurement is above the threshold.
+#   2026-10-21: 0.9602 with the MATH-table formulas, out of the band.
 # - `strict-stage5b` **0.9595** — floating drawing objects, and the page whose
 #   page-border frame the centroid cannot see past (see `[[pdf_classes]]`).
 #
@@ -79,7 +82,7 @@ amber = ["strict-stage5c"]
 [pdf]
 ssim = 0.95
 ssim_margin = 0.01
-amber = ["strict-stage5b", "strict-stage5c"]
+amber = ["strict-stage5b"]
 
 # ---------------------------------------------------------------------------
 # Classes. `documents` is the class membership: it replaces the match

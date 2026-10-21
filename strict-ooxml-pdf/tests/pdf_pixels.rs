@@ -313,7 +313,9 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // 6 -> -7 (2026-10-19): fraction and radical boxes follow the glyph ink,
     // so the formulas are shorter and the page ends 7 px above the reference.
     // The class bound still holds; the SVG gate measures -8 on the same page.
-    ("06-strict-math-display", 0, 0.0, -7.0),
+    // -7 -> -5 (2026-10-21): display operators and radicals from STIX Two
+    // Math's MATH table, as the SVG gate.
+    ("06-strict-math-display", 0, 0.0, -5.0),
     ("07-strict-drawingml-shapes", 0, 0.0, 1.0),
     // 7 -> 2 (2026-10-12): display grids centred on the math axis.
     // 2 -> 7 (2026-10-19): ordinary equation lines keep the glyph depth that
@@ -325,7 +327,8 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // Correct delimiter centring above the baseline reduces 12 -> 5 px.
     // 5 -> -4 (2026-10-12): inline formula lines reserve glyph ink, inline
     // n-ary limits at the side, groupChr base on the baseline (as the SVG gate).
-    ("strict-stage5c", 0, 1.0, -4.0),
+    // -4 -> -1 (2026-10-21): the MATH-table radicals, operators and accents.
+    ("strict-stage5c", 0, 1.0, -1.0),
     // 30 -> 28 -> 29 on this page, and every pixel of the move is accounted for.
     //
     // The stage-5C fixture is ours, and the XSD gate found markup in it that the
@@ -350,7 +353,9 @@ const EXTENT_RATCHET: &[(&str, usize, f64, f64)] = &[
     // around the equation array was 58 px off after 55f1584.
     // 25 -> 20 (2026-10-19): a row that already fills the nominal pitch no
     // longer takes another 0.3 em of clearance. Same pin as the SVG gate.
-    ("strict-stage5c", 1, 1.0, 20.0),
+    // (1, 20) -> (-1, 16) (2026-10-21): the MATH-table radicals and operators;
+    // the SVG gate measures (-1, 17).
+    ("strict-stage5c", 1, -1.0, 16.0),
 ];
 
 /// SC-6 criteria 2–4: every gated page, compared the way the SVG gate compares.
