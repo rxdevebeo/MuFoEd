@@ -493,3 +493,106 @@ impl Block {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lock_and_date_mapping_values_round_trip() {
+        for value in ["sdtLocked", "contentLocked", "unlocked", "sdtContentLocked"] {
+            let lock = SdtLock::from_xml(value).expect(value);
+            assert_eq!(lock.as_xml(), value);
+        }
+        assert_eq!(SdtLock::from_xml("locked"), None);
+        for value in ["text", "date", "dateTime"] {
+            let mapping = SdtDateMapping::from_xml(value).expect(value);
+            assert_eq!(mapping.as_xml(), value);
+        }
+        assert_eq!(SdtDateMapping::from_xml("time"), None);
+    }
+
+    #[test]
+    fn each_control_names_its_element() {
+        let controls = [
+            (SdtControl::RichText, "w:richText"),
+            (SdtControl::Text { multi_line: true }, "w:text"),
+            (
+                SdtControl::ComboBox {
+                    items: vec![SdtListItem::default()],
+                    last_value: None,
+                },
+                "w:comboBox",
+            ),
+            (
+                SdtControl::DropDownList {
+                    items: Vec::new(),
+                    last_value: Some("a".into()),
+                },
+                "w:dropDownList",
+            ),
+            (SdtControl::Date(SdtDate::default()), "w:date"),
+            (SdtControl::Picture, "w:picture"),
+            (
+                SdtControl::DocPartList(SdtDocPart::default()),
+                "w:docPartList",
+            ),
+            (SdtControl::Citation, "w:citation"),
+            (SdtControl::Bibliography, "w:bibliography"),
+            (SdtControl::Equation, "w:equation"),
+            (SdtControl::Group, "w:group"),
+            (
+                SdtControl::Checkbox {
+                    checked: true,
+                    checked_state: Some(SdtCheckboxState::default()),
+                    unchecked_state: None,
+                },
+                "w14:checkbox",
+            ),
+        ];
+        for (control, name) in controls {
+            assert_eq!(control.element_name(), name);
+        }
+    }
+
+    #[test]
+    fn a_container_hands_over_its_properties() {
+        let container = SdtContainer {
+            tag: Some("tag".into()),
+            alias: Some("alias".into()),
+            id: Some("7".into()),
+            placeholder: Some("DefaultPlaceholder".into()),
+            showing_placeholder: true,
+            run_props: None,
+            end_run_props: Some(Box::default()),
+            has_end_pr: false,
+            doc_part_gallery: Some("Table of Contents".into()),
+            doc_part_unique: true,
+            doc_part_category: None,
+            lock: Some(SdtLock::ContentLocked),
+            temporary: true,
+            data_binding: Some(SdtDataBinding::default()),
+            label: Some(3),
+            tab_index: Some(2),
+            control: Some(SdtControl::Picture),
+            unmodelled: vec!["w:color".into()],
+            blocks: Vec::new(),
+            inlines: Vec::new(),
+            location: SourceLocation::unknown(),
+        };
+        let properties = container.properties();
+        assert_eq!(properties.tag.as_deref(), Some("tag"));
+        assert_eq!(properties.alias.as_deref(), Some("alias"));
+        assert_eq!(properties.id.as_deref(), Some("7"));
+        assert!(properties.showing_placeholder);
+        // An end marker's run properties mean the source had w:sdtEndPr.
+        assert!(properties.has_end_pr);
+        assert!(properties.doc_part_unique);
+        assert_eq!(properties.lock, Some(SdtLock::ContentLocked));
+        assert!(properties.temporary);
+        assert_eq!(properties.label, Some(3));
+        assert_eq!(properties.tab_index, Some(2));
+        assert_eq!(properties.control, Some(SdtControl::Picture));
+        assert_eq!(properties.unmodelled.len(), 1);
+    }
+}
