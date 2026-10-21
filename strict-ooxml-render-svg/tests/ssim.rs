@@ -783,3 +783,65 @@ fn every_declared_class_is_exercised() {
         }
     }
 }
+
+/// Text drawn as glyph outlines ([`RenderOptions::text_outlines`]) looks as
+/// the same text drawn by the rasterizer from `<text>`: same faces, same
+/// positions. Every gated page, at its reference size.
+#[test]
+fn text_outlines_draw_what_text_draws() {
+    let refs = strict_dir().join("refs");
+    let fonts = fonts_dir();
+    let mut worst = (1.0f64, String::new());
+    let mut texts = (0usize, 0usize);
+    for entry in std::fs::read_dir(&refs).expect("read refs dir") {
+        let dir = entry.expect("refs entry").path();
+        let Some(name) = dir.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        let docx = strict_dir().join(format!("{name}.docx"));
+        if !dir.is_dir() || !docx.is_file() {
+            continue;
+        }
+        let package = Package::open_path(&docx, &OpenOptions::default()).expect("open package");
+        let document = parse_document(&package, &ParseOptions::default()).expect("parse");
+        let as_text =
+            render_with_media(&document, &RenderOptions::default(), Some(&package)).expect("text");
+        let as_outlines = render_with_media(
+            &document,
+            &RenderOptions::default().text_outlines(true),
+            Some(&package),
+        )
+        .expect("outlines");
+        for (page, (text, outlines)) in as_text.iter().zip(&as_outlines).enumerate() {
+            let Some(reference) = reference_pages(&dir).get(page).cloned() else {
+                continue;
+            };
+            let reference = load_png_gray(&reference).expect("reference");
+            let (width, height) = (reference.width() as u32, reference.height() as u32);
+            let a = rasterize_gray(&text.svg, width, height, &fonts);
+            let b = rasterize_gray(&outlines.svg, width, height, &fonts);
+            let score = strict_ooxml_fidelity::ssim(&a, &b);
+            if score < worst.0 {
+                worst = (score, format!("{name} page {}", page + 1));
+            }
+            texts.0 += text.svg.matches("<text").count();
+            texts.1 += outlines.svg.matches("<text").count();
+        }
+    }
+    eprintln!(
+        "text outlines: worst SSIM {:.4} ({}), {} of {} fragments stayed <text>",
+        worst.0, worst.1, texts.1, texts.0
+    );
+    assert!(
+        worst.0 >= 0.99,
+        "outlines differ from text: SSIM {:.4} on {}",
+        worst.0,
+        worst.1
+    );
+    assert!(
+        texts.1 * 10 <= texts.0,
+        "most text is outlined: {} of {} fragments stayed <text>",
+        texts.1,
+        texts.0
+    );
+}

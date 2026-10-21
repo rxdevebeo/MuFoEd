@@ -260,6 +260,13 @@ pub struct RenderOptions {
     /// with the faces at hand (a rasterizer with its own font database)
     /// turns it off: the faces are most of a page's bytes.
     pub embed_fonts: bool,
+    /// Draw text as the outlines of its glyphs (`<path>`), from the face and
+    /// glyph positions the layout shaped it with, instead of `<text>` (default
+    /// `false`). A consumer that rasterizes the page then has no text to
+    /// shape and no fonts to look up: an editor redrawing a page per
+    /// keystroke. A fragment that cannot be drawn so (a synthetic bold or
+    /// italic, a glyph the face lacks) stays `<text>`.
+    pub text_outlines: bool,
     /// Render floating (anchored) DrawingML objects.
     pub floating: bool,
     /// Render OMML formulas (`STAGE-5C-TASK.md` §6).
@@ -327,6 +334,7 @@ impl Default for RenderOptions {
             pages: PageSelection::All,
             background: true,
             embed_fonts: true,
+            text_outlines: false,
             floating: true,
             math: true,
             revisions: RevisionView::Final,
@@ -432,6 +440,13 @@ impl RenderOptions {
     #[must_use]
     pub fn embed_fonts(mut self, embed: bool) -> Self {
         self.embed_fonts = embed;
+        self
+    }
+
+    /// Draws text as glyph outlines ([`RenderOptions::text_outlines`]).
+    #[must_use]
+    pub fn text_outlines(mut self, outlines: bool) -> Self {
+        self.text_outlines = outlines;
         self
     }
 
@@ -664,12 +679,7 @@ pub fn font_programs(
 /// [`RenderOptions::embed_fonts`]).
 #[must_use]
 pub fn paint_page(page: &PlacedPage, options: &RenderOptions) -> String {
-    paint::render_page(
-        page,
-        options.background,
-        options.embed_fonts,
-        options.off_page_marks,
-    )
+    paint::render_page(page, options)
 }
 
 /// Refuses the layout under [`FontPolicy::Reject`] when a font was
@@ -760,12 +770,7 @@ pub fn render_with_media(
         if !options.pages.contains(index + 1) {
             continue;
         }
-        let svg = paint::render_page(
-            page,
-            options.background,
-            options.embed_fonts,
-            options.off_page_marks,
-        );
+        let svg = paint::render_page(page, options);
         if svg_bytes.saturating_add(svg.len()) > options.max_svg_bytes {
             let warning = format!(
                 "render.output-limit: SVG payload exceeds {} bytes; remaining pages omitted",

@@ -22,13 +22,14 @@ use crate::units::fmt_num;
 /// `mark_off_page` writes `data-off-page` on the `<text>` of every fragment the
 /// layout marked outside the page (the mark is a diagnostic; it moves nothing).
 #[must_use]
-pub(crate) fn render_page(
-    page: &PlacedPage,
-    background: bool,
-    embed_fonts: bool,
-    mark_off_page: bool,
-) -> String {
+pub(crate) fn render_page(page: &PlacedPage, options: &crate::RenderOptions) -> String {
+    let (background, embed_fonts, mark_off_page) = (
+        options.background,
+        options.embed_fonts,
+        options.off_page_marks,
+    );
     let _naming = InstalledNames::scope(!embed_fonts);
+    let _outlines = text::Outlines::scope(options.text_outlines);
     let mut out = String::with_capacity(1024);
     let width = fmt_num(page.width_px);
     let height = fmt_num(page.height_px);
@@ -48,6 +49,7 @@ pub(crate) fn render_page(
     for item in &page.items {
         item_svg(&mut out, item, mark_off_page);
     }
+    out.push_str(&text::outline_defs());
     out.push_str("</svg>\n");
     out
 }
@@ -251,7 +253,7 @@ mod tests {
             section_index: 0,
             off_page: Vec::new(),
         };
-        let svg = render_page(&page, true, true, false);
+        let svg = render_page(&page, &crate::RenderOptions::default());
         assert!(svg.starts_with("<svg "));
         assert!(svg.contains("viewBox=\"0 0 816 1056\""));
         assert!(svg.ends_with("</svg>\n"));
