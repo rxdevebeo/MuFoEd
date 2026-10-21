@@ -92,6 +92,8 @@ fn open_shot_dialog(editor: &mut ImageEditor) {
         }
         match std::env::var("IMAGE_STUDIO_SHOT_DIALOG").as_deref() {
             Ok("color") => editor.open_color_dialog(),
+            Ok("levels") => editor.open_levels_dialog(),
+            Ok("curves") => editor.open_curves_dialog(),
             Ok("layer") => editor.open_layer_transform_dialog(),
             Ok("hf") => {
                 if let Ok(repo) = std::env::var("IMAGE_STUDIO_SHOT_HF_REPO") {

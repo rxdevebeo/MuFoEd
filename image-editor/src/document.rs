@@ -1,3 +1,6 @@
+#[path = "tone.rs"]
+mod tone;
+pub use tone::{Curves, Histogram, LevelChannel, Levels, ToneAdjustment, ToneCurve};
 #[path = "retouch.rs"]
 mod retouch;
 pub use retouch::{RetouchMode, RetouchStroke};
@@ -385,11 +388,20 @@ impl Document {
     }
     /// Composite visible layers with straight-alpha source-over blending.
     pub fn flatten(&self) -> Raster {
+        self.flatten_preview(None)
+    }
+    // Shared preview/export compositor; replacements have the source dimensions.
+    pub(crate) fn flatten_preview(&self, active: Option<&Raster>) -> Raster {
         let mut pixels = vec![0; self.width as usize * self.height as usize * 4];
-        for layer in self.layers.iter().filter(|l| l.visible) {
+        for (index, layer) in self.layers.iter().enumerate().filter(|(_, l)| l.visible) {
+            let raster = if index == self.active {
+                active.unwrap_or(&layer.raster)
+            } else {
+                &layer.raster
+            };
             for (dst, src) in pixels
                 .chunks_exact_mut(4)
-                .zip(layer.raster.pixels.chunks_exact(4))
+                .zip(raster.pixels.chunks_exact(4))
             {
                 blend(
                     dst,

@@ -220,6 +220,7 @@ impl ImageEditor {
         if target == self.manual_ui.target {
             return;
         }
+        self.tone_dialog = None;
         let gesture = self.manual_ui.stroke_before.is_some()
             || self.manual_ui.start.is_some()
             || !self.manual_ui.lasso.is_empty();
@@ -432,6 +433,9 @@ impl ImageEditor {
     }
     #[allow(clippy::too_many_lines)] // One keyboard dispatcher; tool variants share modifiers.
     pub(super) fn manual_shortcuts(&mut self, ui: &Ui) {
+        if self.tone_dialog.is_some() {
+            return;
+        }
         if self.transform_preview_active() || ui.ctx().egui_wants_keyboard_input() {
             return;
         }
@@ -1396,6 +1400,9 @@ impl ImageEditor {
     }
     #[allow(clippy::too_many_lines)] // Gesture begin/update/end and cancellation stay in one dispatcher.
     pub(super) fn manual_canvas(&mut self, ui: &Ui, response: &Response) {
+        if self.tone_dialog.is_some() {
+            return;
+        }
         if self.navigation.interacting || self.segmentation_point_mode() {
             self.pause_pasted_drag();
             self.finish_manual_stroke();

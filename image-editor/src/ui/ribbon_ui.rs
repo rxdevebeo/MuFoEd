@@ -224,7 +224,15 @@ impl ImageEditor {
                 self.flip_target(false);
             }
         });
-        group(ui, "Коррекция", 160.0, |ui| {
+        group(ui, "Коррекция", 195.0, |ui| {
+            ui.horizontal(|ui| {
+                if command(ui, "Уровни…") {
+                    self.open_levels_dialog();
+                }
+                if command(ui, "Кривые…") {
+                    self.open_curves_dialog();
+                }
+            });
             if command(ui, "Цветокоррекция…") {
                 self.open_color_dialog();
             }

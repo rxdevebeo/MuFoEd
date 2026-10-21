@@ -11,7 +11,7 @@ mod profiling;
 pub mod ui;
 
 pub use document::{
-    Adjustment, BrushStyle, CanvasMode, ColorCorrection, Document, EditError, History, Layer,
-    PhotoGeometry, PixelClipboard, Raster, RetouchMode, RetouchStroke, SelectionOp,
-    SelectionRefine, Shape, Tool,
+    Adjustment, BrushStyle, CanvasMode, ColorCorrection, Curves, Document, EditError, Histogram,
+    History, Layer, LevelChannel, Levels, PhotoGeometry, PixelClipboard, Raster, RetouchMode,
+    RetouchStroke, SelectionOp, SelectionRefine, Shape, ToneAdjustment, ToneCurve, Tool,
 };

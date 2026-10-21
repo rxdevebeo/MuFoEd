@@ -11,6 +11,7 @@ mod layer_dialog;
 mod preset_panel;
 mod ribbon_ui;
 mod selection_overlay;
+mod tone_dialog;
 mod transform_preview;
 pub use preset_panel::GenerationPreset;
 mod settings;
@@ -186,6 +187,7 @@ pub struct ImageEditor {
     settings_open: bool,
     settings_tab: usize,
     geometry: geometry_dialog::GeometryDialog,
+    tone_dialog: Option<tone_dialog::ToneDialog>,
 }
 impl Default for ImageEditor {
     fn default() -> Self {
@@ -284,6 +286,7 @@ impl ImageEditor {
             settings_open: false,
             settings_tab: 0,
             geometry: geometry_dialog::GeometryDialog::default(),
+            tone_dialog: None,
         }
     }
     /// Shared model coordinator, also used by the host's text and vision adapters.
@@ -383,7 +386,7 @@ impl ImageEditor {
     )]
     pub fn show(&mut self, ui: &mut egui::Ui) -> Vec<FileAction> {
         let mut actions = Vec::new();
-        if !ui.ctx().egui_wants_keyboard_input() {
+        if self.tone_dialog.is_none() && !ui.ctx().egui_wants_keyboard_input() {
             let mods = ui.input(|i| i.modifiers);
             if mods.command && ui.input(|i| i.key_pressed(egui::Key::S)) {
                 actions.push(FileAction::SaveProject);
@@ -488,7 +491,8 @@ impl ImageEditor {
                         .request_repaint_after(std::time::Duration::from_millis(100));
                 }
             });
-        if !ui.ctx().egui_wants_keyboard_input()
+        if self.tone_dialog.is_none()
+            && !ui.ctx().egui_wants_keyboard_input()
             && ui.input_mut(|i| {
                 i.consume_shortcut(&egui::KeyboardShortcut::new(
                     egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -498,7 +502,8 @@ impl ImageEditor {
         {
             self.restore_history(true);
         }
-        if !ui.ctx().egui_wants_keyboard_input()
+        if self.tone_dialog.is_none()
+            && !ui.ctx().egui_wants_keyboard_input()
             && ui.input_mut(|i| {
                 i.consume_shortcut(&egui::KeyboardShortcut::new(
                     egui::Modifiers::COMMAND,
@@ -860,6 +865,7 @@ impl ImageEditor {
         actions.extend(self.preset_window(ui.ctx()));
         self.geometry_window(ui.ctx());
         self.layer_window(ui.ctx());
+        self.tone_window(ui.ctx());
         actions
     }
 }
