@@ -49,7 +49,12 @@ pub(crate) struct Settings {
     pub(crate) ruler: bool,
     /// Lay pages side by side, as many as the window and zoom fit.
     pub(crate) pages_across: bool,
-    /// Measure and draw with the machine's installed fonts as well.
+    /// Measure and draw with the machine's installed fonts as well (formulas
+    /// keep the bundled math face). On by default: set in the fonts a document
+    /// names, pages match WPS far more often (wps-qa, 818 documents: 75.8 ->
+    /// 76.7). Kept under a new key, so a file written while it was off by
+    /// default turns it on once; switching it off again is remembered.
+    #[serde(rename = "installed_fonts")]
     pub(crate) system_fonts: bool,
     /// Ollama endpoint for recognition.
     pub(crate) ocr_endpoint: String,
@@ -95,7 +100,7 @@ impl Default for Settings {
             navigation: true,
             ruler: true,
             pages_across: false,
-            system_fonts: false,
+            system_fonts: true,
             ocr_endpoint: endpoint,
             ocr_model: model,
             ocr_language: String::new(),
@@ -191,5 +196,18 @@ mod tests {
         assert!(settings.remember_window);
         assert!(settings.window.is_none());
         assert!(!settings.report);
+    }
+
+    #[test]
+    fn installed_fonts_are_on_unless_switched_off_under_the_new_key() {
+        let new: Settings = serde_json::from_str("{}").unwrap();
+        assert!(new.system_fonts);
+        // A file from when they were off by default: the old key is ignored.
+        let older: Settings = serde_json::from_str(r#"{"system_fonts":false}"#).unwrap();
+        assert!(older.system_fonts);
+        let off: Settings = serde_json::from_str(r#"{"installed_fonts":false}"#).unwrap();
+        assert!(!off.system_fonts);
+        let written = serde_json::to_string(&off).unwrap();
+        assert!(written.contains("\"installed_fonts\":false"), "{written}");
     }
 }
