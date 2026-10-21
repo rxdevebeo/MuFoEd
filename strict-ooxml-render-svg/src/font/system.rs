@@ -147,7 +147,7 @@ pub fn assets_for(
     let mut total = 0usize;
     for face in faces {
         let key = (face.family.to_lowercase(), face.bold, face.italic);
-        if !wanted.contains(&key.0) || taken.contains(&key) {
+        if !wanted.contains(&key.0) || taken.contains(&key) || is_math_family(&key.0) {
             continue;
         }
         let Ok(bytes) = std::fs::read(&face.path) else {
@@ -166,6 +166,15 @@ pub fn assets_for(
         taken.push(key);
     }
     Ok(assets)
+}
+
+/// Whether a family is a math face (Cambria Math, STIX Two Math, DejaVu Math
+/// TeX Gyre): formulas keep the bundled math face. An installed one brings
+/// its line metrics - a math face's ascent and descent are several ems -
+/// into every line a math run sits on; Word does not take them, and a
+/// seven-page document laid out with them took twenty-five.
+fn is_math_family(family: &str) -> bool {
+    family.split_whitespace().any(|word| word == "math")
 }
 
 /// The installed fonts `document` names, from this machine's [`index`].
@@ -494,7 +503,7 @@ fn family_names(name: &[u8]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{family_names, read_faces};
+    use super::{family_names, is_math_family, read_faces};
 
     #[test]
     fn a_bundled_face_reads_its_family_and_style() {
@@ -504,5 +513,15 @@ mod tests {
         assert!(faces.iter().any(|face| face.family == "Arimo"), "{faces:?}");
         assert!(faces.iter().all(|face| face.face_index == 0));
         assert!(family_names(&[0, 0, 0, 0, 0, 6]).is_empty());
+    }
+
+    #[test]
+    fn math_faces_stay_bundled_and_text_faces_do_not() {
+        for family in ["cambria math", "stix two math", "dejavu math tex gyre"] {
+            assert!(is_math_family(family), "{family}");
+        }
+        for family in ["cambria", "mathjax", "aftermath sans", "times new roman"] {
+            assert!(!is_math_family(family), "{family}");
+        }
     }
 }
