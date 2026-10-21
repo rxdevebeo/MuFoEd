@@ -212,6 +212,9 @@ pub struct Probe {
     pub summary: Option<ExifSummary>,
 }
 
+/// The size and EXIF chunk from a picture's headers.
+type Headers = ((u32, u32), Option<Vec<u8>>);
+
 /// Probes the file at `path`.
 pub fn probe(path: &Path) -> Result<Probe, Error> {
     let data = std::fs::read(path).map_err(|error| Error::io(path, error))?;
@@ -222,13 +225,12 @@ pub fn probe(path: &Path) -> Result<Probe, Error> {
 pub fn probe_bytes(data: &[u8], hint: Option<Format>) -> Result<Probe, Error> {
     crate::error::contain(|| {
         let format = detect(data, hint).ok_or(Error::UnknownFormat)?;
-        let headers =
-            |bytes: &[u8], image_format| -> Result<((u32, u32), Option<Vec<u8>>), Error> {
-                let reader = image::ImageReader::with_format(Cursor::new(bytes), image_format);
-                let mut decoder = reader.into_decoder()?;
-                let size = decoder.dimensions();
-                Ok((size, decoder.exif_metadata().ok().flatten()))
-            };
+        let headers = |bytes: &[u8], image_format| -> Result<Headers, Error> {
+            let reader = image::ImageReader::with_format(Cursor::new(bytes), image_format);
+            let mut decoder = reader.into_decoder()?;
+            let size = decoder.dimensions();
+            Ok((size, decoder.exif_metadata().ok().flatten()))
+        };
         let (size, exif, summary) = match format {
             Format::Raw => {
                 let preview = crate::raw::preview(data)?;

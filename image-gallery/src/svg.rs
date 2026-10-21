@@ -39,7 +39,7 @@ pub(crate) fn render(data: &[u8], scale: f32, fit: Option<u32>) -> Result<image:
     let size = tree.size();
     let longest = size.width().max(size.height());
     let factor = match fit {
-        Some(side) if longest > 0.0 => side as f32 / longest,
+        Some(fitted) if longest > 0.0 => fitted as f32 / longest,
         _ if scale.is_finite() && scale > 0.0 => scale,
         _ => 1.0,
     };
