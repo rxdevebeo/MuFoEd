@@ -27,6 +27,7 @@ impl ImageEditor {
         }
         egui::vec2(w as f32, h as f32)
     }
+    #[allow(clippy::too_many_lines)] // Shared GPU mesh path for raster layers and mask overlay.
     pub(super) fn paint_transform_preview(
         &mut self,
         ui: &egui::Ui,
@@ -58,16 +59,29 @@ impl ImageEditor {
                 self.load_preview_layers(ui);
             }
             let dimensions = [self.document.width(), self.document.height()];
-            for (i, layer) in self
-                .document
-                .layers()
-                .iter()
-                .enumerate()
-                .filter(|(_, l)| l.visible())
-            {
+            let mask = self.mask_transform_preview();
+            let active = if mask { 0 } else { self.document.active() };
+            let layers: Vec<_> = if mask {
+                painter.image(
+                    self.texture.as_ref().expect("canvas").id(),
+                    rect,
+                    Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+                vec![(0, 255)]
+            } else {
+                self.document
+                    .layers()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, l)| l.visible())
+                    .map(|(i, l)| (i, l.opacity()))
+                    .collect()
+            };
+            for (i, opacity) in layers {
                 let texture = &self.transform_preview.layers[i];
-                let color = Color32::from_white_alpha(layer.opacity());
-                if i == self.document.active() {
+                let color = Color32::from_white_alpha(opacity);
+                if i == active {
                     let mut mesh = egui::Mesh::with_texture(texture.id());
                     for y in 0..=N {
                         for x in 0..=N {
@@ -132,13 +146,28 @@ impl ImageEditor {
         true
     }
     fn load_preview_layers(&mut self, ui: &egui::Ui) {
-        self.transform_preview.layers = self
-            .document
-            .layers()
+        let rasters: Vec<_> = if self.mask_transform_preview() {
+            let pixels = self
+                .document
+                .mask()
+                .iter()
+                .flat_map(|v| [255, 0, 0, *v / 2])
+                .collect();
+            vec![
+                crate::Raster::new(self.document.width(), self.document.height(), pixels)
+                    .expect("mask dimensions"),
+            ]
+        } else {
+            self.document
+                .layers()
+                .iter()
+                .map(|l| l.raster().clone())
+                .collect()
+        };
+        self.transform_preview.layers = rasters
             .iter()
             .enumerate()
-            .map(|(i, layer)| {
-                let raster = layer.raster();
+            .map(|(i, raster)| {
                 let w = raster.width() as usize;
                 let h = raster.height() as usize;
                 let mut padded = vec![0; (w + 2) * (h + 2) * 4];

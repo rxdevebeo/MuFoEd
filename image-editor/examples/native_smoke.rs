@@ -87,6 +87,9 @@ fn configure_request(request: &mut Request) -> Result<(), Box<dyn std::error::Er
     if let Ok(model) = std::env::var("IMAGE_STUDIO_SMOKE_MODEL") {
         request.model = model;
     }
+    if let Ok(family) = std::env::var("IMAGE_STUDIO_SMOKE_FAMILY") {
+        request.family = Some(serde_json::from_value(serde_json::Value::String(family))?);
+    }
     if let Ok(prompt) = std::env::var("IMAGE_STUDIO_SMOKE_PROMPT") {
         request.prompt = prompt;
     }

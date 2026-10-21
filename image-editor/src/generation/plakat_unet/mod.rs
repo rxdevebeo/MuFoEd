@@ -7,6 +7,19 @@ mod unet;
 use candle_core::{Result, Tensor};
 use candle_nn::VarBuilder;
 use plakat::pipelines::sdxl_unet::SdxlAddEmbedConfig;
+// Bound score/softmax buffers for SD1.x full-resolution latent attention.
+// SDXL 1536² has 9216 keys and retains the existing head-only path.
+pub(super) fn attention_query_rows(tokens: u64) -> u64 {
+    if tokens > 16_384 {
+        1024
+    } else {
+        tokens
+    }
+}
+pub(super) fn bounded_attention(size: [u32; 2], xl: bool) -> bool {
+    let limit = if xl { 1024_u64 * 1024 } else { 512 * 512 };
+    u64::from(size[0]) * u64::from(size[1]) > limit
+}
 pub(super) struct Model(unet::UNet2DConditionModel);
 impl Model {
     pub(super) fn new(

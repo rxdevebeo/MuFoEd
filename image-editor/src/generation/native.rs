@@ -162,23 +162,28 @@ pub(super) fn estimate(request: &Request, size: [u32; 2]) -> mufoed_model_runtim
     #[cfg(feature = "plakat-cuda")]
     {
         let mut memory = memory;
-        if super::vae_tiles::needed(size) {
-            let pixels = u64::from(size[0]) * u64::from(size[1]);
-            let xl = request.family == Some(crate::assets::Family::Sdxl)
-                || (request.family.is_none() && request.model.to_lowercase().contains("xl"));
-            // Sequential CFG: one batch, eager attention retains scores + softmax in F32.
-            // Head slicing retains at most 2 heads: SDXL grid 1/16, SD1.5 grid 1/8.
-            // Baseline covers model weights; linear workspace includes convolutions,
-            // transfers and retained skip activations. VAE uses bounded 512px tiles.
-            let (baseline, tokens, heads) = if xl {
-                (6_u64 << 30, pixels.div_ceil(256), 2)
+        let pixels = u64::from(size[0]) * u64::from(size[1]);
+        let xl = request.family == Some(crate::assets::Family::Sdxl)
+            || (request.family.is_none() && request.model.to_lowercase().contains("xl"));
+        let bounded = super::plakat_unet::bounded_attention(size, xl);
+        if bounded || !xl {
+            // Account both score + softmax F32 buffers using the execution policy.
+            // Above the family threshold: one CFG branch, 2 heads, bounded query rows.
+            // SD1.x at <=512² retains batched CFG and all 8 heads.
+            let baseline = if xl { 6_u64 << 30 } else { 3_u64 << 30 };
+            let tokens = pixels.div_ceil(if xl { 256 } else { 64 });
+            let heads = if bounded {
+                2
+            } else if request.guidance > 1.0 {
+                16
             } else {
-                (3_u64 << 30, pixels.div_ceil(64), 2)
+                8
             };
+            let query_rows = super::plakat_unet::attention_query_rows(tokens);
             memory.vram = Some(
                 baseline
                     + pixels.saturating_mul(1024)
-                    + tokens.saturating_mul(tokens).saturating_mul(heads * 8),
+                    + query_rows.saturating_mul(tokens).saturating_mul(heads * 8),
             );
         }
         memory
@@ -245,6 +250,41 @@ fn run(
 #[cfg(all(test, feature = "plakat-cuda"))]
 mod tests {
     use super::*;
+    #[test]
+    fn sd15_hires_peak_uses_bounded_query_rows_not_a_full_score_matrix() {
+        let request = Request {
+            family: Some(crate::assets::Family::Sd15),
+            ..Request::default()
+        };
+        assert_eq!(estimate(&request, [512, 512]).vram, Some(5_637_144_576));
+        assert!(super::super::plakat_unet::bounded_attention(
+            [768, 768],
+            false
+        ));
+        assert!(super::super::plakat_unet::bounded_attention(
+            [1024, 1024],
+            false
+        ));
+        assert!(!super::super::plakat_unet::bounded_attention(
+            [512, 512],
+            false
+        ));
+        assert!(!super::super::plakat_unet::bounded_attention(
+            [1024, 1024],
+            true
+        ));
+        assert!(estimate(&request, [768, 768]).vram.unwrap() < 6_u64 << 30);
+        assert_eq!(estimate(&request, [1024, 1024]).vram, Some(8_u64 << 30));
+        let full_scores = (3_u64 << 30) + 1536 * 1536 * 1024 + 36_864 * 36_864 * 2 * 8;
+        assert_eq!(full_scores, 27_380_416_512); // Exact user-reported failure.
+        let bounded = (3_u64 << 30) + 1536 * 1536 * 1024 + 1024 * 36_864 * 2 * 8;
+        assert_eq!(estimate(&request, [1536, 1536]).vram, Some(bounded));
+        assert!(bounded < 11_548_701_492);
+        assert_eq!(
+            estimate(&request, [1536, 1536]),
+            estimate(&request, [768, 3072])
+        );
+    }
     #[test]
     fn high_resolution_estimate_matches_sequential_cfg_and_bounded_vae() {
         let request = Request {

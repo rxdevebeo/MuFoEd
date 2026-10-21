@@ -8,7 +8,7 @@ use ag_psd::psd::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::io::Read;
+use std::io::{Read, Write};
 
 const RESOURCE_NAME: &[u8] = b"MuFoEd.Project";
 const RESOURCE_ID: u16 = 4000; // Adobe's plug-in resource range; Pascal name disambiguates ownership.
@@ -18,6 +18,13 @@ struct Metadata {
     signature: String,
     active: usize,
     mask: Vec<u8>,
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        serialize_with = "super::workbench_selection::serialize_area",
+        deserialize_with = "super::workbench_selection::deserialize_area"
+    )]
+    selection: Vec<u8>,
     recipes: Vec<Option<crate::generation::Request>>,
 }
 struct Cursor<'a> {
@@ -161,12 +168,40 @@ fn metadata(resources: &[u8]) -> Result<Option<Metadata>, EditError> {
     }
     Ok(result)
 }
+// Enforce the decoder's *uncompressed* bound while streaming, before any
+// destination file is replaced; a tiny compressed payload can still exceed it.
+struct MetadataWriter<W> {
+    inner: W,
+    remaining: u64,
+}
+impl<W: Write> Write for MetadataWriter<W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if u64::try_from(bytes.len()).expect("slice length") > self.remaining {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "PSD project metadata exceeds read limit",
+            ));
+        }
+        let count = self.inner.write(bytes)?;
+        self.remaining -= u64::try_from(count).expect("written length");
+        Ok(count)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
 fn inject_metadata(mut bytes: Vec<u8>, project: &Metadata) -> Result<Vec<u8>, EditError> {
     let (offset, resources, _) = sections(&bytes)?;
     let old_len = resources.len();
     let mut compressor =
         flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
-    serde_json::to_writer(&mut compressor, project)?;
+    {
+        let mut writer = MetadataWriter {
+            inner: &mut compressor,
+            remaining: MAX_PROJECT_BYTES,
+        };
+        serde_json::to_writer(&mut writer, project)?;
+    }
     let payload = compressor.finish()?;
     let mut block = Vec::new();
     block.extend_from_slice(b"8BIM");
@@ -383,6 +418,7 @@ impl Document {
                 signature: signature(self),
                 active: self.active,
                 mask: self.mask.clone(),
+                selection: self.selection.clone(),
                 recipes: self.layers.iter().map(|l| l.recipe.clone()).collect(),
             },
         )
@@ -417,6 +453,7 @@ impl Document {
                 .map(|l| import_layer(l, width, height))
                 .collect::<Result<Vec<_>, _>>()?;
             Self {
+                selection: Vec::new(),
                 version: 1,
                 width,
                 height,
@@ -440,11 +477,13 @@ impl Document {
             }
             doc.active = project.active;
             doc.mask = project.mask;
+            doc.selection = project.selection;
             for (layer, recipe) in doc.layers.iter_mut().zip(project.recipes) {
                 layer.recipe = recipe;
             }
         }
         doc.validate()?;
+        doc.normalize_selection();
         Ok(doc)
     }
 }
@@ -479,5 +518,42 @@ mod tests {
                 .to_string()
                 .contains("Duplicate")
         );
+    }
+    #[test]
+    fn maximum_canvas_mask_and_selection_metadata_roundtrip_within_decoder_limit() {
+        let bytes = Document::new(1, 1).unwrap().to_psd().unwrap();
+        let psd = ag_psd::read_psd(&bytes, &ReadOptions::default()).unwrap();
+        let standard = ag_psd::write_psd(
+            &psd,
+            &WriteOptions {
+                no_background: Some(true),
+                ..Default::default()
+            },
+        );
+        let pixels = usize::try_from(super::super::MAX_PIXELS).unwrap();
+        let project = Metadata {
+            version: 1,
+            signature: "test planes".into(),
+            active: 0,
+            mask: vec![255; pixels],
+            selection: vec![255; pixels],
+            recipes: vec![],
+        };
+        let bytes = inject_metadata(standard, &project).unwrap();
+        let (_, resources, _) = sections(&bytes).unwrap();
+        let restored = metadata(resources).unwrap().unwrap();
+        assert!(restored.mask.len() == pixels && restored.mask.iter().all(|v| *v == 255));
+        assert!(restored.selection.len() == pixels && restored.selection.iter().all(|v| *v == 255));
+    }
+    #[test]
+    fn metadata_writer_enforces_uncompressed_bound_before_compression() {
+        let mut writer = MetadataWriter {
+            inner: Vec::new(),
+            remaining: 3,
+        };
+        assert!(writer.write_all(b"four").is_err());
+        assert!(writer.inner.is_empty());
+        writer.write_all(b"one").unwrap();
+        assert!(writer.write_all(b"!").is_err());
     }
 }

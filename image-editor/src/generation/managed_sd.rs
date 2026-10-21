@@ -712,7 +712,10 @@ impl Staged<'_> {
                 block.attention_head_dim = heads;
             }
         }
-        if super::vae_tiles::needed([self.cfg.width as u32, self.cfg.height as u32]) {
+        if super::plakat_unet::bounded_attention(
+            [self.cfg.width as u32, self.cfg.height as u32],
+            self.files.variant.is_xl(),
+        ) {
             cfg.sliced_attention_size = Some(2);
         }
         let model = SdUNet::new(
@@ -758,8 +761,10 @@ impl Staged<'_> {
     ) -> Result<Tensor> {
         // Keep eager attention's quadratic workspace to one CFG branch at a time.
         // Each branch still sees the full image and its complete prompt context.
-        let sequential = super::vae_tiles::needed([self.cfg.width as u32, self.cfg.height as u32])
-            && sample.dim(0)? == 2;
+        let sequential = super::plakat_unet::bounded_attention(
+            [self.cfg.width as u32, self.cfg.height as u32],
+            self.files.variant.is_xl(),
+        ) && sample.dim(0)? == 2;
         if !sequential {
             return Ok(model.forward(
                 sample,
@@ -851,7 +856,11 @@ impl Staged<'_> {
         let model = self.unet()?;
         self.lease.stage(
             Phase::Running,
-            if super::vae_tiles::needed([self.cfg.width as u32, self.cfg.height as u32]) && do_cfg {
+            if super::plakat_unet::bounded_attention(
+                [self.cfg.width as u32, self.cfg.height as u32],
+                self.files.variant.is_xl(),
+            ) && do_cfg
+            {
                 "UNet denoise · sequential CFG"
             } else {
                 "UNet denoise"
@@ -1037,11 +1046,13 @@ pub(super) async fn run(
     } else {
         crate::assets::Family::Sd15
     });
-    lease.prepare_reusing(
-        super::native::estimate(&estimation, [width, height]),
-        &uuid,
-        &keys,
-    )?;
+    lease
+        .prepare_reusing(
+            super::native::estimate(&estimation, [width, height]),
+            &uuid,
+            &keys,
+        )
+        .map_err(|e| anyhow!("{}x{} {:?} admission: {e}", width, height, files.variant))?;
     check(cancel)?;
     drop(admission_timing);
     let device_timing = profiling::scope("native.device_init");

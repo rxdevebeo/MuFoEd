@@ -9,12 +9,14 @@ license.workspace = true
 [features]
 default = []
 ollama = ["mufoed-model-runtime/ollama"]
-demo = ["dep:eframe", "dep:rfd"]
+demo = ["dep:eframe", "dep:rfd", "native-clipboard"]
+native-clipboard = ["dep:arboard"]
 plakat = ["dep:plakat", "dep:tokio", "dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:anyhow", "dep:tracing"]
 plakat-cuda = ["plakat", "plakat/cuda"]
 plakat-cudnn = ["plakat-cuda", "plakat/cudnn"]
 
 [dependencies]
+arboard = { version = "3", optional = true }
 ag-psd = "=0.3.0"
 flate2 = "1"
 anyhow = { version = "1", optional = true }

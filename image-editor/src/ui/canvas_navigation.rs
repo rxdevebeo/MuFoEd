@@ -58,6 +58,7 @@ impl ImageEditor {
     pub(super) fn canvas_pan(&mut self, ui: &Ui) {
         use egui::{CursorIcon, PointerButton};
         let hand = self.manual_ui.tool == super::ManualTool::Hand;
+        let move_object = self.has_pasted_object();
         let nav = &mut self.navigation;
         nav.interacting = nav.button.is_some();
         let inside = ui.rect_contains_pointer(ui.available_rect_before_wrap());
@@ -66,7 +67,7 @@ impl ImageEditor {
             if nav.button.is_none() && inside {
                 let button = if pointer.button_pressed(PointerButton::Secondary) {
                     Some(PointerButton::Secondary)
-                } else if hand && pointer.button_pressed(PointerButton::Primary) {
+                } else if hand && !move_object && pointer.button_pressed(PointerButton::Primary) {
                     Some(PointerButton::Primary)
                 } else {
                     None

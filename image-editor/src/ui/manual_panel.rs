@@ -4,9 +4,19 @@
     clippy::cast_sign_loss,
     clippy::cast_precision_loss
 )]
-use super::{panel_header, ImageEditor, ACCENT};
+use super::{ImageEditor, ACCENT};
 use crate::{Adjustment, BrushStyle, Document, Raster, Shape, Tool};
 use egui::{Color32, Key, Pos2, Rect, Response, Sense, Stroke, TextureHandle, Ui, Vec2};
+
+/// Global target for all manual pixel tools and clipboard operations.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum EditTarget {
+    /// Edit active-layer image pixels.
+    #[default]
+    Raster,
+    /// Edit shared grayscale selection/inpaint coverage.
+    Mask,
+}
 
 /// Manual workbench tool; AI operations remain in their separate dock.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -15,14 +25,16 @@ pub enum ManualTool {
     Move,
     /// Replace the shared mask with a rectangular selection.
     Select,
+    /// Freehand polygon selection using the shared grayscale mask.
+    Lasso,
     /// Paint foreground color.
     #[default]
     Brush,
     /// Erase active-layer alpha.
     Eraser,
-    /// Paint the shared white mask.
+    /// Compatibility alias: select Mask target and the shared brush.
     Mask,
-    /// Erase the shared mask.
+    /// Compatibility alias: select Mask target and the shared eraser.
     Unmask,
     /// Contiguous bucket fill.
     Fill,
@@ -44,10 +56,11 @@ pub enum ManualTool {
     Zoom,
 }
 impl ManualTool {
-    fn label(self) -> &'static str {
+    pub(super) fn label(self) -> &'static str {
         match self {
-            Self::Move => "Перемещение слоя",
-            Self::Select => "Прямоугольная маска",
+            Self::Move => "Перемещение",
+            Self::Select => "Прямоугольное выделение",
+            Self::Lasso => "Лассо",
             Self::Brush => "Кисть",
             Self::Eraser => "Ластик",
             Self::Mask => "Кисть маски",
@@ -73,7 +86,8 @@ impl ManualTool {
             Self::Unmask => "Shift+Q",
             Self::Fill => "G",
             Self::Gradient => "Shift+G",
-            Self::Line => "L",
+            Self::Line => "Shift+L",
+            Self::Lasso => "L",
             Self::Rectangle => "U",
             Self::Ellipse => "Shift+U",
             Self::Eyedropper => "I",
@@ -95,6 +109,7 @@ impl ManualTool {
         !matches!(
             self,
             Self::Select
+                | Self::Lasso
                 | Self::Mask
                 | Self::Unmask
                 | Self::Crop
@@ -108,6 +123,8 @@ impl ManualTool {
 #[allow(clippy::struct_excessive_bools)] // Independent tool options and lifecycle flags.
 pub(super) struct ManualUi {
     pub tool: ManualTool,
+    pub target: EditTarget,
+    other_colors: [Color32; 2],
     background: Color32,
     opacity: f32,
     hardness: f32,
@@ -116,6 +133,8 @@ pub(super) struct ManualUi {
     respect_mask: bool,
     tolerance: u8,
     merged_sample: bool,
+    lasso: Vec<[f32; 2]>,
+    selection_op: Option<crate::SelectionOp>,
     start: Option<[f32; 2]>,
     last: Option<[f32; 2]>,
     stroke_before: Option<(Document, bool)>,
@@ -131,6 +150,8 @@ impl Default for ManualUi {
     fn default() -> Self {
         Self {
             tool: ManualTool::Brush,
+            target: EditTarget::Raster,
+            other_colors: [Color32::WHITE, Color32::BLACK],
             background: Color32::WHITE,
             opacity: 1.0,
             hardness: 1.0,
@@ -139,6 +160,8 @@ impl Default for ManualUi {
             respect_mask: false,
             tolerance: 0,
             merged_sample: true,
+            lasso: Vec::new(),
+            selection_op: None,
             start: None,
             last: None,
             stroke_before: None,
@@ -166,28 +189,90 @@ pub(super) enum LayerAction {
 }
 
 impl ImageEditor {
+    /// Current shared target for painting, shapes, sampling and clipboard.
+    pub fn edit_target(&self) -> EditTarget {
+        self.manual_ui.target
+    }
+    /// Change target after committing the current gesture and floating paste.
+    pub fn set_edit_target(&mut self, target: EditTarget) {
+        if target == self.manual_ui.target {
+            return;
+        }
+        let gesture = self.manual_ui.stroke_before.is_some()
+            || self.manual_ui.start.is_some()
+            || !self.manual_ui.lasso.is_empty();
+        self.finish_manual_stroke();
+        self.finish_pasted_object();
+        self.layer_dialog = super::layer_dialog::LayerDialog::default();
+        self.manual_ui.ignore_until_release |= gesture;
+        self.manual_ui.start = None;
+        self.manual_ui.last = None;
+        self.manual_ui.lasso.clear();
+        let old = [self.color, self.manual_ui.background];
+        [self.color, self.manual_ui.background] = self.manual_ui.other_colors;
+        self.manual_ui.other_colors = old;
+        self.manual_ui.target = target;
+        self.stop_segmentation_points();
+        if target == EditTarget::Mask {
+            self.generation_ui.show_mask = true;
+        }
+        self.changed = true;
+    }
+    pub(super) fn edit_manual(
+        &mut self,
+        operation: impl FnOnce(&mut Document) -> Result<(), crate::EditError>,
+    ) {
+        let mask = self.edit_target() == EditTarget::Mask;
+        self.edit(|d| {
+            if mask {
+                d.edit_mask(operation)
+            } else {
+                operation(d)
+            }
+        });
+    }
     /// Select a manual tool, leaving SAM point-placement mode.
     pub fn select_manual_tool(&mut self, tool: ManualTool) {
-        let gesture = self.manual_ui.stroke_before.is_some() || self.manual_ui.start.is_some();
+        if self.inline_transform() {
+            self.layer_dialog = super::layer_dialog::LayerDialog::default();
+            self.changed = true;
+        }
+        // Compatibility for embedding hosts; the palette exposes one brush/eraser.
+        let tool = match tool {
+            ManualTool::Mask => {
+                self.set_edit_target(EditTarget::Mask);
+                ManualTool::Brush
+            }
+            ManualTool::Unmask => {
+                self.set_edit_target(EditTarget::Mask);
+                ManualTool::Eraser
+            }
+            tool => tool,
+        };
+        if tool != ManualTool::Hand {
+            self.finish_pasted_object();
+        }
+        let gesture = self.manual_ui.stroke_before.is_some()
+            || self.manual_ui.start.is_some()
+            || !self.manual_ui.lasso.is_empty();
         self.finish_manual_stroke();
         self.manual_ui.ignore_until_release |= gesture;
         self.manual_ui.start = None;
         self.manual_ui.last = None;
+        self.manual_ui.lasso.clear();
         self.manual_ui.tool = tool;
+        self.ribbon_ui.tab = if matches!(tool, ManualTool::Select | ManualTool::Lasso) {
+            super::ribbon_ui::RibbonTab::Selection
+        } else {
+            super::ribbon_ui::RibbonTab::Tool
+        };
         self.stop_segmentation_points();
-        if matches!(
-            tool,
-            ManualTool::Select | ManualTool::Mask | ManualTool::Unmask
-        ) {
-            self.generation_ui.show_mask = true;
-            self.changed = true;
-        }
     }
     fn brush_style(&self) -> BrushStyle {
         BrushStyle {
             opacity: self.manual_ui.opacity,
             hardness: self.manual_ui.hardness,
-            respect_mask: self.manual_ui.respect_mask,
+            respect_mask: self.edit_target() == EditTarget::Raster && self.manual_ui.respect_mask,
         }
     }
     pub(super) fn finish_manual_stroke(&mut self) {
@@ -213,13 +298,21 @@ impl ImageEditor {
         }
     }
     pub(super) fn restore_history(&mut self, redo: bool) {
-        self.manual_ui.ignore_until_release |=
-            self.manual_ui.stroke_before.is_some() || self.manual_ui.start.is_some();
+        if self.layer_dialog_open() {
+            self.changed = true;
+        }
+        self.layer_dialog = super::layer_dialog::LayerDialog::default();
+        self.finish_pasted_object();
+        self.manual_ui.ignore_until_release |= self.manual_ui.stroke_before.is_some()
+            || self.manual_ui.start.is_some()
+            || !self.manual_ui.lasso.is_empty();
         self.finish_manual_stroke();
         self.finish_layer_property();
         self.manual_ui.start = None;
         self.manual_ui.last = None;
         self.manual_ui.crop_pending = false;
+        self.manual_ui.lasso.clear();
+        self.manual_ui.selection_op = None;
         let changed = if redo {
             self.history.redo(&mut self.document)
         } else {
@@ -239,6 +332,11 @@ impl ImageEditor {
         }
     }
     pub(super) fn layer_action(&mut self, action: LayerAction) {
+        if self.layer_dialog_open() {
+            self.layer_dialog = super::layer_dialog::LayerDialog::default();
+            self.changed = true;
+        }
+        self.finish_pasted_object();
         self.manual_ui.ignore_until_release |=
             self.manual_ui.stroke_before.is_some() || self.manual_ui.start.is_some();
         self.manual_ui.start = None;
@@ -292,18 +390,32 @@ impl ImageEditor {
             }
         }
     }
+    pub(super) fn clear_selection(&mut self) {
+        let gesture = self.manual_ui.stroke_before.is_some()
+            || self.manual_ui.start.is_some()
+            || !self.manual_ui.lasso.is_empty();
+        self.finish_manual_stroke();
+        self.manual_ui.start = None;
+        self.manual_ui.last = None;
+        self.manual_ui.lasso.clear();
+        self.manual_ui.ignore_until_release |= gesture;
+        self.edit(|d| {
+            d.clear_selection();
+            Ok(())
+        });
+    }
     pub(super) fn manual_shortcuts(&mut self, ui: &Ui) {
         if self.transform_preview_active() || ui.ctx().egui_wants_keyboard_input() {
             return;
         }
+        self.clipboard_shortcuts(ui);
         let mods = ui.input(|i| i.modifiers);
         if mods.command {
+            if ui.input(|i| i.key_pressed(Key::T)) {
+                self.start_canvas_transform();
+            }
             if ui.input(|i| i.key_pressed(Key::D)) {
-                self.edit(|d| {
-                    d.clear_mask();
-                    Ok(())
-                });
-                self.manual_ui.respect_mask = false;
+                self.clear_selection();
             }
             if ui.input(|i| i.key_pressed(Key::J)) {
                 self.layer_action(LayerAction::Duplicate(self.document.active()));
@@ -319,19 +431,18 @@ impl ImageEditor {
         if mods.alt {
             return;
         }
+        if ui.input(|i| i.key_pressed(Key::Q)) {
+            self.set_edit_target(if self.edit_target() == EditTarget::Raster {
+                EditTarget::Mask
+            } else {
+                EditTarget::Raster
+            });
+        }
         for (key, tool) in [
             (Key::V, ManualTool::Move),
             (Key::M, ManualTool::Select),
             (Key::B, ManualTool::Brush),
             (Key::E, ManualTool::Eraser),
-            (
-                Key::Q,
-                if mods.shift {
-                    ManualTool::Unmask
-                } else {
-                    ManualTool::Mask
-                },
-            ),
             (
                 Key::G,
                 if mods.shift {
@@ -340,7 +451,14 @@ impl ImageEditor {
                     ManualTool::Fill
                 },
             ),
-            (Key::L, ManualTool::Line),
+            (
+                Key::L,
+                if mods.shift {
+                    ManualTool::Line
+                } else {
+                    ManualTool::Lasso
+                },
+            ),
             (
                 Key::U,
                 if mods.shift {
@@ -381,162 +499,266 @@ impl ImageEditor {
             self.manual_ui.start = None;
             self.manual_ui.last = None;
             self.manual_ui.crop_pending = false;
+            self.manual_ui.lasso.clear();
             self.manual_ui.ignore_until_release = ui.input(|i| i.pointer.primary_down());
         }
         if self.manual_ui.crop_pending && ui.input(|i| i.key_pressed(Key::Enter)) {
             self.apply_manual_crop();
         }
     }
+    #[allow(clippy::too_many_lines)] // Contextual ribbon groups share the selected tool state.
     pub(super) fn manual_options(&mut self, ui: &mut Ui) {
-        egui::Frame::new()
-            .fill(Color32::from_rgb(39, 39, 43))
-            .inner_margin(egui::Margin::symmetric(12, 6))
-            .show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(egui::RichText::new(self.manual_ui.tool.label()).strong());
-                    ui.separator();
-                    if self.manual_ui.tool.brush().is_some() {
-                        ui.add(
-                            egui::DragValue::new(&mut self.radius)
-                                .range(0.5..=256.0)
-                                .prefix("Радиус ")
-                                .suffix(" px"),
-                        );
-                        ui.add(
-                            egui::Slider::new(&mut self.manual_ui.hardness, 0.0..=1.0)
-                                .text("Жёсткость")
-                                .show_value(false),
-                        );
-                    }
-                    if (self.manual_ui.tool.edits_pixels()
-                        && self.manual_ui.tool != ManualTool::Move)
-                        || self.manual_ui.tool.brush().is_some()
-                    {
-                        ui.add(
-                            egui::Slider::new(&mut self.manual_ui.opacity, 0.0..=1.0)
-                                .text("Непрозрачность")
-                                .custom_formatter(|v, _| format!("{:.0}%", v * 100.0))
-                                .custom_parser(|v| {
-                                    v.trim_end_matches('%')
-                                        .parse::<f64>()
-                                        .ok()
-                                        .map(|v| v / 100.0)
-                                }),
-                        );
-                        if !matches!(
-                            self.manual_ui.tool,
-                            ManualTool::Mask | ManualTool::Unmask | ManualTool::Move
-                        ) {
-                            ui.checkbox(&mut self.manual_ui.respect_mask, "В пределах маски");
-                        }
-                    }
-                    match self.manual_ui.tool {
-                        ManualTool::Line | ManualTool::Rectangle | ManualTool::Ellipse => {
-                            ui.add(
-                                egui::DragValue::new(&mut self.manual_ui.width)
-                                    .range(1.0..=256.0)
-                                    .prefix("Линия ")
-                                    .suffix(" px"),
-                            );
-                            if self.manual_ui.tool != ManualTool::Line {
-                                ui.checkbox(&mut self.manual_ui.filled, "Заливка");
-                            }
-                        }
-                        ManualTool::Fill => {
-                            ui.add(
-                                egui::DragValue::new(&mut self.manual_ui.tolerance)
-                                    .range(0..=255)
-                                    .prefix("Допуск "),
-                            );
-                        }
-                        ManualTool::Eyedropper => {
-                            ui.checkbox(&mut self.manual_ui.merged_sample, "Все видимые слои");
-                        }
-                        ManualTool::Select | ManualTool::Mask | ManualTool::Unmask => {
-                            if ui.button("Снять маску · Ctrl+D").clicked() {
-                                self.edit(|d| {
-                                    d.clear_mask();
-                                    Ok(())
-                                });
-                                self.manual_ui.respect_mask = false;
-                            }
-                            ui.small("Маска общая для ручной работы и ИИ");
-                        }
-                        ManualTool::Crop => {
-                            ui.small("Выделите область → Enter. Esc — отменить");
-                            if ui
-                                .add_enabled(
-                                    self.manual_ui.crop_pending,
-                                    egui::Button::new("Кадрировать"),
-                                )
-                                .clicked()
-                            {
-                                self.apply_manual_crop();
-                            }
-                        }
-                        ManualTool::Move => {
-                            ui.small("Перетащите содержимое активного слоя");
-                        }
-                        ManualTool::Hand => {
-                            ui.small("Перетаскивайте холст; колесо — прокрутка");
-                        }
-                        ManualTool::Zoom => {
-                            ui.small("ЛКМ + / ПКМ − · Подогнать — в верхней панели");
-                        }
-                        _ => {}
+        use super::ribbon_ui::group;
+        ui.spacing_mut().item_spacing.y = 2.0;
+        ui.horizontal_top(|ui| {
+            let tool = self.manual_ui.tool;
+            group(ui, "Инструмент", 175.0, |ui| {
+                ui.strong(tool.label());
+                ui.small(format!("Клавиша: {}", tool.key()));
+                if tool == ManualTool::Move && ui.button("Трансформация · Ctrl+T").clicked()
+                {
+                    self.start_canvas_transform();
+                }
+            });
+            if tool.brush().is_some() {
+                group(ui, "Форма кисти", 215.0, |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut self.radius)
+                            .range(0.5..=256.0)
+                            .prefix("Радиус ")
+                            .suffix(" px"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut self.manual_ui.hardness, 0.0..=1.0)
+                            .text("Жёсткость")
+                            .show_value(false),
+                    );
+                });
+            }
+            if (tool.edits_pixels() && tool != ManualTool::Move) || tool.brush().is_some() {
+                group(ui, "Наложение", 235.0, |ui| {
+                    ui.add(
+                        egui::Slider::new(&mut self.manual_ui.opacity, 0.0..=1.0)
+                            .text("Непрозрачность")
+                            .custom_formatter(|v, _| format!("{:.0}%", v * 100.0))
+                            .custom_parser(|v| {
+                                v.trim_end_matches('%')
+                                    .parse::<f64>()
+                                    .ok()
+                                    .map(|v| v / 100.0)
+                            }),
+                    );
+                    if self.edit_target() == EditTarget::Raster {
+                        ui.checkbox(&mut self.manual_ui.respect_mask, "Внутри маски ИИ");
                     }
                 });
-            });
+            }
+            match tool {
+                ManualTool::Line | ManualTool::Rectangle | ManualTool::Ellipse => {
+                    group(ui, "Фигура", 190.0, |ui| {
+                        ui.add(
+                            egui::DragValue::new(&mut self.manual_ui.width)
+                                .range(1.0..=256.0)
+                                .prefix("Линия ")
+                                .suffix(" px"),
+                        );
+                        if tool != ManualTool::Line {
+                            ui.checkbox(&mut self.manual_ui.filled, "Заливка");
+                        }
+                    });
+                }
+                ManualTool::Fill => group(ui, "Заливка", 160.0, |ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut self.manual_ui.tolerance)
+                            .range(0..=255)
+                            .prefix("Допуск "),
+                    );
+                }),
+                ManualTool::Eyedropper => group(ui, "Источник цвета", 200.0, |ui| {
+                    if self.edit_target() == EditTarget::Raster {
+                        ui.checkbox(&mut self.manual_ui.merged_sample, "Все видимые слои");
+                    } else {
+                        ui.label("Покрытие маски: 0..255");
+                    }
+                }),
+                ManualTool::Select | ManualTool::Lasso => {
+                    group(ui, "Выделение", 220.0, |ui| {
+                        if ui.button("Снять · Ctrl+D").clicked() {
+                            self.clear_selection();
+                        }
+                        if ui.button("Параметры выделения").clicked() {
+                            self.ribbon_ui.tab = super::ribbon_ui::RibbonTab::Selection;
+                        }
+                    });
+                }
+                ManualTool::Crop => {
+                    group(ui, "Кадрирование холста", 300.0, |ui| {
+                        ui.small("Выделите область · Enter — применить · Esc — отменить");
+                        if ui
+                            .add_enabled(
+                                self.manual_ui.crop_pending,
+                                egui::Button::new("Кадрировать"),
+                            )
+                            .clicked()
+                        {
+                            self.apply_manual_crop();
+                        }
+                    });
+                }
+                ManualTool::Move => group(ui, "Перемещение", 225.0, |ui| {
+                    ui.label(if self.edit_target() == EditTarget::Mask {
+                        "Перетащите маску"
+                    } else {
+                        "Перетащите активный слой"
+                    });
+                }),
+                ManualTool::Hand => group(ui, "Навигация / вставка", 300.0, |ui| {
+                    ui.small("ЛКМ — фрагмент после вставки или холст · ПКМ — холст");
+                    if self.has_pasted_object() && ui.button("Закрепить вставку · Enter").clicked()
+                    {
+                        self.finish_pasted_object();
+                    }
+                }),
+                ManualTool::Zoom => group(ui, "Масштаб", 230.0, |ui| {
+                    ui.label("ЛКМ + / ПКМ − · Ctrl+колесо");
+                    if ui.button("По размеру").clicked() {
+                        self.manual_ui.fit_once = true;
+                    }
+                }),
+                _ => {}
+            }
+        });
     }
     pub(super) fn manual_palette(&mut self, ui: &mut Ui) {
-        let groups: &[&[ManualTool]] = &[
-            &[ManualTool::Move, ManualTool::Select],
-            &[ManualTool::Brush, ManualTool::Eraser],
+        let slots: &[&[ManualTool]] = &[
+            &[ManualTool::Move],
+            &[ManualTool::Select, ManualTool::Lasso],
+            &[ManualTool::Brush],
+            &[ManualTool::Eraser],
             &[ManualTool::Fill, ManualTool::Gradient],
             &[ManualTool::Line, ManualTool::Rectangle, ManualTool::Ellipse],
-            &[ManualTool::Mask, ManualTool::Unmask],
-            &[ManualTool::Eyedropper, ManualTool::Crop],
-            &[ManualTool::Hand, ManualTool::Zoom],
+            &[ManualTool::Eyedropper],
+            &[ManualTool::Crop],
+            &[ManualTool::Hand],
+            &[ManualTool::Zoom],
         ];
         egui::ScrollArea::vertical()
             .id_salt("tool-strip-scroll")
+            .max_height((ui.available_height() - 46.0).max(64.0))
             .show(ui, |ui| {
-                for (i, group) in groups.iter().enumerate() {
-                    if i > 0 {
+                for (i, variants) in slots.iter().enumerate() {
+                    if [2, 4, 6, 8].contains(&i) {
                         ui.add_space(3.0);
                         ui.separator();
-                        ui.add_space(3.0);
                     }
-                    for &tool in *group {
-                        let active = self.manual_ui.tool == tool && !self.segmentation_point_mode();
-                        let response = ui
-                            .add_sized([36.0, 34.0], egui::Button::new("").selected(active))
-                            .on_hover_text(format!("{} · {}", tool.label(), tool.key()));
-                        icon(
-                            ui.painter(),
-                            response.rect.shrink(7.0),
-                            tool,
-                            if active {
-                                Color32::WHITE
+                    let tool = variants
+                        .iter()
+                        .copied()
+                        .find(|t| *t == self.manual_ui.tool)
+                        .unwrap_or(variants[0]);
+                    let active = self.manual_ui.tool == tool && !self.segmentation_point_mode();
+                    let response = ui
+                        .add_sized([36.0, 34.0], egui::Button::new("").selected(active))
+                        .on_hover_text(format!(
+                            "{} · {}{}",
+                            tool.label(),
+                            tool.key(),
+                            if variants.len() > 1 {
+                                " · ПКМ: варианты"
                             } else {
-                                Color32::from_gray(202)
-                            },
-                        );
-                        if response.clicked() {
-                            self.select_manual_tool(tool);
-                        }
+                                ""
+                            }
+                        ));
+                    icon(
+                        ui.painter(),
+                        response.rect.shrink(7.0),
+                        tool,
+                        if active {
+                            Color32::WHITE
+                        } else {
+                            Color32::from_gray(202)
+                        },
+                    );
+                    if variants.len() > 1 {
+                        let r = response.rect;
+                        ui.painter().add(egui::Shape::convex_polygon(
+                            vec![
+                                r.right_bottom() - Vec2::new(3.0, 3.0),
+                                r.right_bottom() - Vec2::new(9.0, 3.0),
+                                r.right_bottom() - Vec2::new(3.0, 9.0),
+                            ],
+                            Color32::from_gray(180),
+                            Stroke::NONE,
+                        ));
+                        response.context_menu(|ui| {
+                            for &variant in *variants {
+                                if ui
+                                    .button(format!("{} · {}", variant.label(), variant.key()))
+                                    .clicked()
+                                {
+                                    self.select_manual_tool(variant);
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
+                    if response.clicked() {
+                        self.select_manual_tool(tool);
                     }
                 }
             });
+        let response = ui
+            .menu_button("   ", |ui| {
+                ui.set_width(245.0);
+                self.manual_colors(ui);
+            })
+            .response;
+        let back = response.rect.shrink(5.0).translate(Vec2::new(3.0, 3.0));
+        ui.painter()
+            .rect_filled(back, 1.0, self.manual_ui.background);
+        let front = back.translate(Vec2::new(-5.0, -5.0));
+        ui.painter().rect_filled(front, 1.0, self.color);
+        ui.painter().rect_stroke(
+            front,
+            1.0,
+            Stroke::new(1.0, Color32::GRAY),
+            egui::StrokeKind::Inside,
+        );
+        response.on_hover_text("Цвет и фон · X — поменять · D — чёрный/белый");
     }
-    pub(super) fn manual_dock(&mut self, ui: &mut Ui, actions: &mut Vec<super::FileAction>) {
-        panel_header(ui, "Ручная работа", "Цвет · слои · свойства изображения");
+    pub(super) fn manual_dock(&mut self, ui: &mut Ui, _actions: &mut Vec<super::FileAction>) {
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.manual_ui.properties, false, "Слои");
+            ui.selectable_value(&mut self.manual_ui.properties, true, "Свойства");
+        });
+        ui.separator();
+        if self.manual_ui.properties {
+            egui::ScrollArea::vertical()
+                .id_salt("manual-properties")
+                .show(ui, |ui| self.manual_properties(ui));
+        } else {
+            self.layers_dock(ui);
+        }
+        self.rename_dialog(ui);
+    }
+    pub(super) fn manual_colors(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label("Цвет");
-            ui.color_edit_button_srgba(&mut self.color);
+            if self.edit_target() == EditTarget::Mask {
+                let mut value = self.color.r();
+                ui.add(egui::DragValue::new(&mut value).range(0..=255));
+                self.color = Color32::from_gray(value);
+            } else {
+                ui.color_edit_button_srgba(&mut self.color);
+            }
             ui.label("Фон");
-            ui.color_edit_button_srgba(&mut self.manual_ui.background);
+            if self.edit_target() == EditTarget::Mask {
+                let mut value = self.manual_ui.background.r();
+                ui.add(egui::DragValue::new(&mut value).range(0..=255));
+                self.manual_ui.background = Color32::from_gray(value);
+            } else {
+                ui.color_edit_button_srgba(&mut self.manual_ui.background);
+            }
             let swap = ui
                 .add_sized([32.0, 32.0], egui::Button::new(""))
                 .on_hover_text("Поменять цвета · X");
@@ -554,7 +776,7 @@ impl ImageEditor {
             ui.spacing_mut().interact_size = Vec2::splat(18.0);
             ui.spacing_mut().button_padding = Vec2::ZERO;
             ui.spacing_mut().item_spacing = Vec2::splat(5.0);
-            for color in [
+            for mut color in [
                 Color32::BLACK,
                 Color32::WHITE,
                 Color32::from_gray(128),
@@ -568,6 +790,14 @@ impl ImageEditor {
                 Color32::from_rgb(146, 106, 202),
                 Color32::from_rgb(203, 116, 168),
             ] {
+                if self.edit_target() == EditTarget::Mask {
+                    let value = ((54 * u32::from(color.r())
+                        + 183 * u32::from(color.g())
+                        + 19 * u32::from(color.b())
+                        + 128)
+                        / 256) as u8;
+                    color = Color32::from_gray(value);
+                }
                 let r = ui
                     .add_sized([18.0, 18.0], egui::Button::new("").fill(color))
                     .on_hover_text(format!(
@@ -581,44 +811,9 @@ impl ImageEditor {
                 }
             }
         });
-        ui.add_space(8.0);
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .add_enabled(
-                    self.document.layers().len() < 16,
-                    egui::Button::new("Слой из файла…"),
-                )
-                .clicked()
-            {
-                actions.push(super::FileAction::ImportLayer);
-            }
-            let unlocked = !self.document.layers()[self.document.active()].locked();
-            if ui
-                .add_enabled(unlocked, egui::Button::new("Трансформация…"))
-                .clicked()
-            {
-                self.open_layer_dialog(false);
-            }
-            if ui
-                .add_enabled(unlocked, egui::Button::new("Цветокоррекция…"))
-                .clicked()
-            {
-                self.open_layer_dialog(true);
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.manual_ui.properties, false, "Слои");
-            ui.selectable_value(&mut self.manual_ui.properties, true, "Свойства");
-        });
-        ui.separator();
-        if self.manual_ui.properties {
-            egui::ScrollArea::vertical()
-                .id_salt("manual-properties")
-                .show(ui, |ui| self.manual_properties(ui));
-        } else {
-            self.layers_dock(ui);
-        }
-        self.rename_dialog(ui);
+    }
+    pub(super) fn manual_properties_open(&mut self) {
+        self.manual_ui.properties = true;
     }
     #[allow(clippy::too_many_lines)] // Declarative rows, drop targets and action bar share one layout.
     fn layers_dock(&mut self, ui: &mut Ui) {
@@ -919,6 +1114,62 @@ impl ImageEditor {
             self.layer_action(action);
         }
     }
+    fn lasso_canvas(
+        &mut self,
+        ui: &Ui,
+        response: &Response,
+        point: Option<[f32; 2]>,
+        engaged: bool,
+        down: bool,
+    ) {
+        if engaged && self.manual_ui.lasso.is_empty() {
+            self.manual_ui.selection_op = Some(self.selection_operation(ui));
+        }
+        if engaged || (!down && !self.manual_ui.lasso.is_empty()) {
+            if let Some(point) = point {
+                let path = &mut self.manual_ui.lasso;
+                if path.last().is_none_or(|last| {
+                    (point[0] - last[0]).powi(2) + (point[1] - last[1]).powi(2) >= 0.25
+                }) {
+                    if path.len() < 4096 {
+                        path.push(point);
+                    } else if let Some(last) = path.last_mut() {
+                        *last = point;
+                    }
+                }
+            }
+        }
+        let path: Vec<_> = self
+            .manual_ui
+            .lasso
+            .iter()
+            .map(|p| response.rect.min + Vec2::new(p[0], p[1]) * self.zoom)
+            .collect();
+        let painter = ui
+            .painter()
+            .with_clip_rect(response.rect.intersect(ui.clip_rect()));
+        if path.len() > 1 {
+            painter.add(egui::Shape::line(
+                path.clone(),
+                Stroke::new(1.5, Color32::WHITE),
+            ));
+            painter.line_segment(
+                [path[0], *path.last().expect("path")],
+                Stroke::new(1.0, Color32::GRAY),
+            );
+        }
+        if !down && !self.manual_ui.lasso.is_empty() {
+            let points = std::mem::take(&mut self.manual_ui.lasso);
+            if points.len() >= 3 {
+                let op = self
+                    .manual_ui
+                    .selection_op
+                    .take()
+                    .unwrap_or_else(|| self.selection_operation(ui));
+                self.edit(|d| d.select_area_polygon(&points, op));
+            }
+        }
+    }
     fn can_merge(&self, i: usize) -> bool {
         i > 0
             && self.document.layers()[i].visible()
@@ -996,21 +1247,28 @@ impl ImageEditor {
         ui.small("Сетка появляется при масштабе от 600%");
         ui.add_space(10.0);
         ui.separator();
-        ui.strong("Активный слой");
-        ui.label(self.document.layers()[self.document.active()].name());
-        let locked = self.document.layers()[self.document.active()].locked();
+        ui.strong(if self.edit_target() == EditTarget::Mask {
+            "Маска"
+        } else {
+            "Активный слой"
+        });
+        if self.edit_target() == EditTarget::Raster {
+            ui.label(self.document.layers()[self.document.active()].name());
+        }
+        let locked = self.edit_target() == EditTarget::Raster
+            && self.document.layers()[self.document.active()].locked();
         ui.add_enabled_ui(!locked, |ui| {
             ui.add(egui::Slider::new(&mut self.blur, 0.1..=20.0).text("Размытие"));
             if ui.button("Применить размытие").clicked() {
                 let v = self.blur;
-                self.edit(|d| d.adjust(Adjustment::Blur(v)));
+                self.edit_manual(|d| d.adjust(Adjustment::Blur(v)));
             }
             ui.horizontal(|ui| {
                 if ui.button("Ч/Б").clicked() {
-                    self.edit(|d| d.adjust(Adjustment::Grayscale));
+                    self.edit_manual(|d| d.adjust(Adjustment::Grayscale));
                 }
                 if ui.button("Убрать шум").clicked() {
-                    self.edit(|d| d.adjust(Adjustment::Median));
+                    self.edit_manual(|d| d.adjust(Adjustment::Median));
                 }
             });
         });
@@ -1020,7 +1278,7 @@ impl ImageEditor {
         ui.add_space(12.0);
         ui.separator();
         ui.strong("Клавиатура");
-        ui.small("B — кисть · E — ластик · [ / ] — радиус\nX — поменять цвета · D — чёрный / белый\nCtrl+D — снять маску\nCtrl+J — копия слоя · Ctrl+E — объединить\nCtrl+Z / Ctrl+Shift+Z — отмена / повтор");
+        ui.small("B — кисть · E — ластик · [ / ] — радиус\nX — поменять цвета · D — чёрный / белый\nQ — Растр / Маска\nCtrl+D — снять маску\nCtrl+J — копия слоя · Ctrl+E — объединить\nCtrl+Z / Ctrl+Shift+Z — отмена / повтор");
     }
     fn apply_manual_crop(&mut self) {
         let [x, y, w, h] = self.crop;
@@ -1031,8 +1289,10 @@ impl ImageEditor {
     #[allow(clippy::too_many_lines)] // Gesture begin/update/end and cancellation stay in one dispatcher.
     pub(super) fn manual_canvas(&mut self, ui: &Ui, response: &Response) {
         if self.navigation.interacting || self.segmentation_point_mode() {
+            self.pause_pasted_drag();
             self.finish_manual_stroke();
             self.manual_ui.start = None;
+            self.manual_ui.lasso.clear();
             return;
         }
         let tool = self.manual_ui.tool;
@@ -1062,12 +1322,15 @@ impl ImageEditor {
             return;
         }
         if tool == ManualTool::Hand {
+            self.pasted_canvas(ui, response, point);
             return;
         }
         if tool == ManualTool::Eyedropper {
             if response.clicked() {
                 if let Some(p) = point {
-                    let raster = if self.manual_ui.merged_sample {
+                    let raster = if self.edit_target() == EditTarget::Mask {
+                        self.document.mask_raster()
+                    } else if self.manual_ui.merged_sample {
                         self.document.flatten()
                     } else {
                         self.document.layers()[self.document.active()]
@@ -1090,7 +1353,7 @@ impl ImageEditor {
                         let color = self.color.to_srgba_unmultiplied();
                         let tolerance = self.manual_ui.tolerance;
                         let style = self.brush_style();
-                        self.edit(|d| {
+                        self.edit_manual(|d| {
                             d.bucket_fill(p[0] as u32, p[1] as u32, color, tolerance, style)
                         });
                     }
@@ -1103,7 +1366,8 @@ impl ImageEditor {
         if let Some(brush) = tool.brush() {
             if engaged || (!down && self.manual_ui.stroke_before.is_some()) {
                 if let Some(p) = point {
-                    if self.document.layers()[self.document.active()].locked()
+                    if self.edit_target() == EditTarget::Raster
+                        && self.document.layers()[self.document.active()].locked()
                         && matches!(brush, Tool::Brush | Tool::Eraser)
                     {
                         self.status = "Слой заблокирован".into();
@@ -1113,14 +1377,18 @@ impl ImageEditor {
                         self.manual_ui.stroke_before = Some((self.document.clone(), self.unsaved));
                     }
                     let style = self.brush_style();
-                    match self.document.stroke_with_style(
-                        self.manual_ui.last.unwrap_or(p),
-                        p,
-                        self.radius,
-                        self.color.to_srgba_unmultiplied(),
-                        brush,
-                        style,
-                    ) {
+                    let from = self.manual_ui.last.unwrap_or(p);
+                    let radius = self.radius;
+                    let color = self.color.to_srgba_unmultiplied();
+                    let stroke = |d: &mut Document| {
+                        d.stroke_with_style(from, p, radius, color, brush, style)
+                    };
+                    let result = if self.edit_target() == EditTarget::Mask {
+                        self.document.edit_mask(stroke)
+                    } else {
+                        stroke(&mut self.document)
+                    };
+                    match result {
                         Ok(()) => {
                             self.changed = true;
                             self.unsaved = true;
@@ -1155,7 +1423,14 @@ impl ImageEditor {
             }
             return;
         }
+        if tool == ManualTool::Lasso {
+            self.lasso_canvas(ui, response, point, engaged, down);
+            return;
+        }
         if engaged {
+            if self.manual_ui.start.is_none() {
+                self.manual_ui.selection_op = Some(self.selection_operation(ui));
+            }
             if let Some(p) = point {
                 self.manual_ui.start.get_or_insert(p);
                 self.manual_ui.last = Some(p);
@@ -1200,14 +1475,18 @@ impl ImageEditor {
                     ManualTool::Move => {
                         let dx = (end[0] - start[0]).round() as i32;
                         let dy = (end[1] - start[1]).round() as i32;
-                        self.edit(|d| d.translate_layer(dx, dy));
+                        self.edit_manual(|d| d.translate_layer(dx, dy));
                     }
                     ManualTool::Select => {
-                        self.edit(|d| d.select_rectangle(start, end));
-                        self.manual_ui.respect_mask = true;
+                        let op = self
+                            .manual_ui
+                            .selection_op
+                            .take()
+                            .unwrap_or_else(|| self.selection_operation(ui));
+                        self.edit(|d| d.select_area_rectangle(start, end, op));
                     }
                     ManualTool::Gradient => {
-                        self.edit(|d| d.gradient(start, end, color, background, style));
+                        self.edit_manual(|d| d.gradient(start, end, color, background, style));
                     }
                     ManualTool::Line | ManualTool::Rectangle | ManualTool::Ellipse => {
                         let shape = match tool {
@@ -1215,7 +1494,9 @@ impl ImageEditor {
                             ManualTool::Rectangle => Shape::Rectangle,
                             _ => Shape::Ellipse,
                         };
-                        self.edit(|d| d.draw_shape(start, end, shape, width, filled, color, style));
+                        self.edit_manual(|d| {
+                            d.draw_shape(start, end, shape, width, filled, color, style)
+                        });
                     }
                     ManualTool::Crop => {
                         let x = start[0]
@@ -1418,6 +1699,19 @@ fn icon(p: &egui::Painter, r: Rect, tool: ManualTool, color: Color32) {
                 p.line_segment([a(0.05, 0.1), a(0.95, 0.95)], s);
             }
         }
+        ManualTool::Lasso => {
+            p.add(egui::Shape::closed_line(
+                vec![
+                    a(0.15, 0.1),
+                    a(0.85, 0.15),
+                    a(0.95, 0.6),
+                    a(0.6, 0.9),
+                    a(0.1, 0.65),
+                ],
+                s,
+            ));
+            p.line_segment([a(0.15, 0.65), a(0.0, 1.0)], s);
+        }
         ManualTool::Select => {
             for (a, b) in [
                 (a(0.05, 0.05), a(0.4, 0.05)),
@@ -1575,6 +1869,46 @@ mod tests {
         }
     }
     #[test]
+    fn lasso_pointer_gesture_selects_once_and_escape_cancels_without_changes() {
+        let ctx = egui::Context::default();
+        let mut editor = ImageEditor::new(Document::new(32, 32).unwrap());
+        editor.select_manual_tool(ManualTool::Lasso);
+        frame(&ctx, &mut editor, vec![]);
+        frame(&ctx, &mut editor, pointer(12.0, 12.0, true));
+        frame(
+            &ctx,
+            &mut editor,
+            vec![egui::Event::PointerMoved(egui::pos2(30.0, 12.0))],
+        );
+        frame(&ctx, &mut editor, pointer(12.0, 30.0, false));
+        assert!(
+            editor
+                .document
+                .selection()
+                .iter()
+                .filter(|v| **v > 0)
+                .count()
+                > 50
+        );
+        editor.restore_history(false);
+        assert!(editor.document.selection().iter().all(|v| *v == 0));
+        let before = editor.document.clone();
+        frame(&ctx, &mut editor, pointer(12.0, 12.0, true));
+        frame(
+            &ctx,
+            &mut editor,
+            vec![egui::Event::Key {
+                key: Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        frame(&ctx, &mut editor, pointer(30.0, 30.0, false));
+        assert_eq!(editor.document, before);
+    }
+    #[test]
     fn escape_cancels_stroke_until_mouse_release() {
         let ctx = egui::Context::default();
         let mut e = ImageEditor::new(Document::new(64, 64).unwrap());
@@ -1675,6 +2009,33 @@ mod tests {
             assert_eq!(e.document, original, "{tool:?}");
         }
     }
+    #[test]
+    fn clipboard_controls_keep_layer_actions_visible_in_a_small_dock() {
+        let ctx = egui::Context::default();
+        super::super::apply_studio_style(&ctx);
+        let mut editor = ImageEditor::new(Document::new(8, 8).unwrap());
+        editor.copy_pixels(false);
+        for _ in 0..2 {
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(320.0, 580.0))),
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::CentralPanel::default()
+                        .show(ui, |ui| editor.manual_dock(ui, &mut vec![]));
+                },
+            );
+        }
+        let row = ctx
+            .read_response(egui::Id::new(("layer-row", 0_usize)))
+            .expect("visible layer row");
+        assert!(
+            row.rect.bottom() < 500.0,
+            "layer action bar must fit below: {:?}",
+            row.rect
+        );
+    }
     fn dock_frame(ctx: &egui::Context, editor: &mut ImageEditor, events: Vec<egui::Event>) {
         let _ = ctx.run_ui(
             egui::RawInput {
@@ -1723,5 +2084,107 @@ mod tests {
         );
         e.restore_history(false);
         assert_eq!(e.document.layers()[1].name(), "Ink");
+    }
+    #[test]
+    fn same_tools_edit_the_selected_target_with_one_undo_and_mask_ignores_layer_lock() {
+        for target in [EditTarget::Raster, EditTarget::Mask] {
+            for tool in [
+                ManualTool::Brush,
+                ManualTool::Eraser,
+                ManualTool::Fill,
+                ManualTool::Gradient,
+                ManualTool::Line,
+                ManualTool::Rectangle,
+                ManualTool::Ellipse,
+                ManualTool::Move,
+            ] {
+                let ctx = egui::Context::default();
+                let mut doc =
+                    Document::from_raster(Raster::solid(64, 64, [80, 100, 120, 255]).unwrap())
+                        .unwrap();
+                doc.select_rectangle([0.0, 0.0], [64.0, 64.0]).unwrap();
+                if target == EditTarget::Mask {
+                    doc.set_layer_locked(true);
+                }
+                let mut e = ImageEditor::new(doc);
+                e.zoom = 1.0;
+                e.set_edit_target(target);
+                e.select_manual_tool(tool);
+                e.color = Color32::from_gray(100);
+                e.manual_ui.filled = true;
+                let before = e.document.clone();
+                frame(&ctx, &mut e, vec![]);
+                frame(&ctx, &mut e, pointer(16.0, 16.0, true));
+                if tool != ManualTool::Fill {
+                    frame(
+                        &ctx,
+                        &mut e,
+                        vec![egui::Event::PointerMoved(egui::pos2(35.0, 35.0))],
+                    );
+                }
+                let end = if tool == ManualTool::Fill { 16.0 } else { 48.0 };
+                frame(&ctx, &mut e, pointer(end, end, false));
+                assert_ne!(e.document, before, "{target:?} {tool:?}");
+                if target == EditTarget::Mask {
+                    assert_eq!(e.document.layers(), before.layers(), "{tool:?}");
+                } else {
+                    assert_eq!(e.document.mask(), before.mask(), "{tool:?}");
+                }
+                e.restore_history(false);
+                assert_eq!(e.document, before, "{target:?} {tool:?}");
+            }
+        }
+    }
+    #[test]
+    fn target_switch_preserves_tool_colors_document_and_picks_mask_coverage() {
+        let ctx = egui::Context::default();
+        let mut e = ImageEditor::new(
+            Document::from_raster(Raster::solid(64, 64, [80, 100, 120, 255]).unwrap()).unwrap(),
+        );
+        e.document.set_mask(vec![77; 4096]).unwrap();
+        e.color = Color32::RED;
+        e.manual_ui.background = Color32::BLUE;
+        let before = e.document.clone();
+        e.select_manual_tool(ManualTool::Eyedropper);
+        e.set_edit_target(EditTarget::Mask);
+        assert_eq!(e.manual_ui.tool, ManualTool::Eyedropper);
+        assert_eq!(e.color, Color32::WHITE);
+        assert_eq!(e.manual_ui.background, Color32::BLACK);
+        frame(&ctx, &mut e, vec![]);
+        frame(&ctx, &mut e, pointer(16.0, 16.0, true));
+        frame(&ctx, &mut e, pointer(16.0, 16.0, false));
+        assert_eq!(e.color, Color32::from_gray(77));
+        assert_eq!(e.document, before);
+        e.set_edit_target(EditTarget::Raster);
+        assert_eq!(e.color, Color32::RED);
+        assert_eq!(e.manual_ui.background, Color32::BLUE);
+        e.set_edit_target(EditTarget::Mask);
+        assert_eq!(e.color, Color32::from_gray(77));
+        assert_eq!(e.document, before);
+        assert!(!e.history.undo(&mut e.document));
+    }
+    #[test]
+    fn selection_mode_is_captured_at_press_and_does_not_replace_ai_mask() {
+        let ctx = egui::Context::default();
+        let mut e = ImageEditor::new(Document::new(64, 64).unwrap());
+        e.document.set_mask(vec![77; 4096]).unwrap();
+        e.document
+            .select_area_rectangle([0.0, 0.0], [4.0, 4.0], crate::SelectionOp::Replace)
+            .unwrap();
+        e.select_manual_tool(ManualTool::Select);
+        e.zoom = 1.0;
+        e.ribbon_ui.selection_op = crate::SelectionOp::Add;
+        frame(&ctx, &mut e, vec![]);
+        frame(&ctx, &mut e, pointer(20.0, 20.0, true));
+        e.ribbon_ui.selection_op = crate::SelectionOp::Subtract;
+        frame(
+            &ctx,
+            &mut e,
+            vec![egui::Event::PointerMoved(egui::pos2(36.0, 36.0))],
+        );
+        frame(&ctx, &mut e, pointer(36.0, 36.0, false));
+        assert_eq!(e.document.selection()[0], 255);
+        assert_eq!(e.document.selection()[20 * 64 + 20], 255);
+        assert_eq!(e.document.mask(), &[77; 4096]);
     }
 }

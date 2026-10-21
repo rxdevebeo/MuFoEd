@@ -3574,6 +3574,7 @@ version = "0.1.0"
 dependencies = [
  "ag-psd",
  "anyhow",
+ "arboard",
  "candle-core",
  "candle-nn",
  "candle-transformers",

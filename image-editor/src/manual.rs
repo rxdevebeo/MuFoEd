@@ -177,6 +177,10 @@ impl Document {
     }
     fn coverage(&self, index: usize, style: BrushStyle) -> f32 {
         style.opacity
+            * self
+                .selection
+                .get(index)
+                .map_or(1.0, |v| f32::from(*v) / 255.0)
             * if style.respect_mask {
                 f32::from(self.mask[index]) / 255.0
             } else {
@@ -382,6 +386,7 @@ impl Document {
                 .iter()
                 .zip(target)
                 .all(|(a, b)| a.abs_diff(b) <= tolerance)
+                || self.selection.get(index).is_some_and(|v| *v == 0)
                 || (style.respect_mask && self.mask[index] == 0)
             {
                 continue;

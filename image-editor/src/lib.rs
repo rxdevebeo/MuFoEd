@@ -12,5 +12,5 @@ pub mod ui;
 
 pub use document::{
     Adjustment, BrushStyle, CanvasMode, ColorCorrection, Document, EditError, History, Layer,
-    PhotoGeometry, Raster, Shape, Tool,
+    PhotoGeometry, PixelClipboard, Raster, SelectionOp, SelectionRefine, Shape, Tool,
 };

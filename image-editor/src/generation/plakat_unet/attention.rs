@@ -236,6 +236,18 @@ impl CrossAttention {
         value: &Tensor,
         slice_size: usize,
     ) -> Result<Tensor> {
+        let rows = super::attention_query_rows(query.dim(1)? as u64) as usize;
+        self.sliced_attention_rows(query, key, value, slice_size, rows)
+    }
+
+    fn sliced_attention_rows(
+        &self,
+        query: &Tensor,
+        key: &Tensor,
+        value: &Tensor,
+        slice_size: usize,
+        query_rows: usize,
+    ) -> Result<Tensor> {
         let batch_size_attention = query.dim(0)?;
         let mut hidden_states = Vec::with_capacity(batch_size_attention / slice_size);
         let in_dtype = query.dtype();
@@ -246,11 +258,19 @@ impl CrossAttention {
         for start_idx in (0..batch_size_attention).step_by(slice_size) {
             let end_idx = (start_idx + slice_size).min(batch_size_attention);
 
-            let xs = query
-                .i(start_idx..end_idx)?
-                .matmul(&(key.i(start_idx..end_idx)?.t()? * self.scale)?)?;
-            let xs = nn::ops::softmax_last_dim(&xs)?.matmul(&value.i(start_idx..end_idx)?)?;
-            hidden_states.push(xs)
+            // Split queries only: each row still attends to every key and uses
+            // one full softmax. No spatial approximation or normalization change.
+            let q = query.i(start_idx..end_idx)?;
+            let k = (key.i(start_idx..end_idx)?.t()? * self.scale)?;
+            let v = value.i(start_idx..end_idx)?;
+            let query_len = q.dim(1)?;
+            let mut rows = Vec::new();
+            for start in (0..query_len).step_by(query_rows) {
+                let count = query_rows.min(query_len - start);
+                let scores = q.narrow(1, start, count)?.contiguous()?.matmul(&k)?;
+                rows.push(nn::ops::softmax_last_dim(&scores)?.matmul(&v)?);
+            }
+            hidden_states.push(Tensor::cat(&rows, 1)?);
         }
         let hidden_states = Tensor::cat(&hidden_states, 0)?.to_dtype(in_dtype)?;
         self.reshape_batch_dim_to_heads(&hidden_states)
@@ -732,6 +752,52 @@ impl Module for AttentionBlock {
 mod slicing_tests {
     use super::*;
     use std::collections::HashMap;
+    #[test]
+    fn query_chunks_preserve_all_keys_softmax_cfg_and_partial_rows() -> Result<()> {
+        let device = candle_core::Device::Cpu;
+        let weights = nn::VarMap::new();
+        let attention = CrossAttention::new(
+            nn::VarBuilder::from_varmap(&weights, DType::F32, &device),
+            12,
+            None,
+            3,
+            4,
+            Some(2),
+            false,
+            &Arc::new(RwLock::new(LoraRegistry::new())),
+        )?;
+        for batch in [1, 2] {
+            for (queries, keys, rows) in [(7, 7, 3), (7, 5, 3), (16_385, 5, 1024)] {
+                let signal = |tokens: usize, offset: f32| {
+                    let data: Vec<f32> = (0..batch * 3 * tokens * 4)
+                        .map(|i| (i as f32 * 0.13 + offset).sin())
+                        .collect();
+                    Tensor::from_vec(data, (batch * 3, tokens, 4), &device)
+                };
+                let q = signal(queries, 0.0)?;
+                let k = signal(keys, 0.3)?;
+                let v = signal(keys, 0.7)?;
+                let scores = q.matmul(&(k.t()? * attention.scale)?)?;
+                let expected = nn::ops::softmax_last_dim(&scores)?.matmul(&v)?;
+                let expected = attention.reshape_batch_dim_to_heads(&expected)?;
+                let actual = attention.sliced_attention_rows(&q, &k, &v, 2, rows)?;
+                let error = actual
+                    .sub(&expected)?
+                    .abs()?
+                    .max_all()?
+                    .to_scalar::<f32>()?;
+                assert!(
+                    error < 2e-5,
+                    "queries={queries} keys={keys} batch={batch}: {error}"
+                );
+                if queries > 16_384 {
+                    let automatic = attention.sliced_attention(&q, &k, &v, 2)?;
+                    assert_eq!(actual.to_vec3::<f32>()?, automatic.to_vec3::<f32>()?);
+                }
+            }
+        }
+        Ok(())
+    }
     #[test]
     fn head_slicing_matches_pinned_plakat_for_self_cross_cfg_and_remainders() -> Result<()> {
         let device = candle_core::Device::Cpu;

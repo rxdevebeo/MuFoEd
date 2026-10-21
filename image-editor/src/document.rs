@@ -1,3 +1,9 @@
+#[path = "selection.rs"]
+mod selection;
+pub use selection::PixelClipboard;
+#[path = "workbench_selection.rs"]
+mod workbench_selection;
+pub use workbench_selection::{SelectionOp, SelectionRefine};
 #[path = "photo_geometry.rs"]
 mod photo_geometry;
 pub use photo_geometry::PhotoGeometry;
@@ -218,6 +224,12 @@ pub struct Document {
     layers: Vec<Layer>,
     active: usize,
     mask: Vec<u8>,
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        serialize_with = "workbench_selection::serialize_area"
+    )]
+    selection: Vec<u8>,
 }
 #[derive(Deserialize)]
 struct DocumentData {
@@ -227,19 +239,23 @@ struct DocumentData {
     layers: Vec<Layer>,
     active: usize,
     mask: Vec<u8>,
+    #[serde(default, deserialize_with = "workbench_selection::deserialize_area")]
+    selection: Vec<u8>,
 }
 impl TryFrom<DocumentData> for Document {
     type Error = EditError;
     fn try_from(data: DocumentData) -> Result<Self, Self::Error> {
-        let doc = Self {
+        let mut doc = Self {
             version: data.version,
             width: data.width,
             height: data.height,
             layers: data.layers,
             active: data.active,
             mask: data.mask,
+            selection: data.selection,
         };
         doc.validate()?;
+        doc.normalize_selection();
         Ok(doc)
     }
 }
@@ -270,6 +286,7 @@ impl Document {
             }],
             active: 0,
             mask: vec![0; byte_len(width, height)? / 4],
+            selection: Vec::new(),
         })
     }
     /// Create a project from an imported raster.
@@ -480,15 +497,25 @@ impl Document {
             let start = row as usize * self.width as usize + x as usize;
             mask.extend_from_slice(&self.mask[start..start + width as usize]);
         }
+        if !self.selection.is_empty() {
+            let img = image::GrayImage::from_raw(self.width, self.height, self.selection.clone())
+                .expect("selection");
+            self.selection = image::imageops::crop_imm(&img, x, y, width, height)
+                .to_image()
+                .into_raw();
+        }
         self.width = width;
         self.height = height;
         self.mask = mask;
+        self.normalize_selection();
         Ok(())
     }
     /// Resize every layer with Lanczos3; mask uses nearest-neighbor sampling.
     pub fn resize(&mut self, width: u32, height: u32) -> Result<(), EditError> {
         let len = byte_len(width, height)?;
-        if len * self.layers.len() + len / 4 > MAX_DOCUMENT_BYTES {
+        if len * self.layers.len() + len / 4 * if self.selection.is_empty() { 1 } else { 2 }
+            > MAX_DOCUMENT_BYTES
+        {
             return Err(invalid("Resized document exceeds memory budget"));
         }
         for layer in &mut self.layers {
@@ -504,8 +531,16 @@ impl Document {
         self.mask =
             image::imageops::resize(&mask, width, height, image::imageops::FilterType::Nearest)
                 .into_raw();
+        if !self.selection.is_empty() {
+            let img = image::GrayImage::from_raw(self.width, self.height, self.selection.clone())
+                .expect("selection");
+            self.selection =
+                image::imageops::resize(&img, width, height, image::imageops::FilterType::Nearest)
+                    .into_raw();
+        }
         self.width = width;
         self.height = height;
+        self.normalize_selection();
         Ok(())
     }
     /// Rotate layers and mask clockwise by 90 degrees.
@@ -516,7 +551,13 @@ impl Document {
         let mask = image::GrayImage::from_raw(self.width, self.height, self.mask.clone())
             .expect("validated mask");
         self.mask = image::imageops::rotate90(&mask).into_raw();
+        if !self.selection.is_empty() {
+            let img = image::GrayImage::from_raw(self.width, self.height, self.selection.clone())
+                .expect("selection");
+            self.selection = image::imageops::rotate90(&img).into_raw();
+        }
         std::mem::swap(&mut self.width, &mut self.height);
+        self.normalize_selection();
     }
     /// Encode a self-contained project; no paths to external layer assets.
     pub fn to_json(&self) -> Result<Vec<u8>, EditError> {
@@ -537,6 +578,7 @@ impl Document {
             || self.layers.len() > 16
             || self.active >= self.layers.len()
             || self.mask.len() != len / 4
+            || (!self.selection.is_empty() && self.selection.len() != len / 4)
             || self.memory_bytes() > MAX_DOCUMENT_BYTES
         {
             return Err(invalid("Invalid project version, layers, or mask"));
@@ -584,6 +626,7 @@ impl Document {
     }
     fn memory_bytes(&self) -> usize {
         self.mask.len()
+            + self.selection.len()
             + self
                 .layers
                 .iter()

@@ -5,9 +5,12 @@ use crate::{
 };
 use egui::{Color32, TextureHandle};
 mod canvas_navigation;
+mod clipboard_panel;
 mod hires_panel;
 mod layer_dialog;
 mod preset_panel;
+mod ribbon_ui;
+mod selection_overlay;
 mod transform_preview;
 pub use preset_panel::GenerationPreset;
 mod settings;
@@ -16,7 +19,7 @@ mod generation_panel;
 mod geometry_dialog;
 mod manual_panel;
 mod runtime_panel;
-pub use manual_panel::ManualTool;
+pub use manual_panel::{EditTarget, ManualTool};
 mod model_panel;
 mod segmentation_panel;
 mod upscale_panel;
@@ -154,6 +157,9 @@ pub struct ImageEditor {
     unsaved: bool,
     confirm_new: bool,
     manual_ui: manual_panel::ManualUi,
+    ribbon_ui: ribbon_ui::RibbonUi,
+    selection_overlay: selection_overlay::SelectionOverlay,
+    clipboard_ui: clipboard_panel::ClipboardUi,
     runtime_ui: runtime_panel::RuntimeUi,
     color: Color32,
     radius: f32,
@@ -241,6 +247,9 @@ impl ImageEditor {
             unsaved: false,
             confirm_new: false,
             manual_ui: manual_panel::ManualUi::default(),
+            ribbon_ui: ribbon_ui::RibbonUi::default(),
+            selection_overlay: selection_overlay::SelectionOverlay::default(),
+            clipboard_ui: clipboard_panel::ClipboardUi::default(),
             runtime_ui: runtime_panel::RuntimeUi::default(),
             color: Color32::from_rgb(80, 160, 240),
             radius: 12.0,
@@ -295,6 +304,9 @@ impl ImageEditor {
     }
     /// Replace the project and discard history/staged inference associated with the previous project.
     pub fn replace(&mut self, document: Document) {
+        let ribbon_ui = std::mem::take(&mut self.ribbon_ui);
+        let target = self.edit_target();
+        let clipboard_ui = std::mem::take(&mut self.clipboard_ui);
         let executable = self.executable.clone();
         let request = self.request.clone();
         let use_library = self.use_library;
@@ -310,6 +322,10 @@ impl ImageEditor {
         let mut upscale_ui = std::mem::take(&mut self.upscale_ui);
         upscale_ui.reset_project();
         *self = Self::with_runtime(document, self.runtime.clone());
+        self.set_edit_target(target);
+        self.ribbon_ui = ribbon_ui;
+        self.clipboard_ui = clipboard_ui;
+        self.clipboard_ui.reset_document_position();
         self.executable = executable;
         self.request = request;
         self.use_library = use_library;
@@ -327,6 +343,11 @@ impl ImageEditor {
         self.status = message.into();
     }
     fn edit(&mut self, operation: impl FnOnce(&mut Document) -> Result<(), EditError>) {
+        self.finish_pasted_object();
+        if self.layer_dialog_open() {
+            self.layer_dialog = layer_dialog::LayerDialog::default();
+            self.changed = true;
+        }
         let before = self.document.clone();
         match operation(&mut self.document) {
             Ok(()) => {
@@ -362,7 +383,16 @@ impl ImageEditor {
     )]
     pub fn show(&mut self, ui: &mut egui::Ui) -> Vec<FileAction> {
         let mut actions = Vec::new();
-        let mut fit_canvas = false;
+        if !ui.ctx().egui_wants_keyboard_input() {
+            let mods = ui.input(|i| i.modifiers);
+            if mods.command && ui.input(|i| i.key_pressed(egui::Key::S)) {
+                actions.push(FileAction::SaveProject);
+            }
+            if mods.command && ui.input(|i| i.key_pressed(egui::Key::O)) {
+                actions.push(FileAction::OpenImage);
+            }
+        }
+        self.inline_transform_shortcuts(ui);
         self.manual_shortcuts(ui);
         let context = ui.ctx().clone();
         if self.job.is_none() && self.plakat_active() {
@@ -399,8 +429,33 @@ impl ImageEditor {
                     .inner_margin(egui::Margin::symmetric(14, 6)),
             )
             .show(ui, |ui| {
-                ui.add(egui::Label::new(&self.status).truncate())
+                ui.horizontal(|ui| {
+                    let status_width = (ui.available_width() - 290.0).max(40.0);
+                    ui.add_sized(
+                        [status_width, 20.0],
+                        egui::Label::new(&self.status).truncate(),
+                    )
                     .on_hover_text(&self.status);
+                    ui.label(format!(
+                        "{}×{}",
+                        self.document.width(),
+                        self.document.height()
+                    ));
+                    let mut percent = self.zoom * 100.0;
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut percent)
+                                .range(2.0..=800.0)
+                                .suffix("%"),
+                        )
+                        .changed()
+                    {
+                        self.zoom = percent / 100.0;
+                    }
+                    if ui.small_button("По размеру").clicked() {
+                        self.manual_ui.fit_once = true;
+                    }
+                });
                 let state = self.runtime.snapshot();
                 if let Some(task) = state.active {
                     let phase = match state.phase {
@@ -453,121 +508,87 @@ impl ImageEditor {
         {
             self.restore_history(false);
         }
-        egui::Frame::new()
-            .fill(PANEL)
-            .inner_margin(egui::Margin::symmetric(12, 8))
-            .show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(egui::RichText::new("Image Studio").strong().size(16.0));
-                    ui.separator();
-                    for (label, action) in [
-                        ("Открыть", FileAction::OpenImage),
-                        ("Открыть PSD", FileAction::OpenProject),
-                        ("Сохранить", FileAction::SaveProject),
-                        ("Экспорт PNG", FileAction::ExportPng),
-                    ] {
-                        if ui.button(label).clicked() {
-                            actions.push(action);
-                        }
-                    }
-                    ui.separator();
-                    if ui.button("Отменить").clicked() {
-                        self.restore_history(false);
-                    }
-                    if ui.button("Повторить").clicked() {
-                        self.restore_history(true);
-                    }
-                    ui.add(egui::Slider::new(&mut self.zoom, 0.02..=8.0).text("Масштаб"));
-                    if ui.button("По размеру").clicked() {
-                        fit_canvas = true;
-                    }
-                    if ui.button("Настройки…").clicked() {
-                        self.open_settings();
-                    }
-                    if ui.button("Память моделей").clicked() {
-                        self.open_memory_panel();
-                    }
-                });
-            });
-        ui.separator();
-        self.manual_options(ui);
+        self.ribbon(ui, &mut actions);
         egui::Panel::right("image-editing")
             .resizable(true)
             .default_size(310.0)
             .min_size(285.0)
             .frame(panel_frame())
             .show(ui, |ui| self.manual_dock(ui, &mut actions));
-        egui::Panel::left("image-generation")
-            .resizable(true)
-            .default_size(380.0)
-            .min_size(340.0)
-            .frame(panel_frame())
-            .show(ui, |ui| {
-                let previous = self.active_tab;
-                ui.columns(3, |columns| {
-                    for (column, (tab, label)) in columns.iter_mut().zip([
-                        (StudioTab::Create, "Создание"),
-                        (StudioTab::Edit, "Редактирование"),
-                        (StudioTab::Upscale, "Апскейл"),
-                    ]) {
-                        column.style_mut().spacing.button_padding.x = 6.0;
-                        if column
-                            .add_sized(
-                                [column.available_width(), 36.0],
-                                egui::Button::new(egui::RichText::new(label).size(12.0))
-                                    .selected(self.active_tab == tab),
-                            )
-                            .clicked()
-                        {
-                            self.active_tab = tab;
-                        }
-                    }
-                });
-                if previous != self.active_tab {
-                    self.select_tab(self.active_tab);
-                }
-                ui.separator();
-                let reserve = if self.active_tab == StudioTab::Upscale {
-                    0.0
-                } else if self.job.is_some() {
-                    128.0
-                } else {
-                    84.0
-                };
-                egui::ScrollArea::vertical()
-                    .id_salt(("model-panel", self.active_tab as u8))
-                    .max_height((ui.available_height() - reserve).max(100.0))
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| match self.active_tab {
-                        StudioTab::Create => {
-                            self.generation_panel(ui, &mut actions);
-                        }
-                        StudioTab::Edit => {
-                            panel_header(
-                                ui,
-                                "Редактирование с ИИ",
-                                "Выделение, удаление фона и изменение по маске",
-                            );
-                            self.model_tools_panel(ui, &mut actions);
-                            self.segmentation_panel(ui, &mut actions);
-                            ui.separator();
-                            self.mask_actions(ui);
-                        }
-                        StudioTab::Upscale => {
-                            panel_header(
-                                ui,
-                                "Апскейл с ИИ",
-                                "4× увеличение и смешивание результатов",
-                            );
-                            self.upscale_panel(ui, &mut actions);
+        if self.ribbon_ui.ai_visible {
+            egui::Panel::left("image-generation")
+                .resizable(true)
+                .default_size(380.0)
+                .min_size(340.0)
+                .frame(panel_frame())
+                .show(ui, |ui| {
+                    let previous = self.active_tab;
+                    ui.columns(3, |columns| {
+                        for (column, (tab, label)) in columns.iter_mut().zip([
+                            (StudioTab::Create, "Создание"),
+                            (StudioTab::Edit, "Редактирование"),
+                            (StudioTab::Upscale, "Апскейл"),
+                        ]) {
+                            column.style_mut().spacing.button_padding.x = 6.0;
+                            if column
+                                .add_sized(
+                                    [column.available_width(), 36.0],
+                                    egui::Button::new(egui::RichText::new(label).size(12.0))
+                                        .selected(self.active_tab == tab),
+                                )
+                                .clicked()
+                            {
+                                self.active_tab = tab;
+                            }
                         }
                     });
-                if self.active_tab != StudioTab::Upscale {
+                    if previous != self.active_tab {
+                        self.select_tab(self.active_tab);
+                    }
                     ui.separator();
-                    self.generation_action(ui);
-                }
-            });
+                    let reserve = if self.active_tab == StudioTab::Upscale {
+                        0.0
+                    } else if self.job.is_some() {
+                        128.0
+                    } else {
+                        84.0
+                    };
+                    egui::ScrollArea::vertical()
+                        .id_salt(("model-panel", self.active_tab as u8))
+                        .max_height((ui.available_height() - reserve).max(100.0))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| match self.active_tab {
+                            StudioTab::Create => {
+                                self.generation_panel(ui, &mut actions);
+                            }
+                            StudioTab::Edit => {
+                                panel_header(
+                                    ui,
+                                    "Редактирование с ИИ",
+                                    "Выделение, удаление фона и изменение по маске",
+                                );
+                                self.inpaint_prompt_panel(ui);
+                                ui.separator();
+                                self.model_tools_panel(ui, &mut actions);
+                                self.segmentation_panel(ui, &mut actions);
+                                ui.separator();
+                                self.mask_actions(ui);
+                            }
+                            StudioTab::Upscale => {
+                                panel_header(
+                                    ui,
+                                    "Апскейл с ИИ",
+                                    "4× увеличение и смешивание результатов",
+                                );
+                                self.upscale_panel(ui, &mut actions);
+                            }
+                        });
+                    if self.active_tab != StudioTab::Upscale {
+                        ui.separator();
+                        self.generation_action(ui);
+                    }
+                });
+        }
         egui::Panel::left("manual-tool-strip")
             .resizable(false)
             .exact_size(50.0)
@@ -585,7 +606,7 @@ impl ImageEditor {
                     .inner_margin(14),
             )
             .show(ui, |ui| {
-                if fit_canvas || self.manual_ui.fit_once {
+                if self.manual_ui.fit_once {
                     self.manual_ui.fit_once = false;
                     self.navigation = canvas_navigation::Navigation::default();
                     let available = ui.available_size();
@@ -609,11 +630,15 @@ impl ImageEditor {
                 });
                 ui.add_space(6.0);
                 if self.changed || self.texture.is_none() {
+                    self.rebuild_selection_outline();
                     self.transform_preview.layers.clear();
                     let raster = self.document.flatten();
                     let mut pixels = raster.pixels().to_vec();
                     for (p, mask) in pixels.chunks_exact_mut(4).zip(self.document.mask()) {
-                        if self.generation_ui.show_mask && *mask > 0 {
+                        if self.generation_ui.show_mask
+                            && !self.mask_transform_preview()
+                            && *mask > 0
+                        {
                             let f = f32::from(*mask) / 510.0;
                             p[0] = (f32::from(p[0]) * (1.0 - f) + 255.0 * f) as u8;
                             p[1] = (f32::from(p[1]) * (1.0 - f)) as u8;
@@ -661,7 +686,8 @@ impl ImageEditor {
                         let response = ui.interact(
                             image_rect,
                             ui.id().with("canvas-image"),
-                            if self.manual_ui.tool == ManualTool::Hand {
+                            if self.manual_ui.tool == ManualTool::Hand && !self.has_pasted_object()
+                            {
                                 egui::Sense::hover()
                             } else {
                                 egui::Sense::click_and_drag()
@@ -721,6 +747,11 @@ impl ImageEditor {
                         {
                             self.segmentation_canvas(ui, &response);
                         }
+                        if !self.navigation.interacting && !self.segmentation_point_mode() {
+                            self.canvas_context_menu(&response);
+                        }
+                        self.layer_transform_handles(ui, &response);
+                        self.paint_selection_outline(ui, response.rect);
                         if !self.transform_preview_active() {
                             self.draw_pixel_grid(ui, response.rect);
                             self.manual_canvas(ui, &response);

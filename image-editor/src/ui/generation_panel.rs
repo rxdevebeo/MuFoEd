@@ -579,16 +579,43 @@ impl ImageEditor {
             ));
         });
     }
+    pub(super) fn inpaint_prompt_panel(&mut self, ui: &mut egui::Ui) {
+        self.request.mode = Mode::Inpaint;
+        ui.label(egui::RichText::new("Промпт перерисовки маски").strong());
+        ui.add(
+            egui::TextEdit::multiline(&mut self.request.prompt)
+                .id(ui.make_persistent_id("inpaint-prompt"))
+                .desired_rows(4)
+                .desired_width(f32::INFINITY)
+                .margin(10)
+                .hint_text("Опишите, что должно появиться в выделенной области…"),
+        );
+        ui.collapsing("Негативный промпт", |ui| {
+            ui.add(
+                egui::TextEdit::multiline(&mut self.request.negative)
+                    .id_salt("inpaint-negative")
+                    .desired_rows(2)
+                    .desired_width(f32::INFINITY),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("Сила изменения");
+            ui.add(egui::Slider::new(&mut self.request.strength, 0.0..=1.0));
+        });
+        ui.checkbox(&mut self.request.mask_invert, "Перерисовать вне маски");
+        if ui
+            .checkbox(
+                &mut self.generation_ui.show_mask,
+                "Показывать выделение / маску",
+            )
+            .changed()
+        {
+            self.changed = true;
+        }
+        ui.small("Модель и LoRA — в Настройках. Вне маски исходные пиксели сохраняются.");
+    }
     pub(super) fn mask_actions(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            if ui.button("Кисть маски").clicked() {
-                self.select_manual_tool(super::ManualTool::Mask);
-                self.stop_segmentation_points();
-            }
-            if ui.button("Ластик маски").clicked() {
-                self.select_manual_tool(super::ManualTool::Unmask);
-                self.stop_segmentation_points();
-            }
             if ui.button("Очистить").clicked() {
                 self.edit(|d| {
                     d.clear_mask();
@@ -856,6 +883,54 @@ if ui.add_enabled(!busy,egui::Button::new("Add file…")).clicked(){actions.push
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn edit_prompt_is_visible_and_typing_updates_the_inpaint_request() {
+        let ctx = egui::Context::default();
+        let mut editor = super::ImageEditor::default();
+        editor.select_tab(crate::ui::StudioTab::Edit);
+        let mut point = egui::pos2(80.0, 80.0);
+        for stage in 0..4 {
+            let events = match stage {
+                1 | 2 => vec![
+                    egui::Event::PointerMoved(point),
+                    egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Primary,
+                        pressed: stage == 1,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                3 => vec![egui::Event::Text("a small red vase".into())],
+                _ => vec![],
+            };
+            let mut id = egui::Id::NULL;
+            let output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(380.0, 600.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    egui::CentralPanel::default().show(ui, |ui| {
+                        id = ui.make_persistent_id("inpaint-prompt");
+                        editor.inpaint_prompt_panel(ui);
+                    });
+                },
+            );
+            assert!(!output.shapes.is_empty());
+            point = ctx
+                .read_response(id)
+                .expect("visible prompt editor")
+                .rect
+                .center();
+        }
+        assert_eq!(editor.request.prompt, "a small red vase");
+        assert_eq!(editor.request.mode, crate::generation::Mode::Inpaint);
+    }
+
     use super::*;
     #[test]
     fn seed_text_retains_full_u64_without_float_rounding() {

@@ -87,6 +87,9 @@ fn main() -> eframe::Result {
 }
 fn open_shot_dialog(editor: &mut ImageEditor) {
     if std::env::var_os("IMAGE_STUDIO_SHOT").is_some() {
+        if std::env::var("IMAGE_STUDIO_SHOT_TARGET").as_deref() == Ok("mask") {
+            editor.set_edit_target(image_editor::ui::EditTarget::Mask);
+        }
         match std::env::var("IMAGE_STUDIO_SHOT_DIALOG").as_deref() {
             Ok("color") => editor.open_color_dialog(),
             Ok("layer") => editor.open_layer_transform_dialog(),
@@ -106,6 +109,9 @@ fn open_shot_dialog(editor: &mut ImageEditor) {
             Ok("canvas") => editor.open_canvas_dialog(),
             Ok("rotate") => editor.open_rotation_dialog(),
             Ok("memory") => editor.open_memory_panel(),
+            Ok("ribbon-transform") => {
+                editor.start_canvas_transform();
+            }
             Ok("edit") => editor.select_tab(image_editor::ui::StudioTab::Edit),
             Ok("upscale") => editor.select_tab(image_editor::ui::StudioTab::Upscale),
             Ok("img2img") => {

@@ -98,6 +98,19 @@ impl Document {
         scale: [f64; 2],
         photo: PhotoGeometry,
     ) -> Result<(), EditError> {
+        self.transform_photo_layer_about(degrees, scale, photo, self.active_layer_center())
+    }
+    /// Resample around an explicit pivot; used by the canvas transform preview.
+    pub fn transform_photo_layer_about(
+        &mut self,
+        degrees: f64,
+        scale: [f64; 2],
+        photo: PhotoGeometry,
+        center: [f64; 2],
+    ) -> Result<(), EditError> {
+        if center.iter().any(|v| !v.is_finite() || v.abs() > 32768.0) {
+            return Err(invalid("Invalid transform pivot"));
+        }
         self.require_unlocked()?;
         photo.validate()?;
         if !degrees.is_finite()
@@ -115,7 +128,6 @@ impl Document {
         {
             return Ok(());
         }
-        let center = self.active_layer_center();
         let layer = &mut self.layers[self.active];
         let mut pixels = vec![0; byte_len(self.width, self.height)?];
         for y in 0..self.height {
@@ -213,11 +225,18 @@ impl Document {
         map: impl Fn(f64, f64) -> (f64, f64),
     ) -> Result<(), EditError> {
         let len = byte_len(width, height)?;
-        if len * self.layers.len() + len / 4 > MAX_DOCUMENT_BYTES {
+        if len * self.layers.len() + len / 4 * if self.selection.is_empty() { 1 } else { 2 }
+            > MAX_DOCUMENT_BYTES
+        {
             return Err(invalid("Transformed document exceeds memory budget"));
         }
         let mut layers = self.layers.clone();
         let mut mask = vec![0; len / 4];
+        let mut selection = if self.selection.is_empty() {
+            Vec::new()
+        } else {
+            vec![0; len / 4]
+        };
         for layer in &mut layers {
             let mut pixels = vec![0; len];
             for y in 0..height {
@@ -254,11 +273,17 @@ impl Document {
                 {
                     mask[y as usize * width as usize + x as usize] =
                         self.mask[sy.floor() as usize * self.width as usize + sx.floor() as usize];
+                    if !selection.is_empty() {
+                        selection[y as usize * width as usize + x as usize] = self.selection
+                            [sy.floor() as usize * self.width as usize + sx.floor() as usize];
+                    }
                 }
             }
         }
         self.layers = layers;
         self.mask = mask;
+        self.selection = selection;
+        self.normalize_selection();
         self.width = width;
         self.height = height;
         Ok(())

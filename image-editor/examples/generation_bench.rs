@@ -36,7 +36,9 @@ fn request(root: &Path) -> Result<Request, Box<dyn std::error::Error>> {
         postprocess: Some(Postprocess {
             hires: Some(HiresFix {
                 target_size: [target; 2],
-                guidance: 6.0,
+                guidance: std::env::var("BENCH_REFINE_CFG")
+                    .unwrap_or_else(|_| "6.0".into())
+                    .parse::<f32>()?,
             }),
             denoise: 0.3,
             steps: refine_steps.unwrap_or(steps),
@@ -45,6 +47,12 @@ fn request(root: &Path) -> Result<Request, Box<dyn std::error::Error>> {
         }),
         ..Default::default()
     };
+    if let Ok(model) = std::env::var("BENCH_MODEL") {
+        request.model = model;
+    }
+    if let Ok(family) = std::env::var("BENCH_FAMILY") {
+        request.family = Some(serde_json::from_value(serde_json::Value::String(family))?);
+    }
     if let Ok(loras) = std::env::var("BENCH_LORAS") {
         request.loras = serde_json::from_str(&loras)?;
     }
