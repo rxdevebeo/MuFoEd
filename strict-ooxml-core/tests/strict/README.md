@@ -40,7 +40,7 @@ docx-cli upstreamed the file from docx4j in its first commit, so docx4j is the
 origin. Both licences are compatible with this project, so nothing about the
 fixture's usability changes — but the credit and the licence were both wrong, and
 a corpus entry that misnames its provenance cannot be re-licensed later by anyone
-who trusts it. See `docs/stage-10-xsd-audit.md` §7.
+who trusts it. See `docs/history/stage-10-xsd-audit.md` §7.
 
 `strict-text.docx` is a small text-only Strict document authored for this
 repository (Calibri/Arial/Times/Courier runs, justification, centering) so the
@@ -127,7 +127,7 @@ the same delivery are **not** committed for want of a compatible licence:
 * `04-libreoffice-roundtrip-strict.docx` — produced by LibreOffice.
 
 Both are reproducible measurements instead: see
-`docs/stage-5c-report.md` §5 (D1 records the `04` ink-fraction result that the
+`docs/history/stage-5c-report.md` §5 (D1 records the `04` ink-fraction result that the
 Liberation mapping fixes). The delivery ZIP archives are **not** committed
 (`STAGE-5C-REWORK-1` D5).
 

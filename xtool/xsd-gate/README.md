@@ -148,7 +148,7 @@ python xtool/xsd-gate/census_gate.py
 whole `write --transitional` path - the byte-level normalizer, the pass-through
 and the loss report - on the 58 Transitional documents in `tests/docx/` and
 `tests/samples/`. It was queue item 13 of
-[`docs/transitional-to-strict-audit.md`](../docs/transitional-to-strict-audit.md) §11:
+[`docs/history/transitional-to-strict-audit.md`](../../docs/history/transitional-to-strict-audit.md) §11:
 the audit's numbers were produced by a harness outside the tree, so nothing in
 §4 of that document could be reproduced.
 

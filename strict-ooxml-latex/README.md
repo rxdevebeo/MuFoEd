@@ -149,4 +149,4 @@ cargo +1.92.0 test -p strict-ooxml-latex --test extensions real_tikz_and_chemfig
 The test creates actual TikZ/chemfig pictures, a DOCX and a PDF conversion probe
 under `target/latex-extended-probes/`; it checks the PDF's physical dimensions.
 Corpus evidence and remaining limitations are recorded in
-`docs/audit-latex-2026-10-18/EXTENSIONS.md`.
+`docs/history/audit-latex-2026-10-18/EXTENSIONS.md`.

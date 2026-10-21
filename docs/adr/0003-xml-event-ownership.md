@@ -89,7 +89,7 @@ changing this decision:
 1. **Location bookkeeping is amortized O(1).** `XmlReader` maintains running
    `line`/`column` counters advanced once per byte, replacing the former O(n²)
    "scan from offset 0 on every event" approach (rework R1 / K1). See
-   `docs/perf-baseline.md`.
+   `docs/history/perf-baseline.md`.
 2. **`XmlReader::from_vec(Vec<u8>)`** lets callers hand over ownership of an
    already-decoded buffer, so the UTF-8 fast path performs no copy; `new(&[u8])`
    remains as a convenience that copies once (rework P3).

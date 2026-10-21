@@ -63,12 +63,6 @@ __pycache__/
 # logs) stays local; only the human-readable reports under docs/ are tracked.
 /docs/**/visual/*-src/
 /docs/**/visual/*-dst/
-/docs/audit-rework-return-2026-10-06/*.log
-/docs/audit-rework-return-2026-10-06/cc0-*/
-/docs/audit-rework-return-2026-10-06/census-written/
-/docs/audit-rework-return-2026-10-06/f21-ci/
-/docs/audit-rework-return-2026-10-06/fuzz/
-/docs/audit-rework-return-2026-10-06/wml-cov/
 # the viewer's own build directory and its render output
 /target-viewer/
 /strict-ooxml-view/render_out/

@@ -1,6 +1,6 @@
 # Расширение ядра редактирования StrictLib
 
-Дата: 5 октября 2026 года. Статус на 8 октября — см. раздел «Статус на 2026-10-08» ниже; работа 2026-10-08 шла по [EDITING_ROADMAP_2026-10-08.md](EDITING_ROADMAP_2026-10-08.md) и частично закрыла K00, K07, K13. Основание: исходный список оставшихся возможностей в обсуждении, [Stage-10](STAGE-10-TASK.md), [E01–E06](EDITING_PLAN.md), [Operations](EDITING_OPERATIONS.md). Базовые коммиты: `efccd98`, `015e0c7`. Визуальный аудит остается самостоятельной приемкой.
+Дата: 5 октября 2026 года. Статус на 8 октября — см. раздел «Статус на 2026-10-08» ниже; работа 2026-10-08 шла по [EDITING_ROADMAP_2026-10-08.md](EDITING_ROADMAP_2026-10-08.md) и частично закрыла K00, K07, K13. Основание: исходный список оставшихся возможностей в обсуждении, [Stage-10](history/STAGE-10-TASK.md), [E01–E06](EDITING_PLAN.md), [Operations](EDITING_OPERATIONS.md). Базовые коммиты: `efccd98`, `015e0c7`. Визуальный аудит остается самостоятельной приемкой.
 
 ## Статус на 2026-10-08 (сверка с кодом master)
 
@@ -58,7 +58,7 @@ Regex, normalization и full Unicode case folding не требуются исх
 
 Сверены Edit, Editor::transact, validator/save, Document, StyleTable, NumberingTable, NoteTable, MediaIndex, SectionProperties, Revision и writer Source. Graph project `D-projects-StrictLib`, Tier 2, generation `2026-10-04T21:57:47Z`. Coverage не сообщает зарегистрированных пропусков, freshness — metadata_changed; существенные выводы проверены исходниками. Graph не показывает call edges для Editor::transact: clone/apply/validate/snapshot/commit проверены непосредственно; отсутствие ребер не означает отсутствие вызовов. Это проверка точек расширения, не новый аудит всего проекта.
 
-Точки опоры: [structured.rs](../strict-ooxml-edit/src/structured.rs), [save.rs](../strict-ooxml-edit/src/save.rs), [operations.rs](../strict-ooxml-edit/src/operations.rs), [document.rs](../strict-ooxml-wml/src/model/document.rs), [styles.rs](../strict-ooxml-wml/src/model/styles.rs), [numbering.rs](../strict-ooxml-wml/src/model/numbering.rs), [notes.rs](../strict-ooxml-wml/src/model/notes.rs), [props.rs](../strict-ooxml-wml/src/model/props.rs), [drawing.rs](../strict-ooxml-wml/src/model/drawing.rs), [Source](../strict-ooxml-write/src/package.rs), [ADR-0018](adr/0018-revisions.md).
+Точки опоры: [structured/](../strict-ooxml-edit/src/structured/), [save.rs](../strict-ooxml-edit/src/save.rs), [operations.rs](../strict-ooxml-edit/src/operations.rs), [document.rs](../strict-ooxml-wml/src/model/document.rs), [styles.rs](../strict-ooxml-wml/src/model/styles.rs), [numbering.rs](../strict-ooxml-wml/src/model/numbering.rs), [notes.rs](../strict-ooxml-wml/src/model/notes.rs), [props.rs](../strict-ooxml-wml/src/model/props.rs), [drawing.rs](../strict-ooxml-wml/src/model/drawing.rs), [Source](../strict-ooxml-write/src/package.rs), [ADR-0018](adr/0018-revisions.md).
 
 Stage-10 содержит исторические находки. Они не объявляются актуальными только по старому тексту: перед изменением механизма фиксируются текущий baseline и воспроизводящий тест. Закрытые E01–E06 и Operations не переписываются без обусловленного новым контрактом изменения.
 

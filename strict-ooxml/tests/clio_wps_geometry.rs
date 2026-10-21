@@ -1,4 +1,4 @@
-//! P1 WPS geometry on Clio, as a Rust test (`docs/audit-remediation-2026-10-06/P01-wps-geometry`).
+//! P1 WPS geometry on Clio, as a Rust test (`docs/history/P01-wps-geometry-tests.md`).
 //!
 //! The document is not in the repository: it lives in the local corpus
 //! `strict-ooxml-core/tests/docx`, which the host gate copies in before it runs.

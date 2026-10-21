@@ -163,7 +163,7 @@ pub struct VmlPicture {
 /// What a buffered `w:pict` / `w:object` subtree turned out to be.
 ///
 /// The difference between the classes is what a reader sees on the page, and
-/// `docs/transitional-to-strict-audit.md` §12's line — "the VML shape language has
+/// `docs/history/transitional-to-strict-audit.md` §12's line — "the VML shape language has
 /// no equivalent in `a:custGeom`" — is true of exactly one of them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Shape {
@@ -1620,7 +1620,7 @@ fn position_axis(
 /// polygon is **not** conformant either, and the **frame's own rectangle** goes
 /// there instead. A tight wrap around a box is a tight wrap; the two-point default
 /// would draw a diagonal, which is a claim about a shape we have no points for
-/// (`docs/transitional-to-strict-audit.md` §14.4c).
+/// (`docs/history/transitional-to-strict-audit.md` §14.4c).
 fn wrap_events(wrap: Wrap, cx: i64, cy: i64) -> Vec<Event<'static>> {
     let mut out = Vec::new();
     match wrap {

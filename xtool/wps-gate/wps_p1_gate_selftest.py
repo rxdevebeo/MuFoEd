@@ -14,9 +14,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import wps_ledger as wl  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
-LEDGER = ROOT / "docs/audit-remediation-2026-10-06/wps-ledger.json"
+LEDGER = ROOT / "docs/gate-data/wps-ledger.json"
 SVG_DIR = ROOT / "target/remediation-2026-10-06/clio-svg"
-REF_DIR = ROOT / "docs/audit-2026-10-04/visual-thesis/wps-reference"
+REF_DIR = ROOT / "docs/gate-data/wps-reference"
 PAGE_W = 793.733
 PAGE_H = 1122.533
 

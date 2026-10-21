@@ -8,6 +8,6 @@ python xtool/wps-gate/wps_ledger_selftest.py
 python xtool/wps-gate/wps_ledger.py --root <repo>
 ```
 
-Ledger output: `docs/audit-remediation-2026-10-06/wps-ledger.json`.
+Ledger output: `docs/gate-data/wps-ledger.json`.
 
 Reading WPS reference PDFs needs `pdfplumber`. Selftests use synthetic glyphs only.

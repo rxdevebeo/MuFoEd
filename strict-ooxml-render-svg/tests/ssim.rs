@@ -8,7 +8,7 @@
 //!
 //! References for chart/diagram documents (`strict-profile`) are page-count
 //! checked only: Stage 4 cannot rasterize DrawingML charts, so per-pixel
-//! comparison is not meaningful there (see `docs/stage-4-report.md`).
+//! comparison is not meaningful there (see `docs/history/stage-4-report.md`).
 //!
 //! # The arithmetic is not here
 //!

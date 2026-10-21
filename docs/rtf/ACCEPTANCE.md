@@ -117,5 +117,5 @@ failure. Старый public-v1 с неверным list order не являет
    receipt и current-SHA CI. Изменённый workflow не доказывает внешний CI
    или интеграцию с основной веткой.
 
-Исторический план: [RTF_IMPORT_PLAN.md](../RTF_IMPORT_PLAN.md). NUL и девять
+Исторический план: [RTF_IMPORT_PLAN.md](../history/RTF_IMPORT_PLAN.md). NUL и девять
 текстовых расхождений: [COMPATIBILITY_RESOLUTION.md](COMPATIBILITY_RESOLUTION.md).

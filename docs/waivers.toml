@@ -29,7 +29,7 @@
 [meta]
 revision = "2026-10-04"
 policy = "GATE-STRATEGY.md §2"
-source = "GATE-STRATEGY.md, STAGE-5C-REWORK-1.md, STAGE-5C-ACCEPTANCE.md, STAGE-9-TASK.md, docs/transitional-to-strict-audit.md"
+source = "GATE-STRATEGY.md, STAGE-5C-REWORK-1.md, STAGE-5C-ACCEPTANCE.md, STAGE-9-TASK.md, docs/history/transitional-to-strict-audit.md"
 
 # ---------------------------------------------------------------------------
 # Bound by the gate itself. Removing one of these is a change in what the
@@ -437,7 +437,7 @@ summary = """
 `strict-ooxml-core/tests/samples/` (22 documents) and the local
 `strict-ooxml-core/tests/docx/` (36 documents), which has been in `.gitignore`
 since the first commit and is not published. A CI runner never has the second
-one, so the job was red on every run by construction (`docs/ci-baseline-2026-10.md`)
+one, so the job was red on every run by construction (`docs/history/ci-baseline-2026-10.md`)
 and said nothing about the code. The job is removed from `.github/workflows/ci.yml`;
 the gate is run by hand before accepting any change to the normalizer, the
 pass-through or the writer:
@@ -748,7 +748,7 @@ summary = """
 A part that is absent from the written package is the one loss in this project
 that **nothing else can see**. It draws nothing, it validates against every
 schema, and until 2026-10-01 it left no trace in a loss report that never
-mentioned it — which is what `docs/transitional-to-strict-audit.md` §8 called "a
+mentioned it — which is what `docs/history/transitional-to-strict-audit.md` §8 called "a
 silent loss", naming 16 embedded font binaries in 2 documents, gone together with
 `word/_rels/fontTable.xml.rels`.
 

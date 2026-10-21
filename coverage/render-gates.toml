@@ -185,7 +185,7 @@ The fine-grained protection is elsewhere and it is exact:
   clears it** (0.9513…0.9805). That is the fidelity claim. It was not
   reachable while the layout was wrong: the same pages measured
   0.9349…0.9496 before the fraction and paragraph-spacing fixes, so
-  `docs/stage-5c-report.md` §5.1's "no OFL face will buy the threshold"
+  `docs/history/stage-5c-report.md` §5.1's "no OFL face will buy the threshold"
   was measuring the layout and blaming the font.
 
 max_extent_px = 34 is the coarse gate (the largest measured is 30 px on

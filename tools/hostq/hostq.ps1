@@ -1163,7 +1163,7 @@ function Invoke-Wps {
     $steps = @($copied.steps)
     if (-not $copied.ok) { return (New-Result 'error' $copied.reason $steps @()) }
 
-    # The P1 protocol (docs/audit-remediation-2026-10-06/P01-wps-geometry/tests.md),
+    # The P1 protocol (docs/history/P01-wps-geometry-tests.md),
     # once with the WPS Times calibration the gate was accepted under and once
     # with the renderer's defaults; each render replaces the SVGs the ledger reads.
     $clio = 'strict-ooxml-core/tests/docx/Clio Der Sarkissian. - Mitochondrial DNA in Ancient Human Populations of Europe. - 2011.docx'

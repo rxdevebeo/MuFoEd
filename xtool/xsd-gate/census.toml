@@ -1,6 +1,6 @@
 # Census registry: `TZ-nn`, the Transitional -> Strict queue.
 #
-# `docs/transitional-to-strict-audit.md` is the measurement these items come from,
+# `docs/history/transitional-to-strict-audit.md` is the measurement these items come from,
 # and `xtool/xsd-gate/census_gate.py` is the instrument that reproduces it. An item
 # closes on a **measured zero** and never on a code review - the same rule the
 # `XS-nn` registry in `registry.toml` follows, and for the same reason: the audit
@@ -255,7 +255,7 @@ origin = "ours"
 signal = "picture"
 elements = ["vml-picture-without-a-picture"]
 summary = "a part that carried a VML picture and whose written form carries no picture at all"
-audit = "queue item 10 (docs/transitional-to-strict-audit.md §11): v:shape#t75 + v:imagedata -> wp:inline / wp:anchor + pic:pic. The audit priced it at 2-3 days and called it the only item on the list that gives a document back something VISIBLE, and it was right about both. Closed 2026-10-02: the converter reuses v:imagedata/@r:id as a:blip/@r:embed unchanged, so no relationship surgery is needed, and it picks wp:anchor over wp:inline for a position:absolute shape - the corpus's pictures are watermarks, and an inline image would put a watermark in the text flow. Three things had to be built behind it, none of which the corpus's own failure mentioned: the DrawingML prefixes declared on a part that had only VML, the same prefixes declared on a WRITTEN header, and a `.rels` beside every header that holds a picture - the writer had never emitted one, because no header could hold a picture before this. Each was caught by the test suite rather than by the census, which is the honest note to leave here."
+audit = "queue item 10 (docs/history/transitional-to-strict-audit.md §11): v:shape#t75 + v:imagedata -> wp:inline / wp:anchor + pic:pic. The audit priced it at 2-3 days and called it the only item on the list that gives a document back something VISIBLE, and it was right about both. Closed 2026-10-02: the converter reuses v:imagedata/@r:id as a:blip/@r:embed unchanged, so no relationship surgery is needed, and it picks wp:anchor over wp:inline for a position:absolute shape - the corpus's pictures are watermarks, and an inline image would put a watermark in the text flow. Three things had to be built behind it, none of which the corpus's own failure mentioned: the DrawingML prefixes declared on a part that had only VML, the same prefixes declared on a WRITTEN header, and a `.rels` beside every header that holds a picture - the writer had never emitted one, because no header could hold a picture before this. Each was caught by the test suite rather than by the census, which is the honest note to leave here."
 
 [[item]]
 id = "TZ-20"

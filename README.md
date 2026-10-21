@@ -1,225 +1,154 @@
 # strict-ooxml
 
-Rust toolkit for reading, normalizing and rendering **WordprocessingML Strict**
-documents (ISO/IEC 29500-1:2008), with controlled normalization of Transitional
-(ISO/IEC 29500-4:2008) input.
+Rust toolkit for reading, editing, rendering and writing **WordprocessingML
+Strict** documents (ISO/IEC 29500-1:2008), with controlled normalization of
+Transitional (ISO/IEC 29500-4:2008) input, import from PDF, DjVu, RTF, LaTeX
+and HTML, and **MuFoEd**, a desktop editor built on it.
 
-Design documents live in [`docs/`](docs/):
+The design documents, gates and decision records are indexed in
+[`docs/README.md`](docs/README.md); the specification is
+[`docs/TZ-STRICT-OOXML-RUST.md`](docs/TZ-STRICT-OOXML-RUST.md).
 
-- [`TZ-STRICT-OOXML-RUST.md`](docs/TZ-STRICT-OOXML-RUST.md) — full technical
-  specification (v2.1); [`base_target.md`](docs/base_target.md) — the original (1.0).
-- [`GATE-STRATEGY.md`](docs/GATE-STRATEGY.md) — what the gates check and how a
-  waiver is granted ([`waivers.toml`](docs/waivers.toml)).
-- [`REWORK-AUDIT-2026-10.md`](docs/REWORK-AUDIT-2026-10.md) — audit close-out plan
-  (AUD-00…AUD-94) and accepted deviations (ADR-0015…0019).
-- Current plans: [`WORDCRAFT_ADOPTION_2026-10-07.md`](docs/WORDCRAFT_ADOPTION_2026-10-07.md)
-  (never-crash), [`EDITING_ROADMAP_2026-10-08.md`](docs/EDITING_ROADMAP_2026-10-08.md)
-  (editor), [`CC0_CORPUS_MIGRATION_PLAN.md`](docs/CC0_CORPUS_MIGRATION_PLAN.md) (test corpus);
-  the latest journal is [`HARDENING_2026-10-07.md`](docs/HARDENING_2026-10-07.md).
-- History: the stage tasks, reworks and acceptances (`STAGE-*.md`), the session
-  hand-offs (`SESSION-HANDOFF*.md`), the stage reports (`stage-*-report.md`) and
-  the audit trail (`AUDIT_*`, `audit-*`).
-- [`docs/adr/`](docs/adr/) — accepted architecture decision records.
+## Workspace
 
-## Workspace layout
+### Library
 
 | Crate | Purpose |
 |---|---|
-| `strict-ooxml-core` | OPC/ZIP, XML, namespaces, limits, errors (Stage 1). |
-| `strict-ooxml-wml` | WordprocessingML Strict DOM and parser (Stage 2). |
-| `strict-ooxml-report` | Feature Report: model, build, JSON schema, text (Stage 3). |
-| `strict-ooxml-render-svg` | Deterministic SVG layout and rendering (Stage 4). |
-| `strict-ooxml-render-pdf` | PDF output: a second backend over the same layout (Stage 8B). |
-| `strict-ooxml-pdf` | PDF reading, and the rasterizer the pixel gate measures with (Stage 8C). |
-| `strict-ooxml-fidelity` | The pixel gate's arithmetic: SSIM, ink profiles, and the policy file. |
-| `strict-ooxml-write` | Serialization of the model back to a Strict `.docx` (Stage 8A). |
-| `strict-ooxml` | Public `StrictDocument` API (Stages 2–4, 8A). |
-| `strict-ooxml-cli` | `inspect` / `check` / `report` / `render` / `write` / `normalize` command-line tool. |
-| `xtool` | Dev utility: XSD inventory, coverage gate, `.docx` generator. |
+| `strict-ooxml` | Public API: `StrictDocument`, open/convert/render/write, the editor facade. |
+| `strict-ooxml-core` | OPC/ZIP, XML, namespaces, resource limits, errors, Transitional normalization. |
+| `strict-ooxml-wml` | WordprocessingML Strict model (DOM) and event-driven parser. |
+| `strict-ooxml-edit` | Transactional editing over the model; caret and hit map over the placed pages. |
+| `strict-ooxml-report` | Feature Report: what a document uses and what is supported (JSON schema, text). |
+| `strict-ooxml-render-svg` | Deterministic layout and SVG rendering. |
+| `strict-ooxml-render-pdf` | PDF output over the same layout, with embedded subset fonts and real text. |
+| `strict-ooxml-write` | Serialization of the model back to a Strict `.docx`, with a loss report. |
+| `strict-ooxml-pdf` | PDF reading (text with geometry, fonts, images, vector paths) and the rasterizer of the pixel gate. |
+| `strict-ooxml-convert` | PDF and DjVu to Strict DOCX: re-flowed (`semantic`), line by line (`visual`), or set as the original laid it out. |
+| `strict-ooxml-djvu` | Bounded DjVu reader with text zones and optional page images. |
+| `strict-ooxml-ocr` | Optional recognition of scanned pages through a local Ollama vision model. |
+| `strict-ooxml-rtf`, `strict-ooxml-latex`, `strict-ooxml-html` | Bounded RTF, LaTeX and HTML-fragment import into the model. |
+| `strict-ooxml-fidelity` | The pixel gate's arithmetic: SSIM, ink profiles and the policy they are held to. |
+| `strict-ooxml-testkit` | Test-only builders for synthetic and hostile inputs. |
+
+### Applications
+
+| Crate | Purpose |
+|---|---|
+| `mufoed` | MuFoEd (MultiFormatEditor): a desktop editor (egui) for DOCX, with PDF/DjVu/RTF/LaTeX/HTML open and import, spelling, printing and an optional local AI assistant. |
+| `chem-editor`, `diagram-editor`, `mathml-editor` | Visual editors for chemistry, shapes and diagrams, and MathML, embedded in MuFoEd. |
+| `strict-ooxml-cli` | The `strict-ooxml` command-line tool. |
+| `strict-ooxml-view` | Local HTTP viewer for rendered documents. |
+| `xtool` | Development utility: XSD inventory, coverage gate, corpus fetch, `.docx` generator. |
 
 ## CLI
 
 ```text
-strict-ooxml inspect   <file.docx>
-strict-ooxml check     <file.docx> [--transitional]      # exit 0 / 1 / 2
-strict-ooxml report    <file.docx> [--json|--text] [--out <path>] [--transitional]
-strict-ooxml render    <file.docx> [--out <dir|page.svg>] [--pages 1-3] [--scale 96] [--wps-times] [--off-page=keep|clamp] [--off-page-marks]
-strict-ooxml normalize <file.docx>                       # Loss Report for Transitional
-strict-ooxml to-pdf    <file.docx> --out <file.pdf>      # Stage 8B
-strict-ooxml from-pdf  <file.pdf>  --out <file.docx> [--pages 1-10] [--ocr]  # Stage 8C+
-strict-ooxml write     <file.docx> --out <file.docx>     # Stage 8A
-strict-ooxml fonts     list | install <pack...> | needed <file.docx>
+strict-ooxml inspect      <file.docx>
+strict-ooxml check        <file.docx> [--transitional]          # exit 0 / 1 / 2
+strict-ooxml report       <file.docx> [--json|--text] [--out <path>]
+strict-ooxml render       <file.docx> [--out <dir|page.svg>] [--pages 1-3] [--scale 96]
+strict-ooxml to-pdf       <file.docx> --out <file.pdf>
+strict-ooxml write        <file.docx> --out <file.docx> [--transitional]
+strict-ooxml normalize    <file.docx>                           # Loss Report for Transitional
+strict-ooxml from-pdf     <file.pdf>  --out <file.docx> [--pages 1-10] [--ocr]
+strict-ooxml from-djvu    <file.djvu> --out <file.docx>
+strict-ooxml djvu-dump    <file.djvu>
+strict-ooxml import-rtf   <file.rtf>  --out <file.docx>
+strict-ooxml import-latex <file.tex>  --out <file.docx>
+strict-ooxml fonts        list | install <pack...> | needed <file.docx>
+strict-ooxml lexicons     list | install <id...> | remove <id...> | path
 ```
 
 `check` exits `0` when no `unsupported`/`error` blocker is found, `1` for a
-blocker (or Transitional input under `StrictOnly`), and `2` for damaged input.
-`report` emits the full JSON Feature Report (or human text with `--text`).
-`render` emits deterministic SVG pages (`1` when rendered but the report has
-blockers). `to-pdf` renders PDF with the used faces subsetted and embedded, so
-the text is selectable and searchable; it exits `1` when the render lost
-something. `write` serializes the parsed model back to a Strict package, prints
-what the writer could not express, and exits `1` when something was lost
-(`STAGE-8-TASK.md`).
+blocker (or Transitional input under `StrictOnly`) and `2` for damaged input.
+`render` writes deterministic SVG pages; `to-pdf` writes PDF with the used faces
+subsetted and embedded, so the text is selectable. `write` serializes the parsed
+model back to a Strict package and exits `1` when something was lost; every loss
+is named in the report.
 
-The bundled faces draw Latin, Greek, Cyrillic, Hebrew, Arabic and Tibetan.
-Text in Chinese, Japanese, Korean, the Indic scripts, Thai, Lao, Khmer,
-Myanmar or Ethiopic needs a font pack: `strict-ooxml fonts list` shows the
-catalog (Noto, SIL OFL 1.1), `strict-ooxml fonts install <pack...>` downloads
-packs into a local cache, with every file pinned by SHA-256, and `render` and
-`to-pdf` then use the installed packs that a document's text needs. Nothing is
-downloaded unless asked; `--fetch-fonts` on a render fetches the missing packs
-first, and `--no-font-packs` renders without them.
+**Fonts.** The bundled faces draw Latin, Greek, Cyrillic, Hebrew, Arabic and
+Tibetan. Chinese, Japanese, Korean, the Indic scripts, Thai, Lao, Khmer, Myanmar
+and Ethiopic need a font pack: `fonts list` shows the catalog (Noto, SIL OFL 1.1),
+`fonts install <pack...>` downloads packs pinned by SHA-256, and `render`/`to-pdf`
+use the installed packs a document needs. Nothing is downloaded unless asked
+(`--fetch-fonts` on a render; `--no-font-packs` to render without them).
 
-A scanned PDF has no text to convert. `from-pdf --ocr` (a build with
-`--features ocr-ollama`) shows each page with no text to a local Ollama vision
-model (`OLLAMA_HOST`, `OLLAMA_MODEL`, or `--ocr-endpoint` and `--ocr-model`) and
-writes what it reads as paragraphs in the `Recovered` style, each one named in
-the report. `to-pdf` then turns that DOCX into a PDF with real text.
+**Scans.** A scanned PDF or DjVu has no text to convert. `from-pdf --ocr` (a build
+with `--features ocr-ollama`) shows each page without text to a local Ollama vision
+model (`OLLAMA_HOST`, `OLLAMA_MODEL`) and writes what it reads as paragraphs in the
+`Recovered` style; `--ocr-lang <tag>` restores the diacritics a model drops from
+an installed word-list pack (`lexicons install`). DjVu import prefers the native text layer; see
+[`docs/DJVU_IMPORT.md`](docs/DJVU_IMPORT.md).
 
-Every line the CLI prints passes through one escaping step: C0/C1 control
-characters from document text (part names, relationship targets, loss details)
-are shown as `\u{..}` instead of reaching the terminal. Commands run on a
-64 MiB worker thread. `render --wps-times` applies the Times-on-Tinos width
-calibration fitted to the Clio WPS audit (`RenderOptions::wps_times_calibration`);
-it is off by default because Tinos already has Times New Roman's metrics.
+**Off-page text.** Text a document places outside the sheet is drawn where the
+model puts it, as Word and WPS do; every such fragment is recorded on
+`Page::off_page`. `--off-page-marks` tags it in the output and `--off-page=clamp`
+pulls it back onto the page.
 
-Text a document places outside the sheet — a table-of-contents page number on a
-right tab wider than its column, or a floating text frame anchored off the page
-— is drawn where the model puts it by default, exactly as Word 2013+/WPS do
-(`RenderOptions::off_page_ink` = `Keep`). Every such fragment is still recorded
-(a `TabStop`, `Floating` or `Overflow` reason) on `Page::off_page`, and
-`--off-page-marks` tags it in the output (`data-off-page` on the SVG `<text>`, a
-`/<reason> BMC … EMC` marked-content sequence in the PDF) so a correction pass
-can find it. `--off-page=clamp` is the opt-in "keep it readable" correction: it
-pulls a tab stop past its text box back to the box (the dot leader shortens and
-the page number stays visible) and a floating frame back onto the page. The
-default is byte-for-byte unchanged.
+**Hostile input.** `ResourceLimits` (DOCX) and `PdfLimits` (PDF) bound ZIP sizes
+and ratios, XML depth, block, inline, text-box and math nesting, and for PDF the
+inflated stream sizes, per-page content and the picture and form caches. Every
+line the CLI prints escapes control characters from document text.
 
-Hostile-input budgets (`ResourceLimits` for DOCX, `PdfLimits` for PDF) cover
-ZIP sizes and ratios, XML depth, block nesting, inline-wrapper nesting
-(`max_inline_nesting`, 16), text-box and math nesting; for PDF the input size,
-the inflated size of object streams before `lopdf` loads them
-(`LimitKind::ObjectStreamBytes`), per-page content/operators/glyphs/paths,
-form depth, and the picture and form caches (`max_cached_image_bytes`,
-`max_cached_form_bytes`).
+## MuFoEd
 
-## PDF conversion (Stage 8)
+```text
+cargo run -p mufoed --release
+```
 
-PDF support is specified in `STAGE-8-TASK.md` and delivered in phases:
-
-- **8A — done.** `strict-ooxml-write` + `strict-ooxml write`: DOM → Strict XML →
-  OPC, deterministic, with a loss report. Unmodelled chart/SmartArt parts are
-  passed through (W7); see ADR-0007 and the historical `8A-CHART` waiver record.
-- **8B — done.** `strict-ooxml-render-pdf` + `strict-ooxml to-pdf`: PDF over the
-  same placement as the SVG backend, with real embedded text. Pixel gate:
-  `cargo test -p strict-ooxml-pdf --features raster --test pdf_pixels`.
-- **8C — done.** `strict-ooxml-pdf` (`lopdf`) + `strict-ooxml-convert` +
-  `strict-ooxml from-pdf` (`semantic` / `visual`). Optional OCR/classifier is
-  behind crate features (`strict-ooxml-ocr`).
+Opens DOCX, and converts PDF, DjVu, RTF, LaTeX and HTML into the editing model on
+open (a PDF opens set as the original laid it out; *Import* offers the re-flowed
+and per-line modes, a page range and recognition). The optional AI assistant and
+scan recognition talk to a local Ollama server only.
 
 ## Build and test
 
 ```text
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo build --workspace --all-targets --all-features
 cargo test --workspace --all-features
 cargo doc --workspace --no-deps
 ```
 
-Corpus. The CC0 test corpus is named by `testdata-lock/cc0.toml` (the
-documents are not committed; `docs/CC0_CORPUS_MIGRATION_PLAN.md`). Fetch the
-small CI tier once, and tests that need it run instead of skipping:
+CI pins Rust 1.92.0 (`rust-version` in `Cargo.toml`). It also runs, among others:
+
+- the two pixel gates over pinned WPS references, through the SVG and the PDF
+  renderer:
+  `cargo test -p strict-ooxml-render-svg --all-features --test ssim` and
+  `cargo test -p strict-ooxml-pdf --features raster --test pdf_pixels`;
+- the schema gates against the official ECMA-376 Strict set
+  (`python xtool/xsd-gate/xsd_gate.py`, `census_gate.py`; requirements in
+  `xtool/xsd-gate/requirements.txt`);
+- line coverage with `cargo llvm-cov`: `core` and `wml` ≥ 85%, `render-svg` ≥ 82%,
+  `report`, `fidelity` and `write` ≥ 80%, `pdf` and `render-pdf` ≥ 75%,
+  `convert` ≥ 70%;
+- `cargo deny check` and a nightly fuzz smoke run (see
+  [`docs/fuzz-protocol.md`](docs/fuzz-protocol.md)).
+
+What each gate checks and how a waiver is granted:
+[`docs/GATE-STRATEGY.md`](docs/GATE-STRATEGY.md),
+[`docs/waivers.toml`](docs/waivers.toml).
+
+**Corpus.** The CC0 test corpus is named by `testdata-lock/cc0.toml`; the
+documents are not committed. Fetch the CI tier once and the tests that need it
+run instead of skipping:
 
 ```text
 cargo run -p xtool --release -- corpus fetch --tier ci-core   # or ci-full
 STRICT_OOXML_CORPUS=require cargo test --workspace --all-features
 ```
 
-Coverage (≥ 80% lines for `core`, `wml`, `report`, `render-svg` and `fidelity`):
-
-```text
-cargo llvm-cov -p strict-ooxml-core       --all-features --fail-under-lines 80
-cargo llvm-cov -p strict-ooxml-wml        --all-features --fail-under-lines 80
-cargo llvm-cov -p strict-ooxml-report     --all-features --fail-under-lines 80
-cargo llvm-cov -p strict-ooxml-render-svg --all-features --fail-under-lines 80
-cargo llvm-cov -p strict-ooxml-fidelity   --all-features --fail-under-lines 80
-```
-
-The two pixel gates, over the same pinned WPS references and through two
-different renderers (`CORE-QUEUE.md` §1):
-
-```text
-cargo test -p strict-ooxml-render-svg --all-features --test ssim
-cargo test -p strict-ooxml-pdf --features raster --test pdf_pixels
-```
-
-Looking at a page instead of a number, for either backend:
+**Looking at a page** instead of a number, for either backend:
 
 ```text
 cargo run -p strict-ooxml-render-svg --example page_diff -- <document> <page>
 cargo run -p strict-ooxml-pdf --features raster --example pdf_page_diff -- <document> <page>
 ```
 
-Feature Report schema validation (independent `jsonschema` oracle) and
-examples:
-
-```text
-cargo test -p strict-ooxml-report --all-features --test schema
-cargo run  -p strict-ooxml --example support_report -- document.docx
-cargo run  -p strict-ooxml --example render_svg -- document.docx out/
-```
-
-Rendering benchmark (10/100/500 pages):
-
-```text
-cargo bench -p strict-ooxml-render-svg
-```
-
-Optional-element coverage gate (≥ 90%) and the independent corpus cross-check:
-
-```text
-cargo run -p xtool -- coverage --file coverage/wml-elements.toml --min 90
-cargo run -p xtool -- corpus-elements
-```
-
-The two schema gates, against the official ECMA-376 Strict set. Same oracle, two
-paths — one oracle rather than two, because a second definition of "Strict" makes
-every threshold a number about nothing (`GATE-STRATEGY.md` §7):
-
-```text
-pip install -r xtool/xsd-gate/requirements.txt
-python xtool/xsd-gate/xsd_gate.py      # what we write from Strict input      (XS-nn)
-python xtool/xsd-gate/census_gate.py   # what we write from Transitional input (TZ-nn)
-```
-
-`census_gate.py` is the one that judges `write --transitional` end to end — the
-byte-level normalizer, the pass-through and the loss report — over 58 Transitional
-documents. Its `unaccounted` signal fails on a part that was dropped **and not
-named in the report**, which is the loss class no schema can see: a missing part
-validates perfectly and draws nothing.
-
-Fuzzing (requires `cargo-fuzz`, a nightly toolchain, and Linux — see
-`docs/fuzz-protocol.md`; AUD-92):
-
-```text
-cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_zip
-cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_xml
-cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_relpath
-cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_wml
-cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_normalize
-cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_docx_full
-cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_pdf
-cargo +nightly fuzz run --target x86_64-unknown-linux-gnu fuzz_convert
-```
-
 ## License
 
-MIT OR Apache-2.0.
-
-
-DjVu import is available through `strict-ooxml from-djvu` and `djvu-dump`.
-Native text layers are preferred; opt-in Ollama OCR recovers supported scans.
-See [DjVu import/OCR](docs/DJVU_IMPORT.md) for build features, limits and losses.
-“DjVu” is a descriptive format reference; this project is not affiliated with
-or endorsed by its trademark owners.
+MIT OR Apache-2.0. Vendored and bundled third-party components keep their own
+licences (`vendor/`, [`docs/ATTRIBUTION-vendor-hayro.md`](docs/ATTRIBUTION-vendor-hayro.md),
+the bundled fonts). “DjVu” is a descriptive format reference; this project is
+not affiliated with or endorsed by its trademark owners.

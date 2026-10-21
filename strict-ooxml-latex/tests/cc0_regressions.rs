@@ -2,7 +2,7 @@
 //!
 //! All nine audited defects are active regression tests after remediation.
 //! `cargo +1.92.0 test -p strict-ooxml-latex --test cc0_regressions`
-//! See docs/audit-latex-2026-10-18/REPORT.md. No external corpus is required.
+//! See docs/history/audit-latex-2026-10-18/REPORT.md. No external corpus is required.
 use strict_ooxml_latex::{import, LatexOptions};
 use strict_ooxml_wml::model::{Block, Inline, MathExpression, MathNode, RunContent};
 

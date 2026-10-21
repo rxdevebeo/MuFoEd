@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """The census gate: what the Transitional -> Strict path produces, measured.
 
-`docs/transitional-to-strict-audit.md` §13 item 13. The audit that filled the
+`docs/history/transitional-to-strict-audit.md` §13 item 13. The audit that filled the
 normalizer's queue ran on a one-off harness outside the tree, and every number in
 that audit was therefore a number nobody could reproduce:
 
 > "The census harness is not vendored: that is a queue item, see §9. It is needed
 > because 'a tool that quietly does not measure what it judges' is exactly the
 > category of error the gate has already closed four times
-> (`docs/stage-10-xsd-audit.md` §3)."
+> (`docs/history/stage-10-xsd-audit.md` §3)."
 
 This is that harness. It reuses `xsd_gate.Oracle` unchanged - the same patched
 schema set, the same drivers, the same MCE processing, the same three baskets -

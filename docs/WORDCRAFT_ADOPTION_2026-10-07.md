@@ -4,7 +4,7 @@
 **Дата:** 2026-10-07  
 **Контекст:** заметки после обзора; не ADR и не обязательство внедрять сразу.  
 **Обновлено:** 2026-10-08 — сверено с кодом после слияния `task/hardening-2026-10-07`; план §5 принят к реализации (ветка `task/never-crash-2026-10-08`).  
-**Связано у нас:** `docs/fuzz-protocol.md`, `docs/core-limits-audit.md`, workspace lints в корневом `Cargo.toml`, property-тесты `*_never_panic*`.
+**Связано у нас:** `docs/fuzz-protocol.md`, `docs/history/core-limits-audit.md`, workspace lints в корневом `Cargo.toml`, property-тесты `*_never_panic*`.
 
 WordCraft — редактор с UX-паритетом Word. StrictLib — Strict OOXML write/render с доказательной приёмкой (census, inventory). Цели разные; ниже только то, что полезно **нам**.
 
@@ -59,7 +59,7 @@ WordCraft — редактор с UX-паритетом Word. StrictLib — Stri
 
 - `unsafe_code = "deny"` в workspace;
 - fuzz-цели и инварианты в `docs/fuzz-protocol.md`;
-- лимиты ZIP/XML в `strict-ooxml-core` (`limits.rs`, `docs/core-limits-audit.md`);
+- лимиты ZIP/XML в `strict-ooxml-core` (`limits.rs`, `docs/history/core-limits-audit.md`);
 - property: `package_open_never_panics`, `xml_reader_never_panics`, `random_bytes_never_panic`, harness с `catch_unwind` в testkit/view.
 
 Ниже — как **дожать** до стандарта уровня WordCraft, без слепого копирования их clippy-deny на всё сразу.
@@ -216,5 +216,5 @@ Hostile-корпус пополнять из CC0 lock-файла: докумен
 
 - WordCraft README / ROADMAP / AGENTS: https://github.com/storytold/wordcraft  
 - Наш fuzz: `docs/fuzz-protocol.md`  
-- Лимиты: `docs/core-limits-audit.md`, `strict-ooxml-core/src/limits.rs`  
-- Визуальный план: `docs/AUDIT_VISUAL_PRIORITY_PLAN_2026-10-06.md`
+- Лимиты: `docs/history/core-limits-audit.md`, `strict-ooxml-core/src/limits.rs`  
+- Визуальный план: `AUDIT_VISUAL_PRIORITY_PLAN_2026-10-06.md` (выполнен; остался в истории git)

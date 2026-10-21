@@ -13,7 +13,7 @@ the runner refuses to mix them with a new run.
 ```powershell
 cargo +1.92.0 build --release --offline --manifest-path tools/latex-audit/Cargo.toml --target-dir target/latex-audit-build
 python tools/latex-audit/run.py D:/projects/StrictLib/testdata/CC0_TEX target/latex-audit-verified-2026-10-18 --exe target/latex-audit-build/release/latex-audit.exe --pages 0 --timeout 90 --workers 2
-python tools/latex-audit/summarize.py target/latex-audit-verified-2026-10-18 docs/audit-latex-2026-10-18
+python tools/latex-audit/summarize.py target/latex-audit-verified-2026-10-18 docs/history/audit-latex-2026-10-18
 ```
 
 Each input runs in a separate process with a 64 MiB stack. `--pages 0` requests

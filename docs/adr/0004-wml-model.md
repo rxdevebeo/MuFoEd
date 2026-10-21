@@ -31,7 +31,7 @@ immutable document model ("DOM") that Stage 3 (Feature Report) and Stage 4
    support-model entries rather than an outright failure.
 
 Stage-1 explicitly deferred P6 (persistent `quick-xml::Reader`), P7 (double
-attribute `Vec`) and P9 (string per name) to Stage 2 (`docs/perf-baseline.md`).
+attribute `Vec`) and P9 (string per name) to Stage 2 (`docs/history/perf-baseline.md`).
 
 ## Decision
 

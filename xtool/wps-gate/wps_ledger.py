@@ -551,7 +551,7 @@ def actual_hits_across_pages(
 
 def build_clio_ledger(root: Path) -> dict[str, Any]:
     dest_svg = root / "target/remediation-2026-10-06/clio-svg"
-    ref_dir = root / "docs/audit-2026-10-04/visual-thesis/wps-reference"
+    ref_dir = root / "docs/gate-data/wps-reference"
     doc = root / CLIO_DOC
     svg_by_page = load_all_svg_glyphs(dest_svg)
     pages: dict[str, Any] = {}
@@ -649,11 +649,11 @@ def main(argv: list[str] | None = None) -> int:
         "--out",
         type=Path,
         default=None,
-        help="JSON output path (default: docs/audit-remediation-2026-10-06/wps-ledger.json)",
+        help="JSON output path (default: docs/gate-data/wps-ledger.json)",
     )
     args = parser.parse_args(argv)
     out = args.out or (
-        args.root / "docs/audit-remediation-2026-10-06/wps-ledger.json"
+        args.root / "docs/gate-data/wps-ledger.json"
     )
     ledger = build_clio_ledger(args.root)
     out.parent.mkdir(parents=True, exist_ok=True)
