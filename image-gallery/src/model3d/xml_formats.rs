@@ -8,9 +8,7 @@ use std::path::Path;
 
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
 
-use super::scene::{
-    smooth_normals, Material, Mesh, Node, Primitive, Scene, Texture, Transform, UpAxis,
-};
+use super::scene::{smooth_normals, Material, Mesh, Node, Primitive, Scene, Transform, UpAxis};
 use crate::Error;
 
 /// The largest XML part read.

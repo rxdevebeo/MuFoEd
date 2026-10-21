@@ -23,6 +23,7 @@ use crate::ops::{Axis, Operation, QuarterTurn, Tools};
 use crate::thumbs::{Info, Kind, Loader, Request, Stamp};
 use crate::Locale;
 
+mod model_view;
 mod ribbon;
 mod side;
 mod view;
@@ -243,6 +244,8 @@ pub struct Gallery {
     /// The background remover behind [`crate::background::TOOL_ID`].
     remover: Arc<Remover>,
     download: Option<Download>,
+    /// The 3D panel of the model in focus.
+    model: Option<model_view::ModelView>,
 }
 
 impl std::fmt::Debug for Gallery {
@@ -293,6 +296,7 @@ impl Gallery {
             viewport: (0.0, 0.0),
             remover: Arc::new(Remover::new(crate::background::Settings::default())),
             download: None,
+            model: None,
         }
         .with_background_tool()
     }
@@ -603,8 +607,8 @@ impl Gallery {
             .show(ui, |ui| self.status_ui(ui));
         egui::Panel::right(egui::Id::new("image-gallery-side"))
             .resizable(true)
-            .default_size(300.0)
-            .size_range(220.0..=560.0)
+            .default_size(360.0)
+            .size_range(220.0..=1000.0)
             .show(ui, |ui| self.side_ui(ui));
         egui::CentralPanel::default().show(ui, |ui| {
             if self.viewer.is_some() {

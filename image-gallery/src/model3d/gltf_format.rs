@@ -142,7 +142,7 @@ fn convert(
     scene
 }
 
-fn convert_primitive<'a, 's, F>(primitive: &gltf::Primitive<'a>, buffer: &F) -> Option<Primitive>
+fn convert_primitive<'a, 's, F>(primitive: &'a gltf::Primitive<'a>, buffer: &F) -> Option<Primitive>
 where
     F: Clone + Fn(gltf::Buffer<'a>) -> Option<&'s [u8]>,
 {

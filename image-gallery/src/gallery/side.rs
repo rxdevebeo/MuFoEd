@@ -112,6 +112,23 @@ impl Gallery {
     // One form, top to bottom.
     #[allow(clippy::too_many_lines)]
     fn properties_ui(&mut self, ui: &mut egui::Ui, locale: &Locale) {
+        // A model in focus gets the 3D panel above its properties.
+        let selected = self.selection();
+        let single = if selected.len() > 1 {
+            None
+        } else {
+            selected.into_iter().next().or_else(|| self.focus_path())
+        };
+        let model =
+            single.filter(|path| crate::Format::from_path(path) == Some(crate::Format::Model));
+        match model {
+            Some(path) => {
+                ui.heading(locale.text("3D view"));
+                self.model_ui(ui, &path, locale);
+                ui.separator();
+            }
+            None => self.model = None,
+        }
         ui.heading(locale.text("Properties"));
         let selected = self.selection();
         if selected.len() > 1 {
