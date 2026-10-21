@@ -1,3 +1,6 @@
+#[path = "layer_compositing.rs"]
+mod layer_compositing;
+pub use layer_compositing::{LayerBlendMode, LayerMask, MaskTarget};
 #[path = "tone.rs"]
 mod tone;
 pub use tone::{Curves, Histogram, LevelChannel, Levels, ToneAdjustment, ToneCurve};
@@ -157,6 +160,10 @@ impl Raster {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
     #[serde(default)]
+    blend_mode: LayerBlendMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mask: Option<LayerMask>,
+    #[serde(default)]
     locked: bool,
     name: String,
     visible: bool,
@@ -262,6 +269,7 @@ impl TryFrom<DocumentData> for Document {
         };
         doc.validate()?;
         doc.normalize_selection();
+        doc.sync_layer_version();
         Ok(doc)
     }
 }
@@ -289,6 +297,8 @@ impl Document {
                 raster,
                 recipe: None,
                 locked: false,
+                blend_mode: LayerBlendMode::Normal,
+                mask: None,
             }],
             active: 0,
             mask: vec![0; byte_len(width, height)? / 4],
@@ -351,6 +361,8 @@ impl Document {
             raster,
             recipe: None,
             locked: false,
+            blend_mode: LayerBlendMode::Normal,
+            mask: None,
         });
         self.active = self.layers.len() - 1;
         Ok(())
@@ -374,6 +386,7 @@ impl Document {
         }
         self.layers.remove(self.active);
         self.active = self.active.min(self.layers.len() - 1);
+        self.sync_layer_version();
         Ok(())
     }
     /// Move the active layer one step up or down.
@@ -399,16 +412,7 @@ impl Document {
             } else {
                 &layer.raster
             };
-            for (dst, src) in pixels
-                .chunks_exact_mut(4)
-                .zip(raster.pixels.chunks_exact(4))
-            {
-                blend(
-                    dst,
-                    src.try_into().expect("RGBA"),
-                    f32::from(layer.opacity) / 255.0,
-                );
-            }
+            self.composite_layer(&mut pixels, index, raster);
         }
         Raster {
             width: self.width,
@@ -503,6 +507,14 @@ impl Document {
             return Err(invalid("Crop rectangle is outside the canvas"));
         }
         for layer in &mut self.layers {
+            if let Some(mask) = &mut layer.mask {
+                let image =
+                    image::GrayImage::from_raw(self.width, self.height, mask.pixels.clone())
+                        .expect("mask");
+                mask.pixels = image::imageops::crop_imm(&image, x, y, width, height)
+                    .to_image()
+                    .into_raw();
+            }
             layer.raster = Raster::from_image(
                 image::imageops::crop_imm(&layer.raster.image(), x, y, width, height).to_image(),
             );
@@ -528,12 +540,22 @@ impl Document {
     /// Resize every layer with Lanczos3; mask uses nearest-neighbor sampling.
     pub fn resize(&mut self, width: u32, height: u32) -> Result<(), EditError> {
         let len = byte_len(width, height)?;
-        if len * self.layers.len() + len / 4 * if self.selection.is_empty() { 1 } else { 2 }
-            > MAX_DOCUMENT_BYTES
-        {
+        if self.resized_memory_bytes(len) > MAX_DOCUMENT_BYTES {
             return Err(invalid("Resized document exceeds memory budget"));
         }
         for layer in &mut self.layers {
+            if let Some(mask) = &mut layer.mask {
+                let image =
+                    image::GrayImage::from_raw(self.width, self.height, mask.pixels.clone())
+                        .expect("mask");
+                mask.pixels = image::imageops::resize(
+                    &image,
+                    width,
+                    height,
+                    image::imageops::FilterType::Nearest,
+                )
+                .into_raw();
+            }
             layer.raster = Raster::from_image(image::imageops::resize(
                 &layer.raster.image(),
                 width,
@@ -561,6 +583,12 @@ impl Document {
     /// Rotate layers and mask clockwise by 90 degrees.
     pub fn rotate90(&mut self) {
         for layer in &mut self.layers {
+            if let Some(mask) = &mut layer.mask {
+                let image =
+                    image::GrayImage::from_raw(self.width, self.height, mask.pixels.clone())
+                        .expect("mask");
+                mask.pixels = image::imageops::rotate90(&image).into_raw();
+            }
             layer.raster = Raster::from_image(image::imageops::rotate90(&layer.raster.image()));
         }
         let mask = image::GrayImage::from_raw(self.width, self.height, self.mask.clone())
@@ -588,7 +616,8 @@ impl Document {
     }
     fn validate(&self) -> Result<(), EditError> {
         let len = byte_len(self.width, self.height)?;
-        if self.version != 1
+        if !(1..=2).contains(&self.version)
+            || (self.has_layer_features() && self.version != 2)
             || self.layers.is_empty()
             || self.layers.len() > 16
             || self.active >= self.layers.len()
@@ -600,6 +629,13 @@ impl Document {
         }
         for layer in &self.layers {
             layer.raster.validate()?;
+            if layer
+                .mask
+                .as_ref()
+                .is_some_and(|m| m.pixels.len() != len / 4 || ![0, 255].contains(&m.default_color))
+            {
+                return Err(invalid("Layer mask dimensions differ from canvas"));
+            }
             if layer.raster.width != self.width || layer.raster.height != self.height {
                 return Err(invalid("Layer dimensions differ from canvas"));
             }
@@ -642,11 +678,7 @@ impl Document {
     fn memory_bytes(&self) -> usize {
         self.mask.len()
             + self.selection.len()
-            + self
-                .layers
-                .iter()
-                .map(|l| l.raster.pixels.len())
-                .sum::<usize>()
+            + self.layers.iter().map(Layer::memory_bytes).sum::<usize>()
     }
 }
 

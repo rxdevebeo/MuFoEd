@@ -126,8 +126,17 @@ impl Document {
         self.copy_content(false, true)
     }
     fn copy_content(&self, merged: bool, mask_only: bool) -> Result<PixelClipboard, EditError> {
+        self.copy_content_mask(merged, mask_only.then_some(self.mask.as_slice()))
+    }
+    pub(super) fn copy_content_mask(
+        &self,
+        merged: bool,
+        mask: Option<&[u8]>,
+    ) -> Result<PixelClipboard, EditError> {
+        let mask_only = mask.is_some();
+        let mask = mask.unwrap_or(&self.mask);
         let coverage = if mask_only && self.selection.is_empty() {
-            &self.mask
+            mask
         } else {
             &self.selection
         };
@@ -151,8 +160,11 @@ impl Document {
             bounds = [0, 0, self.width, self.height];
         }
         let composite = merged.then(|| self.flatten());
+        let masked = (!merged && !mask_only && self.layers[self.active].mask.is_some())
+            .then(|| self.layers[self.active].masked_raster());
         let source = composite
             .as_ref()
+            .or(masked.as_ref())
             .unwrap_or(&self.layers[self.active].raster);
         let [left, top, right, bottom] = bounds;
         let mut raster = Raster::solid(right - left, bottom - top, [0; 4])?;
@@ -162,11 +174,10 @@ impl Document {
                 let dst = ((y - top) as usize * raster.width as usize + (x - left) as usize) * 4;
                 if mask_only {
                     let coverage = if self.selection.is_empty() {
-                        self.mask[src / 4]
+                        mask[src / 4]
                     } else {
                         u8::try_from(
-                            (u16::from(self.mask[src / 4]) * u16::from(self.selection[src / 4])
-                                + 127)
+                            (u16::from(mask[src / 4]) * u16::from(self.selection[src / 4]) + 127)
                                 / 255,
                         )
                         .expect("coverage")
@@ -258,7 +269,7 @@ impl Document {
 }
 
 // Integer Rec.709 luminance followed by straight-alpha coverage, rounded once.
-fn mask_coverage(p: [u8; 4]) -> u8 {
+pub(super) fn mask_coverage(p: [u8; 4]) -> u8 {
     let luminance =
         (54 * u32::from(p[0]) + 183 * u32::from(p[1]) + 19 * u32::from(p[2]) + 128) / 256;
     u8::try_from((luminance * u32::from(p[3]) + 127) / 255).expect("coverage <=255")

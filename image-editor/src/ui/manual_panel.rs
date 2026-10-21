@@ -7,7 +7,7 @@
 #[path = "retouch_tools.rs"]
 mod retouch_tools;
 use super::{ImageEditor, ACCENT};
-use crate::{Adjustment, BrushStyle, Document, Raster, Shape, Tool};
+use crate::{Adjustment, BrushStyle, Document, LayerBlendMode, MaskTarget, Raster, Shape, Tool};
 use egui::{Color32, Key, Pos2, Rect, Response, Sense, Stroke, TextureHandle, Ui, Vec2};
 
 /// Global target for all manual pixel tools and clipboard operations.
@@ -144,6 +144,9 @@ impl ManualTool {
 pub(super) struct ManualUi {
     pub tool: ManualTool,
     pub target: EditTarget,
+    pub mask_target: MaskTarget,
+    pub show_layer_mask: bool,
+    mask_thumbnails: Vec<Option<TextureHandle>>,
     retouch: retouch_tools::RetouchUi,
     other_colors: [Color32; 2],
     background: Color32,
@@ -172,6 +175,9 @@ impl Default for ManualUi {
         Self {
             tool: ManualTool::Brush,
             target: EditTarget::Raster,
+            mask_target: MaskTarget::Inpaint,
+            show_layer_mask: true,
+            mask_thumbnails: Vec::new(),
             retouch: retouch_tools::RetouchUi::default(),
             other_colors: [Color32::WHITE, Color32::BLACK],
             background: Color32::WHITE,
@@ -238,7 +244,11 @@ impl ImageEditor {
         self.manual_ui.retouch = retouch_tools::RetouchUi::default();
         self.stop_segmentation_points();
         if target == EditTarget::Mask {
-            self.generation_ui.show_mask = true;
+            if matches!(self.mask_target(), MaskTarget::Layer(_)) {
+                self.manual_ui.show_layer_mask = true;
+            } else {
+                self.generation_ui.show_mask = true;
+            }
         }
         self.changed = true;
     }
@@ -247,13 +257,29 @@ impl ImageEditor {
         operation: impl FnOnce(&mut Document) -> Result<(), crate::EditError>,
     ) {
         let mask = self.edit_target() == EditTarget::Mask;
+        let target = self.mask_target();
         self.edit(|d| {
             if mask {
-                d.edit_mask(operation)
+                d.edit_target_mask(target, operation)
             } else {
                 operation(d)
             }
         });
+    }
+    pub(super) fn reset_manual_mask_context(&mut self) {
+        let gesture = self.manual_ui.stroke_before.is_some()
+            || self.manual_ui.start.is_some()
+            || !self.manual_ui.lasso.is_empty();
+        self.finish_manual_stroke();
+        self.finish_pasted_object();
+        self.manual_ui.ignore_until_release |= gesture;
+        self.manual_ui.start = None;
+        self.manual_ui.last = None;
+        self.manual_ui.lasso.clear();
+        self.manual_ui.retouch = retouch_tools::RetouchUi::default();
+        self.layer_dialog = super::layer_dialog::LayerDialog::default();
+        self.tone_dialog = None;
+        self.changed = true;
     }
     /// Select a manual tool, leaving SAM point-placement mode.
     pub fn select_manual_tool(&mut self, tool: ManualTool) {
@@ -345,6 +371,10 @@ impl ImageEditor {
             self.history.undo(&mut self.document)
         };
         if changed {
+            if matches!(self.mask_target(), MaskTarget::Layer(_)) {
+                self.manual_ui.mask_target = MaskTarget::Inpaint;
+                self.set_edit_target(EditTarget::Raster);
+            }
             self.changed = true;
             self.unsaved = true;
             self.manual_ui.thumbnails.clear();
@@ -358,6 +388,19 @@ impl ImageEditor {
         }
     }
     pub(super) fn layer_action(&mut self, action: LayerAction) {
+        if matches!(
+            action,
+            LayerAction::Select(_)
+                | LayerAction::New
+                | LayerAction::Duplicate(_)
+                | LayerAction::Remove(_)
+                | LayerAction::Merge(_)
+                | LayerAction::Reorder(_, _)
+        ) && matches!(self.mask_target(), MaskTarget::Layer(_))
+        {
+            self.manual_ui.mask_target = MaskTarget::Inpaint;
+            self.set_edit_target(EditTarget::Raster);
+        }
         self.manual_ui.retouch = retouch_tools::RetouchUi::default();
         if self.layer_dialog_open() {
             self.layer_dialog = super::layer_dialog::LayerDialog::default();
@@ -932,13 +975,39 @@ impl ImageEditor {
         let active = self.document.active();
         let layer = &self.document.layers()[active];
         let (name, visible, opacity) = (layer.name().to_owned(), layer.visible(), layer.opacity());
+        let old_blend = layer.blend_mode();
+        let mut blend = old_blend;
+        let layer_locked = layer.locked();
         ui.horizontal(|ui| {
             ui.strong("Слои");
             ui.weak(format!("{} / 16", self.document.layers().len()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.weak("Обычный");
+                ui.add_enabled_ui(!layer_locked, |ui| {
+                    egui::ComboBox::from_id_salt("layer-blend")
+                        .width(110.0)
+                        .selected_text(super::layer_masks::blend_label(blend))
+                        .show_ui(ui, |ui| {
+                            for mode in [
+                                LayerBlendMode::Normal,
+                                LayerBlendMode::Multiply,
+                                LayerBlendMode::Screen,
+                                LayerBlendMode::Overlay,
+                            ] {
+                                ui.selectable_value(
+                                    &mut blend,
+                                    mode,
+                                    super::layer_masks::blend_label(mode),
+                                );
+                            }
+                        });
+                });
             });
         });
+        if blend != old_blend {
+            self.finish_manual_stroke();
+            self.finish_layer_property();
+            self.edit(|d| d.set_blend_mode(blend));
+        }
         let mut percent = f32::from(opacity) * 100.0 / 255.0;
         let response = ui.add(
             egui::Slider::new(&mut percent, 0.0..=100.0)
@@ -966,7 +1035,8 @@ impl ImageEditor {
         if response.drag_stopped() {
             self.finish_layer_property();
         }
-        if self.manual_ui.thumbnails.len() != self.document.layers().len() {
+        let rebuild_thumbnails = self.manual_ui.thumbnails.len() != self.document.layers().len();
+        if rebuild_thumbnails {
             self.manual_ui.thumbnails = self
                 .document
                 .layers()
@@ -985,6 +1055,36 @@ impl ImageEditor {
                 })
                 .collect();
         }
+        if self.manual_ui.mask_thumbnails.len() != self.document.layers().len()
+            || rebuild_thumbnails
+        {
+            self.manual_ui.mask_thumbnails = self
+                .document
+                .layers()
+                .iter()
+                .enumerate()
+                .map(|(i, l)| {
+                    l.mask().map(|_| {
+                        let r = self
+                            .document
+                            .target_mask_raster(MaskTarget::Layer(i))
+                            .expect("mask")
+                            .thumbnail(44)
+                            .expect("thumbnail");
+                        ui.ctx().load_texture(
+                            format!("layer-mask-thumbnail-{i}"),
+                            egui::ColorImage::from_rgba_unmultiplied(
+                                [r.width() as usize, r.height() as usize],
+                                r.pixels(),
+                            ),
+                            egui::TextureOptions::LINEAR,
+                        )
+                    })
+                })
+                .collect();
+        }
+        let mut mask_pick = None;
+        let mut mask_action = None;
         let mut action = None;
         let height = (ui.available_height() - 84.0).max(60.0);
         egui::ScrollArea::vertical()
@@ -1000,6 +1100,8 @@ impl ImageEditor {
                     let locked = layer.locked();
                     let opacity = layer.opacity();
                     let texture = &self.manual_ui.thumbnails[i];
+                    let mask_texture = &self.manual_ui.mask_thumbnails[i];
+                    let title_x = if mask_texture.is_some() { 136.0 } else { 86.0 };
                     let row = ui.scope(|ui| {
                         let (rect, _) = ui.allocate_exact_size(
                             Vec2::new(ui.available_width(), 58.0),
@@ -1048,8 +1150,43 @@ impl ImageEditor {
                             Rect::from_min_max(Pos2::ZERO, egui::pos2(1.0, 1.0)),
                             Color32::WHITE,
                         );
+                        if let Some(texture) = mask_texture {
+                            let bounds = Rect::from_min_size(
+                                rect.min + Vec2::new(84.0, 7.0),
+                                Vec2::splat(44.0),
+                            );
+                            ui.painter().image(
+                                texture.id(),
+                                bounds,
+                                Rect::from_min_max(Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                                Color32::WHITE,
+                            );
+                            if self.edit_target() == EditTarget::Mask
+                                && self.mask_target() == MaskTarget::Layer(i)
+                            {
+                                ui.painter().rect_stroke(
+                                    bounds,
+                                    0.0,
+                                    Stroke::new(2.0, ACCENT),
+                                    egui::StrokeKind::Outside,
+                                );
+                            }
+                            if layer.mask().is_some_and(|m| !m.enabled()) {
+                                ui.painter().line_segment(
+                                    [bounds.left_bottom(), bounds.right_top()],
+                                    Stroke::new(2.0, Color32::LIGHT_RED),
+                                );
+                            }
+                            if ui
+                                .put(bounds, egui::Button::new("").frame(false))
+                                .on_hover_text("Редактировать маску слоя · ПКМ: команды маски")
+                                .clicked()
+                            {
+                                mask_pick = Some(i);
+                            }
+                        }
                         let title = Rect::from_min_max(
-                            rect.min + Vec2::new(86.0, 8.0),
+                            rect.min + Vec2::new(title_x, 8.0),
                             egui::pos2(rect.right() - 31.0, rect.top() + 30.0),
                         );
                         ui.put(
@@ -1060,7 +1197,7 @@ impl ImageEditor {
                                 .sense(Sense::hover()),
                         );
                         ui.painter().text(
-                            rect.min + Vec2::new(86.0, 34.0),
+                            rect.min + Vec2::new(title_x, 34.0),
                             egui::Align2::LEFT_TOP,
                             format!(
                                 "{}% · {}×{}",
@@ -1089,7 +1226,7 @@ impl ImageEditor {
                     if response.dragged() {
                         egui::DragAndDrop::set_payload(ui.ctx(), i);
                     }
-                    if response.clicked() && action.is_none() {
+                    if response.clicked() && action.is_none() && mask_pick.is_none() {
                         action = Some(LayerAction::Select(i));
                     }
                     if response.double_clicked() && action.is_none() {
@@ -1125,6 +1262,17 @@ impl ImageEditor {
                         }
                     }
                     response.context_menu(|ui| {
+                        ui.menu_button("Маска слоя", |ui| {
+                            if let Some(a) = self.mask_menu(ui, i) {
+                                mask_action = Some((i, a));
+                            }
+                        });
+                        if layer.mask().is_some() && ui.button("Редактировать маску").clicked()
+                        {
+                            mask_pick = Some(i);
+                            ui.close();
+                        }
+
                         if ui.button("Переименовать…").clicked() {
                             action = Some(LayerAction::BeginRename(i));
                             ui.close();
@@ -1220,8 +1368,26 @@ impl ImageEditor {
                     action = Some(a);
                 }
             }
+            ui.menu_button("Маска", |ui| {
+                if self.document.layers()[active].mask().is_some()
+                    && ui.button("Редактировать").clicked()
+                {
+                    mask_pick = Some(active);
+                    ui.close();
+                }
+                if let Some(a) = self.mask_menu(ui, active) {
+                    mask_action = Some((active, a));
+                }
+            });
         });
         ui.small("Двойной щелчок — имя · перетащите для порядка");
+        if let Some((index, a)) = mask_action {
+            self.layer_mask_action(index, a);
+        } else if let Some(i) = mask_pick {
+            if let Err(e) = self.set_mask_target(MaskTarget::Layer(i)) {
+                self.status = e.to_string();
+            }
+        }
         if let Some(action) = action {
             self.layer_action(action);
         }
@@ -1284,6 +1450,10 @@ impl ImageEditor {
     }
     fn can_merge(&self, i: usize) -> bool {
         i > 0
+            && (i == 1
+                || [i - 1, i]
+                    .iter()
+                    .all(|&j| self.document.layers()[j].blend_mode() == LayerBlendMode::Normal))
             && self.document.layers()[i].visible()
             && !self.document.layers()[i].locked()
             && self.document.layers()[i - 1].visible()
@@ -1444,7 +1614,7 @@ impl ImageEditor {
             if response.clicked() {
                 if let Some(p) = point {
                     let raster = if self.edit_target() == EditTarget::Mask {
-                        self.document.mask_raster()
+                        self.mask_source_raster()
                     } else if self.manual_ui.merged_sample {
                         self.document.flatten()
                     } else {
@@ -1465,7 +1635,7 @@ impl ImageEditor {
             if response.clicked() {
                 if let Some(p) = point.filter(|p| p[0] >= 0.0 && p[1] >= 0.0) {
                     let sample = if self.edit_target() == EditTarget::Mask {
-                        self.document.mask_raster()
+                        self.mask_source_raster()
                     } else if self.manual_ui.merged_sample {
                         self.document.flatten()
                     } else {
@@ -1530,7 +1700,7 @@ impl ImageEditor {
                         d.stroke_with_style(from, p, radius, color, brush, style)
                     };
                     let result = if self.edit_target() == EditTarget::Mask {
-                        self.document.edit_mask(stroke)
+                        self.document.edit_target_mask(self.mask_target(), stroke)
                     } else {
                         stroke(&mut self.document)
                     };

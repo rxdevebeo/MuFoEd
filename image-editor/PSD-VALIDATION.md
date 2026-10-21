@@ -1,5 +1,9 @@
 # PSD project format: first supported profile
 
+Historical receipt: E03.2 extends this profile with standard raster layer masks
+and Normal/Multiply/Screen/Overlay. Current acceptance and remaining exclusions:
+[E03-LAYERS-VALIDATION.md](E03-LAYERS-VALIDATION.md).
+
 2026-10-20, worktree `codex/image-studio`, baseline `cc7ae2f3`.
 Only image-editor and root dependency lock changed; StrictLib sources unchanged.
 Graph generation 2026-10-19T19:03:34Z points at the original D:/ checkout and

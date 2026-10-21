@@ -8,6 +8,7 @@ mod canvas_navigation;
 mod clipboard_panel;
 mod hires_panel;
 mod layer_dialog;
+mod layer_masks;
 mod preset_panel;
 mod ribbon_ui;
 mod selection_overlay;
@@ -356,6 +357,18 @@ impl ImageEditor {
             Ok(()) => {
                 if self.document != before {
                     self.history.checkpoint(&before);
+                    if let crate::MaskTarget::Layer(i) = self.mask_target() {
+                        if self.document.active() != i
+                            || self.document.layers().len() != before.layers().len()
+                            || self
+                                .document
+                                .target_mask(crate::MaskTarget::Layer(i))
+                                .is_err()
+                        {
+                            self.manual_ui.mask_target = crate::MaskTarget::Inpaint;
+                            self.set_edit_target(EditTarget::Raster);
+                        }
+                    }
                     self.changed = true;
                     self.manual_ui.thumbnails.clear();
                     self.unsaved = true;
@@ -636,14 +649,14 @@ impl ImageEditor {
                 ui.add_space(6.0);
                 if self.changed || self.texture.is_none() {
                     self.rebuild_selection_outline();
-                    self.transform_preview.layers.clear();
+                    self.transform_preview.clear();
                     let raster = self.document.flatten();
                     let mut pixels = raster.pixels().to_vec();
-                    for (p, mask) in pixels.chunks_exact_mut(4).zip(self.document.mask()) {
-                        if self.generation_ui.show_mask
-                            && !self.mask_transform_preview()
-                            && *mask > 0
-                        {
+                    for (p, mask) in pixels
+                        .chunks_exact_mut(4)
+                        .zip(self.display_mask().into_iter().flatten())
+                    {
+                        if !self.mask_transform_preview() && *mask > 0 {
                             let f = f32::from(*mask) / 510.0;
                             p[0] = (f32::from(p[0]) * (1.0 - f) + 255.0 * f) as u8;
                             p[1] = (f32::from(p[1]) * (1.0 - f)) as u8;

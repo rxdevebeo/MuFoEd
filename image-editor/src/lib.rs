@@ -12,6 +12,7 @@ pub mod ui;
 
 pub use document::{
     Adjustment, BrushStyle, CanvasMode, ColorCorrection, Curves, Document, EditError, Histogram,
-    History, Layer, LevelChannel, Levels, PhotoGeometry, PixelClipboard, Raster, RetouchMode,
-    RetouchStroke, SelectionOp, SelectionRefine, Shape, ToneAdjustment, ToneCurve, Tool,
+    History, Layer, LayerBlendMode, LayerMask, LevelChannel, Levels, MaskTarget, PhotoGeometry,
+    PixelClipboard, Raster, RetouchMode, RetouchStroke, SelectionOp, SelectionRefine, Shape,
+    ToneAdjustment, ToneCurve, Tool,
 };

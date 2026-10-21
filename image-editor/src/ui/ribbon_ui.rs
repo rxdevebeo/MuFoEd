@@ -98,6 +98,7 @@ impl ImageEditor {
                         ui.selectable_value(&mut target, EditTarget::Mask, "Маска");
                         ui.selectable_value(&mut target, EditTarget::Raster, "Растр");
                         self.set_edit_target(target);
+                        self.mask_destination_control(ui);
                     });
                 });
                 if self.ribbon_ui.collapsed {
@@ -332,8 +333,7 @@ impl ImageEditor {
         group(ui, "Маска ИИ", 165.0, |ui| {
             if command(ui, "Выделение → маска") {
                 self.edit(Document::selection_to_mask);
-                self.generation_ui.show_mask = true;
-                self.changed = true;
+                self.show_inpaint_mask(true);
             }
             if command(ui, "Маска → выделение") {
                 self.edit(Document::mask_to_selection);

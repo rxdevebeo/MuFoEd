@@ -1,4 +1,5 @@
-//! GPU mesh previews use original textures; only Apply resamples document pixels.
+//! GPU meshes for ordinary layers; cached exact CPU copies for masks/blends.
+//! Preview never mutates document pixels.
 #![allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -10,6 +11,21 @@ const N: u32 = 128;
 #[derive(Default)]
 pub(super) struct TransformPreview {
     pub layers: Vec<egui::TextureHandle>,
+    exact: Option<(ExactKey, egui::TextureHandle)>,
+}
+#[derive(Clone, Copy, PartialEq)]
+struct ExactKey {
+    rotation: Option<(f64, bool)>,
+    layer: Option<(f64, [f64; 2], crate::PhotoGeometry, [f64; 2])>,
+    mask: bool,
+    target: crate::MaskTarget,
+    overlay: bool,
+}
+impl TransformPreview {
+    pub(super) fn clear(&mut self) {
+        self.layers.clear();
+        self.exact = None;
+    }
 }
 impl ImageEditor {
     pub(super) fn transform_preview_active(&self) -> bool {
@@ -34,6 +50,9 @@ impl ImageEditor {
         painter: &egui::Painter,
         rect: Rect,
     ) -> bool {
+        if self.document.has_layer_features() && self.transform_preview_active() {
+            return self.paint_exact_transform_preview(ui, painter, rect);
+        }
         if let Some((angle, _)) = self.rotation_preview() {
             let size =
                 egui::vec2(self.document.width() as f32, self.document.height() as f32) * self.zoom;
@@ -145,11 +164,107 @@ impl ImageEditor {
         }
         true
     }
+    pub(super) fn exact_transform_raster(&self) -> Result<crate::Raster, crate::EditError> {
+        let mut doc = self.document.clone();
+        if let Some((angle, expand)) = self.rotation_preview() {
+            doc.rotate(angle, expand)?;
+        } else if let Some((angle, scale, photo, center)) = self.layer_preview() {
+            let operation = |d: &mut crate::Document| {
+                d.transform_photo_layer_about(angle, scale, photo, center)
+            };
+            if self.mask_transform_preview() {
+                doc.edit_target_mask(self.mask_target(), operation)?;
+            } else {
+                operation(&mut doc)?;
+            }
+        }
+        let raster = doc.flatten();
+        let overlay = if self.edit_target() == super::EditTarget::Mask
+            && matches!(self.mask_target(), crate::MaskTarget::Layer(_))
+        {
+            self.manual_ui
+                .show_layer_mask
+                .then(|| doc.target_mask(self.mask_target()).expect("existing mask"))
+        } else {
+            self.generation_ui.show_mask.then(|| doc.mask())
+        };
+        if let Some(mask) = overlay {
+            let mut pixels = raster.pixels().to_vec();
+            for (p, &m) in pixels.chunks_exact_mut(4).zip(mask) {
+                if m == 0 {
+                    continue;
+                }
+                let f = f32::from(m) / 510.0;
+                p[0] = (f32::from(p[0]) * (1.0 - f) + 255.0 * f) as u8;
+                p[1] = (f32::from(p[1]) * (1.0 - f)) as u8;
+                p[2] = (f32::from(p[2]) * (1.0 - f)) as u8;
+                p[3] = p[3].max(100);
+            }
+            return crate::Raster::new(raster.width(), raster.height(), pixels);
+        }
+        Ok(raster)
+    }
+    fn paint_exact_transform_preview(
+        &mut self,
+        ui: &egui::Ui,
+        painter: &egui::Painter,
+        rect: Rect,
+    ) -> bool {
+        let key = ExactKey {
+            rotation: self.rotation_preview(),
+            layer: self.layer_preview(),
+            mask: self.mask_transform_preview(),
+            target: self.mask_target(),
+            overlay: self.display_mask().is_some(),
+        };
+        if self
+            .transform_preview
+            .exact
+            .as_ref()
+            .is_none_or(|(k, _)| *k != key)
+        {
+            match self.exact_transform_raster() {
+                Ok(raster) => {
+                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                        [raster.width() as usize, raster.height() as usize],
+                        raster.pixels(),
+                    );
+                    if let Some((old, texture)) = &mut self.transform_preview.exact {
+                        *old = key;
+                        texture.set(image, egui::TextureOptions::LINEAR);
+                    } else {
+                        self.transform_preview.exact = Some((
+                            key,
+                            ui.ctx().load_texture(
+                                "exact-layer-composite-preview",
+                                image,
+                                egui::TextureOptions::LINEAR,
+                            ),
+                        ));
+                    }
+                }
+                Err(e) => {
+                    self.status = e.to_string();
+                    return false;
+                }
+            }
+        }
+        if let Some((_, texture)) = &self.transform_preview.exact {
+            painter.image(
+                texture.id(),
+                rect,
+                Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+        }
+        true
+    }
     fn load_preview_layers(&mut self, ui: &egui::Ui) {
         let rasters: Vec<_> = if self.mask_transform_preview() {
             let pixels = self
                 .document
-                .mask()
+                .target_mask(self.mask_target())
+                .expect("mask")
                 .iter()
                 .flat_map(|v| [255, 0, 0, *v / 2])
                 .collect();

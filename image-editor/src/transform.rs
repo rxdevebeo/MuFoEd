@@ -144,6 +144,29 @@ impl Document {
             }
         }
         layer.raster = Raster::new(self.width, self.height, pixels)?;
+        if let Some(mask) = &mut layer.mask {
+            let mut pixels = vec![mask.default_color; mask.pixels.len()];
+            for y in 0..self.height {
+                for x in 0..self.width {
+                    let [sx, sy] = photo.source_point(
+                        [f64::from(x) + 0.5, f64::from(y) + 0.5],
+                        [self.width, self.height],
+                        degrees,
+                        scale,
+                        center,
+                    );
+                    pixels[y as usize * self.width as usize + x as usize] =
+                        super::layer_compositing::sample_mask(
+                            mask,
+                            self.width,
+                            self.height,
+                            sx - 0.5,
+                            sy - 0.5,
+                        );
+                }
+            }
+            mask.pixels = pixels;
+        }
         Ok(())
     }
     pub(crate) fn active_layer_center(&self) -> [f64; 2] {
@@ -215,6 +238,7 @@ impl Document {
         }
         self.layers = vec![self.layers[self.active].clone()];
         self.active = 0;
+        self.sync_layer_version();
         Ok(())
     }
     fn remap(
@@ -225,9 +249,7 @@ impl Document {
         map: impl Fn(f64, f64) -> (f64, f64),
     ) -> Result<(), EditError> {
         let len = byte_len(width, height)?;
-        if len * self.layers.len() + len / 4 * if self.selection.is_empty() { 1 } else { 2 }
-            > MAX_DOCUMENT_BYTES
-        {
+        if self.resized_memory_bytes(len) > MAX_DOCUMENT_BYTES {
             return Err(invalid("Transformed document exceeds memory budget"));
         }
         let mut layers = self.layers.clone();
@@ -262,6 +284,36 @@ impl Document {
                 }
             }
             layer.raster = Raster::new(width, height, pixels)?;
+            if let Some(mask) = &mut layer.mask {
+                let mut pixels = vec![mask.default_color; len / 4];
+                for y in 0..height {
+                    for x in 0..width {
+                        let (sx, sy) = map(f64::from(x) + 0.5, f64::from(y) + 0.5);
+                        let (sx, sy) = if clamp_edges
+                            && sx >= 0.0
+                            && sy >= 0.0
+                            && sx < f64::from(self.width)
+                            && sy < f64::from(self.height)
+                        {
+                            (
+                                (sx - 0.5).clamp(0.0, f64::from(self.width - 1)),
+                                (sy - 0.5).clamp(0.0, f64::from(self.height - 1)),
+                            )
+                        } else {
+                            (sx - 0.5, sy - 0.5)
+                        };
+                        pixels[y as usize * width as usize + x as usize] =
+                            super::layer_compositing::sample_mask(
+                                mask,
+                                self.width,
+                                self.height,
+                                sx,
+                                sy,
+                            );
+                    }
+                }
+                mask.pixels = pixels;
+            }
         }
         for y in 0..height {
             for x in 0..width {

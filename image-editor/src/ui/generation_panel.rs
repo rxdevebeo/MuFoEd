@@ -469,7 +469,7 @@ impl ImageEditor {
                 .checkbox(&mut self.generation_ui.show_mask, "Show mask overlay")
                 .changed()
             {
-                self.changed = true;
+                self.show_inpaint_mask(self.generation_ui.show_mask);
             }
             ui.horizontal(|ui| {
                 ui.label("Feather (px)");
@@ -610,7 +610,7 @@ impl ImageEditor {
             )
             .changed()
         {
-            self.changed = true;
+            self.show_inpaint_mask(self.generation_ui.show_mask);
         }
         ui.small("Модель и LoRA — в Настройках. Вне маски исходные пиксели сохраняются.");
     }

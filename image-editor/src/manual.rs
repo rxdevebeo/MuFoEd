@@ -88,8 +88,7 @@ impl Document {
     /// Duplicate immediately above the active layer; its copy starts unlocked.
     pub fn duplicate_layer(&mut self) -> Result<(), EditError> {
         if self.layers.len() >= 16
-            || self.memory_bytes() + self.layers[self.active].raster.pixels.len()
-                > MAX_DOCUMENT_BYTES
+            || self.memory_bytes() + self.layers[self.active].memory_bytes() > MAX_DOCUMENT_BYTES
         {
             return Err(invalid("Document layer/memory limit reached"));
         }
@@ -129,25 +128,25 @@ impl Document {
         {
             return Err(invalid("Merge requires two visible, unlocked layers"));
         }
+        if below > 0
+            && [below, self.active]
+                .iter()
+                .any(|&i| self.layers[i].blend_mode != super::LayerBlendMode::Normal)
+        {
+            return Err(invalid("Blend modes depend on lower layers; merge is only safe at the bottom of the stack or with Normal modes"));
+        }
         let mut pixels = vec![0; self.layers[below].raster.pixels.len()];
         for index in [below, self.active] {
-            let layer = &self.layers[index];
-            for (dst, src) in pixels
-                .chunks_exact_mut(4)
-                .zip(layer.raster.pixels.chunks_exact(4))
-            {
-                blend(
-                    dst,
-                    src.try_into().expect("RGBA"),
-                    f32::from(layer.opacity) / 255.0,
-                );
-            }
+            self.composite_layer(&mut pixels, index, &self.layers[index].raster);
         }
         self.layers[below].raster.pixels = pixels;
         self.layers[below].opacity = 255;
+        self.layers[below].mask = None;
+        self.layers[below].blend_mode = super::LayerBlendMode::Normal;
         self.layers[below].recipe = None;
         self.layers.remove(self.active);
         self.active = below;
+        self.sync_layer_version();
         Ok(())
     }
     /// Translate active-layer pixels without wraparound; uncovered pixels become transparent.
@@ -173,6 +172,23 @@ impl Document {
             }
         }
         self.layers[self.active].raster.pixels = pixels;
+        if let Some(mask) = &mut self.layers[self.active].mask {
+            let mut moved = vec![mask.default_color; mask.pixels.len()];
+            for y in 0..self.height.cast_signed() {
+                for x in 0..self.width.cast_signed() {
+                    let (sx, sy) = (x - dx, y - dy);
+                    if sx >= 0
+                        && sy >= 0
+                        && sx < self.width.cast_signed()
+                        && sy < self.height.cast_signed()
+                    {
+                        moved[y as usize * self.width as usize + x as usize] =
+                            mask.pixels[sy as usize * self.width as usize + sx as usize];
+                    }
+                }
+            }
+            mask.pixels = moved;
+        }
         Ok(())
     }
     pub(super) fn coverage(&self, index: usize, style: BrushStyle) -> f32 {

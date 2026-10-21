@@ -8,6 +8,7 @@ struct PastedObject {
     pixels: PixelClipboard,
     at: [i32; 2],
     new_layer: bool,
+    mask_target: crate::MaskTarget,
     drag: Option<([f32; 2], [i32; 2])>,
 }
 
@@ -105,7 +106,7 @@ impl ImageEditor {
     pub fn copy_pixels(&mut self, merged: bool) -> bool {
         self.finish_manual_stroke();
         let copied = if self.edit_target() == super::EditTarget::Mask {
-            self.document.copy_mask()
+            self.document.copy_target_mask(self.mask_target())
         } else {
             self.document.copy_selection(merged)
         };
@@ -152,7 +153,14 @@ impl ImageEditor {
             return;
         }
         let mask = self.edit_target() == super::EditTarget::Mask;
-        self.edit(|d| d.delete_area(mask));
+        let target = self.mask_target();
+        self.edit(|d| {
+            if mask {
+                d.with_mask_target(target, |d| d.delete_area(true))
+            } else {
+                d.delete_area(false)
+            }
+        });
     }
     /// Paste the system/internal fragment and activate Hand for placement.
     /// Insertion and subsequent placement share one undo step.
@@ -168,11 +176,16 @@ impl ImageEditor {
         };
         let pixels = pixels.for_mask(self.edit_target() == super::EditTarget::Mask);
         let at = self.clipboard_ui.at;
+        let mask_target = if pixels.is_mask() {
+            self.mask_target()
+        } else {
+            crate::MaskTarget::Inpaint
+        };
         self.finish_pasted_object();
         let before = self.document.clone();
         let mut placed = before.clone();
         if let Err(e) = placed
-            .paste_pixels(&pixels, at, new_layer)
+            .with_mask_target(mask_target, |d| d.paste_pixels(&pixels, at, new_layer))
             .and_then(|()| select_pasted_bounds(&mut placed, &pixels, at))
         {
             self.status = e.to_string();
@@ -186,7 +199,11 @@ impl ImageEditor {
         self.manual_ui.thumbnails.clear();
         self.clear_segmentation_points();
         if pixels.is_mask() {
-            self.generation_ui.show_mask = true;
+            if mask_target == crate::MaskTarget::Inpaint {
+                self.generation_ui.show_mask = true;
+            } else {
+                self.manual_ui.show_layer_mask = true;
+            }
         }
         self.clipboard_ui.floating = Some(PastedObject {
             before,
@@ -194,6 +211,7 @@ impl ImageEditor {
             pixels,
             at,
             new_layer,
+            mask_target,
             drag: None,
         });
         self.status =
@@ -226,7 +244,9 @@ impl ImageEditor {
         }
         let mut placed = p.before.clone();
         match placed
-            .paste_pixels(&p.pixels, at, p.new_layer)
+            .with_mask_target(p.mask_target, |d| {
+                d.paste_pixels(&p.pixels, at, p.new_layer)
+            })
             .and_then(|()| select_pasted_bounds(&mut placed, &p.pixels, at))
         {
             Ok(()) => {
@@ -701,5 +721,42 @@ mod tests {
         let copied = editor.clipboard_ui.pixels.as_ref().unwrap();
         assert_eq!(copied.origin(), [4, 3]);
         assert_eq!(copied.raster().pixel(0, 0), Some([200, 0, 0, 128]));
+    }
+    #[test]
+    fn layer_mask_copy_paste_placement_and_cut_leave_raster_and_ai_intact() {
+        let mut doc =
+            Document::from_raster(Raster::solid(8, 8, [20, 40, 60, 255]).unwrap()).unwrap();
+        doc.set_mask(vec![77; 64]).unwrap();
+        let mut mask = vec![0; 64];
+        mask[9] = 128;
+        mask[10] = 255;
+        doc.set_layer_mask(mask).unwrap();
+        doc.select_area_rectangle([1.0, 1.0], [3.0, 2.0], crate::SelectionOp::Replace)
+            .unwrap();
+        let mut e = ImageEditor::new(doc);
+        e.set_mask_target(crate::MaskTarget::Layer(0)).unwrap();
+        let before = e.document.clone();
+        assert!(e.copy_pixels(false));
+        e.clipboard_ui.internal_only = true;
+        assert_eq!(
+            e.clipboard_ui.pixels.as_ref().unwrap().raster().pixel(0, 0),
+            Some([128, 128, 128, 255])
+        );
+        e.paste_clipboard(true);
+        e.move_pasted_object([4, 3]);
+        assert_eq!(e.document.layers().len(), 1);
+        assert_eq!(e.document.layers()[0].raster(), before.layers()[0].raster());
+        assert_eq!(e.document.mask(), before.mask());
+        assert_eq!(e.document.layers()[0].mask().unwrap().pixels()[28], 128);
+        assert_eq!(e.document.layers()[0].mask().unwrap().pixels()[29], 255);
+        assert_eq!(e.manual_ui.tool, super::super::ManualTool::Hand);
+        e.restore_history(false);
+        assert_eq!(e.document, before);
+        e.set_mask_target(crate::MaskTarget::Layer(0)).unwrap();
+        e.cut_pixels();
+        assert_eq!(e.document.layers()[0].mask().unwrap().pixels()[9], 0);
+        assert_eq!(e.document.mask(), before.mask());
+        e.restore_history(false);
+        assert_eq!(e.document, before);
     }
 }

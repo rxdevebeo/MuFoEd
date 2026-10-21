@@ -1,10 +1,11 @@
 //! Restricted RGB8 PSD interchange and lossless `MuFoEd` project metadata.
 use super::{
-    byte_len, invalid, Document, EditError, Layer, Raster, MAX_DOCUMENT_BYTES, MAX_PROJECT_BYTES,
+    byte_len, invalid, Document, EditError, Layer, LayerBlendMode, LayerMask, Raster,
+    MAX_DOCUMENT_BYTES, MAX_PROJECT_BYTES,
 };
 use ag_psd::psd::{
-    BlendMode, ColorMode, ImageResources, Layer as PsdLayer, LayerAdditionalInfo, PixelData,
-    ProtectedInfo, Psd, ReadOptions, WriteOptions,
+    BlendMode, ColorMode, ImageResources, Layer as PsdLayer, LayerAdditionalInfo, LayerMaskData,
+    PixelData, ProtectedInfo, Psd, ReadOptions, WriteOptions,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -72,6 +73,15 @@ fn signature(doc: &Document) -> String {
             layer.opacity,
         ]);
         hash.update(&layer.raster.pixels);
+        if layer.blend_mode != LayerBlendMode::Normal {
+            hash.update(b"MuFoEd.LayerBlend.v1");
+            hash.update(layer.blend_mode.psd_key());
+        }
+        if let Some(mask) = &layer.mask {
+            hash.update(b"MuFoEd.LayerMask.v1");
+            hash.update([u8::from(mask.enabled), mask.default_color]);
+            hash.update(&mask.pixels);
+        }
     }
     format!("{hash:x}", hash = hash.finalize())
 }
@@ -124,9 +134,63 @@ fn sections(bytes: &[u8]) -> Result<(usize, &[u8], &[u8]), EditError> {
                     "PSD exceeds the editor's 16-layer / 128 MiB document budget",
                 ));
             }
+            let masks = preflight_layers(&mut i, count)?;
+            if byte_len(width, height)? * usize::from(count)
+                + byte_len(width, height)? / 4 * (1 + masks)
+                > MAX_DOCUMENT_BYTES
+            {
+                return Err(invalid("PSD layer masks exceed document memory budget"));
+            }
+        }
+        if l.at < layers.len() && !l.section()?.is_empty() {
+            return Err(invalid("PSD global layer masks are not supported"));
         }
     }
     Ok((offset, resources, layers))
+}
+fn preflight_layers(cursor: &mut Cursor<'_>, count: u16) -> Result<usize, EditError> {
+    let mut masks = 0;
+    for _ in 0..count {
+        cursor.take(16)?;
+        let channels = cursor.u16()?;
+        if channels > 5 {
+            return Err(invalid("Unsupported PSD layer channels"));
+        }
+        let mut ids = Vec::new();
+        for _ in 0..channels {
+            let id = i16::from_be_bytes(cursor.take(2)?.try_into().expect("channel id"));
+            if ![-2, -1, 0, 1, 2].contains(&id) || ids.contains(&id) {
+                return Err(invalid("Unsupported or duplicate PSD channel"));
+            }
+            ids.push(id);
+            cursor.u32()?;
+        }
+        if cursor.take(4)? != b"8BIM" {
+            return Err(invalid("Invalid PSD blend signature"));
+        }
+        let mode = cursor.take(4)?;
+        if ![b"norm".as_slice(), b"mul ", b"scrn", b"over"].contains(&mode) {
+            return Err(invalid("Unsupported PSD blend mode"));
+        }
+        cursor.take(4)?;
+        let extra = cursor.section()?;
+        let mut extra = Cursor {
+            bytes: extra,
+            at: 0,
+        };
+        let mask = extra.section()?;
+        if !mask.is_empty() {
+            if mask.len() != 20 || mask[17] & !3 != 0 || ![0, 255].contains(&mask[16]) {
+                return Err(invalid(
+                    "Unsupported PSD mask flags, feather/density, real mask or default color",
+                ));
+            }
+            masks += 1;
+        } else if ids.contains(&-2) {
+            return Err(invalid("PSD mask channel without mask record"));
+        }
+    }
+    Ok(masks)
 }
 fn metadata(resources: &[u8]) -> Result<Option<Metadata>, EditError> {
     let mut c = Cursor {
@@ -243,8 +307,12 @@ fn validate_layer(layer: &PsdLayer) -> Result<(), EditError> {
     if partial_lock
         || layer.children.is_some()
         || layer.clipping == Some(true)
-        || !matches!(layer.blend_mode, None | Some(BlendMode::Normal))
-        || a.mask.is_some()
+        || !matches!(
+            layer.blend_mode,
+            None | Some(
+                BlendMode::Normal | BlendMode::Multiply | BlendMode::Screen | BlendMode::Overlay
+            )
+        )
         || a.real_mask.is_some()
         || a.filter_mask.is_some()
         || a.effects.is_some()
@@ -274,7 +342,7 @@ fn validate_layer(layer: &PsdLayer) -> Result<(), EditError> {
         || a.patterns.is_some()
         || a.transparency_shapes_layer == Some(false)
     {
-        return Err(invalid("Unsupported PSD layer: only normal raster layers are editable; groups, masks, text, effects, smart objects and adjustments require rasterizing in the source editor"));
+        return Err(invalid("Unsupported PSD layer: supported raster modes are Normal/Multiply/Screen/Overlay with plain bitmap masks; groups, vector masks, text, effects, smart objects and adjustments require rasterizing in the source editor"));
     }
     Ok(())
 }
@@ -286,7 +354,7 @@ fn coordinate(value: Option<f64>) -> Result<i64, EditError> {
     #[allow(clippy::cast_possible_truncation)] // Finite integral value, bounded above.
     Ok(v as i64)
 }
-fn import_layer(layer: PsdLayer, width: u32, height: u32) -> Result<Layer, EditError> {
+fn import_layer(mut layer: PsdLayer, width: u32, height: u32) -> Result<Layer, EditError> {
     validate_layer(&layer)?;
     let x = coordinate(layer.left)?;
     let y = coordinate(layer.top)?;
@@ -325,6 +393,19 @@ fn import_layer(layer: PsdLayer, width: u32, height: u32) -> Result<Layer, EditE
     } else if right != x && bottom != y {
         return Err(invalid("PSD layer pixel data is missing"));
     }
+    let mask = layer
+        .additional_info
+        .mask
+        .take()
+        .map(|m| import_mask(m, [x, y], width, height))
+        .transpose()?;
+    let blend_mode = match layer.blend_mode.unwrap_or(BlendMode::Normal) {
+        BlendMode::Normal => LayerBlendMode::Normal,
+        BlendMode::Multiply => LayerBlendMode::Multiply,
+        BlendMode::Screen => LayerBlendMode::Screen,
+        BlendMode::Overlay => LayerBlendMode::Overlay,
+        _ => unreachable!("validated mode"),
+    };
     let opacity = layer.opacity.unwrap_or(1.0);
     if !opacity.is_finite() || !(0.0..=1.0).contains(&opacity) {
         return Err(invalid("Invalid PSD opacity"));
@@ -343,6 +424,72 @@ fn import_layer(layer: PsdLayer, width: u32, height: u32) -> Result<Layer, EditE
         opacity,
         raster,
         recipe: None,
+        blend_mode,
+        mask,
+    })
+}
+fn import_mask(
+    mut mask: LayerMaskData,
+    layer_origin: [i64; 2],
+    width: u32,
+    height: u32,
+) -> Result<LayerMask, EditError> {
+    let default = match mask.default_color.unwrap_or(0.0) {
+        0.0 => 0,
+        255.0 => 255,
+        _ => return Err(invalid("Invalid PSD mask default color")),
+    };
+    if mask.from_vector_data == Some(true)
+        || mask.user_mask_density.is_some()
+        || mask.user_mask_feather.is_some()
+        || mask.vector_mask_density.is_some()
+        || mask.vector_mask_feather.is_some()
+    {
+        return Err(invalid(
+            "PSD mask feather/density/vector parameters are not supported",
+        ));
+    }
+    let mut x = coordinate(mask.left)?;
+    let mut y = coordinate(mask.top)?;
+    let mut right = coordinate(mask.right)?;
+    let mut bottom = coordinate(mask.bottom)?;
+    if mask.position_relative_to_layer == Some(true) {
+        x += layer_origin[0];
+        right += layer_origin[0];
+        y += layer_origin[1];
+        bottom += layer_origin[1];
+    }
+    if x < 0
+        || y < 0
+        || right < x
+        || bottom < y
+        || right > i64::from(width)
+        || bottom > i64::from(height)
+    {
+        return Err(invalid("PSD mask extends outside supported canvas bounds"));
+    }
+    let mut pixels = vec![default; width as usize * height as usize];
+    if let Some(data) = mask.image_data.take().or(mask.canvas.take()) {
+        if i64::from(data.width) != right - x
+            || i64::from(data.height) != bottom - y
+            || data.data.len() != byte_len(data.width, data.height)?
+        {
+            return Err(invalid("PSD mask pixel buffer does not match bounds"));
+        }
+        for row in 0..data.height as usize {
+            for col in 0..data.width as usize {
+                pixels[(usize::try_from(y).expect("validated mask top") + row) * width as usize
+                    + usize::try_from(x).expect("validated mask left")
+                    + col] = data.data[(row * data.width as usize + col) * 4];
+            }
+        }
+    } else if right != x && bottom != y {
+        return Err(invalid("PSD layer mask pixel data is missing"));
+    }
+    Ok(LayerMask {
+        pixels,
+        enabled: mask.disabled != Some(true),
+        default_color: default,
     })
 }
 impl Document {
@@ -362,9 +509,29 @@ impl Document {
                 bottom: Some(f64::from(self.height)),
                 opacity: Some(f64::from(l.opacity) / 255.0),
                 hidden: Some(!l.visible),
-                blend_mode: Some(BlendMode::Normal),
+                blend_mode: Some(match l.blend_mode {
+                    LayerBlendMode::Normal => BlendMode::Normal,
+                    LayerBlendMode::Multiply => BlendMode::Multiply,
+                    LayerBlendMode::Screen => BlendMode::Screen,
+                    LayerBlendMode::Overlay => BlendMode::Overlay,
+                }),
                 additional_info: LayerAdditionalInfo {
                     name: Some(l.name.clone()),
+                    mask: l.mask.as_ref().map(|m| LayerMaskData {
+                        top: Some(0.0),
+                        left: Some(0.0),
+                        right: Some(f64::from(self.width)),
+                        bottom: Some(f64::from(self.height)),
+                        default_color: Some(f64::from(m.default_color)),
+                        disabled: Some(!m.enabled),
+                        position_relative_to_layer: Some(false),
+                        image_data: Some(PixelData {
+                            width: self.width,
+                            height: self.height,
+                            data: m.pixels.iter().flat_map(|&v| [v, v, v, 255]).collect(),
+                        }),
+                        ..Default::default()
+                    }),
                     protected_info: Some(ProtectedInfo {
                         composite: Some(l.locked),
                         position: Some(l.locked),
@@ -431,7 +598,7 @@ impl Document {
             ag_psd::read_psd(
                 bytes,
                 &ReadOptions {
-                    total_memory_limit: Some(MAX_DOCUMENT_BYTES),
+                    total_memory_limit: Some(MAX_DOCUMENT_BYTES * 3),
                     use_image_data: Some(true),
                     skip_thumbnail: Some(true),
                     skip_linked_files_data: Some(true),
@@ -468,6 +635,7 @@ impl Document {
                 .ok_or_else(|| invalid("PSD has no layers or merged preview"))?;
             Self::from_raster(Raster::new(width, height, image.data)?)?
         };
+        doc.sync_layer_version();
         if let Some(project) = project {
             if project.version != 1
                 || project.signature != signature(&doc)

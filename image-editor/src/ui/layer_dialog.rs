@@ -6,6 +6,7 @@ pub(super) struct LayerDialog {
     kind: Option<bool>, // true: color, false: transform
     source: Option<Layer>,
     target: EditTarget,
+    mask_target: crate::MaskTarget,
     mask_source: Option<Vec<u8>>,
     index: usize,
     correction: ColorCorrection,
@@ -31,6 +32,7 @@ impl Default for LayerDialog {
         Self {
             kind: None,
             target: EditTarget::Raster,
+            mask_target: crate::MaskTarget::Inpaint,
             mask_source: None,
             source: None,
             index: 0,
@@ -79,9 +81,8 @@ impl ImageEditor {
         self.finish_manual_stroke();
         self.finish_pasted_object();
         let mask = self.edit_target() == EditTarget::Mask;
-        let mask_document = mask.then(|| {
-            crate::Document::from_raster(self.document.mask_raster()).expect("valid mask")
-        });
+        let mask_document = mask
+            .then(|| crate::Document::from_raster(self.mask_source_raster()).expect("valid mask"));
         let source = mask_document.as_ref().unwrap_or(&self.document);
         self.changed = true;
         let raster = source.layers()[source.active()].raster();
@@ -103,7 +104,13 @@ impl ImageEditor {
             kind: Some(color),
             bounds: bounds.map(f64::from),
             target: self.edit_target(),
-            mask_source: mask.then(|| self.document.mask().to_vec()),
+            mask_target: self.mask_target(),
+            mask_source: mask.then(|| {
+                self.document
+                    .target_mask(self.mask_target())
+                    .expect("mask")
+                    .to_vec()
+            }),
             index: self.document.active(),
             center: [
                 f64::from(bounds[0] + bounds[2]) / 2.0,
@@ -413,7 +420,8 @@ impl ImageEditor {
         let mask = g.target == EditTarget::Mask;
         let stale = self.edit_target() != g.target
             || if mask {
-                g.mask_source.as_deref() != Some(self.document.mask())
+                g.mask_target != self.mask_target()
+                    || g.mask_source.as_deref() != self.document.target_mask(g.mask_target).ok()
                     || g.source.as_ref().is_none_or(|l| {
                         l.raster().width() != self.document.width()
                             || l.raster().height() != self.document.height()
@@ -441,7 +449,7 @@ impl ImageEditor {
             }
         };
         let result = if mask {
-            next.edit_mask(operation)
+            next.edit_target_mask(g.mask_target, operation)
         } else {
             operation(&mut next)
         };
@@ -827,6 +835,66 @@ mod tests {
                 editor.restore_history(false);
                 assert_eq!(editor.document, before);
             }
+        }
+    }
+    #[test]
+    fn layer_features_exact_transform_preview_matches_apply_and_one_undo() {
+        for mask_mode in [false, true] {
+            let mut doc =
+                crate::Document::from_raster(Raster::solid(16, 16, [40, 160, 220, 255]).unwrap())
+                    .unwrap();
+            doc.add_layer(
+                "Overlay".into(),
+                Raster::solid(16, 16, [200, 80, 40, 128]).unwrap(),
+            )
+            .unwrap();
+            doc.set_blend_mode(crate::LayerBlendMode::Overlay).unwrap();
+            doc.add_layer_mask(true).unwrap();
+            let coverage = (0..256).map(|i| if i % 16 < 8 { 0 } else { 255 }).collect();
+            doc.set_layer_mask(coverage).unwrap();
+            let mut editor = ImageEditor::new(doc);
+            if mask_mode {
+                editor.set_mask_target(crate::MaskTarget::Layer(1)).unwrap();
+            }
+            editor.manual_ui.show_layer_mask = false;
+            editor.generation_ui.show_mask = false;
+            editor.open_layer_transform_dialog();
+            editor.layer_dialog.angle = 23.0;
+            editor.layer_dialog.scale = [110.0, 90.0];
+            let before = editor.document.clone();
+            let preview = editor.exact_transform_raster().unwrap();
+            assert_eq!(editor.document, before);
+            let ctx = egui::Context::default();
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1440.0, 900.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    editor.show(ui);
+                },
+            );
+            assert_eq!(editor.document, before);
+            editor.commit_layer_dialog();
+            assert_eq!(preview, editor.document.flatten());
+            assert_eq!(
+                crate::Document::from_psd(&editor.document.to_psd().unwrap())
+                    .unwrap()
+                    .flatten(),
+                preview
+            );
+            assert_eq!(editor.document.mask(), before.mask());
+            if mask_mode {
+                assert_eq!(
+                    editor.document.layers()[1].raster(),
+                    before.layers()[1].raster()
+                );
+            }
+            editor.restore_history(false);
+            assert_eq!(editor.document, before);
         }
     }
 }

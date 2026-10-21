@@ -61,7 +61,7 @@ impl ImageEditor {
                         RetouchMode::Clone
                     };
                     let brush = if self.edit_target() == EditTarget::Mask {
-                        Document::from_raster(self.document.mask_raster())
+                        Document::from_raster(self.mask_source_raster())
                             .and_then(|d| d.begin_retouch(source, p, self.radius, mode, style))
                     } else {
                         self.document
@@ -87,9 +87,10 @@ impl ImageEditor {
                     .stroke
                     .as_ref()
                     .expect("initialized sample");
+                let target = self.manual_ui.mask_target;
                 let result = if self.edit_target() == EditTarget::Mask {
                     self.document
-                        .edit_mask(|d| d.retouch_segment(stroke, from, p))
+                        .edit_target_mask(target, |d| d.retouch_segment(stroke, from, p))
                 } else {
                     self.document.retouch_segment(stroke, from, p)
                 };

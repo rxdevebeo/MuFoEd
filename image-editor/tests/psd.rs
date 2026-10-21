@@ -74,11 +74,11 @@ fn external_layer_bounds_are_placed_without_changing_source_pixels() {
 #[test]
 fn unsupported_layers_and_outside_canvas_pixels_are_refused() {
     let mut l = layer();
-    l.blend_mode = Some(BlendMode::Multiply);
+    l.blend_mode = Some(BlendMode::Difference);
     assert!(Document::from_psd(&simple(l))
         .unwrap_err()
         .to_string()
-        .contains("Unsupported PSD layer"));
+        .contains("Unsupported PSD blend mode"));
     let mut l = layer();
     l.left = Some(-1.0);
     l.right = Some(1.0);
@@ -138,8 +138,20 @@ fn independent_writer_rle_zip_offsets_and_rejections() {
         &doc.layers()[1].raster().pixels()[20..28],
         &[100, 150, 200, 128, 100, 150, 200, 128]
     );
-    assert!(Document::from_psd(include_bytes!("fixtures/psd/external-multiply.psd")).is_err());
-    assert!(Document::from_psd(include_bytes!("fixtures/psd/external-mask.psd")).is_err());
+    assert_eq!(
+        Document::from_psd(include_bytes!("fixtures/psd/external-multiply.psd"))
+            .unwrap()
+            .layers()[1]
+            .blend_mode(),
+        image_editor::LayerBlendMode::Multiply
+    );
+    assert!(
+        Document::from_psd(include_bytes!("fixtures/psd/external-mask.psd"))
+            .unwrap()
+            .layers()[0]
+            .mask()
+            .is_some()
+    );
     assert!(
         Document::from_psd(include_bytes!("fixtures/psd/external-rgb16.psd"))
             .unwrap_err()

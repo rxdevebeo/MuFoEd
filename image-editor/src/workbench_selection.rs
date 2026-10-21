@@ -255,6 +255,16 @@ impl Document {
     /// Mirror active-layer pixels; canvas and other layers stay unchanged.
     pub fn flip_layer(&mut self, horizontal: bool) -> Result<(), EditError> {
         self.require_unlocked()?;
+        if let Some(mask) = &mut self.layers[self.active].mask {
+            let image = image::GrayImage::from_raw(self.width, self.height, mask.pixels.clone())
+                .expect("mask");
+            mask.pixels = if horizontal {
+                image::imageops::flip_horizontal(&image)
+            } else {
+                image::imageops::flip_vertical(&image)
+            }
+            .into_raw();
+        }
         let raster = &mut self.layers[self.active].raster;
         *raster = super::Raster::from_image(if horizontal {
             image::imageops::flip_horizontal(&raster.image())

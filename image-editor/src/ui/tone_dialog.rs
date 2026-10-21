@@ -11,6 +11,7 @@ use egui::{Color32, Pos2, Rect, Stroke, TextureHandle, Ui, Vec2};
 pub(super) struct ToneDialog {
     before: Document,
     target: EditTarget,
+    mask_target: crate::MaskTarget,
     mask_source: Option<Raster>,
     curves_mode: bool,
     levels: Levels,
@@ -47,7 +48,7 @@ impl ImageEditor {
         self.geometry = super::geometry_dialog::GeometryDialog::default();
         self.changed = true;
         let target = self.edit_target();
-        let mask_source = (target == EditTarget::Mask).then(|| self.document.mask_raster());
+        let mask_source = (target == EditTarget::Mask).then(|| self.mask_source_raster());
         let source = mask_source
             .as_ref()
             .unwrap_or_else(|| self.document.layers()[self.document.active()].raster());
@@ -56,6 +57,7 @@ impl ImageEditor {
         self.tone_dialog = Some(ToneDialog {
             before: self.document.clone(),
             target,
+            mask_target: self.mask_target(),
             mask_source,
             curves_mode,
             levels: Levels::default(),
@@ -126,7 +128,10 @@ impl ImageEditor {
         let Some(g) = self.tone_dialog.as_mut() else {
             return;
         };
-        if self.document != g.before || self.manual_ui.target != g.target {
+        if self.document != g.before
+            || self.manual_ui.target != g.target
+            || (g.target == EditTarget::Mask && self.manual_ui.mask_target != g.mask_target)
+        {
             g.error = "Документ или режим изменились. Откройте окно заново.".into();
             return;
         }
@@ -134,7 +139,7 @@ impl ImageEditor {
         let target = g.target;
         let mut next = self.document.clone();
         let result = if target == EditTarget::Mask {
-            next.edit_mask(|d| d.correct_tone(&adjustment))
+            next.edit_target_mask(g.mask_target, |d| d.correct_tone(&adjustment))
         } else {
             next.correct_tone(&adjustment)
         };
