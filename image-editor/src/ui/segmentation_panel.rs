@@ -7,14 +7,14 @@ use std::{
 };
 
 pub(super) struct SegmentationUi {
-    model: String,
+    pub(super) model: String,
     job: Option<ModelJob>,
     source: Option<Raster>,
     candidate: Option<(Raster, Raster)>,
     texture: Option<TextureHandle>,
     points: Vec<[f32; 3]>,
     point_mode: Option<bool>,
-    auto_device: bool,
+    pub(super) auto_device: bool,
 }
 impl Default for SegmentationUi {
     fn default() -> Self {
@@ -104,8 +104,42 @@ impl ImageEditor {
             Err(e) => self.status = e.to_string(),
         }
     }
-    pub(super) fn segmentation_panel(&mut self, ui: &mut egui::Ui, actions: &mut Vec<FileAction>) {
-        egui::CollapsingHeader::new("Выделение · SAM 2.1 Hiera Large")
+    pub(super) fn segmentation_settings(
+        &mut self,
+        ui: &mut egui::Ui,
+        actions: &mut Vec<FileAction>,
+    ) {
+        ui.add_enabled_ui(!self.settings_busy(), |ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.segmentation_ui.model)
+                    .desired_width(f32::INFINITY),
+            );
+            ui.horizontal(|ui| {
+                if ui.button("Load folder…").clicked() {
+                    actions.push(FileAction::SegmentationModel);
+                }
+                if ui
+                    .add_enabled(
+                        !Path::new(&self.segmentation_ui.model).exists(),
+                        egui::Button::new("Download model"),
+                    )
+                    .clicked()
+                {
+                    self.segmentation_start(true);
+                }
+            });
+            ui.checkbox(
+                &mut self.segmentation_ui.auto_device,
+                "Use CUDA if available",
+            );
+        });
+        ui.hyperlink_to(
+            "Модель и лицензия · Meta",
+            "https://huggingface.co/facebook/sam2.1-hiera-large",
+        );
+    }
+    pub(super) fn segmentation_panel(&mut self, ui: &mut egui::Ui, _actions: &mut Vec<FileAction>) {
+        egui::CollapsingHeader::new("Выделение объекта")
             .default_open(true)
             .show(ui, |ui| {
                 let busy = self.segmentation_operation_active()
@@ -113,53 +147,31 @@ impl ImageEditor {
                     || self.plakat_active()
                     || self.upscale_operation_active();
                 ui.add_enabled_ui(!busy, |ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.segmentation_ui.model)
-                            .desired_width(f32::INFINITY),
-                    );
-                    ui.horizontal(|ui| {
-                        if ui.button("Load folder…").clicked() {
-                            actions.push(FileAction::SegmentationModel);
-                        }
-                        if ui
-                            .add_enabled(
-                                !Path::new(&self.segmentation_ui.model).exists(),
-                                egui::Button::new("Download model"),
-                            )
-                            .clicked()
-                        {
-                            self.segmentation_start(true);
-                        }
-                    });
-                    ui.checkbox(
-                        &mut self.segmentation_ui.auto_device,
-                        "Use CUDA if available",
-                    );
                     ui.horizontal(|ui| {
                         ui.selectable_value(
                             &mut self.segmentation_ui.point_mode,
                             Some(true),
-                            "+ Object point",
+                            "+ Объект",
                         );
                         ui.selectable_value(
                             &mut self.segmentation_ui.point_mode,
                             Some(false),
-                            "− Background",
+                            "− Фон",
                         );
                     });
                     ui.horizontal(|ui| {
-                        if ui.button("Undo point").clicked() {
+                        if ui.button("Убрать точку").clicked() {
                             self.segmentation_ui.points.pop();
                         }
-                        if ui.button("Clear points").clicked() {
+                        if ui.button("Сбросить").clicked() {
                             self.segmentation_ui.points.clear();
                         }
-                        if ui.button("Paint tools").clicked() {
+                        if ui.button("Кисть маски").clicked() {
                             self.segmentation_ui.point_mode = None;
                         }
                     });
                     ui.small(format!(
-                        "{} points · click the canvas, then Segment",
+                        "Точек: {} · укажите объект на холсте",
                         self.segmentation_ui.points.len()
                     ));
                     if ui
@@ -169,7 +181,7 @@ impl ImageEditor {
                                     .join("model.safetensors")
                                     .is_file()
                                 && self.segmentation_ui.candidate.is_none(),
-                            egui::Button::new("Segment object"),
+                            egui::Button::new("Выделить объект"),
                         )
                         .clicked()
                     {
@@ -178,18 +190,13 @@ impl ImageEditor {
                     if ui
                         .add_enabled(
                             self.document.mask().iter().any(|v| *v > 0),
-                            egui::Button::new("Cut out active layer using mask"),
+                            egui::Button::new("Вырезать по маске"),
                         )
                         .clicked()
                     {
                         self.edit(cutout_selection);
                     }
                 });
-                ui.small("Refine the mask with Paint/Erase mask, then use it for inpaint.");
-                ui.hyperlink_to(
-                    "Official model · Meta",
-                    "https://huggingface.co/facebook/sam2.1-hiera-large",
-                );
                 if let Some(job) = &self.segmentation_ui.job {
                     ui.horizontal(|ui| {
                         ui.spinner();

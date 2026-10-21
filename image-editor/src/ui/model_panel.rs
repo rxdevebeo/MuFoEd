@@ -16,9 +16,9 @@ struct Cutout {
 }
 pub(super) struct ModelUi {
     root: PathBuf,
-    variant: String,
-    model: String,
-    auto_device: bool,
+    pub(super) variant: String,
+    pub(super) model: String,
+    pub(super) auto_device: bool,
     job: Option<ModelJob>,
     operation: Option<Operation>,
     source: Option<Source>,
@@ -113,22 +113,84 @@ impl ImageEditor {
             Err(e) => self.status = e.to_string(),
         }
     }
-    pub(super) fn model_tools_panel(&mut self, ui: &mut egui::Ui, actions: &mut Vec<FileAction>) {
-        egui::CollapsingHeader::new("Удаление фона · BiRefNet").default_open(true).show(ui,|ui|{
-            let busy=self.model_ui.job.is_some() || self.segmentation_operation_active() || self.plakat_active() || self.upscale_operation_active();
-            let previous=self.model_ui.variant.clone();
-            ui.add_enabled_ui(!busy,|ui|{
-                egui::ComboBox::from_id_salt("birefnet-variant").selected_text(match self.model_ui.variant.as_str(){"general"=>"General · 928 MiB","matting"=>"Matting · 928 MiB",_=>"General Tiny · 214 MiB"}).show_ui(ui,|ui|{for (id,label) in [("tiny","General Tiny · 214 MiB"),("general","General · 928 MiB"),("matting","Matting · 928 MiB")] {ui.selectable_value(&mut self.model_ui.variant,id.into(),label);}});
-                if previous!=self.model_ui.variant {self.model_ui.model=self.model_ui.root.join(format!("{}.onnx",self.model_ui.variant)).display().to_string();}
-                ui.add(egui::TextEdit::singleline(&mut self.model_ui.model).desired_width(f32::INFINITY));
-                ui.horizontal(|ui|{if ui.button("Load ONNX…").clicked(){actions.push(FileAction::BackgroundModel);}
-if ui.add_enabled(!PathBuf::from(&self.model_ui.model).is_file(),egui::Button::new("Download model")).clicked(){self.background_start(true);}});
-                ui.checkbox(&mut self.model_ui.auto_device,"Use GPU (ONNX provider if available)");
+    pub(super) fn background_settings(&mut self, ui: &mut egui::Ui, actions: &mut Vec<FileAction>) {
+        let busy = self.model_operation_active()
+            || self.segmentation_operation_active()
+            || self.plakat_active()
+            || self.upscale_operation_active();
+        let previous = self.model_ui.variant.clone();
+        ui.add_enabled_ui(!busy, |ui| {
+            egui::ComboBox::from_id_salt("birefnet-variant")
+                .selected_text(match self.model_ui.variant.as_str() {
+                    "general" => "General · 928 MiB",
+                    "matting" => "Matting · 928 MiB",
+                    _ => "General Tiny · 214 MiB",
+                })
+                .show_ui(ui, |ui| {
+                    for (id, label) in [
+                        ("tiny", "General Tiny · 214 MiB"),
+                        ("general", "General · 928 MiB"),
+                        ("matting", "Matting · 928 MiB"),
+                    ] {
+                        ui.selectable_value(&mut self.model_ui.variant, id.into(), label);
+                    }
+                });
+            if previous != self.model_ui.variant {
+                self.model_ui.model = self
+                    .model_ui
+                    .root
+                    .join(format!("{}.onnx", self.model_ui.variant))
+                    .display()
+                    .to_string();
+            }
+            ui.add(
+                egui::TextEdit::singleline(&mut self.model_ui.model).desired_width(f32::INFINITY),
+            );
+            ui.horizontal(|ui| {
+                if ui.button("Load ONNX…").clicked() {
+                    actions.push(FileAction::BackgroundModel);
+                }
+                if ui
+                    .add_enabled(
+                        !PathBuf::from(&self.model_ui.model).is_file(),
+                        egui::Button::new("Download model"),
+                    )
+                    .clicked()
+                {
+                    self.background_start(true);
+                }
             });
-            ui.hyperlink_to("Official BiRefNet models","https://github.com/ZhengPeng7/BiRefNet/releases/tag/v1");
-            ui.small("Active layer → transparent cutout. Accepting hides the original layer; Undo restores it.");
-            if ui.add_enabled(!busy && self.model_ui.candidate.is_none() && PathBuf::from(&self.model_ui.model).is_file(),egui::Button::new("Remove background")).clicked(){self.background_start(false);}
+            ui.checkbox(
+                &mut self.model_ui.auto_device,
+                "Use GPU (ONNX provider if available)",
+            );
         });
+        ui.hyperlink_to(
+            "Official BiRefNet models",
+            "https://github.com/ZhengPeng7/BiRefNet/releases/tag/v1",
+        );
+        ui.small("Active layer → transparent cutout. Accepting hides the original layer; Undo restores it.");
+    }
+    pub(super) fn model_tools_panel(&mut self, ui: &mut egui::Ui, _actions: &mut Vec<FileAction>) {
+        egui::CollapsingHeader::new("Удаление фона")
+            .default_open(true)
+            .show(ui, |ui| {
+                let busy = self.model_ui.job.is_some()
+                    || self.segmentation_operation_active()
+                    || self.plakat_active()
+                    || self.upscale_operation_active();
+                if ui
+                    .add_enabled(
+                        !busy
+                            && self.model_ui.candidate.is_none()
+                            && PathBuf::from(&self.model_ui.model).is_file(),
+                        egui::Button::new("Удалить фон"),
+                    )
+                    .clicked()
+                {
+                    self.background_start(false);
+                }
+            });
         if let Some(job) = &self.model_ui.job {
             ui.horizontal(|ui| {
                 ui.spinner();

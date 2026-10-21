@@ -1,4 +1,5 @@
 """Process-local model/embedding cache controlled exclusively by the Rust host."""
+import contextlib
 import gc
 import hashlib
 import os
@@ -86,3 +87,29 @@ def metrics():
     if any(hasattr(value, "get_providers") and value.get_providers()[0] != "CPUExecutionProvider" for value in MODELS.values()):
         vram = None  # ORT has no per-session CUDA allocator measurement here.
     return {"ram": ram, "vram": vram, "loads": LOADS, "hits": HITS, "embedding_hits": EMBED_HITS, "pid": os.getpid()}
+
+
+# Opt-in diagnostics returned in the existing worker acknowledgement.
+TIMINGS = []
+
+@contextlib.contextmanager
+def timed(name):
+    if not os.environ.get("IMAGE_STUDIO_TIMINGS"):
+        yield
+        return
+    import time
+    import sys
+    torch = sys.modules.get("torch")
+    def synchronize():
+        if torch is not None and torch.cuda.is_initialized():
+            torch.cuda.synchronize()
+    synchronize()
+    at = time.time_ns() // 1_000_000
+    began = time.perf_counter()
+    try:
+        yield
+    finally:
+        synchronize()
+        TIMINGS.append({"stage": name, "start_ms": at,
+                        "elapsed_ms": (time.perf_counter() - began) * 1000,
+                        "pid": os.getpid(), "source": "python"})

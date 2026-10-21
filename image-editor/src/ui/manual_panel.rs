@@ -293,7 +293,7 @@ impl ImageEditor {
         }
     }
     pub(super) fn manual_shortcuts(&mut self, ui: &Ui) {
-        if ui.ctx().egui_wants_keyboard_input() {
+        if self.transform_preview_active() || ui.ctx().egui_wants_keyboard_input() {
             return;
         }
         let mods = ui.input(|i| i.modifiers);
@@ -530,7 +530,7 @@ impl ImageEditor {
                 }
             });
     }
-    pub(super) fn manual_dock(&mut self, ui: &mut Ui) {
+    pub(super) fn manual_dock(&mut self, ui: &mut Ui, actions: &mut Vec<super::FileAction>) {
         panel_header(ui, "Ручная работа", "Цвет · слои · свойства изображения");
         ui.horizontal(|ui| {
             ui.label("Цвет");
@@ -582,6 +582,30 @@ impl ImageEditor {
             }
         });
         ui.add_space(8.0);
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    self.document.layers().len() < 16,
+                    egui::Button::new("Слой из файла…"),
+                )
+                .clicked()
+            {
+                actions.push(super::FileAction::ImportLayer);
+            }
+            let unlocked = !self.document.layers()[self.document.active()].locked();
+            if ui
+                .add_enabled(unlocked, egui::Button::new("Трансформация…"))
+                .clicked()
+            {
+                self.open_layer_dialog(false);
+            }
+            if ui
+                .add_enabled(unlocked, egui::Button::new("Цветокоррекция…"))
+                .clicked()
+            {
+                self.open_layer_dialog(true);
+            }
+        });
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.manual_ui.properties, false, "Слои");
             ui.selectable_value(&mut self.manual_ui.properties, true, "Свойства");
@@ -932,49 +956,50 @@ impl ImageEditor {
     }
     fn manual_properties(&mut self, ui: &mut Ui) {
         ui.strong("Холст");
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::DragValue::new(&mut self.dimensions[0])
-                    .range(8..=8192)
-                    .prefix("Ш "),
-            );
-            ui.add(
-                egui::DragValue::new(&mut self.dimensions[1])
-                    .range(8..=8192)
-                    .prefix("В "),
-            );
-        });
-        ui.horizontal(|ui| {
+        ui.label(format!(
+            "{} × {} px",
+            self.document.width(),
+            self.document.height()
+        ));
+        ui.horizontal_wrapped(|ui| {
             if ui.button("Новый…").clicked() {
                 self.confirm_new = true;
             }
             if ui.button("Размер…").clicked() {
-                let [w, h] = self.dimensions;
-                self.edit(|d| d.resize(w, h));
+                self.open_canvas_dialog();
             }
-            if ui.button("90° ↻").clicked() {
-                self.edit(|d| {
-                    d.rotate90();
-                    Ok(())
-                });
+            if ui.button("Поворот…").clicked() {
+                self.open_rotation_dialog();
             }
         });
+        if ui.button("Кадрирование · C").clicked() {
+            self.select_manual_tool(ManualTool::Crop);
+        }
+        ui.small("Выделите область на холсте · Enter — обрезать · Esc — отменить");
+        if ui
+            .button("Очистить холст")
+            .on_hover_text(
+                "Удалить все слои и маску, создать новый пустой слой. Ctrl+Z — отменить.",
+            )
+            .clicked()
+        {
+            self.edit(Document::clear_canvas);
+        }
+        if ui
+            .button("Удалить остальные слои")
+            .on_hover_text("Оставить текущий слой с его изображением")
+            .clicked()
+        {
+            self.edit(Document::retain_active_layer);
+        }
+        ui.checkbox(&mut self.pixel_grid, "Пиксельная сетка");
+        ui.small("Сетка появляется при масштабе от 600%");
         ui.add_space(10.0);
         ui.separator();
         ui.strong("Активный слой");
         ui.label(self.document.layers()[self.document.active()].name());
         let locked = self.document.layers()[self.document.active()].locked();
         ui.add_enabled_ui(!locked, |ui| {
-            ui.add(egui::Slider::new(&mut self.brightness, -255..=255).text("Яркость"));
-            if ui.button("Применить яркость").clicked() {
-                let v = self.brightness;
-                self.edit(|d| d.adjust(Adjustment::Brightness(v)));
-            }
-            ui.add(egui::Slider::new(&mut self.contrast, -100.0..=100.0).text("Контраст"));
-            if ui.button("Применить контраст").clicked() {
-                let v = self.contrast;
-                self.edit(|d| d.adjust(Adjustment::Contrast(v)));
-            }
             ui.add(egui::Slider::new(&mut self.blur, 0.1..=20.0).text("Размытие"));
             if ui.button("Применить размытие").clicked() {
                 let v = self.blur;
@@ -1005,7 +1030,7 @@ impl ImageEditor {
     }
     #[allow(clippy::too_many_lines)] // Gesture begin/update/end and cancellation stay in one dispatcher.
     pub(super) fn manual_canvas(&mut self, ui: &Ui, response: &Response) {
-        if self.segmentation_point_mode() {
+        if self.navigation.interacting || self.segmentation_point_mode() {
             self.finish_manual_stroke();
             self.manual_ui.start = None;
             return;

@@ -24,6 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         doc.stroke([200.0, 200.0], [300.0, 300.0], 60.0, [0; 4], Tool::Mask)?;
     }
     let mut request = Request {
+        sampler: image_editor::generation::Sampler::Dpmpp2mKarras,
         family: Some(image_editor::assets::Family::Sdxl),
         cache_dir: Some(cache),
         model: "local/image-studio-sdxl".into(),
@@ -38,24 +39,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         steps: 12,
         ..Request::default()
     };
-    if let Some(path) = std::env::var_os("IMAGE_STUDIO_SMOKE_LORA") {
-        request.loras.push(image_editor::generation::Lora {
-            path: path.into(),
-            weight: 0.65,
-            enabled: true,
-        });
-    }
-    if let Some(path) = std::env::var_os("IMAGE_STUDIO_SMOKE_VAE") {
-        request.vae = Some(path.into());
-    }
-    if std::env::var_os("IMAGE_STUDIO_SMOKE_WIDE").is_some() {
-        request.output_size = Some([640, 384]);
-    }
-    if std::env::var_os("IMAGE_STUDIO_SMOKE_INVERT").is_some() {
-        request.mask_invert = true;
-        request.mask_feather = 8;
-    }
-    let manager = mufoed_model_runtime::Runtime::new(mufoed_model_runtime::Policy::default());
+    configure_request(&mut request)?;
+    let manager = mufoed_model_runtime::Runtime::global();
     #[cfg(feature = "ollama")]
     managed_text_if_enabled(&manager)?;
     let mut job = check_queue_and_start(request, &doc, &manager)?;
@@ -98,16 +83,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+fn configure_request(request: &mut Request) -> Result<(), Box<dyn std::error::Error>> {
+    if let Ok(model) = std::env::var("IMAGE_STUDIO_SMOKE_MODEL") {
+        request.model = model;
+    }
+    if let Ok(prompt) = std::env::var("IMAGE_STUDIO_SMOKE_PROMPT") {
+        request.prompt = prompt;
+    }
+    if let Ok(steps) = std::env::var("IMAGE_STUDIO_SMOKE_STEPS") {
+        request.steps = steps.parse()?;
+    }
+    if std::env::var_os("IMAGE_STUDIO_SMOKE_1024").is_some() {
+        request.output_size = Some([1024, 1024]);
+    }
+    if let Ok(loras) = std::env::var("IMAGE_STUDIO_SMOKE_LORAS") {
+        request.loras = serde_json::from_str(&loras)?;
+    }
+    if let Some(path) = std::env::var_os("IMAGE_STUDIO_SMOKE_LORA") {
+        request.loras.push(image_editor::generation::Lora {
+            path: path.into(),
+            weight: 0.65,
+            enabled: true,
+        });
+    }
+    if let Some(path) = std::env::var_os("IMAGE_STUDIO_SMOKE_VAE") {
+        request.vae = Some(path.into());
+    }
+    if std::env::var_os("IMAGE_STUDIO_SMOKE_WIDE").is_some() {
+        request.output_size = Some([640, 384]);
+    }
+    if std::env::var_os("IMAGE_STUDIO_SMOKE_INVERT").is_some() {
+        request.mask_invert = true;
+        request.mask_feather = 8;
+    }
+    Ok(())
+}
+
 fn check_queue_and_start(
     request: Request,
     doc: &Document,
     manager: &mufoed_model_runtime::Runtime,
 ) -> Result<NativeJob, Box<dyn std::error::Error>> {
-    let mut text = manager.enqueue(mufoed_model_runtime::Task::new(
-        "text",
-        "simulated-host-task",
-    ))?;
-    let text_lease = text.try_start()?.ok_or("Text admission failed")?;
+    let mut task = mufoed_model_runtime::Task::new("text", "simulated-host-task");
+    task.device = "cpu".into();
+    task.memory = mufoed_model_runtime::Memory {
+        ram: Some(0),
+        vram: Some(0),
+    };
+    let text = manager.enqueue(task)?;
+    let text_lease = text.wait(
+        &std::sync::atomic::AtomicBool::new(false),
+        std::time::Duration::from_secs(120),
+    )?;
     let mut queued = NativeJob::start_with_runtime(request.clone(), doc, manager)?;
     assert!(queued.poll()?.is_none());
     queued.cancel();

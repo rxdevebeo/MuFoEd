@@ -28,3 +28,7 @@ checkpoint; возможное удержание device-моделей при �
 
 - [x] После генерации: low-denoise Img2Img и UltraSharp 1×, отмена/ошибки без частичного применения, сохранение recipe в PSD.
 - [x] Центрирование всех egui-диалогов; parent window для системных файловых диалогов demo.
+
+- [x] Ускорение полного SDXL/Hires цикла: cuDNN, подготовленный dtype-кэш, CLIP conditioning в общем Runtime, ограниченный attention; A/B cold+5warm и launcher. [Результаты](GENERATION-OPTIMIZATION-RESULTS.md).
+- [ ] Отдельно исследовать admission Ollama для qwen3.5:4b: текущая оценка RAM142976420855B отклоняет запрос на этой машине до inference. Причина завышения/контракт контекста пока не установлены. Llama3:text→SDXL→text проходит. Если исправление потребует менять model-runtime, сначала согласовать изменение библиотеки по AGENTS.md.
+- [ ] Следующая измеряемая цель: UNet denoise (~48с из66с в эталоне); проверить совместимый fused attention под Windows sm120 отдельно, не отключать защитный PLAKAT_NO_SDPA без численных и аппаратных проверок.

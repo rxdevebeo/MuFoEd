@@ -3,11 +3,21 @@
 
 use crate::{Document, EditError, Raster};
 mod pipeline;
-pub use pipeline::{PipelineJob, Postprocess};
+pub use pipeline::{HiresFix, PipelineJob, Postprocess};
+#[cfg(feature = "plakat")]
+mod dpmpp;
 #[cfg(feature = "plakat")]
 mod managed_sd;
 #[cfg(feature = "plakat")]
 mod native;
+#[cfg(feature = "plakat")]
+mod plakat_unet;
+#[cfg(feature = "plakat")]
+mod prompt_tokens;
+#[cfg(feature = "plakat")]
+mod vae_tiles;
+#[cfg(feature = "plakat")]
+mod worker;
 #[cfg(feature = "plakat")]
 pub use native::NativeJob;
 use serde::{Deserialize, Serialize};
@@ -70,9 +80,22 @@ pub enum Mode {
     Inpaint,
 }
 
+/// Diffusion sampling algorithm recorded in settings and generation recipes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Sampler {
+    /// Historical Plakat scheduler; missing fields in old recipes retain this behavior.
+    #[default]
+    Ddim,
+    /// Second-order DPM-Solver++ midpoint with Karras sigmas and an exact final x0 step.
+    Dpmpp2mKarras,
+}
+
 /// Reproducible generation parameters. Models and weights belong to Plakat.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Request {
+    /// Diffusion solver; old serialized recipes default to DDIM.
+    #[serde(default)]
+    pub sampler: Sampler,
     /// Completed postprocessing recipe; use `PipelineJob` to execute it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub postprocess: Option<Postprocess>,
@@ -116,6 +139,7 @@ pub struct Request {
 impl Default for Request {
     fn default() -> Self {
         Self {
+            sampler: Sampler::Ddim,
             postprocess: None,
             family: None,
             output_size: None,
@@ -142,6 +166,20 @@ impl Request {
             self.output_size.unwrap_or([doc.width(), doc.height()])
         } else {
             [doc.width(), doc.height()]
+        }
+    }
+    /// Final output dimensions, including an optional Hires Fix second pass.
+    pub fn final_size(&self, doc: &Document) -> [u32; 2] {
+        self.expected_size([doc.width(), doc.height()])
+    }
+    fn expected_size(&self, source: [u32; 2]) -> [u32; 2] {
+        if self.mode == Mode::TextToImage {
+            self.postprocess
+                .as_ref()
+                .and_then(|p| p.hires.as_ref())
+                .map_or_else(|| self.output_size.unwrap_or(source), |h| h.target_size)
+        } else {
+            source
         }
     }
     /// Reject invalid parameters before starting any process or downloading weights.
@@ -173,6 +211,28 @@ impl Request {
             return Err(invalid(
                 "Generation dimensions must be divisible by 8; resize the canvas first",
             ));
+        }
+        if let Some(post) = &self.postprocess {
+            post.validate_parameters()?;
+            if let Some(hires) = &post.hires {
+                if self.output_size.is_none() {
+                    return Err(invalid("Hires Fix requires explicit first-pass dimensions"));
+                }
+                if self.mode != Mode::TextToImage {
+                    return Err(invalid("Hires Fix requires text-to-image generation"));
+                }
+                let [w, h] = hires.target_size;
+                if w < width || h < height || [w, h] == [width, height] {
+                    return Err(invalid(
+                        "Hires Fix target must be larger than the first pass",
+                    ));
+                }
+                if u64::from(w) > u64::from(width) * 4 || u64::from(h) > u64::from(height) * 4 {
+                    return Err(invalid(
+                        "Hires Fix enlargement must not exceed 4x per dimension",
+                    ));
+                }
+            }
         }
         if self.mask_feather > 128 || self.loras.len() > 16 {
             return Err(invalid("Too many LoRAs or excessive mask feathering"));
@@ -214,6 +274,9 @@ impl Request {
     /// Build the verified CLI argument vector. Paths and prompt remain separate arguments.
     pub fn arguments(&self, doc: &Document, directory: &Path) -> Result<Vec<OsString>, EditError> {
         self.validate(doc)?;
+        if self.sampler != Sampler::Ddim {
+            return Err(EditError::Invalid("DPM++ 2M Karras requires the embedded backend; the pinned CLI uses a different solver".into()));
+        }
         if self.vae.is_some() {
             return Err(EditError::Invalid(
                 "Optional VAE requires the embedded Plakat backend".into(),
@@ -479,13 +542,7 @@ fn finish_candidate(
     source: Raster,
     mask: &[u8],
 ) -> Result<Candidate, EditError> {
-    let expected = if request.mode == Mode::TextToImage {
-        request
-            .output_size
-            .unwrap_or([source.width(), source.height()])
-    } else {
-        [source.width(), source.height()]
-    };
+    let expected = request.expected_size([source.width(), source.height()]);
     if [raster.width(), raster.height()] != expected {
         return Err(EditError::Invalid(
             "Plakat returned different dimensions; result was not applied".into(),

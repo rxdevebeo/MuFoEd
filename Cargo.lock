@@ -3594,6 +3594,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokenizers 0.20.4",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

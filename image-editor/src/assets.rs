@@ -132,6 +132,14 @@ pub fn inspect(path: &Path) -> Result<Asset, EditError> {
             name = format!("{} · {}", receipt.name, receipt.version);
         }
     }
+    if let Ok(data) = std::fs::read(path.with_extension("huggingface.json")) {
+        if let Ok(receipt) = serde_json::from_slice::<crate::huggingface::Receipt>(&data) {
+            if family == Family::Unknown {
+                family = receipt.family;
+            }
+            name = format!("{} · {}", receipt.repo, receipt.file);
+        }
+    }
     Ok(Asset {
         path: path.to_owned(),
         name,
@@ -199,6 +207,11 @@ pub fn scan(root: &Path, cache: Option<&Path>) -> Result<Vec<Asset>, EditError> 
                         }
                     }
                 }
+            }
+        }
+        for asset in crate::huggingface::cached_bundles(cache) {
+            if !out.iter().any(|a| a.path == asset.path) {
+                out.push(asset);
             }
         }
         for repo in std::fs::read_dir(cache).into_iter().flatten().flatten() {

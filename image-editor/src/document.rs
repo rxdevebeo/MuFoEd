@@ -1,3 +1,12 @@
+#[path = "photo_geometry.rs"]
+mod photo_geometry;
+pub use photo_geometry::PhotoGeometry;
+#[path = "color.rs"]
+mod color;
+pub use color::ColorCorrection;
+#[path = "transform.rs"]
+mod transform;
+pub use transform::CanvasMode;
 #[path = "manual.rs"]
 mod manual;
 #[path = "psd.rs"]

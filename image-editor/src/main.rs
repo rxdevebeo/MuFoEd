@@ -1,10 +1,19 @@
 //! Standalone review host for the image-editor crate.
+mod preferences;
 use image_editor::{
     ui::{FileAction, ImageEditor},
     Document, EditError, Raster,
 };
 
 fn main() -> eframe::Result {
+    let preferences_path = preferences::path();
+    let loaded_settings = preferences::load(&preferences_path);
+    if let Ok(Some(settings)) = &loaded_settings {
+        if let Some(cache) = settings.cache_dir() {
+            std::env::set_var("IMAGE_STUDIO_CACHE", cache);
+            std::env::set_var("PLAKAT_CACHE_DIR", cache);
+        }
+    }
     // Configure Plakat once, before eframe or any inference worker starts threads.
     #[cfg(windows)]
     std::env::set_var("PLAKAT_NO_SDPA", "1");
@@ -34,23 +43,19 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Image Studio",
         options,
-        Box::new(|cc| {
+        Box::new(move |cc| {
             image_editor::ui::apply_studio_style(&cc.egui_ctx);
             let mut editor = ImageEditor::default();
-            if std::env::var_os("IMAGE_STUDIO_SHOT").is_some() {
-                match std::env::var("IMAGE_STUDIO_SHOT_DIALOG").as_deref() {
-                    Ok("memory") => editor.open_memory_panel(),
-                    Ok("edit") => editor.select_tab(image_editor::ui::StudioTab::Edit),
-                    Ok("upscale") => editor.select_tab(image_editor::ui::StudioTab::Upscale),
-                    Ok("img2img") => {
-                        editor.set_generation_mode(image_editor::generation::Mode::ImageToImage);
+            match loaded_settings {
+                Ok(Some(settings)) => {
+                    if let Err(e) = editor.apply_settings(settings) {
+                        editor.set_status(format!("Настройки: {e}"));
                     }
-                    Ok("model") => editor.open_resource_dialog(image_editor::assets::Kind::Model),
-                    Ok("lora") => editor.open_resource_dialog(image_editor::assets::Kind::Lora),
-                    Ok("civitai") => editor.open_civitai_dialog(image_editor::assets::Kind::Model),
-                    _ => {}
                 }
+                Err(e) => editor.set_status(format!("Не удалось прочитать настройки: {e}")),
+                Ok(None) => {}
             }
+
             if let Some(path) = std::env::args_os().nth(1) {
                 let path = std::path::Path::new(&path);
                 let result = if path.extension().is_some_and(|e| {
@@ -65,7 +70,10 @@ fn main() -> eframe::Result {
                     Err(e) => editor.set_status(e.to_string()),
                 }
             }
+            open_shot_dialog(&mut editor);
+            let preferences = preferences::Preferences::new(preferences_path, editor.settings());
             Ok(Box::new(Demo {
+                preferences,
                 editor,
                 frames: 0,
                 shot: std::env::var_os("IMAGE_STUDIO_SHOT").map(Into::into),
@@ -77,7 +85,42 @@ fn main() -> eframe::Result {
         }),
     )
 }
+fn open_shot_dialog(editor: &mut ImageEditor) {
+    if std::env::var_os("IMAGE_STUDIO_SHOT").is_some() {
+        match std::env::var("IMAGE_STUDIO_SHOT_DIALOG").as_deref() {
+            Ok("color") => editor.open_color_dialog(),
+            Ok("layer") => editor.open_layer_transform_dialog(),
+            Ok("hf") => {
+                if let Ok(repo) = std::env::var("IMAGE_STUDIO_SHOT_HF_REPO") {
+                    editor.open_huggingface_repository(
+                        &repo,
+                        "main",
+                        image_editor::assets::Kind::Model,
+                    );
+                } else {
+                    editor.open_huggingface_dialog(image_editor::assets::Kind::Model);
+                }
+            }
+            Ok("presets") => editor.open_presets(),
+            Ok("settings") => editor.open_settings(),
+            Ok("canvas") => editor.open_canvas_dialog(),
+            Ok("rotate") => editor.open_rotation_dialog(),
+            Ok("memory") => editor.open_memory_panel(),
+            Ok("edit") => editor.select_tab(image_editor::ui::StudioTab::Edit),
+            Ok("upscale") => editor.select_tab(image_editor::ui::StudioTab::Upscale),
+            Ok("img2img") => {
+                editor.set_generation_mode(image_editor::generation::Mode::ImageToImage);
+            }
+            Ok("model") => editor.open_resource_dialog(image_editor::assets::Kind::Model),
+            Ok("lora") => editor.open_resource_dialog(image_editor::assets::Kind::Lora),
+            Ok("civitai") => editor.open_civitai_dialog(image_editor::assets::Kind::Model),
+            _ => {}
+        }
+    }
+}
+
 struct Demo {
+    preferences: preferences::Preferences,
     editor: ImageEditor,
     frames: u32,
     shot: Option<std::path::PathBuf>,
@@ -88,6 +131,14 @@ struct Demo {
 }
 impl Demo {
     fn begin_shutdown(&mut self) {
+        if let Err(e) = self
+            .preferences
+            .poll(self.editor.settings())
+            .and_then(|()| self.preferences.flush())
+        {
+            self.editor
+                .set_status(format!("Не удалось сохранить настройки: {e}"));
+        }
         drop(self.editor.shutdown_models());
         self.releasing = Some(mufoed_model_runtime::Runtime::global().shutdown_async());
     }
@@ -115,8 +166,34 @@ impl Demo {
             }
         }
     }
+    fn preset_file_dialog(&mut self, import: bool, frame: &eframe::Frame) -> Result<(), EditError> {
+        let dialog = rfd::FileDialog::new()
+            .set_parent(frame)
+            .add_filter("Generation presets", &["json"]);
+        let path = if import {
+            dialog.pick_file()
+        } else {
+            dialog
+                .set_file_name("image-studio-presets.json")
+                .save_file()
+        };
+        if let Some(path) = path {
+            if import {
+                let count = self.editor.import_presets(path)?;
+                self.editor
+                    .set_status(format!("Импортировано пресетов: {count}"));
+            } else {
+                self.editor.export_presets(path)?;
+                self.editor.set_status("Пресеты экспортированы");
+            }
+        }
+        Ok(())
+    }
     fn file_action(&mut self, action: FileAction, frame: &eframe::Frame) -> Result<(), EditError> {
         match action {
+            FileAction::ImportPresets | FileAction::ExportPresets => {
+                self.preset_file_dialog(matches!(action, FileAction::ImportPresets), frame)?;
+            }
             FileAction::UltraSharpModel => {
                 if let Some(path) = rfd::FileDialog::new()
                     .set_parent(frame)
@@ -156,7 +233,7 @@ impl Demo {
                     self.editor.add_asset(&path)?;
                 }
             }
-            FileAction::OpenImage => {
+            FileAction::OpenImage | FileAction::ImportLayer => {
                 if let Some(path) = rfd::FileDialog::new()
                     .set_parent(frame)
                     .add_filter(
@@ -165,8 +242,12 @@ impl Demo {
                     )
                     .pick_file()
                 {
-                    self.editor
-                        .replace(Document::from_raster(Raster::open(path)?)?);
+                    if matches!(action, FileAction::ImportLayer) {
+                        self.editor.import_layer_file(&path)?;
+                    } else {
+                        self.editor
+                            .replace(Document::from_raster(Raster::open(path)?)?);
+                    }
                 }
             }
             FileAction::OpenProject => {
@@ -218,6 +299,12 @@ impl eframe::App for Demo {
                 self.editor.set_status(e.to_string());
             }
         }
+        if let Err(e) = self.preferences.poll(self.editor.settings()) {
+            self.editor
+                .set_status(format!("Не удалось сохранить настройки: {e}"));
+        }
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(500));
         if ui.input(|i| i.viewport().close_requested()) && !self.close_ready {
             ui.ctx()
                 .send_viewport_cmd(egui::ViewportCommand::CancelClose);

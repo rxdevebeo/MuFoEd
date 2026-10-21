@@ -16,6 +16,7 @@ def main():
         response = Path(request["response"])
         worker_cache.PHASE_FILE = Path(request["phase_file"]) if "phase_file" in request else None
         result = {}
+        worker_cache.TIMINGS.clear()
         try:
             with contextlib.redirect_stdout(sys.stderr):
                 if request["action"] == "offload":
@@ -28,6 +29,8 @@ def main():
                 else:
                     raise ValueError("Unknown worker action")
             result.update(worker_cache.metrics())
+            if worker_cache.TIMINGS:
+                result["timings"] = list(worker_cache.TIMINGS)
             result["ok"] = True
         except Exception as error:
             result = {"ok": False, "error": str(error), "trace": traceback.format_exc()}

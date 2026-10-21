@@ -4,7 +4,16 @@ use crate::{
     Document, EditError, History, Raster,
 };
 use egui::{Color32, TextureHandle};
+mod canvas_navigation;
+mod hires_panel;
+mod layer_dialog;
+mod preset_panel;
+mod transform_preview;
+pub use preset_panel::GenerationPreset;
+mod settings;
+pub use settings::EditorSettings;
 mod generation_panel;
+mod geometry_dialog;
 mod manual_panel;
 mod runtime_panel;
 pub use manual_panel::ManualTool;
@@ -108,6 +117,8 @@ type RunningJob = crate::generation::PipelineJob;
 pub enum FileAction {
     /// Import a raster as a new document.
     OpenImage,
+    /// Import a raster as a new layer in the current document.
+    ImportLayer,
     /// Restore a layered project.
     OpenProject,
     /// Persist layers and mask.
@@ -124,6 +135,10 @@ pub enum FileAction {
     UltraSharpModel,
     /// Choose a local `AuraSR` v2 model/config directory.
     AuraSrModel,
+    /// Import a named generation preset JSON library.
+    ImportPresets,
+    /// Export named generation presets to JSON.
+    ExportPresets,
 }
 
 /// Reusable image editor widget with manual tools and generation staging.
@@ -133,6 +148,7 @@ pub struct ImageEditor {
     document: Document,
     history: History,
     texture: Option<TextureHandle>,
+    transform_preview: transform_preview::TransformPreview,
     candidate_texture: Option<TextureHandle>,
     changed: bool,
     unsaved: bool,
@@ -142,6 +158,7 @@ pub struct ImageEditor {
     color: Color32,
     radius: f32,
     zoom: f32,
+    navigation: canvas_navigation::Navigation,
     request: Request,
     executable: String,
     job: Option<RunningJob>,
@@ -150,14 +167,19 @@ pub struct ImageEditor {
     status: String,
     dimensions: [u32; 2],
     crop: [u32; 4],
-    brightness: i32,
-    contrast: f32,
+    layer_dialog: layer_dialog::LayerDialog,
+    pixel_grid: bool,
     blur: f32,
     generation_ui: generation_panel::GenerationUi,
     model_ui: model_panel::ModelUi,
     segmentation_ui: segmentation_panel::SegmentationUi,
     upscale_ui: upscale_panel::UpscaleUi,
     active_tab: StudioTab,
+    presets: Vec<GenerationPreset>,
+    preset_ui: preset_panel::PresetUi,
+    settings_open: bool,
+    settings_tab: usize,
+    geometry: geometry_dialog::GeometryDialog,
 }
 impl Default for ImageEditor {
     fn default() -> Self {
@@ -183,10 +205,12 @@ impl ImageEditor {
         } else if tab == StudioTab::Create && self.request.mode == Mode::Inpaint {
             self.request.mode = Mode::TextToImage;
         }
+        self.disable_hires_for_source_mode();
     }
     /// Choose generation from text, source pixels, or a painted mask.
     pub fn set_generation_mode(&mut self, mode: Mode) {
         self.request.mode = mode;
+        self.disable_hires_for_source_mode();
         self.active_tab = if mode == Mode::Inpaint {
             StudioTab::Edit
         } else {
@@ -211,6 +235,7 @@ impl ImageEditor {
             document,
             history: History::default(),
             texture: None,
+            transform_preview: transform_preview::TransformPreview::default(),
             candidate_texture: None,
             changed: true,
             unsaved: false,
@@ -220,7 +245,9 @@ impl ImageEditor {
             color: Color32::from_rgb(80, 160, 240),
             radius: 12.0,
             zoom: 1.0,
+            navigation: canvas_navigation::Navigation::default(),
             request: Request {
+                sampler: crate::generation::Sampler::Dpmpp2mKarras,
                 postprocess: Some(crate::generation::Postprocess::default()),
                 model,
                 family: Some(family),
@@ -235,14 +262,19 @@ impl ImageEditor {
             status: "Готово · рисуйте, откройте изображение или запустите генерацию".into(),
             dimensions,
             crop: [0, 0, dimensions[0], dimensions[1]],
-            brightness: 10,
-            contrast: 10.0,
+            layer_dialog: layer_dialog::LayerDialog::default(),
+            pixel_grid: false,
             blur: 1.5,
             generation_ui: generation_panel::GenerationUi::default(),
             model_ui: model_panel::ModelUi::default(),
             segmentation_ui: segmentation_panel::SegmentationUi::default(),
             upscale_ui: upscale_panel::UpscaleUi::default(),
             active_tab: StudioTab::Create,
+            presets: Vec::new(),
+            preset_ui: preset_panel::PresetUi::default(),
+            settings_open: false,
+            settings_tab: 0,
+            geometry: geometry_dialog::GeometryDialog::default(),
         }
     }
     /// Shared model coordinator, also used by the host's text and vision adapters.
@@ -267,8 +299,10 @@ impl ImageEditor {
         let request = self.request.clone();
         let use_library = self.use_library;
         let active_tab = self.active_tab;
+        let pixel_grid = self.pixel_grid;
         let generation_ui = std::mem::take(&mut self.generation_ui);
         let runtime_ui = std::mem::take(&mut self.runtime_ui);
+        let presets = std::mem::take(&mut self.presets);
         let mut model_ui = std::mem::take(&mut self.model_ui);
         model_ui.reset_project();
         let mut segmentation_ui = std::mem::take(&mut self.segmentation_ui);
@@ -280,8 +314,10 @@ impl ImageEditor {
         self.request = request;
         self.use_library = use_library;
         self.active_tab = active_tab;
+        self.pixel_grid = pixel_grid;
         self.generation_ui = generation_ui;
         self.runtime_ui = runtime_ui;
+        self.presets = presets;
         self.model_ui = model_ui;
         self.segmentation_ui = segmentation_ui;
         self.upscale_ui = upscale_ui;
@@ -446,6 +482,9 @@ impl ImageEditor {
                     if ui.button("По размеру").clicked() {
                         fit_canvas = true;
                     }
+                    if ui.button("Настройки…").clicked() {
+                        self.open_settings();
+                    }
                     if ui.button("Память моделей").clicked() {
                         self.open_memory_panel();
                     }
@@ -458,7 +497,7 @@ impl ImageEditor {
             .default_size(310.0)
             .min_size(285.0)
             .frame(panel_frame())
-            .show(ui, |ui| self.manual_dock(ui));
+            .show(ui, |ui| self.manual_dock(ui, &mut actions));
         egui::Panel::left("image-generation")
             .resizable(true)
             .default_size(380.0)
@@ -491,6 +530,8 @@ impl ImageEditor {
                 ui.separator();
                 let reserve = if self.active_tab == StudioTab::Upscale {
                     0.0
+                } else if self.job.is_some() {
+                    128.0
                 } else {
                     84.0
                 };
@@ -511,7 +552,7 @@ impl ImageEditor {
                             self.model_tools_panel(ui, &mut actions);
                             self.segmentation_panel(ui, &mut actions);
                             ui.separator();
-                            self.generation_panel(ui, &mut actions);
+                            self.mask_actions(ui);
                         }
                         StudioTab::Upscale => {
                             panel_header(
@@ -546,6 +587,7 @@ impl ImageEditor {
             .show(ui, |ui| {
                 if fit_canvas || self.manual_ui.fit_once {
                     self.manual_ui.fit_once = false;
+                    self.navigation = canvas_navigation::Navigation::default();
                     let available = ui.available_size();
                     self.zoom = ((available.x - 16.0) / self.document.width() as f32)
                         .min((available.y - 40.0) / self.document.height() as f32)
@@ -567,6 +609,7 @@ impl ImageEditor {
                 });
                 ui.add_space(6.0);
                 if self.changed || self.texture.is_none() {
+                    self.transform_preview.layers.clear();
                     let raster = self.document.flatten();
                     let mut pixels = raster.pixels().to_vec();
                     for (p, mask) in pixels.chunks_exact_mut(4).zip(self.document.mask()) {
@@ -594,36 +637,35 @@ impl ImageEditor {
                     self.changed = false;
                 }
                 let canvas_space = ui.available_size();
-                egui::ScrollArea::both()
+                self.canvas_pan(ui);
+                let offset = self.canvas_wheel_zoom(ui, canvas_space);
+                let mut canvas_scroll =
+                    egui::ScrollArea::both().id_salt(canvas_navigation::SCROLL_ID);
+                if let Some(offset) = offset {
+                    canvas_scroll = canvas_scroll.scroll_offset(offset);
+                }
+                canvas_scroll
                     .scroll_source(egui::scroll_area::ScrollSource {
-                        drag: if self.manual_ui.tool == ManualTool::Hand {
-                            egui::scroll_area::DragScroll::Always
-                        } else {
-                            egui::scroll_area::DragScroll::Never
-                        },
+                        drag: egui::scroll_area::DragScroll::Never,
                         ..Default::default()
                     })
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        let size =
-                            egui::vec2(self.document.width() as f32, self.document.height() as f32)
-                                * self.zoom;
+                        let size = self.preview_canvas_size() * self.zoom;
                         let (space, _) =
                             ui.allocate_exact_size(canvas_space.max(size), egui::Sense::hover());
-                        let image_rect = egui::Rect::from_center_size(space.center(), size);
-                        let response = ui.put(
+                        let image_rect = egui::Rect::from_center_size(
+                            space.center() + self.navigation.offset,
+                            size,
+                        );
+                        let response = ui.interact(
                             image_rect,
-                            egui::Image::new((
-                                self.texture.as_ref().expect("canvas texture").id(),
-                                size,
-                            ))
-                            .sense(
-                                if self.manual_ui.tool == ManualTool::Hand {
-                                    egui::Sense::hover()
-                                } else {
-                                    egui::Sense::click_and_drag()
-                                },
-                            ),
+                            ui.id().with("canvas-image"),
+                            if self.manual_ui.tool == ManualTool::Hand {
+                                egui::Sense::hover()
+                            } else {
+                                egui::Sense::click_and_drag()
+                            },
                         );
                         // Checkerboard shows actual alpha; it is never written to the image.
                         let painter = ui
@@ -662,14 +704,27 @@ impl ImageEditor {
                                 );
                             }
                         }
-                        painter.image(
-                            self.texture.as_ref().expect("canvas texture").id(),
-                            response.rect,
-                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                            Color32::WHITE,
-                        );
-                        self.segmentation_canvas(ui, &response);
-                        self.manual_canvas(ui, &response);
+                        if !self.paint_transform_preview(ui, &painter, response.rect) {
+                            painter.image(
+                                self.texture.as_ref().expect("canvas texture").id(),
+                                response.rect,
+                                egui::Rect::from_min_max(
+                                    egui::pos2(0.0, 0.0),
+                                    egui::pos2(1.0, 1.0),
+                                ),
+                                Color32::WHITE,
+                            );
+                        }
+                        if !self.transform_preview_active()
+                            && !self.navigation.interacting
+                            && self.manual_ui.tool != ManualTool::Hand
+                        {
+                            self.segmentation_canvas(ui, &response);
+                        }
+                        if !self.transform_preview_active() {
+                            self.draw_pixel_grid(ui, response.rect);
+                            self.manual_canvas(ui, &response);
+                        }
                     });
             });
         if self.confirm_new {
@@ -770,6 +825,10 @@ impl ImageEditor {
         self.segmentation_preview(&context);
         self.upscale_preview(&context);
         self.runtime_panel(&context);
+        actions.extend(self.settings_window(ui.ctx()));
+        actions.extend(self.preset_window(ui.ctx()));
+        self.geometry_window(ui.ctx());
+        self.layer_window(ui.ctx());
         actions
     }
 }

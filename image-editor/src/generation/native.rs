@@ -85,35 +85,33 @@ impl NativeJob {
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = cancelled.clone();
         let (sender, receiver) = mpsc::channel();
-        std::thread::Builder::new()
-            .name("image-studio-plakat".into())
-            .spawn(move || {
-                let worker_permit = permit;
-                let result = ticket
-                    .wait(&worker_cancelled, std::time::Duration::from_secs(900))
-                    .map_err(|e| EditError::Invalid(e.to_string()))
-                    .and_then(|lease| {
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            run(
-                                request,
-                                source,
-                                &mask,
-                                &mask_raster,
-                                &worker_cancelled,
-                                &lease,
-                            )
-                        }))
-                        .unwrap_or_else(|_| {
-                            lease.set_phase(mufoed_model_runtime::Phase::Failed);
-                            let cleanup = lease.release_idle();
-                            Err(EditError::Invalid(format!(
-                                "Plakat worker panicked; cleanup: {cleanup:?}"
-                            )))
-                        })
-                    });
-                drop(worker_permit); // The next pipeline stage may start as soon as the result is received.
-                let _ = sender.send(result);
-            })?;
+        super::worker::dispatch(Box::new(move || {
+            let worker_permit = permit;
+            let result = ticket
+                .wait(&worker_cancelled, std::time::Duration::from_secs(900))
+                .map_err(|e| EditError::Invalid(e.to_string()))
+                .and_then(|lease| {
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        run(
+                            request,
+                            source,
+                            &mask,
+                            &mask_raster,
+                            &worker_cancelled,
+                            &lease,
+                        )
+                    }))
+                    .unwrap_or_else(|_| {
+                        lease.set_phase(mufoed_model_runtime::Phase::Failed);
+                        let cleanup = lease.release_idle();
+                        Err(EditError::Invalid(format!(
+                            "Plakat worker panicked; cleanup: {cleanup:?}"
+                        )))
+                    })
+                });
+            drop(worker_permit); // The next pipeline stage may start as soon as the result is received.
+            let _ = sender.send(result);
+        }))?;
         Ok(Self {
             receiver,
             cancelled,
@@ -163,6 +161,26 @@ pub(super) fn estimate(request: &Request, size: [u32; 2]) -> mufoed_model_runtim
     let memory = super::memory_estimate(request, size);
     #[cfg(feature = "plakat-cuda")]
     {
+        let mut memory = memory;
+        if super::vae_tiles::needed(size) {
+            let pixels = u64::from(size[0]) * u64::from(size[1]);
+            let xl = request.family == Some(crate::assets::Family::Sdxl)
+                || (request.family.is_none() && request.model.to_lowercase().contains("xl"));
+            // Sequential CFG: one batch, eager attention retains scores + softmax in F32.
+            // Head slicing retains at most 2 heads: SDXL grid 1/16, SD1.5 grid 1/8.
+            // Baseline covers model weights; linear workspace includes convolutions,
+            // transfers and retained skip activations. VAE uses bounded 512px tiles.
+            let (baseline, tokens, heads) = if xl {
+                (6_u64 << 30, pixels.div_ceil(256), 2)
+            } else {
+                (3_u64 << 30, pixels.div_ceil(64), 2)
+            };
+            memory.vram = Some(
+                baseline
+                    + pixels.saturating_mul(1024)
+                    + tokens.saturating_mul(tokens).saturating_mul(heads * 8),
+            );
+        }
         memory
     }
     #[cfg(not(feature = "plakat-cuda"))]
@@ -190,9 +208,11 @@ fn run(
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
+    let io_timing = crate::profiling::scope("native.input_png");
     let input = tempfile::tempdir()?;
     source.save_png(input.path().join("input.png"))?;
     super::save_mask(mask_raster, &input.path().join("mask.png"))?;
+    drop(io_timing);
     let estimate = mufoed_model_runtime::Memory {
         ram: Some(16 << 20),
         vram: Some(0),
@@ -220,4 +240,31 @@ fn run(
         )
         .map_err(EditError::Invalid)?;
     super::finish_candidate(raster, request, source, mask)
+}
+
+#[cfg(all(test, feature = "plakat-cuda"))]
+mod tests {
+    use super::*;
+    #[test]
+    fn high_resolution_estimate_matches_sequential_cfg_and_bounded_vae() {
+        let request = Request {
+            family: Some(crate::assets::Family::Sdxl),
+            ..Request::default()
+        };
+        assert_eq!(
+            estimate(&request, [1024, 1024]),
+            super::super::memory_estimate(&request, [1024, 1024])
+        );
+        let peak = estimate(&request, [1536, 1536]).vram.unwrap();
+        assert_eq!(
+            peak,
+            (6_u64 << 30) + 1536 * 1536 * 1024 + 9216 * 9216 * 2 * 8
+        );
+        assert!(peak < 13_726_593_844); // Reported 5070 Ti budget, including host reserve.
+        assert!(estimate(&request, [2048, 2048]).vram.unwrap() > 13_u64 << 30);
+        assert_eq!(
+            estimate(&request, [768, 3072]),
+            estimate(&request, [1536, 1536])
+        );
+    }
 }

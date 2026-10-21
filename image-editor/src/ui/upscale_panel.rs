@@ -8,13 +8,13 @@ use std::{
 
 pub(super) struct UpscaleUi {
     root: PathBuf,
-    variant: String,
-    ultrasharp: String,
-    aurasr: String,
-    ultrasharp_weight: f32,
-    aura_weight: f32,
-    tile: u32,
-    auto_device: bool,
+    pub(super) variant: String,
+    pub(super) ultrasharp: String,
+    pub(super) aurasr: String,
+    pub(super) ultrasharp_weight: f32,
+    pub(super) aura_weight: f32,
+    pub(super) tile: u32,
+    pub(super) auto_device: bool,
     job: Option<ModelJob>,
     source: Option<Raster>,
     download: Option<String>,
@@ -223,7 +223,35 @@ impl ImageEditor {
             Err(e) => self.status = e.to_string(),
         }
     }
-    pub(super) fn upscale_panel(&mut self, ui: &mut egui::Ui, actions: &mut Vec<FileAction>) {
+    pub(super) fn upscale_settings(&mut self, ui: &mut egui::Ui, actions: &mut Vec<FileAction>) {
+        ui.add_enabled_ui(!self.settings_busy(), |ui| {
+            egui::ComboBox::from_id_salt("upscale-method")
+                .selected_text(match self.upscale_ui.variant.as_str() {
+                    "ultrasharp" => "4x-UltraSharp only",
+                    "aurasr" => "AuraSR v2 only",
+                    _ => "Mix UltraSharp + AuraSR v2",
+                })
+                .show_ui(ui, |ui| {
+                    for (id, label) in [
+                        ("blend", "Mix UltraSharp + AuraSR v2"),
+                        ("ultrasharp", "4x-UltraSharp only"),
+                        ("aurasr", "AuraSR v2 only"),
+                    ] {
+                        ui.selectable_value(&mut self.upscale_ui.variant, id.into(), label);
+                    }
+                });
+            self.upscale_model_controls(ui, actions);
+            ui.checkbox(&mut self.upscale_ui.auto_device, "Use CUDA if available");
+            egui::ComboBox::from_id_salt("upscale-tile")
+                .selected_text(format!("UltraSharp tile: {} px", self.upscale_ui.tile))
+                .show_ui(ui, |ui| {
+                    for n in [128, 256, 512] {
+                        ui.selectable_value(&mut self.upscale_ui.tile, n, format!("{n} px"));
+                    }
+                });
+        });
+    }
+    pub(super) fn upscale_panel(&mut self, ui: &mut egui::Ui, _actions: &mut Vec<FileAction>) {
         egui::CollapsingHeader::new("UltraSharp / AuraSR v2")
             .default_open(true)
             .show(ui, |ui| {
@@ -232,24 +260,8 @@ impl ImageEditor {
                     || self.segmentation_operation_active()
                     || self.plakat_active();
                 ui.add_enabled_ui(!busy, |ui| {
-                    egui::ComboBox::from_id_salt("upscale-method")
-                        .selected_text(match self.upscale_ui.variant.as_str() {
-                            "ultrasharp" => "4x-UltraSharp only",
-                            "aurasr" => "AuraSR v2 only",
-                            _ => "Mix UltraSharp + AuraSR v2",
-                        })
-                        .show_ui(ui, |ui| {
-                            for (id, label) in [
-                                ("blend", "Mix UltraSharp + AuraSR v2"),
-                                ("ultrasharp", "4x-UltraSharp only"),
-                                ("aurasr", "AuraSR v2 only"),
-                            ] {
-                                ui.selectable_value(&mut self.upscale_ui.variant, id.into(), label);
-                            }
-                        });
-                    self.upscale_model_controls(ui, actions);
                     ui.add_enabled_ui(self.upscale_ui.variant == "blend", |ui| {
-                        ui.label("Mix weights (normalized to 100%)");
+                        ui.label("Веса смешивания (сумма приводится к 100%)");
                         ui.add(
                             egui::Slider::new(&mut self.upscale_ui.ultrasharp_weight, 0.0..=1.0)
                                 .text("UltraSharp")
@@ -269,35 +281,16 @@ impl ImageEditor {
                             self.upscale_ui.aura_weight,
                         ) {
                             ui.small(format!(
-                                "Result: UltraSharp {:.0}% · AuraSR v2 {:.0}%",
+                                "Смесь: UltraSharp {:.0}% · AuraSR v2 {:.0}%",
                                 a * 100.0,
                                 b * 100.0
                             ));
                         }
                     }
-                    ui.checkbox(&mut self.upscale_ui.auto_device, "Use CUDA if available");
-                    egui::ComboBox::from_id_salt("upscale-tile")
-                        .selected_text(format!("UltraSharp tile: {} px", self.upscale_ui.tile))
-                        .show_ui(ui, |ui| {
-                            for n in [128, 256, 512] {
-                                ui.selectable_value(
-                                    &mut self.upscale_ui.tile,
-                                    n,
-                                    format!("{n} px"),
-                                );
-                            }
-                        });
-                    ui.small(format!(
-                        "{} × {} -> {} × {} · source composite",
-                        self.document.width(),
-                        self.document.height(),
-                        self.document.width() * 4,
-                        self.document.height() * 4
-                    ));
                     if ui
                         .add_enabled(
                             self.upscale_ui.candidate.is_none(),
-                            egui::Button::new("Upscale 4×"),
+                            egui::Button::new("Увеличить 4×"),
                         )
                         .clicked()
                     {

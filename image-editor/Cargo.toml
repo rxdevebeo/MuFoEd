@@ -10,13 +10,15 @@ license.workspace = true
 default = []
 ollama = ["mufoed-model-runtime/ollama"]
 demo = ["dep:eframe", "dep:rfd"]
-plakat = ["dep:plakat", "dep:tokio", "dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:anyhow"]
+plakat = ["dep:plakat", "dep:tokio", "dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:anyhow", "dep:tracing"]
 plakat-cuda = ["plakat", "plakat/cuda"]
+plakat-cudnn = ["plakat-cuda", "plakat/cudnn"]
 
 [dependencies]
 ag-psd = "=0.3.0"
 flate2 = "1"
 anyhow = { version = "1", optional = true }
+tracing = { version = "0.1", optional = true }
 candle-nn = { version = "0.10.2", optional = true }
 candle-transformers = { version = "0.10.2", optional = true }
 tokenizers = { version = "0.20", default-features = false, features = ["onig"], optional = true }
@@ -55,4 +57,12 @@ required-features = ["plakat"]
 
 [[example]]
 name = "postprocess_smoke"
+required-features = ["plakat"]
+
+[[example]]
+name = "hires_smoke"
+required-features = ["plakat"]
+
+[[example]]
+name = "generation_bench"
 required-features = ["plakat"]

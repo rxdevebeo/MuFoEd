@@ -345,6 +345,7 @@ impl Job {
                     let lease = ticket
                         .wait(&worker_cancel, Duration::from_secs(900))
                         .map_err(|e| e.to_string())?;
+                    let setup_timing = crate::profiling::scope("python.identity_and_admission");
                     let mut hash = Sha256::new();
                     hash.update(format!("python-worker-v1:{script}:{}", backend_versions()?));
                     for name in [script.as_str(), "model_worker.py", "worker_cache.py"] {
@@ -369,6 +370,8 @@ impl Job {
                     let uuid = lease.prepare(estimate, device).map_err(|e| e.to_string())?;
                     hash.update(uuid.as_bytes());
                     let key = format!("python:{script}:{:x}", hash.finalize());
+                    drop(setup_timing);
+                    let execute_timing = crate::profiling::scope("python.execute");
                     let value = lease.retry(estimate, device, &worker_cancel, |_| {
                         let output = directory.path().join("output.png");
                         if output.exists() {
@@ -382,6 +385,9 @@ impl Job {
                             Some(&lease),
                         )
                     })?;
+                    drop(execute_timing);
+                    crate::profiling::python(&value);
+                    let _decode = crate::profiling::scope("python.output_png");
                     let path = directory.path().join("output.png");
                     let raster = Raster::open(path).map_err(|e| e.to_string())?;
                     Ok(Output {

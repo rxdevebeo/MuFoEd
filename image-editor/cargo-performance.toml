@@ -1,0 +1,14 @@
+# Invoke from the workspace root with --config image-editor/cargo-performance.toml.
+# Editor/inference-only compilation settings; no workspace source changes.
+[profile.dev.package.image-editor]
+opt-level = 3
+[profile.dev.package.candle-core]
+opt-level = 3
+[profile.dev.package.candle-nn]
+opt-level = 3
+[profile.dev.package.candle-transformers]
+opt-level = 3
+[profile.dev.package.plakat]
+opt-level = 2
+[profile.dev.package.sha2]
+opt-level = 3

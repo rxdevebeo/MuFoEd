@@ -1,3 +1,5 @@
+#[path = "huggingface_panel.rs"]
+mod huggingface_panel;
 use super::{panel_header, Color32, EditError, FileAction, ImageEditor, Mode, RunningJob, ACCENT};
 use crate::{
     assets::{self, Asset, Family, Kind, Preparation},
@@ -30,10 +32,17 @@ impl Drop for Worker {
         self.cancelled.store(true, Ordering::Release);
     }
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Catalog {
+    Local,
+    Civitai,
+    HuggingFace,
+}
 pub(super) struct GenerationUi {
     assets: Vec<Asset>,
-    dialog: Option<Kind>,
-    online: bool,
+    pub(super) dialog: Option<Kind>,
+    catalog: Catalog,
+    hf: huggingface_panel::HuggingFaceUi,
     query: String,
     filter: String,
     root: String,
@@ -44,11 +53,11 @@ pub(super) struct GenerationUi {
     worker: Option<Worker>,
     prepare: Option<Preparation>,
     progress: Option<(u64, Option<u64>)>,
-    model_name: String,
+    pub(super) model_name: String,
     custom_model: String,
     custom_family: Family,
-    random_seed: bool,
-    seed_text: String,
+    pub(super) random_seed: bool,
+    pub(super) seed_text: String,
     pub(super) show_mask: bool,
 }
 impl Default for GenerationUi {
@@ -56,7 +65,8 @@ impl Default for GenerationUi {
         Self {
             assets: Vec::new(),
             dialog: None,
-            online: false,
+            catalog: Catalog::Local,
+            hf: huggingface_panel::HuggingFaceUi::default(),
             query: String::new(),
             filter: String::new(),
             root: std::env::var("IMAGE_STUDIO_MODELS").unwrap_or_else(|_| "D:/Models".into()),
@@ -122,7 +132,7 @@ impl ImageEditor {
         self.generation_ui.cursor = None;
         self.generation_ui.filter.clear();
         if kind == Kind::Vae {
-            self.generation_ui.online = false;
+            self.generation_ui.catalog = Catalog::Local;
         }
         if self.generation_ui.assets.is_empty() {
             self.scan_assets();
@@ -131,9 +141,14 @@ impl ImageEditor {
     /// Open the online checkpoint/adapter catalog. VAE selection stays local.
     pub fn open_civitai_dialog(&mut self, kind: Kind) {
         self.open_resource_dialog(kind);
-        self.generation_ui.online = kind != Kind::Vae;
+        self.generation_ui.catalog = if kind == Kind::Vae {
+            Catalog::Local
+        } else {
+            Catalog::Civitai
+        };
     }
     pub(super) fn poll_assets(&mut self, context: &egui::Context) {
+        self.poll_huggingface(context);
         let mut done = false;
         if let Some(worker) = &self.generation_ui.worker {
             loop {
@@ -167,7 +182,7 @@ impl ImageEditor {
                     Ok(Event::Downloaded(asset)) => {
                         self.generation_ui.assets.retain(|a| a.path != asset.path);
                         self.generation_ui.assets.push(asset);
-                        self.generation_ui.online = false;
+                        self.generation_ui.catalog = Catalog::Local;
                         self.status = "SHA256 verified; resource added to local library".into();
                         done = true;
                     }
@@ -290,6 +305,9 @@ impl ImageEditor {
     fn choose_asset(&mut self, asset: Asset) {
         match asset.kind {
             Kind::Model => {
+                if self.request.vae.is_none() {
+                    self.request.vae = crate::huggingface::bundle_vae(&asset);
+                }
                 if let Some(model) = asset.ready_model {
                     self.request.model = model;
                     self.request.family = Some(asset.family);
@@ -342,12 +360,16 @@ impl ImageEditor {
     /// Whether the resource browser is still scanning, searching, preparing, or downloading.
     pub fn resource_operation_active(&self) -> bool {
         self.generation_ui.worker.is_some()
+            || self.generation_ui.hf.busy()
             || self.generation_ui.prepare.is_some()
             || self.runtime_ui.pending.is_some()
     }
     #[allow(clippy::too_many_lines)] // Immediate-mode controls share editor state.
     pub(super) fn generation_panel(&mut self, ui: &mut egui::Ui, actions: &mut Vec<FileAction>) {
-        if self.active_tab == super::StudioTab::Create {
+        if self.active_tab == super::StudioTab::Edit {
+            self.request.mode = Mode::Inpaint;
+            ui.strong("Inpaint · изменение выбранной области");
+        } else {
             panel_header(
                 ui,
                 "Создание изображения",
@@ -368,9 +390,10 @@ impl ImageEditor {
                         "По изображению",
                     );
                 });
-        } else {
-            self.request.mode = Mode::Inpaint;
-            ui.label(egui::RichText::new("Inpaint · изменение выбранной области").strong());
+        }
+        self.disable_hires_for_source_mode();
+        if ui.button("Пресеты…").clicked() {
+            self.open_presets();
         }
         self.source_controls(ui, actions);
         ui.label("Model");
@@ -405,6 +428,7 @@ impl ImageEditor {
         );
         ui.separator();
         self.size_controls(ui);
+        self.hires_ui(ui);
         ui.horizontal(|ui| {
             ui.label("Seed");
             ui.add(
@@ -436,22 +460,7 @@ impl ImageEditor {
         if self.request.mode == Mode::Inpaint {
             ui.separator();
             ui.label(egui::RichText::new("Mask").strong());
-            ui.horizontal(|ui| {
-                if ui.button("Paint mask").clicked() {
-                    self.select_manual_tool(super::ManualTool::Mask);
-                    self.stop_segmentation_points();
-                }
-                if ui.button("Erase mask").clicked() {
-                    self.select_manual_tool(super::ManualTool::Unmask);
-                    self.stop_segmentation_points();
-                }
-                if ui.button("Clear").clicked() {
-                    self.edit(|d| {
-                        d.clear_mask();
-                        Ok(())
-                    });
-                }
-            });
+            self.mask_actions(ui);
             ui.checkbox(
                 &mut self.request.mask_invert,
                 "Regenerate outside painted area",
@@ -520,20 +529,39 @@ impl ImageEditor {
             .truncate(),
         );
         ui.add_space(6.0);
-        ui.collapsing("Постобработка после генерации", |ui| {
-            let mut enabled=self.request.postprocess.is_some();
-            if ui.checkbox(&mut enabled,"Img2Img → UltraSharp без увеличения").changed() {
-                self.request.postprocess=enabled.then(crate::generation::Postprocess::default);
-            }
-            if let Some(post)=&mut self.request.postprocess {
-                ui.add(egui::Slider::new(&mut post.denoise,0.0..=0.5).text("Denoise"));
-                ui.horizontal(|ui|{ui.label("Шаги Img2Img");ui.add(egui::DragValue::new(&mut post.steps).range(1..=150));});
-                ui.checkbox(&mut post.auto_device,"UltraSharp на GPU");
-                ui.add(egui::Label::new(post.ultrasharp.display().to_string()).truncate());
-                if ui.button("Выбрать 4x-UltraSharp…").clicked(){actions.push(FileAction::UltraSharpModel);}
-                ui.small("Модель 4× обрабатывает тайлы; результат возвращается к исходному размеру. Модель генерации, prompt, LoRA, VAE и seed сохраняются.");
-            }
-        });
+    }
+    pub(super) fn generation_backend_settings(
+        &mut self,
+        ui: &mut egui::Ui,
+        actions: &mut Vec<FileAction>,
+    ) {
+        egui::CollapsingHeader::new("Обработка после генерации")
+            .default_open(
+                self.request
+                    .postprocess
+                    .as_ref()
+                    .is_some_and(|p| p.hires.is_some()),
+            )
+            .show(ui, |ui| {
+                self.hires_ui(ui);
+                if let Some(post) = &mut self.request.postprocess {
+                    if post.hires.is_none() {
+                        ui.add(egui::Slider::new(&mut post.denoise, 0.0..=0.5).text("Denoise"));
+                        ui.horizontal(|ui| {
+                            ui.label("Шаги Img2Img");
+                            ui.add(egui::DragValue::new(&mut post.steps).range(1..=150));
+                        });
+                        ui.small(
+                        "Img2Img → UltraSharp без увеличения, как в сохранённых старых настройках.",
+                    );
+                    }
+                    ui.checkbox(&mut post.auto_device, "UltraSharp на GPU");
+                    ui.add(egui::Label::new(post.ultrasharp.display().to_string()).truncate());
+                    if ui.button("Выбрать 4x-UltraSharp…").clicked() {
+                        actions.push(FileAction::UltraSharpModel);
+                    }
+                }
+            });
         ui.collapsing("Engine settings", |ui| {
             #[cfg(feature = "plakat")]
             ui.add_enabled(
@@ -551,12 +579,45 @@ impl ImageEditor {
             ));
         });
     }
+    pub(super) fn mask_actions(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if ui.button("Кисть маски").clicked() {
+                self.select_manual_tool(super::ManualTool::Mask);
+                self.stop_segmentation_points();
+            }
+            if ui.button("Ластик маски").clicked() {
+                self.select_manual_tool(super::ManualTool::Unmask);
+                self.stop_segmentation_points();
+            }
+            if ui.button("Очистить").clicked() {
+                self.edit(|d| {
+                    d.clear_mask();
+                    Ok(())
+                });
+            }
+        });
+    }
     pub(super) fn generation_action(&mut self, ui: &mut egui::Ui) {
         if self.job.is_some() {
             ui.horizontal(|ui| {
                 ui.spinner();
                 ui.label(self.job.as_ref().map_or("Генерация…", RunningJob::stage));
             });
+            if self
+                .runtime
+                .snapshot()
+                .active
+                .is_some_and(|task| task.owner == "image")
+            {
+                if let Some(event) = self
+                    .runtime
+                    .events()
+                    .last()
+                    .filter(|event| !event.detail.is_empty())
+                {
+                    ui.small(&event.detail);
+                }
+            }
             if ui
                 .add_sized(
                     [ui.available_width(), 40.0],
@@ -582,9 +643,13 @@ impl ImageEditor {
                     ui.add_sized(
                         [ui.available_width(), 42.0],
                         egui::Button::new(
-                            egui::RichText::new("Generate")
-                                .strong()
-                                .color(Color32::WHITE),
+                            egui::RichText::new(if self.active_tab == super::StudioTab::Edit {
+                                "Изменить по маске"
+                            } else {
+                                "Создать изображение"
+                            })
+                            .strong()
+                            .color(Color32::WHITE),
                         )
                         .fill(ACCENT),
                     )
@@ -715,9 +780,9 @@ impl ImageEditor {
             Kind::Lora => "Add LoRA",
             Kind::Vae => "Select optional VAE",
         };
-        egui::Window::new(title).id(egui::Id::new("resource-dialog")).open(&mut open).anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).default_size([760.0,560.0]).min_width(600.0).min_height(480.0).collapsible(false).show(context,|ui|{
-            ui.horizontal(|ui|{ui.selectable_value(&mut self.generation_ui.online,false,"Local library");if kind!=Kind::Vae {ui.selectable_value(&mut self.generation_ui.online,true,"Civitai");}});ui.separator();
-            let busy=self.generation_ui.worker.is_some() || self.generation_ui.prepare.is_some() || self.runtime_ui.pending.is_some();
+        egui::Window::new(title).id(egui::Id::new("resource-dialog")).open(&mut open).anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).default_size([760.0,560.0]).min_width(600.0).max_width(760.0).resizable([false,true]).min_height(480.0).collapsible(false).show(context,|ui|{
+            ui.horizontal(|ui|{ui.selectable_value(&mut self.generation_ui.catalog,Catalog::Local,"Local library");if kind!=Kind::Vae {ui.selectable_value(&mut self.generation_ui.catalog,Catalog::Civitai,"Civitai");}ui.selectable_value(&mut self.generation_ui.catalog,Catalog::HuggingFace,"Hugging Face");});ui.separator();
+            let busy=self.generation_ui.worker.is_some() || self.generation_ui.hf.busy() || self.generation_ui.prepare.is_some() || self.runtime_ui.pending.is_some();
             if let Some(worker)=&self.generation_ui.worker {
                 ui.horizontal(|ui|{ui.spinner();ui.label(&worker.label);if ui.button("Cancel").clicked(){worker.cancelled.store(true,Ordering::Release);}});
                 if let Some((n,total))=self.generation_ui.progress {
@@ -726,7 +791,9 @@ impl ImageEditor {
                 }
             }
             if self.generation_ui.prepare.is_some() {ui.horizontal(|ui|{ui.spinner();ui.label("Preparing weights locally…");if ui.button("Cancel preparation").clicked(){self.generation_ui.prepare=None;}});}
-            if self.generation_ui.online {
+            if self.generation_ui.catalog == Catalog::HuggingFace {
+                self.huggingface_panel(ui,kind,busy);
+            } else if self.generation_ui.catalog == Catalog::Civitai {
                 ui.horizontal(|ui|{ui.add(egui::TextEdit::singleline(&mut self.generation_ui.query).hint_text("Search model or LoRA").desired_width(330.0));
                     egui::ComboBox::from_id_salt("civitai-base").selected_text(if self.generation_ui.base.is_empty(){"All families"}else{&self.generation_ui.base}).show_ui(ui,|ui|{for name in ["SDXL 1.0","SD 1.5","Illustrious","Pony",""] {ui.selectable_value(&mut self.generation_ui.base,name.to_owned(),if name.is_empty(){"All families"}else{name});}});
                     if ui.add_enabled(!busy,egui::Button::new("Search")).clicked(){self.search_civitai(false);}
@@ -734,15 +801,20 @@ impl ImageEditor {
                 ui.collapsing("Civitai access",|ui|{ui.label("Optional API token (memory only, or CIVITAI_TOKEN environment variable)");ui.add(egui::TextEdit::singleline(&mut self.generation_ui.token).password(true).desired_width(f32::INFINITY));ui.hyperlink_to("Account settings","https://civitai.com/user/account");});
                 ui.small("Select a version and file. Check the author's license on the model page. Downloaded checkpoints require local preparation.");
                 let mut download=None;
-                egui::ScrollArea::vertical().id_salt("civitai-results").max_height(350.0).show(ui,|ui|{
-                    for resource in &self.generation_ui.resources {ui.group(|ui|{
+                egui::ScrollArea::vertical().id_salt("civitai-results").auto_shrink([false,false]).max_height(350.0).show(ui,|ui|{
+                    let row_width=(ui.available_width()-egui::Frame::group(ui.style()).total_margin().sum().x).max(0.0);
+                    for resource in &self.generation_ui.resources {ui.group(|ui|{ui.set_width(row_width);
                         ui.label(egui::RichText::new(format!("{} · {}",resource.name,resource.version)).strong());
                         ui.label(format!("{} · {} · {:.0} MiB",resource.base_model,resource.file_name,resource.size_kb/1024.0));
                         if !resource.trained_words.is_empty(){ui.small(format!("Trigger words: {}",resource.trained_words.join(", ")));}
                         let family=Family::parse(&resource.base_model);
                         let compatible=family!=Family::Unknown && (kind!=Kind::Lora || self.request.family.is_none_or(|f|f==family || f==Family::Unknown));
-                        ui.horizontal(|ui|{ui.hyperlink_to("Model / license",format!("https://civitai.com/models/{}?modelVersionId={}",resource.model_id,resource.version_id));if ui.add_enabled(!busy && compatible,egui::Button::new("Download")).clicked(){download=Some(resource.clone());}
-if !compatible {ui.label("Unsupported or incompatible family");}});
+                        ui.horizontal(|ui|{ui.hyperlink_to("Model / license",format!("https://civitai.com/models/{}?modelVersionId={}",resource.model_id,resource.version_id));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.add_enabled(!busy && compatible,egui::Button::new(egui::RichText::new("Download").color(Color32::WHITE)).fill(ACCENT).min_size(egui::vec2(160.0,32.0))).clicked(){download=Some(resource.clone());}
+                                if !compatible {ui.label("Unsupported or incompatible family");}
+                            });
+                        });
                     });}
                 });
                 if let Some(resource)=download {self.download_resource(resource);}
@@ -752,13 +824,17 @@ if !compatible {ui.label("Unsupported or incompatible family");}});
 if ui.add_enabled(!busy,egui::Button::new("Add file…")).clicked(){actions.push(FileAction::AddAsset);}});
                 ui.add(egui::TextEdit::singleline(&mut self.generation_ui.filter).hint_text("Filter local library").desired_width(f32::INFINITY));
                 let filter=self.generation_ui.filter.to_lowercase();let mut chosen=None;
-                egui::ScrollArea::vertical().id_salt("local-resources").max_height(330.0).show(ui,|ui|{
-                    for asset in self.generation_ui.assets.iter().filter(|a|a.kind==kind && a.name.to_lowercase().contains(&filter)) {ui.group(|ui|{
+                egui::ScrollArea::vertical().id_salt("local-resources").auto_shrink([false,false]).max_height(330.0).show(ui,|ui|{
+                    let row_width=(ui.available_width()-egui::Frame::group(ui.style()).total_margin().sum().x).max(0.0);
+                    for asset in self.generation_ui.assets.iter().filter(|a|a.kind==kind && a.name.to_lowercase().contains(&filter)) {ui.group(|ui|{ui.set_width(row_width);
                         ui.label(egui::RichText::new(&asset.name).strong());ui.add(egui::Label::new(asset.path.display().to_string()).truncate());
                         let compatible=kind!=Kind::Lora || self.request.family.is_none_or(|f|f==Family::Unknown || asset.family==Family::Unknown || f==asset.family);
                         ui.horizontal(|ui|{ui.label(format!("{:?} · {}",asset.family,if asset.ready_model.is_some() || kind==Kind::Lora {"Ready"}else{"Needs preparation"}));
                             let supported=kind!=Kind::Model || asset.family!=Family::Unknown;
-                            if ui.add_enabled(!busy && supported && compatible,egui::Button::new(if asset.ready_model.is_some() || kind==Kind::Lora {"Select"} else {"Prepare & select"})).clicked(){chosen=Some(asset.clone());}
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let label=if asset.ready_model.is_some() || kind==Kind::Lora {"Select"} else {"Prepare & select"};
+                                if ui.add_enabled(!busy && supported && compatible,egui::Button::new(egui::RichText::new(label).color(Color32::WHITE)).fill(ACCENT).min_size(egui::vec2(160.0,32.0))).clicked(){chosen=Some(asset.clone());}
+                            });
                         });
                         if kind==Kind::Lora && asset.family==Family::Unknown {ui.small("Family unknown: verify compatibility before generation.");}
                     });}

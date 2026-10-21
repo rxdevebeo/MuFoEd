@@ -5,9 +5,12 @@ pub mod assets;
 pub mod civitai;
 mod document;
 pub mod generation;
+pub mod huggingface;
 pub mod model_tools;
+mod profiling;
 pub mod ui;
 
 pub use document::{
-    Adjustment, BrushStyle, Document, EditError, History, Layer, Raster, Shape, Tool,
+    Adjustment, BrushStyle, CanvasMode, ColorCorrection, Document, EditError, History, Layer,
+    PhotoGeometry, Raster, Shape, Tool,
 };
