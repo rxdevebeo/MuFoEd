@@ -46,6 +46,9 @@ pub enum Format {
     Raw,
     /// HEIF / HEIC (recognized, not readable: no pure-Rust decoder).
     Heic,
+    /// A 3D model (glTF, FBX, COLLADA, OBJ, 3MF, STL, PLY, OFF), read as a
+    /// rendered preview.
+    Model,
 }
 
 /// Camera RAW extensions. Their embedded previews are what the gallery shows.
@@ -56,7 +59,7 @@ const RAW_EXTENSIONS: &[&str] = &[
 
 impl Format {
     /// Every format, in the order menus list them.
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
         Self::Png,
         Self::Jpeg,
         Self::WebP,
@@ -77,6 +80,7 @@ impl Format {
         Self::Psd,
         Self::Raw,
         Self::Heic,
+        Self::Model,
     ];
 
     /// The format's display name.
@@ -102,6 +106,7 @@ impl Format {
             Self::Psd => "PSD",
             Self::Raw => "RAW",
             Self::Heic => "HEIF",
+            Self::Model => "3D",
         }
     }
 
@@ -128,6 +133,7 @@ impl Format {
             Self::Psd => &["psd", "psb"],
             Self::Raw => RAW_EXTENSIONS,
             Self::Heic => &["heic", "heif", "hif"],
+            Self::Model => crate::model3d::EXTENSIONS,
         }
     }
 
@@ -164,7 +170,13 @@ impl Format {
     /// Whether this build can write the format.
     pub fn can_write(self) -> bool {
         match self {
-            Self::Dds | Self::Jxl | Self::Svg | Self::Psd | Self::Raw | Self::Heic => false,
+            Self::Dds
+            | Self::Jxl
+            | Self::Svg
+            | Self::Psd
+            | Self::Raw
+            | Self::Heic
+            | Self::Model => false,
             Self::Avif => cfg!(feature = "avif"),
             _ => true,
         }
@@ -203,7 +215,9 @@ impl Format {
             Self::Qoi => image::ImageFormat::Qoi,
             Self::Farbfeld => image::ImageFormat::Farbfeld,
             Self::Avif => image::ImageFormat::Avif,
-            Self::Jxl | Self::Svg | Self::Psd | Self::Raw | Self::Heic => return None,
+            Self::Jxl | Self::Svg | Self::Psd | Self::Raw | Self::Heic | Self::Model => {
+                return None
+            }
         })
     }
 
@@ -225,6 +239,13 @@ pub fn sniff(head: &[u8]) -> Option<Format> {
     }
     if head.starts_with(&[0xFF, 0x0A]) || head.starts_with(b"\0\0\0\x0CJXL \r\n\x87\n") {
         return Some(Format::Jxl);
+    }
+    if head.starts_with(b"glTF")
+        || head.starts_with(b"Kaydara FBX Binary")
+        || head.starts_with(b"ply\n")
+        || head.starts_with(b"ply\r\n")
+    {
+        return Some(Format::Model);
     }
     if head.starts_with(b"FUJIFILMCCD-RAW") {
         return Some(Format::Raw);

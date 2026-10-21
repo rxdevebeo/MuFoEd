@@ -60,6 +60,18 @@ const MAX_FILE: u64 = 2 << 30;
 
 /// Reads the file at `path`.
 pub fn load(path: &Path, options: &LoadOptions) -> Result<Decoded, Error> {
+    if Format::from_path(path) == Some(Format::Model) {
+        return crate::error::contain(|| {
+            let scene = crate::model3d::load(path)?;
+            let image = crate::model3d::preview(&scene, model_side(options));
+            Ok(plain(
+                DynamicImage::ImageRgba8(image),
+                Format::Model,
+                None,
+                None,
+            ))
+        });
+    }
     let size = std::fs::metadata(path)
         .map_err(|error| Error::io(path, error))?
         .len();
@@ -113,6 +125,11 @@ fn decode(data: &[u8], hint: Option<Format>, options: &LoadOptions) -> Result<De
             let decoder = jxl_oxide::integration::JxlDecoder::new(Cursor::new(data))?;
             from_decoder(decoder, format, options)?
         }
+        Format::Model => {
+            let scene = crate::model3d::load_bytes(data, None)?;
+            let image = crate::model3d::preview(&scene, model_side(options));
+            plain(DynamicImage::ImageRgba8(image), format, None, None)
+        }
         Format::Avif | Format::Heic => return Err(Error::Unsupported(format.name())),
         other => {
             let image_format = other
@@ -125,6 +142,11 @@ fn decode(data: &[u8], hint: Option<Format>, options: &LoadOptions) -> Result<De
     };
     orient(&mut decoded, options);
     Ok(decoded)
+}
+
+/// The side of a model preview: the vector fit when asked, else 1024.
+fn model_side(options: &LoadOptions) -> u32 {
+    options.vector_fit.unwrap_or(1024).clamp(16, 4096)
 }
 
 fn limits(options: &LoadOptions) -> image::Limits {

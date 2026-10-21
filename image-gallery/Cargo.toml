@@ -31,6 +31,13 @@ image = { version = "0.25.10", default-features = false, features = ["rayon", "b
 jxl-oxide = { version = "0.12", default-features = false, features = ["image", "rayon"], optional = true }
 resvg = { workspace = true, optional = true }
 miniz_oxide.workspace = true
+# 3D models.
+glam = "0.30"
+gltf = { version = "1.4", default-features = false, features = ["import", "utils", "names"] }
+tobj = { version = "4", default-features = false }
+stl_io = "0.11"
+roxmltree = "0.21"
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true

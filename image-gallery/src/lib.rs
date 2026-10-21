@@ -19,6 +19,8 @@
 //!   [`Gallery::show`] (or the ribbon and the content separately) and answers
 //!   the [`GalleryEvent`]s it returns, such as a request for a folder dialog.
 //!
+//! - [`model3d`] loads 3D models (glTF, FBX, COLLADA, OBJ, 3MF, STL, PLY,
+//!   OFF), plays their animations and renders them in software;
 //! - [`background`] removes backgrounds with the `BiRefNet` model through a
 //!   Python worker (`numpy`, `onnxruntime`), as Image Studio does.
 //!
@@ -35,6 +37,7 @@ pub mod formats;
 pub mod gallery;
 pub mod locale;
 mod lossless;
+pub mod model3d;
 pub mod naming;
 pub mod ops;
 mod psd;
