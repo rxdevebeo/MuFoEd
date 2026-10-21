@@ -21,7 +21,7 @@ impl Default for BrushStyle {
     }
 }
 impl BrushStyle {
-    fn validate(self) -> Result<(), EditError> {
+    pub(super) fn validate(self) -> Result<(), EditError> {
         if ![self.opacity, self.hardness]
             .iter()
             .all(|v| v.is_finite() && (0.0..=1.0).contains(v))
@@ -175,7 +175,7 @@ impl Document {
         self.layers[self.active].raster.pixels = pixels;
         Ok(())
     }
-    fn coverage(&self, index: usize, style: BrushStyle) -> f32 {
+    pub(super) fn coverage(&self, index: usize, style: BrushStyle) -> f32 {
         style.opacity
             * self
                 .selection

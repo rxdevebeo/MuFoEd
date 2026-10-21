@@ -243,6 +243,15 @@ impl ImageEditor {
         });
     }
     fn ribbon_selection(&mut self, ui: &mut Ui) {
+        group(ui, "Выбор по цвету", 170.0, |ui| {
+            if command(ui, "Волшебная палочка · W") {
+                self.select_manual_tool(ManualTool::Wand);
+            }
+            if command(ui, "По всему холсту · Shift+W") {
+                self.select_manual_tool(ManualTool::ColorSelect);
+            }
+            ui.small("Допуск — во вкладке инструмента");
+        });
         group(ui, "Область", 160.0, |ui| {
             ui.horizontal(|ui| {
                 for (tool, label) in [

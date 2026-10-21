@@ -4,6 +4,8 @@
     clippy::cast_sign_loss,
     clippy::cast_precision_loss
 )]
+#[path = "retouch_tools.rs"]
+mod retouch_tools;
 use super::{ImageEditor, ACCENT};
 use crate::{Adjustment, BrushStyle, Document, Raster, Shape, Tool};
 use egui::{Color32, Key, Pos2, Rect, Response, Sense, Stroke, TextureHandle, Ui, Vec2};
@@ -27,6 +29,14 @@ pub enum ManualTool {
     Select,
     /// Freehand polygon selection using the shared grayscale mask.
     Lasso,
+    /// Select a contiguous color region.
+    Wand,
+    /// Select matching colors across the canvas.
+    ColorSelect,
+    /// Copy pixels from an Alt-click source.
+    Clone,
+    /// Transfer texture with local color adaptation.
+    Heal,
     /// Paint foreground color.
     #[default]
     Brush,
@@ -61,6 +71,10 @@ impl ManualTool {
             Self::Move => "Перемещение",
             Self::Select => "Прямоугольное выделение",
             Self::Lasso => "Лассо",
+            Self::Wand => "Волшебная палочка",
+            Self::ColorSelect => "Выбор по цвету",
+            Self::Clone => "Штамп",
+            Self::Heal => "Восстанавливающая кисть",
             Self::Brush => "Кисть",
             Self::Eraser => "Ластик",
             Self::Mask => "Кисть маски",
@@ -88,6 +102,10 @@ impl ManualTool {
             Self::Gradient => "Shift+G",
             Self::Line => "Shift+L",
             Self::Lasso => "L",
+            Self::Wand => "W",
+            Self::ColorSelect => "Shift+W",
+            Self::Clone => "S",
+            Self::Heal => "J",
             Self::Rectangle => "U",
             Self::Ellipse => "Shift+U",
             Self::Eyedropper => "I",
@@ -109,6 +127,8 @@ impl ManualTool {
         !matches!(
             self,
             Self::Select
+                | Self::Wand
+                | Self::ColorSelect
                 | Self::Lasso
                 | Self::Mask
                 | Self::Unmask
@@ -124,6 +144,7 @@ impl ManualTool {
 pub(super) struct ManualUi {
     pub tool: ManualTool,
     pub target: EditTarget,
+    retouch: retouch_tools::RetouchUi,
     other_colors: [Color32; 2],
     background: Color32,
     opacity: f32,
@@ -151,6 +172,7 @@ impl Default for ManualUi {
         Self {
             tool: ManualTool::Brush,
             target: EditTarget::Raster,
+            retouch: retouch_tools::RetouchUi::default(),
             other_colors: [Color32::WHITE, Color32::BLACK],
             background: Color32::WHITE,
             opacity: 1.0,
@@ -212,6 +234,7 @@ impl ImageEditor {
         [self.color, self.manual_ui.background] = self.manual_ui.other_colors;
         self.manual_ui.other_colors = old;
         self.manual_ui.target = target;
+        self.manual_ui.retouch = retouch_tools::RetouchUi::default();
         self.stop_segmentation_points();
         if target == EditTarget::Mask {
             self.generation_ui.show_mask = true;
@@ -276,6 +299,7 @@ impl ImageEditor {
         }
     }
     pub(super) fn finish_manual_stroke(&mut self) {
+        self.manual_ui.retouch.stroke = None;
         if let Some((before, was_unsaved)) = self.manual_ui.stroke_before.take() {
             if before == self.document {
                 self.unsaved = was_unsaved;
@@ -298,6 +322,7 @@ impl ImageEditor {
         }
     }
     pub(super) fn restore_history(&mut self, redo: bool) {
+        self.manual_ui.retouch = retouch_tools::RetouchUi::default();
         if self.layer_dialog_open() {
             self.changed = true;
         }
@@ -332,6 +357,7 @@ impl ImageEditor {
         }
     }
     pub(super) fn layer_action(&mut self, action: LayerAction) {
+        self.manual_ui.retouch = retouch_tools::RetouchUi::default();
         if self.layer_dialog_open() {
             self.layer_dialog = super::layer_dialog::LayerDialog::default();
             self.changed = true;
@@ -404,6 +430,7 @@ impl ImageEditor {
             Ok(())
         });
     }
+    #[allow(clippy::too_many_lines)] // One keyboard dispatcher; tool variants share modifiers.
     pub(super) fn manual_shortcuts(&mut self, ui: &Ui) {
         if self.transform_preview_active() || ui.ctx().egui_wants_keyboard_input() {
             return;
@@ -441,6 +468,16 @@ impl ImageEditor {
         for (key, tool) in [
             (Key::V, ManualTool::Move),
             (Key::M, ManualTool::Select),
+            (
+                Key::W,
+                if mods.shift {
+                    ManualTool::ColorSelect
+                } else {
+                    ManualTool::Wand
+                },
+            ),
+            (Key::S, ManualTool::Clone),
+            (Key::J, ManualTool::Heal),
             (Key::B, ManualTool::Brush),
             (Key::E, ManualTool::Eraser),
             (
@@ -490,6 +527,7 @@ impl ImageEditor {
             self.radius = (self.radius * 1.25).min(256.0);
         }
         if ui.input(|i| i.key_pressed(Key::Escape)) {
+            self.manual_ui.retouch.stroke = None;
             if let Some((doc, unsaved)) = self.manual_ui.stroke_before.take() {
                 self.document = doc;
                 self.unsaved = unsaved;
@@ -520,7 +558,7 @@ impl ImageEditor {
                     self.start_canvas_transform();
                 }
             });
-            if tool.brush().is_some() {
+            if tool.brush().is_some() || matches!(tool, ManualTool::Clone | ManualTool::Heal) {
                 group(ui, "Форма кисти", 215.0, |ui| {
                     ui.add(
                         egui::DragValue::new(&mut self.radius)
@@ -554,6 +592,69 @@ impl ImageEditor {
                 });
             }
             match tool {
+                ManualTool::Wand | ManualTool::ColorSelect => {
+                    group(ui, "Образец", 210.0, |ui| {
+                        ui.add(
+                            egui::DragValue::new(&mut self.manual_ui.tolerance)
+                                .range(0..=255)
+                                .prefix("Допуск "),
+                        );
+                        if self.edit_target() == EditTarget::Raster {
+                            ui.checkbox(&mut self.manual_ui.merged_sample, "Все видимые слои");
+                        } else {
+                            ui.label("Покрытие маски: 0..255");
+                        }
+                        ui.small(if tool == ManualTool::Wand {
+                            "Только соседние пиксели"
+                        } else {
+                            "По всему холсту"
+                        });
+                    });
+                    group(ui, "Совмещение выделений", 225.0, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(
+                                &mut self.ribbon_ui.selection_op,
+                                crate::SelectionOp::Replace,
+                                "Заменить",
+                            );
+                            ui.selectable_value(
+                                &mut self.ribbon_ui.selection_op,
+                                crate::SelectionOp::Add,
+                                "Добавить",
+                            );
+                        });
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(
+                                &mut self.ribbon_ui.selection_op,
+                                crate::SelectionOp::Subtract,
+                                "Вычесть",
+                            );
+                            ui.selectable_value(
+                                &mut self.ribbon_ui.selection_op,
+                                crate::SelectionOp::Intersect,
+                                "Пересечь",
+                            );
+                        });
+                        ui.small("Shift: добавить · Alt: вычесть");
+                    });
+                }
+                ManualTool::Clone | ManualTool::Heal => {
+                    group(ui, "Источник ретуши", 310.0, |ui| {
+                        ui.small(if self.edit_target() == EditTarget::Mask {
+                            "Alt+ЛКМ — задать источник в маске"
+                        } else {
+                            "Alt+ЛКМ — источник на активном слое"
+                        });
+                        ui.small("Каждый штрих начинается с выбранного источника");
+                        if self.manual_ui.retouch.source.is_some() {
+                            if ui.button("Сбросить источник").clicked() {
+                                self.manual_ui.retouch = retouch_tools::RetouchUi::default();
+                            }
+                        } else {
+                            ui.weak("Источник ещё не задан");
+                        }
+                    });
+                }
                 ManualTool::Line | ManualTool::Rectangle | ManualTool::Ellipse => {
                     group(ui, "Фигура", 190.0, |ui| {
                         ui.add(
@@ -629,12 +730,19 @@ impl ImageEditor {
             }
         });
     }
+    #[allow(clippy::too_many_lines)] // Compact palette slots, popup variants and color footer.
     pub(super) fn manual_palette(&mut self, ui: &mut Ui) {
         let slots: &[&[ManualTool]] = &[
             &[ManualTool::Move],
-            &[ManualTool::Select, ManualTool::Lasso],
+            &[
+                ManualTool::Select,
+                ManualTool::Lasso,
+                ManualTool::Wand,
+                ManualTool::ColorSelect,
+            ],
             &[ManualTool::Brush],
             &[ManualTool::Eraser],
+            &[ManualTool::Clone, ManualTool::Heal],
             &[ManualTool::Fill, ManualTool::Gradient],
             &[ManualTool::Line, ManualTool::Rectangle, ManualTool::Ellipse],
             &[ManualTool::Eyedropper],
@@ -1346,6 +1454,37 @@ impl ImageEditor {
             }
             return;
         }
+        if matches!(tool, ManualTool::Wand | ManualTool::ColorSelect) {
+            if response.clicked() {
+                if let Some(p) = point.filter(|p| p[0] >= 0.0 && p[1] >= 0.0) {
+                    let sample = if self.edit_target() == EditTarget::Mask {
+                        self.document.mask_raster()
+                    } else if self.manual_ui.merged_sample {
+                        self.document.flatten()
+                    } else {
+                        self.document.layers()[self.document.active()]
+                            .raster()
+                            .clone()
+                    };
+                    let tolerance = self.manual_ui.tolerance;
+                    let op = self.selection_operation(ui);
+                    self.edit(|d| {
+                        d.select_by_color(
+                            &sample,
+                            [p[0] as u32, p[1] as u32],
+                            tolerance,
+                            tool == ManualTool::Wand,
+                            op,
+                        )
+                    });
+                }
+            }
+            return;
+        }
+        if matches!(tool, ManualTool::Clone | ManualTool::Heal) {
+            self.retouch_canvas(ui, response, point, position, down);
+            return;
+        }
         if tool == ManualTool::Fill {
             if response.clicked() {
                 if let Some(p) = point {
@@ -1697,6 +1836,31 @@ fn icon(p: &egui::Painter, r: Rect, tool: ManualTool, color: Color32) {
             p.line_segment([a(0.3, 0.35), a(0.7, 0.7)], s);
             if tool == ManualTool::Unmask {
                 p.line_segment([a(0.05, 0.1), a(0.95, 0.95)], s);
+            }
+        }
+        ManualTool::Wand | ManualTool::ColorSelect => {
+            p.line_segment([r.left_bottom(), r.right_top()], s);
+            p.circle_stroke(r.right_top(), 3.0, s);
+            if tool == ManualTool::ColorSelect {
+                p.circle_filled(r.left_top(), 2.5, color);
+            }
+        }
+        ManualTool::Clone | ManualTool::Heal => {
+            p.circle_stroke(r.center_top() + Vec2::new(0.0, 4.0), 3.0, s);
+            p.rect_stroke(
+                Rect::from_min_max(r.left_bottom() - Vec2::new(0.0, 5.0), r.right_bottom()),
+                1.0,
+                s,
+                egui::StrokeKind::Inside,
+            );
+            if tool == ManualTool::Heal {
+                p.line_segment(
+                    [
+                        r.center() - Vec2::new(3.0, 0.0),
+                        r.center() + Vec2::new(3.0, 0.0),
+                    ],
+                    s,
+                );
             }
         }
         ManualTool::Lasso => {

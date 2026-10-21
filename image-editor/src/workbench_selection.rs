@@ -78,6 +78,80 @@ impl Document {
             .collect();
         self.set_selection(area)
     }
+    /// Select pixels matching a sample. Contiguous mode uses four-neighbor flood
+    /// fill; global mode includes disconnected islands. Premultiplied RGBA distance
+    /// ignores hidden RGB in fully transparent pixels. The inpaint mask is untouched.
+    pub fn select_by_color(
+        &mut self,
+        sample: &super::Raster,
+        at: [u32; 2],
+        tolerance: u8,
+        contiguous: bool,
+        op: SelectionOp,
+    ) -> Result<(), EditError> {
+        if sample.width != self.width
+            || sample.height != self.height
+            || at[0] >= self.width
+            || at[1] >= self.height
+        {
+            return Err(invalid("Color selection sample outside canvas"));
+        }
+        let canonical = |p: &[u8]| {
+            [
+                u8::try_from(u16::from(p[0]) * u16::from(p[3]) / 255)
+                    .expect("premultiplied channel"),
+                u8::try_from(u16::from(p[1]) * u16::from(p[3]) / 255)
+                    .expect("premultiplied channel"),
+                u8::try_from(u16::from(p[2]) * u16::from(p[3]) / 255)
+                    .expect("premultiplied channel"),
+                p[3],
+            ]
+        };
+        let start = at[1] as usize * self.width as usize + at[0] as usize;
+        let reference = canonical(&sample.pixels[start * 4..start * 4 + 4]);
+        let matches = |i: usize| {
+            canonical(&sample.pixels[i * 4..i * 4 + 4])
+                .iter()
+                .zip(reference)
+                .all(|(a, b)| a.abs_diff(b) <= tolerance)
+        };
+        let mut area = vec![0; self.mask.len()];
+        if contiguous {
+            // One byte visitation map; each index is pushed at most once.
+            let mut seen = vec![false; area.len()];
+            let mut stack = vec![u32::try_from(start).expect("bounded canvas")];
+            seen[start] = true;
+            while let Some(i) = stack.pop() {
+                let i = i as usize;
+                if !matches(i) {
+                    continue;
+                }
+                area[i] = 255;
+                let w = self.width as usize;
+                for next in [
+                    (!i.is_multiple_of(w)).then(|| i - 1),
+                    (i % w + 1 < w).then_some(i + 1),
+                    (i >= w).then(|| i - w),
+                    (i + w < area.len()).then_some(i + w),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    if !seen[next] {
+                        seen[next] = true;
+                        stack.push(u32::try_from(next).expect("bounded canvas"));
+                    }
+                }
+            }
+        } else {
+            for (i, v) in area.iter_mut().enumerate() {
+                if matches(i) {
+                    *v = 255;
+                }
+            }
+        }
+        self.combine_selection(area, op)
+    }
     /// Rectangular manual selection; the inpaint mask is preserved.
     pub fn select_area_rectangle(
         &mut self,

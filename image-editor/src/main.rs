@@ -109,6 +109,8 @@ fn open_shot_dialog(editor: &mut ImageEditor) {
             Ok("canvas") => editor.open_canvas_dialog(),
             Ok("rotate") => editor.open_rotation_dialog(),
             Ok("memory") => editor.open_memory_panel(),
+            Ok("retouch") => editor.select_manual_tool(image_editor::ui::ManualTool::Heal),
+            Ok("wand") => editor.select_manual_tool(image_editor::ui::ManualTool::Wand),
             Ok("ribbon-transform") => {
                 editor.start_canvas_transform();
             }

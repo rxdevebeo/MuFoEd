@@ -1,3 +1,6 @@
+#[path = "retouch.rs"]
+mod retouch;
+pub use retouch::{RetouchMode, RetouchStroke};
 #[path = "selection.rs"]
 mod selection;
 pub use selection::PixelClipboard;
