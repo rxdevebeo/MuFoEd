@@ -710,6 +710,14 @@ fn place_body_paragraph(
     }
     let boundary_marker = para.props.section.is_some() && para.inlines.is_empty();
     let mut pending_after = pending_after;
+    // The first paragraph on a page a text page break opened starts at the
+    // top margin: neither its space before nor the break paragraph's space
+    // after is set there (WPS and LibreOffice; sample-long: each chapter
+    // heading 24 pt too low).
+    let after_break = std::mem::take(&mut paginator.opened_by_break) && paginator.at_page_top();
+    if after_break {
+        pending_after = 0.0;
+    }
     if para.props.page_break_before.is_on() && !paginator.at_page_top() {
         paginator.keep_empty_page = true;
         paginator.page_break()?;
@@ -722,7 +730,11 @@ fn place_body_paragraph(
         compute_paragraph(ctx.document, para).space_before_pt,
         ctx.options.scale,
     );
-    let gap = pending_after.max(space_before);
+    let gap = if after_break {
+        0.0
+    } else {
+        pending_after.max(space_before)
+    };
     // Lines are laid out from the content left edge and painted in their
     // column: page-space wrap boxes move back by the column's offset.
     let column_dx = paginator.column_offset();
@@ -746,7 +758,9 @@ fn place_body_paragraph(
         Some((&host_geometry, host_x, host_y_pred)),
         neighbors,
     );
-    paginator.add_vspace(pending_after.max(flow.space_before));
+    if !after_break {
+        paginator.add_vspace(pending_after.max(flow.space_before));
+    }
     paginator.add_vspace(flow.border_before);
     if flow.keep_lines && !boundary_marker {
         let total: f64 = flow
@@ -804,10 +818,30 @@ fn place_body_paragraph(
     let expected = paginator.placement_here();
     paginator.last_placed = None;
     let mut host = None;
-    // A paragraph that holds only a page break lays out as an empty line,
-    // the break, and an empty line. The first is nothing on its page, and on
-    // a full page it overflowed onto the next one, where the break then
-    // opened a third: a blank page (027). It is not placed.
+    // A paragraph that holds only a page break lays out as an empty line, the
+    // break, and an empty line, and which of the two WPS sets depends on the
+    // layout the document asks for:
+    // - Word 2010 or later (`compatibilityMode` 14+): the line before the
+    //   break is placed, and on a full page it overflows - Word's own blank
+    //   page (sample-long, mode 14, a chapter that fills its page); the
+    //   break ends the paragraph, so nothing of it reaches the new page,
+    //   whose next paragraph starts at the top (027, mode 15: its heading
+    //   36 pt too low and that page overfull by the end).
+    // - Older or unnamed modes: the line before the break is nothing on its
+    //   page (099: no blank page on a full one); the paragraph mark after it
+    //   is a line at the new page's top (strict-stage5).
+    let modern = word_2010_or_later(ctx.document);
+    let last_break = flow
+        .flows
+        .iter()
+        .rposition(|item| matches!(item, Flow::PageBreak));
+    let tail_blank = modern
+        && last_break.is_some_and(|at| {
+            flow.flows
+                .iter()
+                .skip(at + 1)
+                .all(|item| matches!(item, Flow::Line(line) if is_blank_line(line)))
+        });
     let blank_before_break: Vec<bool> = flow
         .flows
         .iter()
@@ -819,18 +853,23 @@ fn place_body_paragraph(
                 .chain(std::iter::once(None)),
         )
         .map(|(item, next)| {
-            matches!(item, Flow::Line(line) if is_blank_line(line))
+            !modern
+                && matches!(item, Flow::Line(line) if is_blank_line(line))
                 && matches!(next, Some(Flow::PageBreak))
         })
         .collect();
+    // The paragraph's anchors hang off where it starts, not off the empty
+    // line before its break: a cover page's drawings stay on the page the
+    // break is about to leave (WQ-046).
+    if last_break == Some(1)
+        && matches!(flow.flows.first(), Some(Flow::Line(line)) if is_blank_line(line))
+    {
+        host = Some(expected);
+    }
     for (index, item) in flow.flows.into_iter().enumerate() {
-        if blank_before_break.get(index).copied().unwrap_or(false) && !boundary_marker {
-            // The paragraph's anchors hang off where it starts, not off the
-            // empty line the break leaves behind: a cover page's drawings stay
-            // on the page the break is about to leave (WQ-046).
-            if index == 0 && host.is_none() {
-                host = Some(expected);
-            }
+        let skipped = (tail_blank && last_break.is_some_and(|at| index > at))
+            || blank_before_break.get(index).copied().unwrap_or(false);
+        if skipped && !boundary_marker {
             continue;
         }
         if index > 0 && widow_break == Some(index) {
@@ -847,6 +886,18 @@ fn place_body_paragraph(
     }
     paginator.place_anchors(ctx, flow.anchors, host.unwrap_or(expected));
     Ok(flow.space_after + flow.border_after)
+}
+
+/// Whether the document asks for Word 2010's layout or a later one
+/// (`w:compatSetting` `compatibilityMode` 14 or more).
+fn word_2010_or_later(document: &strict_ooxml_wml::model::Document) -> bool {
+    document
+        .settings
+        .compatibility
+        .iter()
+        .find(|(name, _)| &**name == "compatibilityMode")
+        .and_then(|(_, value)| value.trim().parse::<u32>().ok())
+        .is_some_and(|mode| mode >= 14)
 }
 
 /// Whether a laid-out line shows nothing: no text but spaces, no graphics,
@@ -1519,6 +1570,10 @@ struct Paginator<'a> {
     column_bottoms: Vec<f64>,
     /// Keep the next flushed empty page (explicit break / section break, AUD-75).
     keep_empty_page: bool,
+    /// The current page was opened by a page break in the text (`w:br
+    /// w:type="page"`) and nothing has been placed on it yet. The paragraph
+    /// that starts it takes no space before, as WPS and LibreOffice set it.
+    opened_by_break: bool,
     /// `PageSelection::Range` already produced `end` pages; further content is dropped.
     truncated: bool,
     /// Geometry deferred by a `continuous` section break until the next page.
@@ -1723,6 +1778,7 @@ impl<'a> Paginator<'a> {
             column_start: 0.0,
             column_bottoms: vec![0.0; initial_column_count],
             keep_empty_page: false,
+            opened_by_break: false,
             truncated: false,
             pending_geometry: None,
             column_notes: vec![Vec::new(); initial_column_count],
@@ -2725,6 +2781,7 @@ impl<'a> Paginator<'a> {
 
     /// Starts a new page, carrying deferred footnotes over as a continuation.
     fn page_break(&mut self) -> Result<()> {
+        self.opened_by_break = false;
         if self.selection_exhausted() {
             self.truncated = true;
             return Ok(());
@@ -2951,7 +3008,9 @@ impl<'a> Paginator<'a> {
         match flow {
             Flow::PageBreak => {
                 self.keep_empty_page = true;
-                self.page_break()
+                self.page_break()?;
+                self.opened_by_break = true;
+                Ok(())
             }
             Flow::ColumnBreak => self.overflow_break(),
             Flow::Line(line) => self.place_line(line),

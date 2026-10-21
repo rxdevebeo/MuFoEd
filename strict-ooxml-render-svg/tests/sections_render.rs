@@ -210,34 +210,132 @@ fn consecutive_page_breaks_keep_empty_pages() {
     assert!(pages[2].svg.contains("SECONDMARK"));
 }
 
+/// One Letter page with inch margins, the body as given.
+fn letter_page(body: &str) -> String {
+    format!(
+        "{body}<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>         <w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\"          w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>"
+    )
+}
+
+/// A paragraph of one 24 pt line, `before` twips of space above it.
+fn exact_line(text: &str, before: u32) -> String {
+    format!(
+        "<w:p><w:pPr><w:spacing w:before=\"{before}\" w:after=\"0\" w:line=\"480\"          w:lineRule=\"exact\"/></w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>"
+    )
+}
+
+/// A paragraph that holds only a page break, its line 24 pt.
+const BREAK_ONLY: &str = "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"200\" w:line=\"480\"      w:lineRule=\"exact\"/></w:pPr><w:r><w:br w:type=\"page\"/></w:r></w:p>";
+
+/// Renders `body` in a document that asks for Word 2013's layout
+/// (`compatibilityMode` 15), as Word writes every document today.
+fn render_word_2013(body: &str) -> Vec<strict_ooxml_render_svg::Page> {
+    let settings = format!(
+        "<?xml version=\"1.0\"?><w:settings xmlns:w=\"{W}\"><w:compat>         <w:compatSetting w:name=\"compatibilityMode\"          w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat></w:settings>"
+    );
+    let rels = "<?xml version=\"1.0\"?><Relationships         xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">        <Relationship Id=\"rIdSettings\"         Type=\"http://purl.oclc.org/ooxml/officeDocument/relationships/settings\"         Target=\"settings.xml\"/></Relationships>";
+    let types = content_types().replace(
+        "</Types>",
+        "<Override PartName=\"/word/settings.xml\"          ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/></Types>",
+    );
+    let bytes = build_docx(&[
+        ("[Content_Types].xml", types.into_bytes()),
+        ("_rels/.rels", root_rels().into_bytes()),
+        ("word/document.xml", document(body).into_bytes()),
+        ("word/settings.xml", settings.into_bytes()),
+        ("word/_rels/document.xml.rels", rels.as_bytes().to_vec()),
+    ]);
+    let (_package, parsed) = open_bytes(bytes);
+    render(&parsed, &RenderOptions::default()).expect("render")
+}
+
+fn text_y(svg: &str, needle: &str) -> Option<f64> {
+    let document = roxmltree::Document::parse(svg).expect("valid svg");
+    document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "text"
+                && node.text().is_some_and(|text| text.contains(needle))
+        })
+        .and_then(|node| node.attribute("y"))
+        .and_then(|y| y.parse().ok())
+}
+
+/// 27 lines of exactly 24 pt fill a Letter page with inch margins (648 pt)
+/// to its foot; then a paragraph that holds only a page break, and one line.
+fn full_page_then_break() -> String {
+    let mut body: String = (0..27)
+        .map(|row| exact_line(&format!("Row{row}"), 0))
+        .collect();
+    body.push_str(BREAK_ONLY);
+    body.push_str(&exact_line("Next", 0));
+    letter_page(&body)
+}
+
 #[test]
-fn a_break_alone_in_its_paragraph_on_a_full_page_breaks_once() {
-    // 27 lines of exactly 24 pt fill a Letter page with inch margins (648 pt)
-    // to its foot. A paragraph that holds only a page break lays out as an
-    // empty line, the break and an empty line: the first has no room left,
-    // and placed it took a page of its own before the break took another -
-    // a blank page (CC0_DOCX_MATH 027).
-    let line = |text: &str| {
-        format!(
-            "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"480\" w:lineRule=\"exact\"/></w:pPr>\
-             <w:r><w:t>{text}</w:t></w:r></w:p>"
-        )
-    };
-    let mut body: String = (0..27).map(|row| line(&format!("Row{row}"))).collect();
-    body.push_str(
-        "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"480\" w:lineRule=\"exact\"/></w:pPr>\
-         <w:r><w:br w:type=\"page\"/></w:r></w:p>",
+fn a_break_alone_in_its_paragraph_on_a_full_page_leaves_a_blank_page() {
+    // In a Word 2010+ document the paragraph's empty line before the break
+    // has no room left: it takes the next page, and the break then opens a
+    // third. WPS and LibreOffice set it so (sample-long: a blank page after
+    // every chapter that fills its page).
+    let pages = render_word_2013(&full_page_then_break());
+    assert_eq!(pages.len(), 3, "the empty line overflows, then the break");
+    assert!(pages[0].svg.contains("Row26"), "the page is full");
+    assert!(!pages[1].svg.contains("Next") && !pages[1].svg.contains("Row"));
+    assert!(pages[2].svg.contains("Next"));
+}
+
+#[test]
+fn a_page_a_break_opens_starts_at_its_top_margin() {
+    // In a Word 2010+ document the break ends what its paragraph sets: the
+    // empty line after it is not placed on the new page, and the paragraph
+    // there takes no space before (here 24 pt) nor the break paragraph's space
+    // after. WPS and LibreOffice put such a heading where the first line of
+    // page 1 stands (027: the supplementary heading 36 pt too low, its page
+    // overfull by the end).
+    let mut body = exact_line("First", 0);
+    body.push_str(BREAK_ONLY);
+    body.push_str(&exact_line("Next", 480));
+    body.push_str(&exact_line("After", 0));
+    let pages = render_word_2013(&letter_page(&body));
+    assert_eq!(pages.len(), 2);
+    let first = text_y(&pages[0].svg, "First").expect("first line");
+    let next = text_y(&pages[1].svg, "Next").expect("heading on page 2");
+    assert!(
+        (next - first).abs() < 0.5,
+        "page 1 at {first}, page 2 at {next}"
     );
-    body.push_str(&line("Next"));
-    body.push_str(
-        "<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/>\
-         <w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+    // The rest of the page is laid out as usual: 24 pt lines.
+    let after = text_y(&pages[1].svg, "After").expect("next line");
+    assert!((after - next - 32.0).abs() < 0.5, "{next} -> {after}");
+}
+
+#[test]
+fn a_document_that_names_no_mode_keeps_the_mark_line_after_a_break() {
+    // Without a compatibility mode WPS sets the paragraph mark after the
+    // break as a line at the new page's top (strict-stage5: its second page
+    // one line lower than a Word 2010+ document's).
+    let mut body = exact_line("First", 0);
+    body.push_str(BREAK_ONLY);
+    body.push_str(&exact_line("Next", 0));
+    let pages = render_body(&letter_page(&body));
+    assert_eq!(pages.len(), 2);
+    let first = text_y(&pages[0].svg, "First").expect("first line");
+    let next = text_y(&pages[1].svg, "Next").expect("page 2");
+    // The mark's 24 pt line, then the break paragraph's 10 pt after.
+    assert!(
+        (next - first - (32.0 + 40.0 / 3.0)).abs() < 0.5,
+        "page 1 at {first}, page 2 at {next}"
     );
-    let pages = render_body(&body);
+}
+
+#[test]
+fn a_break_alone_on_a_full_page_of_a_document_that_names_no_mode_breaks_once() {
+    // Without a compatibility mode the empty line before the break is nothing
+    // on its page: WPS sets no blank page there (099, its page 12).
+    let pages = render_body(&full_page_then_break());
     assert_eq!(pages.len(), 2, "one break, two pages");
     assert!(pages[0].svg.contains("Row26"), "the page is full");
-    assert!(
-        pages[1].svg.contains("Next"),
-        "the text after the break opens page 2"
-    );
+    assert!(pages[1].svg.contains("Next"));
 }
