@@ -11,10 +11,12 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
+use std::sync::Arc;
 
 use egui::TextureHandle;
 use serde::{Deserialize, Serialize};
 
+use crate::background::{Download, Remover, TOOL_ID};
 use crate::batch::{Conflict, Job, Outcome, Recipe, SkipReason, Task, TransferMode};
 use crate::catalog::{self, Entry, SortKey};
 use crate::ops::{Axis, Operation, QuarterTurn, Tools};
@@ -43,6 +45,9 @@ pub enum GalleryEvent {
     FolderOpened(PathBuf),
     /// A job wrote these files.
     Written(Vec<PathBuf>),
+    /// Show a file dialog for `BiRefNet` ONNX weights and pass the answer to
+    /// [`Gallery::set_background_model`].
+    PickModel,
 }
 
 /// What a destination folder is for.
@@ -95,6 +100,11 @@ pub enum Command {
     CloseViewer,
     /// Ask the host to open the focused picture in its editor.
     OpenInEditor,
+    /// Write a copy of the selection with the background made transparent
+    /// (PNG, next to the source).
+    RemoveBackground,
+    /// Download the `BiRefNet` weights of the chosen variant.
+    DownloadModel,
     /// Stop the running job.
     CancelJob,
 }
@@ -138,6 +148,8 @@ pub struct Settings {
     pub rename_template: String,
     /// The first number of a rename.
     pub rename_start: usize,
+    /// Background removal: the model, its variant, CPU or GPU.
+    pub background: crate::background::Settings,
 }
 
 impl Default for Settings {
@@ -153,6 +165,7 @@ impl Default for Settings {
             presets: Vec::new(),
             rename_template: "{name}".into(),
             rename_start: 1,
+            background: crate::background::Settings::default(),
         }
     }
 }
@@ -227,6 +240,9 @@ pub struct Gallery {
     repaint: Option<egui::Context>,
     /// The grid's scroll offset and visible height, from the last frame.
     viewport: (f32, f32),
+    /// The background remover behind [`crate::background::TOOL_ID`].
+    remover: Arc<Remover>,
+    download: Option<Download>,
 }
 
 impl std::fmt::Debug for Gallery {
@@ -275,7 +291,30 @@ impl Gallery {
             columns: 1,
             repaint: None,
             viewport: (0.0, 0.0),
+            remover: Arc::new(Remover::new(crate::background::Settings::default())),
+            download: None,
         }
+        .with_background_tool()
+    }
+
+    /// Registers the built-in background remover as a recipe tool.
+    fn with_background_tool(mut self) -> Self {
+        let remover = Arc::clone(&self.remover);
+        self.tools
+            .register(TOOL_ID, "Remove background", move |image| {
+                remover.remove(image)
+            });
+        self
+    }
+
+    /// The host's answer to [`GalleryEvent::PickModel`].
+    pub fn set_background_model(&mut self, path: impl Into<PathBuf>) {
+        self.settings.background.model = Some(path.into());
+    }
+
+    /// Whether the background remover's model file is present.
+    pub fn background_model_found(&self) -> bool {
+        self.settings.background.model_path().is_file()
     }
 
     /// The interface language.
@@ -430,8 +469,10 @@ impl Gallery {
             | Command::MoveTo
             | Command::Rename => targets && !busy,
             Command::OpenViewer | Command::OpenInEditor => targets,
+            Command::RemoveBackground => targets && !busy && self.background_model_found(),
+            Command::DownloadModel => self.download.is_none() && !self.background_model_found(),
             Command::CloseViewer => self.viewer.is_some(),
-            Command::CancelJob => busy,
+            Command::CancelJob => busy || self.download.is_some(),
         }
     }
 
@@ -511,9 +552,17 @@ impl Gallery {
                     self.events.push(GalleryEvent::OpenInEditor(path));
                 }
             }
+            Command::RemoveBackground => {
+                let recipe = Recipe::cutout();
+                self.start(Task::Process(Box::new(recipe)), "Remove background", false);
+            }
+            Command::DownloadModel => self.start_download(),
             Command::CancelJob => {
                 if let Some(running) = &self.job {
                     running.job.cancel();
+                }
+                if let Some(download) = &self.download {
+                    download.cancel();
                 }
             }
         }
@@ -580,6 +629,8 @@ impl Gallery {
         self.poll_scan();
         self.poll_previews(ctx);
         self.poll_job();
+        self.remover.configure(&self.settings.background);
+        self.poll_download();
         if self.thumbs.len() > CACHE_LIMIT {
             let keep_after = self.frame.saturating_sub(120);
             self.thumbs.retain(|_, slot| slot.seen >= keep_after);
@@ -759,6 +810,37 @@ impl Gallery {
             self.events.push(GalleryEvent::Written(written));
         }
         self.refresh();
+    }
+
+    fn start_download(&mut self) {
+        let wake = self.repaint.clone();
+        match Download::start(&self.settings.background, move || {
+            if let Some(ctx) = &wake {
+                ctx.request_repaint();
+            }
+        }) {
+            Ok(download) => {
+                self.download = Some(download);
+                self.message = None;
+            }
+            Err(error) => self.message = Some(error.to_string()),
+        }
+    }
+
+    fn poll_download(&mut self) {
+        let Some(download) = &self.download else {
+            return;
+        };
+        let state = download.state();
+        if !state.finished {
+            return;
+        }
+        if let Some(error) = state.error {
+            self.message = Some(error);
+        } else {
+            self.settings.background.model = Some(download.target().to_path_buf());
+        }
+        self.download = None;
     }
 
     fn plan_rename(&self) -> Vec<(PathBuf, PathBuf)> {

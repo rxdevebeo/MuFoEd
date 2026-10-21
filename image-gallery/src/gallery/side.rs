@@ -535,7 +535,9 @@ fn label(operation: &Operation, locale: &Locale, tools: &Tools) -> String {
         Operation::Blur(_) => t("Blur"),
         Operation::Sharpen { .. } => t("Sharpen"),
         Operation::Flatten(_) => t("Remove transparency"),
-        Operation::Tool { id } => tools.label(id).map_or_else(|| id.clone(), str::to_owned),
+        Operation::Tool { id } => tools
+            .label(id)
+            .map_or_else(|| id.clone(), |label| locale.text(label).to_owned()),
     }
 }
 

@@ -19,8 +19,12 @@
 //!   [`Gallery::show`] (or the ribbon and the content separately) and answers
 //!   the [`GalleryEvent`]s it returns, such as a request for a folder dialog.
 //!
+//! - [`background`] removes backgrounds with the `BiRefNet` model through a
+//!   Python worker (`numpy`, `onnxruntime`), as Image Studio does.
+//!
 //! The core is pure Rust: no native image libraries are linked.
 
+pub mod background;
 pub mod batch;
 pub mod catalog;
 pub mod decode;

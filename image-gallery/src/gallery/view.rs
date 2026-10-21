@@ -57,6 +57,26 @@ impl Gallery {
                 ui.add_space(ui.available_height() / 3.0);
                 if self.scanning.is_some() {
                     ui.spinner();
+                } else if let Some(download) = &self.download {
+                    let state = download.state();
+                    ui.separator();
+                    let fraction = if state.total == 0 {
+                        0.0
+                    } else {
+                        state.received as f32 / state.total as f32
+                    };
+                    let mebibytes = |bytes: u64| bytes / (1 << 20);
+                    ui.add(
+                        egui::ProgressBar::new(fraction)
+                            .desired_width(220.0)
+                            .text(format!(
+                                "{}: {} / {} MiB",
+                                locale.text("Model download"),
+                                mebibytes(state.received),
+                                mebibytes(state.total)
+                            )),
+                    );
+                    cancel = ui.button(locale.text("Cancel")).clicked();
                 } else if let Some(message) = &self.message {
                     ui.colored_label(ui.visuals().error_fg_color, message);
                 } else {
@@ -416,6 +436,26 @@ impl Gallery {
                 cancel = ui
                     .add_enabled(!cancelling, egui::Button::new(locale.text("Cancel")))
                     .clicked();
+            } else if let Some(download) = &self.download {
+                let state = download.state();
+                ui.separator();
+                let fraction = if state.total == 0 {
+                    0.0
+                } else {
+                    state.received as f32 / state.total as f32
+                };
+                let mebibytes = |bytes: u64| bytes / (1 << 20);
+                ui.add(
+                    egui::ProgressBar::new(fraction)
+                        .desired_width(220.0)
+                        .text(format!(
+                            "{}: {} / {} MiB",
+                            locale.text("Model download"),
+                            mebibytes(state.received),
+                            mebibytes(state.total)
+                        )),
+                );
+                cancel = ui.button(locale.text("Cancel")).clicked();
             } else if let Some(message) = &self.message {
                 ui.separator();
                 ui.colored_label(ui.visuals().error_fg_color, message);

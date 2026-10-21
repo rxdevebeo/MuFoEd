@@ -139,6 +139,7 @@ impl Gallery {
         group(ui, locale.text("Metadata"), |ui| {
             self.command(ui, Command::StripMetadata, locale.text("Remove metadata"));
         });
+        self.background_group(ui, locale);
         group(ui, locale.text("Options"), |ui| {
             ui.checkbox(&mut self.settings.lossless_jpeg, locale.text("JPEG without loss"))
                 .on_hover_text(locale.text(
@@ -146,6 +147,60 @@ impl Gallery {
                 ));
         });
         ui.weak(locale.text("These commands change the selected files in place."));
+    }
+
+    fn background_group(&mut self, ui: &mut egui::Ui, locale: &Locale) {
+        group(ui, locale.text("Background"), |ui| {
+            let found = self.background_model_found();
+            let reason = if found {
+                self.settings.background.model_path().display().to_string()
+            } else {
+                locale
+                    .text("Choose or download the BiRefNet model first")
+                    .to_owned()
+            };
+            let button = egui::Button::new(locale.text("Remove background"));
+            if ui
+                .add_enabled(self.can_execute(Command::RemoveBackground), button)
+                .on_hover_text(
+                    locale.text(
+                        "Writes a PNG copy with a transparent background next to each picture",
+                    ),
+                )
+                .on_disabled_hover_text(reason.as_str())
+                .clicked()
+            {
+                self.execute(Command::RemoveBackground);
+            }
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    if ui.small_button(locale.text("Model…")).on_hover_text(reason.as_str()).clicked() {
+                        self.events.push(super::GalleryEvent::PickModel);
+                    }
+                    ui.checkbox(&mut self.settings.background.gpu, locale.text("GPU"))
+                        .on_hover_text(locale.text("CUDA through onnxruntime, when it is installed"));
+                });
+                if !found {
+                    ui.horizontal(|ui| {
+                        let variant = &mut self.settings.background.variant;
+                        egui::ComboBox::from_id_salt("image-gallery-birefnet")
+                            .selected_text(variant.label())
+                            .show_ui(ui, |ui| {
+                                for option in crate::background::Variant::ALL {
+                                    ui.selectable_value(variant, option, option.label());
+                                }
+                            });
+                        if ui
+                            .add_enabled(self.can_execute(Command::DownloadModel), egui::Button::new(locale.text("Download")).small())
+                            .on_hover_text(locale.text("The official BiRefNet release, checked and recorded with its SHA-256"))
+                            .clicked()
+                        {
+                            self.execute(Command::DownloadModel);
+                        }
+                    });
+                }
+            });
+        });
     }
 
     fn batch_tab(&mut self, ui: &mut egui::Ui, locale: &Locale) {

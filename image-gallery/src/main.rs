@@ -118,6 +118,14 @@ impl Demo {
                 // The demo has no editor; the system viewer stands in.
                 open_with_system(&path);
             }
+            GalleryEvent::PickModel => {
+                if let Some(model) = rfd::FileDialog::new()
+                    .add_filter("BiRefNet ONNX", &["onnx"])
+                    .pick_file()
+                {
+                    self.gallery.set_background_model(model);
+                }
+            }
             GalleryEvent::FolderOpened(_) | GalleryEvent::Written(_) => {}
         }
     }

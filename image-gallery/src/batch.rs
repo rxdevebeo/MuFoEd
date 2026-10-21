@@ -129,6 +129,23 @@ impl Recipe {
         }
     }
 
+    /// Background removal: a PNG copy with a transparent background next
+    /// to each source, named `<name>_cutout`.
+    pub fn cutout() -> Self {
+        Self {
+            name: "Remove background → PNG".into(),
+            operations: vec![Operation::Tool {
+                id: crate::background::TOOL_ID.into(),
+            }],
+            output: Output {
+                format: OutputFormat::To(Format::Png),
+                destination: Destination::SameFolder,
+                template: "{name}_cutout".into(),
+                ..Output::default()
+            },
+        }
+    }
+
     /// Ready-made recipes for common jobs. Their names are catalog message
     /// IDs.
     pub fn presets() -> Vec<Self> {
@@ -182,6 +199,7 @@ impl Recipe {
                     ..Output::default()
                 },
             },
+            Self::cutout(),
             Self {
                 name: "Convert to PNG".into(),
                 operations: Vec::new(),
