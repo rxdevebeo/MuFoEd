@@ -38,6 +38,7 @@ fn xml_error(format: &str, error: &roxmltree::Error) -> Error {
 // ----- 3MF -------------------------------------------------------------------
 
 /// Reads a 3MF package.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn load_3mf(data: &[u8]) -> Result<Scene, Error> {
     let mut archive = zip::ZipArchive::new(Cursor::new(data))
         .map_err(|error| Error::Codec(format!("3MF: {error}")))?;
@@ -758,7 +759,7 @@ impl DaeContext<'_, '_, '_> {
         Some(index)
     }
 
-    /// Follows a sampler (COLLADA 1.4 newparam chain or 1.5 instance_image)
+    /// Follows a sampler (COLLADA 1.4 newparam chain or 1.5 `instance_image`)
     /// to an image file and loads it.
     fn texture(&mut self, effect: roxmltree::Node<'_, '_>, sampler: &str) -> Option<usize> {
         let param = |sid: &str| {

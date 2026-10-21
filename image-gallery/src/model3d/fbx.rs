@@ -283,6 +283,8 @@ fn parse(data: &[u8]) -> Result<Record, Error> {
 }
 
 /// Reads a binary FBX file; textures are looked for beside `folder`.
+// One pass over the object graph, top to bottom.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn load(data: &[u8], folder: Option<&Path>) -> Result<Scene, Error> {
     let root = parse(data)?;
     let objects = root
@@ -550,6 +552,7 @@ fn layer_values(
 }
 
 /// The triangles of a `Geometry` record, one primitive per material.
+#[allow(clippy::too_many_lines)]
 fn mesh_primitives(geometry: &Record, model_materials: &[usize]) -> Option<Vec<Primitive>> {
     let Some(Value::Floats(points)) = geometry.first("Vertices") else {
         return None;
@@ -607,18 +610,17 @@ fn mesh_primitives(geometry: &Record, model_materials: &[usize]) -> Option<Vec<P
             .and_then(|slots| slots.get(polygon))
             .and_then(|&slot| model_materials.get(usize::try_from(slot).ok()?).copied())
             .or_else(|| model_materials.first().copied());
-        let at = match by_material.iter().position(|(known, _)| *known == material) {
-            Some(at) => at,
-            None => {
-                by_material.push((
+        let at = if let Some(at) = by_material.iter().position(|(known, _)| *known == material) {
+            at
+        } else {
+            by_material.push((
+                material,
+                Primitive {
                     material,
-                    Primitive {
-                        material,
-                        ..Primitive::default()
-                    },
-                ));
-                by_material.len() - 1
-            }
+                    ..Primitive::default()
+                },
+            ));
+            by_material.len() - 1
         };
         let primitive = &mut by_material[at].1;
         let base = u32::try_from(primitive.positions.len()).ok()?;

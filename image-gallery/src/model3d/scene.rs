@@ -655,8 +655,7 @@ fn sample(channel: &Channel, time: f32, width: usize) -> Vec<f32> {
                 channel
                     .values
                     .get(start..start + width)
-                    .map(<[f32]>::to_vec)
-                    .unwrap_or_else(|| vec![0.0; width])
+                    .map_or_else(|| vec![0.0; width], <[f32]>::to_vec)
             };
             let out_tangent = tangent(previous, 2 * width);
             let in_tangent = tangent(next, 0);
@@ -791,7 +790,7 @@ mod tests {
                 Quat::from_rotation_y(std::f32::consts::PI / 2.0),
             ]
             .iter()
-            .flat_map(|q| q.to_array())
+            .flat_map(Quat::to_array)
             .collect(),
         };
         let mut local = Transform::default();

@@ -15,7 +15,6 @@ use std::sync::Arc;
 use egui::{pos2, vec2, Color32, Rect, Sense, TextureHandle};
 use glam::{Vec2, Vec3};
 
-use super::Gallery;
 use crate::model3d::{self, Camera, Options, Scene, Shading, UpAxis, View};
 use crate::Locale;
 
@@ -42,8 +41,10 @@ struct Key {
 }
 
 /// The state of the model panel for one file.
-pub(super) struct ModelView {
-    pub(super) path: PathBuf,
+// Independent switches of the view, not a state machine.
+#[allow(clippy::struct_excessive_bools)]
+struct ModelView {
+    path: PathBuf,
     load: Load,
     camera: Camera,
     framed: bool,
@@ -62,7 +63,7 @@ pub(super) struct ModelView {
 
 impl ModelView {
     /// Starts loading `path` in the background.
-    pub(super) fn open(path: &Path, ctx: &egui::Context) -> Self {
+    fn open(path: &Path, ctx: &egui::Context) -> Self {
         let (sender, receiver) = channel();
         let file = path.to_path_buf();
         let wake = ctx.clone();
@@ -121,13 +122,34 @@ impl ModelView {
     }
 }
 
-impl Gallery {
-    /// Shows the model panel for `path`, opening it if needed.
-    pub(super) fn model_ui(&mut self, ui: &mut egui::Ui, path: &Path, locale: &Locale) {
-        if self.model.as_ref().is_none_or(|model| model.path != path) {
-            self.model = Some(ModelView::open(path, ui.ctx()));
+/// The 3D model viewer: a viewport with an orbiting camera, display modes,
+/// the animation timeline and statistics. It loads the model it is shown
+/// for in the background and keeps its view until shown another file.
+#[derive(Default)]
+pub struct ModelPanel {
+    view: Option<ModelView>,
+}
+
+impl std::fmt::Debug for ModelPanel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModelPanel")
+            .field("path", &self.view.as_ref().map(|view| &view.path))
+            .finish()
+    }
+}
+
+impl ModelPanel {
+    /// Forgets the model (frees its memory).
+    pub fn close(&mut self) {
+        self.view = None;
+    }
+
+    /// Shows the model at `path`, loading it if it is not the one shown.
+    pub fn show(&mut self, ui: &mut egui::Ui, path: &Path, locale: &Locale) {
+        if self.view.as_ref().is_none_or(|view| view.path != path) {
+            self.view = Some(ModelView::open(path, ui.ctx()));
         }
-        let Some(view) = self.model.as_mut() else {
+        let Some(view) = self.view.as_mut() else {
             return;
         };
         view.poll();
@@ -194,6 +216,8 @@ fn toolbar(ui: &mut egui::Ui, view: &mut ModelView, scene: &Scene, locale: &Loca
     });
 }
 
+// One widget: input, the clock, rendering and drawing.
+#[allow(clippy::too_many_lines)]
 fn viewport(ui: &mut egui::Ui, view: &mut ModelView, scene: &Arc<Scene>, locale: &Locale) {
     let width = ui.available_width().max(64.0);
     let height = (width * 0.8).clamp(120.0, 900.0);
@@ -368,6 +392,7 @@ fn shading_name(shading: Shading) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn timeline(ui: &mut egui::Ui, view: &mut ModelView, scene: &Scene, locale: &Locale) {
     ui.separator();
     ui.horizontal(|ui| {

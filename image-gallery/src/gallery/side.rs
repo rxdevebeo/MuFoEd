@@ -124,10 +124,10 @@ impl Gallery {
         match model {
             Some(path) => {
                 ui.heading(locale.text("3D view"));
-                self.model_ui(ui, &path, locale);
+                self.model.show(ui, &path, locale);
                 ui.separator();
             }
-            None => self.model = None,
+            None => self.model.close(),
         }
         ui.heading(locale.text("Properties"));
         let selected = self.selection();

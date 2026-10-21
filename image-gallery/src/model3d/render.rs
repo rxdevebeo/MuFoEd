@@ -175,6 +175,8 @@ pub enum Shading {
 }
 
 /// What to draw and how.
+// Independent display switches, not a state machine.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Options {
     /// Surface shading.
@@ -238,6 +240,11 @@ impl ClipVertex {
     }
 }
 
+/// How far outside an edge a pixel centre may lie and still be drawn: a
+/// centre exactly on an edge shared by two triangles must not fall through
+/// both of them by rounding.
+const EDGE: f32 = -1e-4;
+
 /// Smallest `w` a vertex may have in front of the camera.
 const NEAR_W: f32 = 1e-5;
 
@@ -272,7 +279,7 @@ impl Target {
     fn to_screen(&self, clip: Vec4) -> Vec3 {
         let ndc = clip.xyz() / clip.w;
         Vec3::new(
-            (ndc.x + 1.0) / 2.0 * self.width as f32,
+            f32::midpoint(ndc.x, 1.0) * self.width as f32,
             (1.0 - ndc.y) / 2.0 * self.height as f32,
             ndc.z,
         )
@@ -550,7 +557,7 @@ fn fill(target: &mut Target, geometry: &Geometry, matrix: &Mat4, shader: &Shader
     let to_screen = |clip: Vec4| {
         let ndc = clip.xyz() / clip.w;
         Vec3::new(
-            (ndc.x + 1.0) / 2.0 * width as f32,
+            f32::midpoint(ndc.x, 1.0) * width as f32,
             (1.0 - ndc.y) / 2.0 * height as f32,
             ndc.z,
         )
@@ -598,7 +605,7 @@ fn fill(target: &mut Target, geometry: &Geometry, matrix: &Mat4, shader: &Shader
                         let w0 = ((s1.x - px) * (s2.y - py) - (s1.y - py) * (s2.x - px)) / area;
                         let w1 = ((s2.x - px) * (s0.y - py) - (s2.y - py) * (s0.x - px)) / area;
                         let w2 = 1.0 - w0 - w1;
-                        if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
+                        if w0 < EDGE || w1 < EDGE || w2 < EDGE {
                             continue;
                         }
                         let depth = w0 * s0.z + w1 * s1.z + w2 * s2.z;
@@ -727,7 +734,7 @@ fn blend_triangle(target: &mut Target, [s0, s1, s2]: [Vec3; 3], colour: [f32; 4]
             let w0 = ((s1.x - px) * (s2.y - py) - (s1.y - py) * (s2.x - px)) / area;
             let w1 = ((s2.x - px) * (s0.y - py) - (s2.y - py) * (s0.x - px)) / area;
             let w2 = 1.0 - w0 - w1;
-            if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
+            if w0 < EDGE || w1 < EDGE || w2 < EDGE {
                 continue;
             }
             let depth = w0 * s0.z + w1 * s1.z + w2 * s2.z;
