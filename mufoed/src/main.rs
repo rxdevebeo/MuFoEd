@@ -29,6 +29,7 @@
 
 mod ai;
 mod app;
+mod browsers;
 mod canvas;
 mod chat;
 mod cleanup;

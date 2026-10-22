@@ -20,6 +20,10 @@ pub(crate) struct TerminalState {
 }
 
 impl TerminalState {
+    pub(super) fn is_running(&self) -> bool {
+        self.running.is_some()
+    }
+
     pub(crate) fn new(settings: &Settings) -> Self {
         Self {
             input: String::new(),

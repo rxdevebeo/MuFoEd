@@ -27,6 +27,8 @@ image-cudnn = ["image-cuda", "image-editor/plakat-cudnn"]
 ocr = ["strict-ooxml/ocr-ollama", "strict-ooxml/pdf-raster", "dep:strict-ooxml-pdf", "dep:strict-ooxml-ocr"]
 
 [dependencies]
+image-gallery = { path = "../image-gallery" }
+file-manager = { path = "../file-manager" }
 image-editor = { path = "../image-editor", features = ["demo", "ollama"] }
 egui = "0.35"
 tempfile = "3"

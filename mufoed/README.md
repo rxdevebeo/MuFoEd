@@ -10,6 +10,15 @@ cargo +1.92.0 run -p mufoed --release -- [FILE...]
 
 What it shows:
 
+- **Gallery and file manager**: open on demand from the start page, File menu
+  or the tab strip's `+` menu. Each has its own tab alongside documents and
+  images; repeated opening focuses that tab. `Ctrl+Tab` switches tabs and
+  `Ctrl+W` closes them. Navigation and settings are retained; archive members
+  opened in the editor remain available after closing the file manager tab.
+  Image files open in Image Studio; documents open in the document editor.
+  Background jobs continue while another tab is active. Finish or cancel
+  file operations before closing their tab or exiting the application.
+
 - **Open**: DOCX (Strict; Transitional through the normalizer), RTF, HTML and LaTeX (importers).
 - **Convert**: PDF and DjVu into an editable Strict document, semantic or
   visual mode, page range, images; scanned pages recognized by a local Ollama

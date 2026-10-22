@@ -442,6 +442,14 @@ impl Remover {
         }
     }
 
+    /// Current execution settings, including the resolved model and device choice.
+    pub fn settings(&self) -> Settings {
+        self.settings
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
     /// Stops the worker, freeing the model's memory.
     pub fn shut_down(&self) {
         *self.worker.lock().unwrap_or_else(PoisonError::into_inner) = None;

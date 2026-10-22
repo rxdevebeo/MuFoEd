@@ -56,6 +56,8 @@ pub(crate) enum Action {
     AiLanguage(String),
     New,
     NewImage,
+    OpenGallery,
+    OpenFiles,
     SelectFile(FileTab),
     CloseFile(FileTab),
     SaveFile(FileTab, bool),
@@ -380,6 +382,7 @@ pub(crate) struct App {
     file_tabs: FileTabs,
     image_studio: Option<Box<crate::image_studio::ImageStudio>>,
     images_active: bool,
+    browsers: crate::browsers::Browsers,
     image_exit_pending: bool,
     /// `None` is the start page.
     active: Option<usize>,
@@ -484,6 +487,7 @@ impl App {
             file_tabs: FileTabs::default(),
             image_studio: None,
             images_active: false,
+            browsers: crate::browsers::Browsers::default(),
             image_exit_pending: false,
             active: None,
             ribbon_tab: RibbonTab::Home,
@@ -552,8 +556,17 @@ impl App {
     }
 
     fn say(&mut self, text: impl Into<String>, error: bool, now: f64) {
+        let text = text.into();
+        if error
+            && matches!(
+                self.file_tabs.active(),
+                Some(FileTab::Gallery | FileTab::Files)
+            )
+        {
+            self.browsers.notice = Some(text.clone());
+        }
         self.status = Some(StatusLine {
-            text: text.into(),
+            text,
             error,
             at: now,
         });
@@ -860,8 +873,27 @@ impl App {
                 self.file_tabs.open(FileTab::Image(id));
                 self.activate_file(ctx, Some(FileTab::Image(id)));
             }
+            Action::OpenGallery | Action::OpenFiles => {
+                let key = if matches!(action, Action::OpenGallery) {
+                    FileTab::Gallery
+                } else {
+                    FileTab::Files
+                };
+                self.browsers.open(key, self.i18n.language());
+                self.file_tabs.open(key);
+                self.activate_file(ctx, Some(key));
+            }
             Action::SelectFile(key) => self.activate_file(ctx, Some(key)),
             Action::CloseFile(key) => match key {
+                FileTab::Gallery | FileTab::Files => {
+                    if self.browsers.close(key) {
+                        self.file_tabs.remove(key);
+                        self.activate_file(ctx, self.file_tabs.active());
+                    } else {
+                        self.browsers.notice = Some(self.t("browser.busy").to_owned());
+                        self.activate_file(ctx, Some(key));
+                    }
+                }
                 FileTab::Document(id) => {
                     if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
                         self.close_tab(index, false);
@@ -880,6 +912,7 @@ impl App {
             Action::SaveFile(key, save_as) => {
                 self.activate_file(ctx, Some(key));
                 match key {
+                    FileTab::Gallery | FileTab::Files => {}
                     FileTab::Document(_) => self.save(save_as, now),
                     FileTab::Image(id) => {
                         if let Some(studio) = &mut self.image_studio {
@@ -1867,6 +1900,15 @@ impl App {
         if !ctx.input(|input| input.viewport().close_requested()) && !self.image_exit_pending {
             return;
         }
+        if let Some(key) = [FileTab::Gallery, FileTab::Files]
+            .into_iter()
+            .find(|key| self.browsers.busy(*key))
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.browsers.notice = Some(self.t("browser.busy").to_owned());
+            self.activate_file(ctx, Some(key));
+            return;
+        }
         if self.models_released {
             self.settings.save();
             return;
@@ -2078,6 +2120,14 @@ impl App {
             self.open_named_dialog(part, actions);
         }
         let name = name.split(',').next().unwrap_or_default();
+        if name == "gallery" || name == "files" {
+            actions.push(if name == "gallery" {
+                Action::OpenGallery
+            } else {
+                Action::OpenFiles
+            });
+            return;
+        }
         if let Some(tab) = name.strip_prefix("ribbon:") {
             if let Some(found) = RibbonTab::ALL
                 .into_iter()
@@ -2200,6 +2250,7 @@ impl eframe::App for App {
         if let Some(studio) = &mut self.image_studio {
             studio.poll(&ctx);
         }
+        self.browsers.poll(&ctx);
         self.synchronize_file_tabs(&ctx);
         self.handle_close_request(&ctx);
         let mut actions = Vec::new();
@@ -2221,6 +2272,55 @@ impl eframe::App for App {
             self.run(&ctx, action, now);
         }
         self.synchronize_file_tabs(&ctx);
+        if let Some(key @ (FileTab::Gallery | FileTab::Files)) = self.file_tabs.active() {
+            let events = self.browsers.show(ui, key, self.i18n.language());
+            let title = format!(
+                "{} — MultiFormatEditor",
+                self.t(if key == FileTab::Gallery {
+                    "tab.gallery"
+                } else {
+                    "tab.files"
+                })
+            );
+            if title != self.window_title {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+                self.window_title = title;
+            }
+            for event in events {
+                use crate::browsers::Event;
+                match event {
+                    Event::Open(path) => self.open_path(&ctx, path, now),
+                    Event::System(path) | Event::Text(path)
+                        if crate::image_studio::supports(&path) =>
+                    {
+                        self.open_path(&ctx, path, now);
+                    }
+                    Event::Text(path) => {
+                        if let Err(error) = crate::browsers::open_system(&path, true) {
+                            self.browsers.notice = Some(error.to_string());
+                        }
+                    }
+                    Event::System(path) => {
+                        if let Err(error) = crate::browsers::open_system(&path, false) {
+                            self.browsers.notice = Some(error.to_string());
+                        }
+                    }
+                    Event::Reveal(path) => {
+                        self.browsers.reveal(&path, self.i18n.language());
+                        self.file_tabs.open(FileTab::Files);
+                        self.activate_file(&ctx, Some(FileTab::Files));
+                    }
+                }
+            }
+            if matches!(self.dialog, Some(Dialog::ConfirmExit)) {
+                self.dialogs(&ctx, &mut actions);
+            }
+            for action in actions {
+                self.run(&ctx, action, now);
+            }
+            self.note_window(&ctx);
+            return;
+        }
         if self.images_active {
             if let Some(studio) = &mut self.image_studio {
                 studio.show(ui, frame);
@@ -2378,7 +2478,14 @@ impl eframe::App for App {
     /// press that button. Unless a text field has focus, Tab is taken out
     /// of egui's input here and handled with the other keys.
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
-        if self.images_active || ctx.egui_wants_keyboard_input() || self.dialog.is_some() {
+        if self.images_active
+            || matches!(
+                self.file_tabs.active(),
+                Some(FileTab::Gallery | FileTab::Files)
+            )
+            || ctx.egui_wants_keyboard_input()
+            || self.dialog.is_some()
+        {
             return;
         }
         let is_tab = |event: &egui::Event| matches!(event, egui::Event::Key { key: Key::Tab, modifiers, .. } if !modifiers.command);
@@ -2492,6 +2599,23 @@ impl App {
                     let mut close = None;
                     for &key in self.file_tabs.order() {
                         let (name, tip, modified, badge_text, badge_color, state) = match key {
+                            FileTab::Gallery | FileTab::Files => {
+                                let name = self
+                                    .t(if key == FileTab::Gallery {
+                                        "tab.gallery"
+                                    } else {
+                                        "tab.files"
+                                    })
+                                    .to_owned();
+                                (
+                                    name.clone(),
+                                    name,
+                                    false,
+                                    if key == FileTab::Gallery { "G" } else { "F" },
+                                    theme::ACCENT,
+                                    if self.browsers.busy(key) { " …" } else { "" },
+                                )
+                            }
                             FileTab::Document(id) => {
                                 let Some(tab) = self.tabs.iter().find(|t| t.id == id) else {
                                     continue;
@@ -2624,11 +2748,15 @@ impl App {
                             close = Some(key);
                         }
                         response.context_menu(|ui| {
-                            if ui.button(self.t("file.save")).clicked() {
+                            if matches!(key, FileTab::Document(_) | FileTab::Image(_))
+                                && ui.button(self.t("file.save")).clicked()
+                            {
                                 actions.push(Action::SaveFile(key, false));
                                 ui.close();
                             }
-                            if ui.button(self.t("file.save_as")).clicked() {
+                            if matches!(key, FileTab::Document(_) | FileTab::Image(_))
+                                && ui.button(self.t("file.save_as")).clicked()
+                            {
                                 actions.push(Action::SaveFile(key, true));
                                 ui.close();
                             }
@@ -2651,6 +2779,15 @@ impl App {
                         if ui.button(self.t("file.new_image")).clicked() {
                             actions.push(Action::NewImage);
                             ui.close();
+                        }
+                        for (key, action) in [
+                            ("file.open_gallery", Action::OpenGallery),
+                            ("file.open_files", Action::OpenFiles),
+                        ] {
+                            if ui.button(self.t(key)).clicked() {
+                                actions.push(action);
+                                ui.close();
+                            }
                         }
                     });
                 });
@@ -3284,7 +3421,7 @@ impl App {
                     ui.label(RichText::new(self.t("start.subtitle")).size(14.0));
                     ui.add_space(24.0);
                     ui.horizontal_wrapped(|ui| {
-                        let width = 5.0 * 150.0 + 4.0 * 14.0;
+                        let width = 7.0 * 150.0 + 6.0 * 14.0;
                         ui.add_space(((ui.available_width() - width) / 2.0).max(0.0));
                         ui.spacing_mut().item_spacing.x = 14.0;
                         for (icon, key, tip, action) in [
@@ -3296,6 +3433,18 @@ impl App {
                                 Action::NewImage,
                             ),
                             (Icon::Open, "start.open", "tip.open", Action::OpenDialog),
+                            (
+                                Icon::Picture,
+                                "file.open_gallery",
+                                "file.open_gallery",
+                                Action::OpenGallery,
+                            ),
+                            (
+                                Icon::Open,
+                                "file.open_files",
+                                "file.open_files",
+                                Action::OpenFiles,
+                            ),
                             (
                                 Icon::Import,
                                 "start.import",
@@ -3403,6 +3552,12 @@ impl App {
                 }
                 if item(ui, Icon::Picture, self.i18n.t("file.new_image"), true) {
                     actions.push(Action::NewImage);
+                }
+                if item(ui, Icon::Picture, self.i18n.t("file.open_gallery"), true) {
+                    actions.push(Action::OpenGallery);
+                }
+                if item(ui, Icon::Open, self.i18n.t("file.open_files"), true) {
+                    actions.push(Action::OpenFiles);
                 }
                 if item(ui, Icon::Open, self.i18n.t("cmd.open"), true) {
                     actions.push(Action::OpenDialog);
@@ -5104,6 +5259,7 @@ impl App {
             live.extend(studio.tabs().iter().map(|t| FileTab::Image(t.id)));
             studio.take_focus_request()
         });
+        live.extend(self.browsers.live());
         self.file_tabs.synchronize(&live);
         let target = focus
             .map(FileTab::Image)
@@ -5128,7 +5284,12 @@ impl App {
     }
     fn file_commands_enabled(&self) -> bool {
         (self.dialog.is_none()
-            || (self.images_active && !matches!(self.dialog, Some(Dialog::ConfirmExit))))
+            || ((self.images_active
+                || matches!(
+                    self.file_tabs.active(),
+                    Some(FileTab::Gallery | FileTab::Files)
+                ))
+                && !matches!(self.dialog, Some(Dialog::ConfirmExit))))
             && !self.image_exit_pending
             && self.model_shutdown.is_none()
             && (!self.images_active

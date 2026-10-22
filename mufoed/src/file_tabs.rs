@@ -3,6 +3,8 @@
 pub(crate) enum FileTab {
     Document(u64),
     Image(u64),
+    Gallery,
+    Files,
 }
 pub(crate) enum TabCommand {
     Select(FileTab),
@@ -96,6 +98,24 @@ mod tests {
         FileTab::{Document as D, Image as I},
         FileTabs,
     };
+    #[test]
+    fn browsers_share_navigation_and_reopen_without_duplicates() {
+        use super::FileTab::{Files, Gallery};
+        let mut tabs = FileTabs::default();
+        for key in [D(1), Gallery, I(1), Files] {
+            tabs.open(key);
+        }
+        tabs.open(Gallery);
+        assert_eq!(tabs.order(), &[D(1), Gallery, I(1), Files]);
+        assert_eq!(tabs.neighbor(false), Some(I(1)));
+        assert_eq!(tabs.neighbor(true), Some(D(1)));
+        tabs.remove(Gallery);
+        assert_eq!(tabs.active(), Some(I(1)));
+        tabs.open(Gallery);
+        tabs.synchronize(&[D(1), I(1), Files, Gallery]);
+        assert_eq!(tabs.order(), &[D(1), I(1), Files, Gallery]);
+    }
+
     #[test]
     fn mixed_files_keep_open_order_and_independent_namespaces() {
         let mut tabs = FileTabs::default();

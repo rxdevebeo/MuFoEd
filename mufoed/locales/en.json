@@ -973,7 +973,11 @@
       "remove_series": "− series",
       "series_n": "Series {n}",
       "category_n": "Category {n}"
-    }
+    },
+    "file.open_gallery": "Open gallery",
+    "file.open_files": "Open file manager",
+    "tab.gallery": "Gallery",
+    "tab.files": "File manager",
+    "browser.busy": "Wait for the operation to finish or cancel it before closing."
   }
 }
-

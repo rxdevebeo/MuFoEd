@@ -313,6 +313,22 @@ impl Gallery {
         self
     }
 
+    /// Overrides background removal, for example to use the host's model admission.
+    /// The processor must release any model resources before its admission lease.
+    pub fn set_background_processor(
+        &mut self,
+        processor: impl Fn(&Remover, image::DynamicImage) -> Result<image::DynamicImage, crate::Error>
+            + Send
+            + Sync
+            + 'static,
+    ) {
+        let remover = Arc::clone(&self.remover);
+        self.tools
+            .register(TOOL_ID, "Remove background", move |image| {
+                processor(&remover, image)
+            });
+    }
+
     /// The host's answer to [`GalleryEvent::PickModel`].
     pub fn set_background_model(&mut self, path: impl Into<PathBuf>) {
         self.settings.background.model = Some(path.into());
@@ -622,6 +638,11 @@ impl Gallery {
     }
 
     /// Once per frame: listing, previews and job progress.
+    /// Polls workers without drawing or processing keyboard input.
+    pub fn poll(&mut self, ctx: &egui::Context) {
+        self.update(ctx);
+    }
+
     fn update(&mut self, ctx: &egui::Context) {
         let time = ctx.input(|input| input.time);
         if (time - self.last_time).abs() < f64::EPSILON {

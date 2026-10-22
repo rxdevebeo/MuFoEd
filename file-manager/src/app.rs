@@ -244,6 +244,17 @@ impl FileManager {
         std::mem::take(&mut self.events)
     }
 
+    /// Polls background operations even while the host tab is hidden.
+    pub fn poll(&mut self, ctx: &egui::Context) {
+        self.wake.set(ctx);
+        self.update();
+    }
+
+    /// Whether closing would interrupt a file operation or command.
+    pub fn is_busy(&self) -> bool {
+        self.task.is_some() || self.terminal.is_running()
+    }
+
     /// Draws the manager filling `ui`; returns the events for the host.
     pub fn show(&mut self, ui: &mut egui::Ui) -> Vec<Event> {
         let ctx = ui.ctx().clone();
