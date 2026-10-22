@@ -66,6 +66,9 @@ allow = [
 exceptions = [
     { crate = "epaint_default_fonts", allow = ["OFL-1.1", "Ubuntu-font-1.0"] },
     { crate = "hexf-parse", allow = ["CC0-1.0"] },
+    # unrar-rs: the UnRAR freeware licence (vendor/unrar-rs/LICENSE) allows
+    # use to read RAR archives, which is all the file manager does with it.
+    { crate = "unrar-rs", allow = ["LicenseRef-UnRAR"] },
     # libfuzzer-sys: rav1e's dependency for cfg(fuzzing) builds only (AVIF
     # writing in image-gallery); never compiled into the gallery.
     { crate = "libfuzzer-sys", allow = ["NCSA"] },

@@ -38,6 +38,8 @@ pub enum Kind {
     Zip,
     /// 7-Zip.
     SevenZ,
+    /// RAR 1.5 to 7 (read only).
+    Rar,
     /// Uncompressed TAR.
     Tar,
     /// TAR + gzip.
@@ -79,6 +81,8 @@ impl Kind {
             Self::Zip
         } else if ends(&[".7z", ".cb7"]) {
             Self::SevenZ
+        } else if ends(&[".rar", ".cbr"]) {
+            Self::Rar
         } else if ends(&[".gz"]) {
             Self::Gz
         } else if ends(&[".bz2"]) {
@@ -107,6 +111,7 @@ impl Kind {
         match self {
             Self::Zip => ".zip",
             Self::SevenZ => ".7z",
+            Self::Rar => ".rar",
             Self::Tar => ".tar",
             Self::TarGz => ".tar.gz",
             Self::TarBz2 => ".tar.bz2",
@@ -124,6 +129,7 @@ impl Kind {
         match self {
             Self::Zip => "ZIP",
             Self::SevenZ => "7z",
+            Self::Rar => "RAR",
             Self::Tar => "TAR",
             Self::TarGz => "TAR.GZ",
             Self::TarBz2 => "TAR.BZ2",
@@ -307,6 +313,27 @@ pub fn list(path: &Path) -> Result<Vec<Member>, ArchiveError> {
                     modified: entry
                         .has_last_modified_date
                         .then(|| SystemTime::from(entry.last_modified_date)),
+                });
+            }
+        }
+        Kind::Rar => {
+            let archive = unrar_rs::Archive::open(path).map_err(format_error)?;
+            // Service records and the continuations of split files are not
+            // members of their own.
+            for entry in archive
+                .entries
+                .iter()
+                .filter(|entry| !entry.service && !entry.split_before)
+            {
+                members.push(Member {
+                    path: entry
+                        .name
+                        .replace('\\', "/")
+                        .trim_end_matches('/')
+                        .to_owned(),
+                    is_dir: entry.is_dir,
+                    size: entry.unpacked_size,
+                    modified: entry.mtime,
                 });
             }
         }
@@ -509,6 +536,33 @@ pub fn extract(
                 .map_err(format_error)?;
             if let Some(error) = failure {
                 return Err(error);
+            }
+        }
+        Kind::Rar => {
+            let mut rar = unrar_rs::Archive::open(archive).map_err(format_error)?;
+            let wanted: Vec<usize> = (0..rar.entries.len())
+                .filter(|&index| !rar.entries[index].service && !rar.entries[index].split_before)
+                .collect();
+            let total: u64 = wanted
+                .iter()
+                .map(|&index| rar.entries[index].unpacked_size)
+                .sum();
+            progress
+                .bytes_total
+                .store(total, std::sync::atomic::Ordering::Relaxed);
+            for index in wanted {
+                let (name, is_dir) = (rar.entries[index].name.clone(), rar.entries[index].is_dir);
+                // UnRAR decodes into a writer: the file, through a counter.
+                written += extract_rar_member(
+                    &mut rar,
+                    index,
+                    &name,
+                    is_dir,
+                    selected,
+                    destination,
+                    overwrite,
+                    progress,
+                )?;
             }
         }
         kind if kind.is_tar() => {
@@ -807,7 +861,7 @@ fn pack_items(
             output.flush()?;
             progress.file_done();
         }
-        Kind::TarBz2 | Kind::TarZst | Kind::Bz2 | Kind::Zst => {
+        Kind::Rar | Kind::TarBz2 | Kind::TarZst | Kind::Bz2 | Kind::Zst => {
             return Err(ArchiveError::Format(format!(
                 "{} archives are read only",
                 kind.name()
@@ -815,6 +869,79 @@ fn pack_items(
         }
     }
     Ok(())
+}
+
+/// Extracts one RAR member, as `extract` does for the other kinds.
+/// Returns 1 when a file was written.
+#[allow(clippy::too_many_arguments)]
+fn extract_rar_member(
+    rar: &mut unrar_rs::Archive,
+    index: usize,
+    name: &str,
+    is_dir: bool,
+    selected: Option<&[String]>,
+    destination: &Path,
+    overwrite: bool,
+    progress: &Progress,
+) -> Result<usize, ArchiveError> {
+    if progress.cancelled() {
+        return Err(ArchiveError::Cancelled);
+    }
+    let name = name.replace('\\', "/");
+    let Some(relative) =
+        chosen(name.trim_end_matches('/'), selected).and_then(|kept| safe_relative(&kept))
+    else {
+        return Ok(0);
+    };
+    let target = destination.join(relative);
+    progress.set_current(&name);
+    if is_dir {
+        std::fs::create_dir_all(&target)?;
+        return Ok(0);
+    }
+    if target.exists() && !overwrite {
+        return Ok(0);
+    }
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut writer = CountingWriter {
+        inner: BufWriter::new(File::create(&target)?),
+        progress,
+    };
+    if let Err(error) = rar.extract_to(index, &mut writer) {
+        drop(writer);
+        let _ = std::fs::remove_file(&target);
+        return Err(if progress.cancelled() {
+            ArchiveError::Cancelled
+        } else {
+            format_error(error)
+        });
+    }
+    writer.inner.flush()?;
+    progress.file_done();
+    Ok(1)
+}
+
+/// A writer that counts bytes into the progress and stops when cancelled.
+struct CountingWriter<'a, W> {
+    inner: W,
+    progress: &'a Progress,
+}
+
+impl<W: Write> Write for CountingWriter<'_, W> {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        if self.progress.cancelled() {
+            return Err(progress::cancelled_error());
+        }
+        let written = self.inner.write(buffer)?;
+        self.progress.add_bytes(written as u64);
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
 }
 
 /// Compresses the file `input` into `output` with xz.
@@ -913,6 +1040,46 @@ mod tests {
             );
         }
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rar_archives_list_and_extract() {
+        let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
+        let rar3 = data.join("r4-solid.rar");
+        assert_eq!(Kind::of(&rar3), Some(Kind::Rar));
+        let members = list(&rar3).expect("lists");
+        let names: Vec<&str> = members.iter().map(|member| member.path.as_str()).collect();
+        assert_eq!(names, ["s1024.txt", "s10240.txt", "s102400.txt"]);
+        let target = std::env::temp_dir().join(format!("file-manager-rar-{}", std::process::id()));
+        let written = extract(
+            &rar3,
+            Some(&["s102400.txt".to_owned()]),
+            &target,
+            true,
+            &Progress::default(),
+        )
+        .expect("extracts");
+        assert_eq!(written, 1);
+        assert_eq!(
+            std::fs::metadata(target.join("s102400.txt"))
+                .expect("written")
+                .len(),
+            102_400
+        );
+        let rar5 = list(&data.join("solid.rar")).expect("lists RAR 5");
+        assert_eq!(rar5[0].path, ".gitignore");
+        assert_eq!(
+            read_member(&data.join("solid.rar"), ".gitignore", 1024).expect("reads"),
+            b"target\nCargo.lock\n"
+        );
+        assert!(pack(
+            &[rar3],
+            &target.join("x.rar"),
+            Kind::Rar,
+            &Progress::default()
+        )
+        .is_err());
+        let _ = std::fs::remove_dir_all(&target);
     }
 
     #[test]

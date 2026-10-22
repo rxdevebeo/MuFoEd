@@ -37,6 +37,8 @@ ruzstd = "0.9"
 # The newest release whose minimum Rust is the workspace's 1.92.
 sevenz-rust2 = { version = "=0.20.2", default-features = false, features = ["compress", "util", "aes256", "deflate"] }
 trash = "5.2"
+# RAR reading: the owner's pure-Rust UnRAR port (vendor/README.md).
+unrar-rs = { path = "../vendor/unrar-rs" }
 eframe = { version = "0.35", optional = true }
 
 [[bin]]
