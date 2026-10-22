@@ -1,8 +1,0 @@
-{
-  "strict-ooxml-latex/src/math.rs": "9c598accc0342c29be5f234799f0e0d59fcd8b2a1b59538bc88545876cce4cc0",
-  "strict-ooxml-latex/src/parser.rs": "3670f07d76e44780d684e0b843856bc89590f6dd388ab7365a03b5db1f0812f8",
-  "strict-ooxml-latex/tests/small_commands.rs": "4be0fe1b9a196127170893b1fe6fa059c55a7698185e1a6b37651bc7577d2457",
-  "strict-ooxml-latex/README.md": "09ba2e774d4ab3c37adbd5505c4b16ec242604a3abe325a11af955001790c89b",
-  "strict-ooxml-render-svg/src/math/layout.rs": "83dd7c287eb2569285a905e6cc0f5ed2af4bc5478ad373ed1e9e3477cfae62b7",
-  "strict-ooxml-render-svg/tests/math.rs": "39823a14ec5ca61ac9aeb874f66af2f33346b133b081c775e637ee0ede7d063b"
-}
