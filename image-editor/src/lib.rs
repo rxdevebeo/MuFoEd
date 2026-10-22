@@ -10,6 +10,7 @@ pub mod model_tools;
 mod profiling;
 pub mod ui;
 
+pub use document::recovery;
 pub use document::{
     Adjustment, BrushStyle, CanvasMode, ColorCorrection, Curves, Document, EditError, Histogram,
     History, Layer, LayerBlendMode, LayerMask, LevelChannel, Levels, MaskTarget, PhotoGeometry,

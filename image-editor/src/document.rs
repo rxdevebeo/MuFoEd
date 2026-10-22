@@ -1,5 +1,7 @@
 #[path = "layer_compositing.rs"]
 mod layer_compositing;
+#[path = "recovery.rs"]
+pub mod recovery;
 pub use layer_compositing::{LayerBlendMode, LayerMask, MaskTarget};
 #[path = "tone.rs"]
 mod tone;

@@ -1,5 +1,6 @@
 //! Standalone review host for the image-editor crate.
 mod preferences;
+mod recovery_host;
 use image_editor::{
     ui::{FileAction, ImageEditor},
     Document, EditError, Raster,
@@ -7,6 +8,7 @@ use image_editor::{
 
 fn main() -> eframe::Result {
     let preferences_path = preferences::path();
+    let recovery_directory = recovery_host::path(&preferences_path);
     let loaded_settings = preferences::load(&preferences_path);
     if let Ok(Some(settings)) = &loaded_settings {
         if let Some(cache) = settings.cache_dir() {
@@ -56,6 +58,7 @@ fn main() -> eframe::Result {
                 Ok(None) => {}
             }
 
+            let mut source = None;
             if let Some(path) = std::env::args_os().nth(1) {
                 let path = std::path::Path::new(&path);
                 let result = if path.extension().is_some_and(|e| {
@@ -66,14 +69,29 @@ fn main() -> eframe::Result {
                     Raster::open(path).and_then(Document::from_raster)
                 };
                 match result {
-                    Ok(doc) => editor.replace(doc),
+                    Ok(doc) => {
+                        editor.replace(doc);
+                        source = Some(path.to_path_buf());
+                    }
                     Err(e) => editor.set_status(e.to_string()),
                 }
             }
             open_shot_dialog(&mut editor);
             let preferences = preferences::Preferences::new(preferences_path, editor.settings());
+            let mut recovery = recovery_host::RecoveryHost::new(
+                &recovery_directory,
+                editor.project_epoch(),
+                source,
+            );
+            // Isolated crash QA only: makes the command-line project dirty without altering pixels.
+            if std::env::var("IMAGE_STUDIO_RECOVERY_PROBE").as_deref() == Ok("draft") {
+                editor.restore_recovered(editor.document().clone());
+                let source = recovery.source().map(std::path::Path::to_path_buf);
+                recovery.bind_source(editor.project_epoch(), source);
+            }
             Ok(Box::new(Demo {
                 preferences,
+                recovery,
                 editor,
                 frames: 0,
                 shot: std::env::var_os("IMAGE_STUDIO_SHOT").map(Into::into),
@@ -81,6 +99,7 @@ fn main() -> eframe::Result {
                 confirm_close: false,
                 releasing: None,
                 close_ready: false,
+                models_released: false,
             }))
         }),
     )
@@ -137,6 +156,8 @@ fn open_shot_dialog(editor: &mut ImageEditor) {
 }
 
 struct Demo {
+    recovery: recovery_host::RecoveryHost,
+    models_released: bool,
     preferences: preferences::Preferences,
     editor: ImageEditor,
     frames: u32,
@@ -148,6 +169,7 @@ struct Demo {
 }
 impl Demo {
     fn begin_shutdown(&mut self) {
+        self.recovery.close();
         if let Err(e) = self
             .preferences
             .poll(self.editor.settings())
@@ -163,17 +185,18 @@ impl Demo {
         if let Some(receiver) = &self.releasing {
             match receiver.try_recv() {
                 Ok(Ok(())) => {
-                    self.close_ready = true;
+                    self.models_released = true;
                     self.releasing = None;
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
                 Ok(Err(error)) => {
                     self.editor.set_status(format!("Model shutdown: {error}"));
                     self.releasing = None;
+                    self.recovery.cancel_close();
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.editor.set_status("Model shutdown worker stopped");
                     self.releasing = None;
+                    self.recovery.cancel_close();
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
                     self.editor
@@ -181,6 +204,10 @@ impl Demo {
                     ctx.request_repaint_after(std::time::Duration::from_millis(100));
                 }
             }
+        }
+        if self.models_released && self.recovery.ready_to_close() {
+            self.close_ready = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
     fn preset_file_dialog(&mut self, import: bool, frame: &eframe::Frame) -> Result<(), EditError> {
@@ -263,7 +290,9 @@ impl Demo {
                         self.editor.import_layer_file(&path)?;
                     } else {
                         self.editor
-                            .replace(Document::from_raster(Raster::open(path)?)?);
+                            .replace(Document::from_raster(Raster::open(&path)?)?);
+                        self.recovery
+                            .bind_source(self.editor.project_epoch(), Some(path));
                     }
                 }
             }
@@ -273,7 +302,9 @@ impl Demo {
                     .add_filter("Photoshop PSD / legacy project", &["psd", "json"])
                     .pick_file()
                 {
-                    self.editor.replace(Document::open_project(path)?);
+                    self.editor.replace(Document::open_project(&path)?);
+                    self.recovery
+                        .bind_source(self.editor.project_epoch(), Some(path));
                 }
             }
             FileAction::SaveProject => {
@@ -283,8 +314,10 @@ impl Demo {
                     .add_filter("Photoshop PSD", &["psd"])
                     .save_file()
                 {
-                    self.editor.document().save_project(path)?;
+                    self.editor.document().save_project(&path)?;
                     self.editor.mark_saved();
+                    self.recovery
+                        .bind_source(self.editor.project_epoch(), Some(path));
                     self.editor.set_status("PSD-проект сохранён");
                 }
             }
@@ -305,15 +338,25 @@ impl Demo {
 }
 impl eframe::App for Demo {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        for action in self.editor.show(ui) {
-            if matches!(action, FileAction::OpenImage | FileAction::OpenProject)
-                && self.editor.has_unsaved_changes()
-            {
-                self.pending_open = Some(action);
-                continue;
-            }
-            if let Err(e) = self.file_action(action, frame) {
-                self.editor.set_status(e.to_string());
+        self.recovery.poll(&mut self.editor);
+        if self.releasing.is_some() || self.models_released {
+            // Once close is accepted, no new edit can race the final recovery cleanup.
+            ui.centered_and_justified(|ui| {
+                ui.label("Завершение фоновых операций…");
+            });
+        } else if self.recovery.prompt_pending() {
+            self.recovery.show_prompt(ui.ctx(), &mut self.editor);
+        } else {
+            for action in self.editor.show(ui) {
+                if matches!(action, FileAction::OpenImage | FileAction::OpenProject)
+                    && self.editor.has_unsaved_changes()
+                {
+                    self.pending_open = Some(action);
+                    continue;
+                }
+                if let Err(e) = self.file_action(action, frame) {
+                    self.editor.set_status(e.to_string());
+                }
             }
         }
         if let Err(e) = self.preferences.poll(self.editor.settings()) {
@@ -357,7 +400,10 @@ impl eframe::App for Demo {
         }
         if let Some(path) = &self.shot {
             self.frames += 1;
-            if self.frames >= 12 && !self.editor.resource_operation_active() {
+            if self.frames >= 12
+                && !self.editor.resource_operation_active()
+                && self.recovery.screenshot_ready()
+            {
                 ui.ctx()
                     .send_viewport_cmd(
                         egui::ViewportCommand::Screenshot(egui::UserData::default()),

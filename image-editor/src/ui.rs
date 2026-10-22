@@ -149,6 +149,7 @@ pub enum FileAction {
 /// Reusable image editor widget with manual tools and generation staging.
 #[allow(clippy::struct_excessive_bools)] // Independent rendering, persistence, dialog, and backend flags.
 pub struct ImageEditor {
+    project_epoch: u64,
     runtime: mufoed_model_runtime::Runtime,
     document: Document,
     history: History,
@@ -243,6 +244,7 @@ impl ImageEditor {
             runtime,
             document,
             history: History::default(),
+            project_epoch: 0,
             texture: None,
             transform_preview: transform_preview::TransformPreview::default(),
             candidate_texture: None,
@@ -298,6 +300,15 @@ impl ImageEditor {
     pub fn document(&self) -> &Document {
         &self.document
     }
+    /// Host-local identity counter changed by project replacement, including New/Open.
+    pub fn project_epoch(&self) -> u64 {
+        self.project_epoch
+    }
+    /// Restore an unsaved draft while retaining host preferences and clearing old history.
+    pub fn restore_recovered(&mut self, document: Document) {
+        self.replace(document);
+        self.unsaved = true;
+    }
     /// Whether an editing operation occurred after the most recent save/import.
     pub fn has_unsaved_changes(&self) -> bool {
         self.unsaved
@@ -308,6 +319,7 @@ impl ImageEditor {
     }
     /// Replace the project and discard history/staged inference associated with the previous project.
     pub fn replace(&mut self, document: Document) {
+        let project_epoch = self.project_epoch.wrapping_add(1);
         let ribbon_ui = std::mem::take(&mut self.ribbon_ui);
         let target = self.edit_target();
         let clipboard_ui = std::mem::take(&mut self.clipboard_ui);
@@ -326,6 +338,7 @@ impl ImageEditor {
         let mut upscale_ui = std::mem::take(&mut self.upscale_ui);
         upscale_ui.reset_project();
         *self = Self::with_runtime(document, self.runtime.clone());
+        self.project_epoch = project_epoch;
         self.set_edit_target(target);
         self.ribbon_ui = ribbon_ui;
         self.clipboard_ui = clipboard_ui;
