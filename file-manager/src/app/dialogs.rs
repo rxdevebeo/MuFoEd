@@ -265,7 +265,7 @@ impl FileManager {
                     buttons(ui, locale, "Unpack", &mut outcome);
                 }
                 Dialog::Report { title, report } => {
-                    ui.heading(locale.text(*title));
+                    ui.heading(locale.text(title));
                     ui.label(locale.format(
                         "Done: {} files, {}; skipped {}.",
                         &[

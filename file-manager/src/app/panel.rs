@@ -102,6 +102,9 @@ pub(crate) enum PanelAction {
     Rename,
 }
 
+/// An archive listing being read: the archive and the answer to come.
+type MemberLoading = (PathBuf, Receiver<Result<Vec<Member>, String>>);
+
 /// A file panel.
 pub(crate) struct Panel {
     pub(crate) location: Location,
@@ -110,7 +113,7 @@ pub(crate) struct Panel {
     pub(crate) rows: Vec<Entry>,
     listing: Option<Listing>,
     members: Option<(PathBuf, Arc<Vec<Member>>)>,
-    member_loading: Option<(PathBuf, Receiver<Result<Vec<Member>, String>>)>,
+    member_loading: Option<MemberLoading>,
     pub(crate) cursor: usize,
     pub(crate) selected: HashSet<PathBuf>,
     /// The row a Shift-click extends from.
@@ -769,6 +772,7 @@ impl Panel {
     }
 
     /// Draws the drive buttons, the path bar and the filter above the rows.
+    #[allow(clippy::too_many_lines, clippy::single_match_else)]
     pub(crate) fn top_ui(
         &mut self,
         ui: &mut egui::Ui,

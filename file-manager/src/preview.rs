@@ -2,6 +2,7 @@
 //! pictures through the gallery's decoders, 3D models through its model
 //! panel, text with its encoding guessed, anything else as hex.
 
+use std::fmt::Write as _;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -193,7 +194,7 @@ pub fn hex_lines(bytes: &[u8]) -> impl Iterator<Item = String> + '_ {
     bytes.chunks(16).enumerate().map(|(row, chunk)| {
         let mut line = format!("{:08X}  ", row * 16);
         for (index, byte) in chunk.iter().enumerate() {
-            line.push_str(&format!("{byte:02X} "));
+            let _ = write!(line, "{byte:02X} ");
             if index == 7 {
                 line.push(' ');
             }

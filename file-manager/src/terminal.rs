@@ -2,7 +2,7 @@
 //! folder through the system shell, their output streamed into a log.
 //!
 //! `cd` is handled here (it changes the panel's folder); everything else
-//! goes to `cmd /C` or PowerShell on Windows and `sh -c` elsewhere.
+//! goes to `cmd /C` or `PowerShell` on Windows and `sh -c` elsewhere.
 
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ pub enum Shell {
     /// `cmd.exe /C` on Windows, `sh -c` elsewhere.
     #[default]
     System,
-    /// Windows PowerShell (`powershell -NoProfile -Command`).
+    /// Windows `PowerShell` (`powershell -NoProfile -Command`).
     PowerShell,
 }
 
@@ -261,7 +261,7 @@ impl History {
     }
 
     /// The next command (Down); `None` past the newest.
-    pub fn next(&mut self) -> Option<&str> {
+    pub fn newer(&mut self) -> Option<&str> {
         let at = self.cursor? + 1;
         if at >= self.entries.len() {
             self.cursor = None;
@@ -332,8 +332,8 @@ mod tests {
         assert_eq!(history.previous(), Some("b"));
         assert_eq!(history.previous(), Some("a"));
         assert_eq!(history.previous(), Some("a"));
-        assert_eq!(history.next(), Some("b"));
-        assert_eq!(history.next(), None);
+        assert_eq!(history.newer(), Some("b"));
+        assert_eq!(history.newer(), None);
         assert_eq!(decode(&[0x8F, 0xE0, 0xA8]).chars().count(), 3);
     }
 }

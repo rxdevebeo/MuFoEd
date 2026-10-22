@@ -171,8 +171,7 @@ fn draw(
             let picture = texture.size_vec2();
             let scale = (available.x / picture.x)
                 .min(available.y / picture.y)
-                .min(1.0)
-                .max(0.01);
+                .clamp(0.01, 1.0);
             ui.centered_and_justified(|ui| {
                 ui.image((texture.id(), picture * scale));
             });

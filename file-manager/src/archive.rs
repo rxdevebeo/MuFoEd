@@ -142,10 +142,6 @@ impl Kind {
             Self::Tar | Self::TarGz | Self::TarBz2 | Self::TarXz | Self::TarZst
         )
     }
-
-    fn is_single(self) -> bool {
-        matches!(self, Self::Gz | Self::Bz2 | Self::Xz | Self::Zst)
-    }
 }
 
 /// One member of an archive.
@@ -442,13 +438,15 @@ pub fn extract(
             if progress.cancelled() {
                 return Err(ArchiveError::Cancelled);
             }
+            // Some archivers store Windows separators.
+            let name = name.replace('\\', "/");
             let Some(relative) =
                 chosen(name.trim_end_matches('/'), selected).and_then(|kept| safe_relative(&kept))
             else {
                 return Ok(());
             };
             let target = destination.join(relative);
-            progress.set_current(name);
+            progress.set_current(&name);
             if is_dir {
                 std::fs::create_dir_all(&target)?;
                 return Ok(());
@@ -664,6 +662,7 @@ pub fn pack(
     result
 }
 
+#[allow(clippy::too_many_lines)]
 fn pack_items(
     items: &[(PathBuf, String, bool)],
     archive: &Path,

@@ -10,6 +10,8 @@ use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 
 /// One item of a listing: a file, a folder, or an archive member.
+// Independent attributes of a file, not a state machine.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry {
     /// The name shown (for archive members, the last path component).
@@ -275,7 +277,7 @@ pub fn grouped(bytes: u64) -> String {
     let digits = bytes.to_string();
     let mut out = String::new();
     for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
             out.push('\u{2009}');
         }
         out.push(digit);

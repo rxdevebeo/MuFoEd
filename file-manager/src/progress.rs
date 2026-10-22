@@ -65,7 +65,7 @@ impl Progress {
             0.0
         } else {
             // A display fraction: precision loss is irrelevant.
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
             let fraction = (done as f64 / total as f64) as f32;
             fraction.clamp(0.0, 1.0)
         }

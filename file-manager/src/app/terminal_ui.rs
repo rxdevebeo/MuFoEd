@@ -237,12 +237,15 @@ impl FileManager {
                 }
                 if up {
                     if let Some(previous) = self.terminal.history.previous() {
-                        self.terminal.input = previous.to_owned();
+                        previous.clone_into(&mut self.terminal.input);
                     }
                 }
                 if down {
-                    self.terminal.input =
-                        self.terminal.history.next().unwrap_or_default().to_owned();
+                    self.terminal
+                        .history
+                        .newer()
+                        .unwrap_or_default()
+                        .clone_into(&mut self.terminal.input);
                 }
                 if escape {
                     self.terminal.input.clear();

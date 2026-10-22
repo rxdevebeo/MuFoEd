@@ -8,7 +8,7 @@ use egui::Key;
 use crate::archive::{self, Kind};
 use crate::drives::{self, Drive};
 use crate::entry::Entry;
-use crate::ops::{Conflict, Operation, Report, Task};
+use crate::ops::{Conflict, Operation, Task};
 use crate::search::Query;
 use crate::terminal::Shell;
 use crate::Locale;
@@ -22,7 +22,7 @@ mod view;
 use dialogs::Dialog;
 use panel::{Location, Panel, PanelAction};
 
-/// The extensions the host's editor (MuFoEd) opens: F4 and Enter send
+/// The extensions the host's editor (`MuFoEd`) opens: F4 and Enter send
 /// these as [`Event::OpenInEditor`].
 pub const EDITOR_EXTENSIONS: &[&str] = &[
     "docx", "docm", "dotx", "rtf", "html", "htm", "tex", "ltx", "pdf", "djvu", "djv",
@@ -744,6 +744,8 @@ impl FileManager {
         });
     }
 
+    // Inside an archive or on one: two cases of one command.
+    #[allow(clippy::single_match_else)]
     fn unpack_dialog(&mut self) {
         let panel = &self.panels[self.active];
         let destination = self
@@ -960,7 +962,7 @@ impl FileManager {
 /// Whether the host's editor opens a file.
 fn is_editor_file(path: &Path) -> bool {
     path.extension()
-        .and_then(|extension| extension.to_str())
+        .and_then(std::ffi::OsStr::to_str)
         .is_some_and(|extension| {
             EDITOR_EXTENSIONS
                 .iter()

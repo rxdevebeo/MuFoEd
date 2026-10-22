@@ -301,7 +301,7 @@ fn numbered(target: &Path) -> PathBuf {
         .extension()
         .map(|extension| format!(".{}", extension.to_string_lossy()))
         .unwrap_or_default();
-    (2..)
+    (2..1_000_000)
         .map(|n| target.with_file_name(format!("{stem} ({n}){extension}")))
         .find(|candidate| !candidate.exists())
         .unwrap_or_else(|| target.to_path_buf())
@@ -624,11 +624,17 @@ mod tests {
         task.cancel();
         task.wait();
         assert!(task.report().cancelled);
-        let leftovers: Vec<_> = std::fs::read_dir(root.join("right"))
-            .expect("lists")
-            .flatten()
-            .filter(|item| item.file_name().to_string_lossy().ends_with(".part"))
-            .collect();
+        let mut leftovers = Vec::new();
+        let mut pending = vec![root.join("right")];
+        while let Some(folder) = pending.pop() {
+            for item in std::fs::read_dir(folder).expect("lists").flatten() {
+                if item.path().is_dir() {
+                    pending.push(item.path());
+                } else if item.file_name().to_string_lossy().ends_with(".part") {
+                    leftovers.push(item.path());
+                }
+            }
+        }
         assert!(leftovers.is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
