@@ -22,12 +22,24 @@ fn probe() -> Result<()> {
     if !tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         bail!("Invalid VAE_PROBE_TAG");
     }
-    let path = root.join(".runtime/hub/models--madebyollin--sdxl-vae-fp16-fix/snapshots/195eed7a7b1d493afdd8d66017a117ab5300b150/diffusion_pytorch_model.safetensors");
+    let repo = std::env::var("VAE_PROBE_MODEL")
+        .map_err(|_| anyhow!("Set VAE_PROBE_MODEL to a prepared local checkpoint"))?;
+    let request = Request {
+        model: repo.clone(),
+        ..Default::default()
+    };
+    let path = tokio::runtime::Runtime::new()?.block_on(resolve_vae(&request, &repo))?;
+    let expected = PathBuf::from(
+        std::env::var("VAE_PROBE_EXPECTED").map_err(|_| anyhow!("Set VAE_PROBE_EXPECTED"))?,
+    );
+    if std::fs::canonicalize(&path)? != std::fs::canonicalize(expected)? {
+        bail!("Resolved VAE differs from the selected checkpoint");
+    }
     let runtime = mufoed_model_runtime::Runtime::global();
     let mut task = mufoed_model_runtime::Task::new("image", "fixed VAE diagnostic");
     task.memory = Memory {
         ram: Some(4 << 30),
-        vram: Some(10 << 30),
+        vram: Some(4 << 30),
     };
     let lease = runtime
         .enqueue(task)?
@@ -47,12 +59,27 @@ fn probe() -> Result<()> {
             use_post_quant_conv: true,
         },
     )?;
-    let input: Vec<f32> = (0..4 * 128 * 128)
+    let source: Vec<f32> = (0..3 * 512 * 512)
+        .map(|i| (i as f32 * 0.003).sin() * 0.5)
+        .collect();
+    let source = Tensor::from_vec(source, (1, 3, 512, 512), &device)?;
+    device.set_seed(42)?;
+    let began = Instant::now();
+    let watch = profiling::watch_memory("vae.encode_memory", &device);
+    let encoded = model.encode(&source)?.sample()?;
+    device.synchronize()?;
+    let encode_seconds = began.elapsed().as_secs_f64();
+    drop(watch);
+    if !encoded.sum_all()?.to_scalar::<f32>()?.is_finite() {
+        bail!("Non-finite checkpoint VAE encode");
+    }
+    drop(encoded);
+    let input: Vec<f32> = (0..4 * 64 * 64)
         .map(|i| ((i as f32) * 0.017).sin() * 0.5)
         .collect();
-    let input = Tensor::from_vec(input, (1, 4, 128, 128), &device)?;
+    let input = Tensor::from_vec(input, (1, 4, 64, 64), &device)?;
     let mut times = Vec::new();
-    for index in 0..6 {
+    for index in 0..2 {
         device.synchronize()?;
         let watch = profiling::watch_memory("vae.fixed_memory", &device);
         let began = Instant::now();
@@ -65,6 +92,7 @@ fn probe() -> Result<()> {
             bail!("Non-finite fixed VAE output");
         }
         if index == 0 {
+            save_image(&image, root.join(format!("artifacts/vae-{tag}.png")))?;
             candle_core::safetensors::save(
                 &HashMap::from([("image".to_owned(), image)]),
                 root.join(format!("artifacts/vae-{tag}.safetensors")),
@@ -76,8 +104,27 @@ fn probe() -> Result<()> {
     std::fs::write(
         root.join(format!("artifacts/vae-{tag}.json")),
         serde_json::to_vec_pretty(&serde_json::json!({
-            "seconds":times,"cudnn":cfg!(feature="plakat-cudnn"),"shape":[1,4,128,128],"weights":fingerprint(&path)?
+            "seconds":times,"cudnn":cfg!(feature="plakat-cudnn"),"shape":[1,4,64,64],"weights":fingerprint(&path)?,"resolved_path":path,"model":repo,"encode_seconds":encode_seconds
         }))?,
     )?;
+    Ok(())
+}
+
+fn save_image(image: &Tensor, path: PathBuf) -> Result<()> {
+    let bytes = (((image / 2.0)? + 0.5)?.clamp(0f32, 1f32)? * 255.0)?
+        .to_dtype(DType::U8)?
+        .i(0)?
+        .permute((1, 2, 0))?
+        .flatten_all()?
+        .to_vec1::<u8>()?;
+    Raster::new(
+        512,
+        512,
+        bytes
+            .chunks_exact(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect(),
+    )?
+    .save_png(path)?;
     Ok(())
 }

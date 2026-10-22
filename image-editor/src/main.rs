@@ -138,7 +138,31 @@ fn open_shot_dialog(editor: &mut ImageEditor) {
             Ok("rotate") => editor.open_rotation_dialog(),
             Ok("memory") => editor.open_memory_panel(),
             Ok("retouch") => editor.select_manual_tool(image_editor::ui::ManualTool::Heal),
-            Ok("wand") => editor.select_manual_tool(image_editor::ui::ManualTool::Wand),
+            Ok("wand") => {
+                if let Some(point) =
+                    std::env::var("IMAGE_STUDIO_SHOT_WAND_POINT")
+                        .ok()
+                        .and_then(|v| {
+                            v.split_once(',').and_then(|(x, y)| {
+                                Some([x.parse::<u32>().ok()?, y.parse::<u32>().ok()?])
+                            })
+                        })
+                {
+                    let mut doc = editor.document().clone();
+                    let sample = doc.flatten();
+                    match doc.select_by_color(
+                        &sample,
+                        point,
+                        32,
+                        true,
+                        image_editor::SelectionOp::Replace,
+                    ) {
+                        Ok(()) => editor.replace(doc),
+                        Err(e) => editor.set_status(e.to_string()),
+                    }
+                }
+                editor.select_manual_tool(image_editor::ui::ManualTool::Wand);
+            }
             Ok("ribbon-transform") => {
                 editor.start_canvas_transform();
             }

@@ -96,6 +96,7 @@ pub(super) fn validate_library(presets: &[GenerationPreset]) -> Result<(), EditE
 impl ImageEditor {
     /// Open the centered generation preset library.
     pub fn open_presets(&mut self) {
+        self.finish_manual_gesture();
         self.preset_ui.open = true;
     }
     /// Presets available to an embedding host; persisted by the settings snapshot.
@@ -164,8 +165,10 @@ impl ImageEditor {
         self.generation_ui.model_name.clone_from(&preset.model_name);
         self.generation_ui.random_seed = preset.random_seed;
         self.generation_ui.seed_text = request.seed.to_string();
-        self.set_generation_mode(request.mode);
         self.request = request;
+        // A preset explicitly pins its VAE together with its checkpoint.
+        self.generation_ui.automatic_vae = None;
+        self.set_generation_mode(self.request.mode);
         Ok(())
     }
     /// Import a JSON preset library without replacing existing names. Missing weights remain selectable.
@@ -230,7 +233,8 @@ impl ImageEditor {
             .show(ctx, |ui| {
                 self.preset_controls(ui, &mut actions);
             });
-        self.preset_ui.open = open;
+        self.preset_ui.open =
+            open && !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         actions
     }
     fn preset_controls(&mut self, ui: &mut egui::Ui, actions: &mut Vec<FileAction>) {
@@ -363,6 +367,27 @@ impl ImageEditor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn source_mode_preset_cannot_restore_incompatible_hires() {
+        let mut e = ImageEditor::default();
+        e.request.mode = crate::generation::Mode::ImageToImage;
+        e.request.output_size = Some([512; 2]);
+        e.request.postprocess = Some(crate::generation::Postprocess {
+            hires: Some(crate::generation::HiresFix {
+                target_size: [1024; 2],
+                ..Default::default()
+            }),
+            denoise: 0.8,
+            ..Default::default()
+        });
+        e.save_preset("source mode", false, false).unwrap();
+        e.request.postprocess = None;
+        e.apply_preset(0).unwrap();
+        let post = e.request.postprocess.as_ref().unwrap();
+        assert!(post.hires.is_none());
+        assert!(post.denoise <= 0.5);
+        assert_eq!(e.request.mode, crate::generation::Mode::ImageToImage);
+    }
     #[test]
     fn hires_settings_and_preset_roundtrip_keep_both_pass_sizes_and_refine_cfg() {
         use crate::generation::{HiresFix, Postprocess};

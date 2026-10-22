@@ -116,6 +116,24 @@ pub fn fingerprint(document: &Document, source: Option<&Path>) -> Result<[u8; 32
     }
     Ok(hash.finalize().into())
 }
+// Saved image content excludes transient UI selection/active-layer state, unlike
+// recovery, which deliberately restores both. Only a digest is retained by the UI.
+pub(crate) fn saved_content_fingerprint(document: &Document) -> Result<[u8; 32], EditError> {
+    document.validate()?;
+    let mut metadata = header(document, None, 0);
+    metadata.active = 0;
+    metadata.selection = false;
+    let mut hash = Sha256::new();
+    hash.update(encode_header(&metadata)?);
+    hash.update(&document.mask);
+    for layer in &document.layers {
+        hash.update(&layer.raster.pixels);
+        if let Some(mask) = &layer.mask {
+            hash.update(&mask.pixels);
+        }
+    }
+    Ok(hash.finalize().into())
+}
 fn read_plane(r: &mut impl Read, len: usize) -> Result<Vec<u8>, EditError> {
     let mut bytes = vec![0; len];
     r.read_exact(&mut bytes)?;

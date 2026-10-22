@@ -1,3 +1,6 @@
+#[path = "brush.rs"]
+mod brush;
+pub use brush::BrushStroke;
 #[path = "layer_compositing.rs"]
 mod layer_compositing;
 #[path = "recovery.rs"]
@@ -126,6 +129,30 @@ impl Raster {
         self.image()
             .save_with_format(path, image::ImageFormat::Png)?;
         Ok(())
+    }
+    // All correction results share source dimensions. Preserve alpha/hidden RGB and
+    // interpolate only RGB through the same soft selection used by levels/curves.
+    pub(super) fn restrict_rgb_adjustment(&mut self, source: &Self, selection: &[u8]) {
+        for (i, (out, from)) in self
+            .pixels
+            .chunks_exact_mut(4)
+            .zip(source.pixels.chunks_exact(4))
+            .enumerate()
+        {
+            let coverage = if from[3] == 0 {
+                0
+            } else {
+                u32::from(selection.get(i).copied().unwrap_or(255))
+            };
+            for c in 0..3 {
+                out[c] = u8::try_from(
+                    (u32::from(from[c]) * (255 - coverage) + u32::from(out[c]) * coverage + 127)
+                        / 255,
+                )
+                .expect("RGB");
+            }
+            out[3] = from[3];
+        }
     }
     /// Width in pixels.
     pub fn width(&self) -> u32 {
@@ -369,6 +396,34 @@ impl Document {
         self.active = self.layers.len() - 1;
         Ok(())
     }
+    /// Add a processed replacement directly above its source, then hide the source.
+    /// Retain masks, blend mode and opacity; validate before changing the stack.
+    pub(crate) fn add_layer_result(
+        &mut self,
+        name: String,
+        raster: Raster,
+    ) -> Result<(), EditError> {
+        self.require_unlocked()?;
+        raster.validate()?;
+        if raster.width != self.width || raster.height != self.height {
+            return Err(invalid("Layer must match canvas dimensions"));
+        }
+        let mut layer = self.layers[self.active].clone();
+        layer.name = name;
+        layer.raster = raster;
+        layer.visible = true;
+        layer.locked = false;
+        if self.layers.len() >= 16
+            || self.memory_bytes() + layer.memory_bytes() > MAX_DOCUMENT_BYTES
+        {
+            return Err(invalid("Document layer/memory limit reached"));
+        }
+        self.layers[self.active].visible = false;
+        self.active += 1;
+        self.layers.insert(self.active, layer);
+        self.sync_layer_version();
+        Ok(())
+    }
     /// Accept a generation candidate with its reproducible recipe stored in the project.
     pub fn add_generated_layer(
         &mut self,
@@ -468,7 +523,7 @@ impl Document {
     pub fn adjust(&mut self, adjustment: Adjustment) -> Result<(), EditError> {
         self.require_unlocked()?;
         let original = self.layers[self.active].raster.image();
-        let mut result = match adjustment {
+        let result = match adjustment {
             Adjustment::Brightness(value) if (-255..=255).contains(&value) => {
                 image::imageops::brighten(&original, value)
             }
@@ -494,10 +549,9 @@ impl Document {
             Adjustment::Median => imageproc::filter::median_filter(&original, 1, 1),
             _ => return Err(invalid("Invalid adjustment value")),
         };
-        for (out, source) in result.pixels_mut().zip(original.pixels()) {
-            out[3] = source[3];
-        }
-        self.layers[self.active].raster = Raster::from_image(result);
+        let mut result = Raster::from_image(result);
+        result.restrict_rgb_adjustment(&self.layers[self.active].raster, &self.selection);
+        self.layers[self.active].raster = result;
         Ok(())
     }
     /// Crop all layers and mask to a rectangle inside the current canvas.

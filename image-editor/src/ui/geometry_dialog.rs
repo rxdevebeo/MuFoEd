@@ -32,6 +32,7 @@ impl Default for GeometryDialog {
 impl ImageEditor {
     /// Open a canvas sizing dialog without changing project pixels.
     pub fn open_canvas_dialog(&mut self) {
+        self.finish_manual_gesture();
         self.geometry = GeometryDialog {
             kind: Some(false),
             size: [self.document.width(), self.document.height()],
@@ -41,10 +42,14 @@ impl ImageEditor {
     }
     /// Open a clockwise rotation dialog, initially preserving all image corners.
     pub fn open_rotation_dialog(&mut self) {
+        self.finish_manual_gesture();
         self.geometry = GeometryDialog {
             kind: Some(true),
             ..Default::default()
         };
+    }
+    pub(super) fn geometry_dialog_open(&self) -> bool {
+        self.geometry.kind.is_some()
     }
     pub(super) fn rotation_preview(&self) -> Option<(f64, bool)> {
         (self.geometry.kind == Some(true)).then_some((self.geometry.angle, self.geometry.expand))

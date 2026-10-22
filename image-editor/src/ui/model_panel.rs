@@ -182,6 +182,7 @@ impl ImageEditor {
                 if ui
                     .add_enabled(
                         !busy
+                            && !self.document.layers()[self.document.active()].locked()
                             && self.model_ui.candidate.is_none()
                             && PathBuf::from(&self.model_ui.model).is_file(),
                         egui::Button::new("Удалить фон"),
@@ -295,22 +296,36 @@ fn accept_cutout(doc: &mut Document, candidate: Cutout) -> Result<(), EditError>
         ));
     }
     doc.select(candidate.source.index)?;
-    doc.set_layer(
-        candidate.source.layer.name().into(),
-        false,
-        candidate.source.layer.opacity(),
-    );
-    doc.add_layer("BiRefNet · cutout".into(), candidate.raster)?;
-    doc.set_layer(
-        "BiRefNet · cutout".into(),
-        true,
-        candidate.source.layer.opacity(),
-    );
-    Ok(())
+    doc.add_layer_result("BiRefNet · cutout".into(), candidate.raster)
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn birefnet_keeps_source_mask_blend_and_stack_position() {
+        let mut doc =
+            Document::from_raster(Raster::solid(8, 8, [90, 100, 110, 255]).unwrap()).unwrap();
+        doc.add_layer_mask(true).unwrap();
+        doc.set_layer_mask_enabled(false).unwrap();
+        doc.set_blend_mode(crate::LayerBlendMode::Screen).unwrap();
+        let source = Source {
+            index: 0,
+            layer: doc.layers()[0].clone(),
+        };
+        doc.add_layer(
+            "above".into(),
+            Raster::solid(8, 8, [50, 60, 70, 90]).unwrap(),
+        )
+        .unwrap();
+        let before = doc.flatten();
+        let raster = source.layer.raster().clone();
+        accept_cutout(&mut doc, Cutout { raster, source }).unwrap();
+        assert_eq!(doc.active(), 1);
+        assert_eq!(doc.layers()[2].name(), "above");
+        assert_eq!(doc.layers()[1].mask(), doc.layers()[0].mask());
+        assert_eq!(doc.layers()[1].blend_mode(), crate::LayerBlendMode::Screen);
+        assert_eq!(doc.flatten(), before);
+    }
     #[test]
     fn accepting_cutout_hides_original_and_rejects_stale_source() {
         let mut doc = Document::new(8, 8).unwrap();

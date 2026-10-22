@@ -102,7 +102,9 @@ impl Document {
     pub fn correct_color(&mut self, correction: ColorCorrection) -> Result<(), EditError> {
         self.require_unlocked()?;
         let layer = &mut self.layers[self.active];
-        layer.raster = correction.apply(&layer.raster)?;
+        let mut result = correction.apply(&layer.raster)?;
+        result.restrict_rgb_adjustment(&layer.raster, &self.selection);
+        layer.raster = result;
         Ok(())
     }
 }

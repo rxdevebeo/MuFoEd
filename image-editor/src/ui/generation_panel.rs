@@ -54,6 +54,7 @@ pub(super) struct GenerationUi {
     prepare: Option<Preparation>,
     progress: Option<(u64, Option<u64>)>,
     pub(super) model_name: String,
+    pub(super) automatic_vae: Option<PathBuf>,
     custom_model: String,
     custom_family: Family,
     pub(super) random_seed: bool,
@@ -78,6 +79,7 @@ impl Default for GenerationUi {
             prepare: None,
             progress: None,
             model_name: String::new(),
+            automatic_vae: None,
             custom_model: String::new(),
             custom_family: Family::Sdxl,
             random_seed: true,
@@ -127,6 +129,7 @@ impl ImageEditor {
     }
     /// Open a local model, adapter, or VAE selector in an embedding host.
     pub fn open_resource_dialog(&mut self, kind: Kind) {
+        self.finish_manual_gesture();
         self.generation_ui.dialog = Some(kind);
         self.generation_ui.resources.clear();
         self.generation_ui.cursor = None;
@@ -211,12 +214,10 @@ impl ImageEditor {
                     self.generation_ui.prepare = None;
                     if asset.kind == Kind::Vae {
                         self.request.vae = Some(result.into());
+                        self.generation_ui.automatic_vae = None;
                     } else {
-                        asset.ready_model = Some(result.clone());
-                        self.request.model = result;
-                        self.request.family = Some(asset.family);
-                        self.request.output_size = Some([asset.family.size(); 2]);
-                        self.generation_ui.model_name.clone_from(&asset.name);
+                        asset.ready_model = Some(result);
+                        self.choose_asset(asset.clone());
                     }
                     self.generation_ui.assets.retain(|a| a.path != asset.path);
                     self.generation_ui.assets.push(asset);
@@ -305,15 +306,9 @@ impl ImageEditor {
     fn choose_asset(&mut self, asset: Asset) {
         match asset.kind {
             Kind::Model => {
-                if self.request.vae.is_none() {
-                    self.request.vae = crate::huggingface::bundle_vae(&asset);
-                }
+                let bundled_vae = crate::huggingface::bundle_vae(&asset);
                 if let Some(model) = asset.ready_model {
-                    self.request.model = model;
-                    self.request.family = Some(asset.family);
-                    self.request.output_size = Some([asset.family.size(); 2]);
-                    self.generation_ui.model_name = asset.name;
-                    self.generation_ui.dialog = None;
+                    self.select_prepared_model(model, asset.family, asset.name, bundled_vae);
                 } else {
                     self.prepare_asset(asset);
                 }
@@ -330,6 +325,23 @@ impl ImageEditor {
             }
             Kind::Vae => self.prepare_asset(asset),
         }
+    }
+    fn select_prepared_model(
+        &mut self,
+        model: String,
+        family: Family,
+        name: String,
+        bundled_vae: Option<PathBuf>,
+    ) {
+        if self.request.vae.is_none() || self.request.vae == self.generation_ui.automatic_vae {
+            self.request.vae.clone_from(&bundled_vae);
+            self.generation_ui.automatic_vae = bundled_vae;
+        }
+        self.request.model = model;
+        self.request.family = Some(family);
+        self.request.output_size = Some([family.size(); 2]);
+        self.generation_ui.model_name = name;
+        self.generation_ui.dialog = None;
     }
     fn new_seed(&mut self) -> bool {
         let mut bytes = [0; 8];
@@ -517,6 +529,7 @@ impl ImageEditor {
             }
             if self.request.vae.is_some() && ui.small_button("Default").clicked() {
                 self.request.vae = None;
+                self.generation_ui.automatic_vae = None;
             }
         });
         ui.add(
@@ -870,12 +883,12 @@ if ui.add_enabled(!busy,egui::Button::new("Add file…")).clicked(){actions.push
                 if kind==Kind::Model {ui.collapsing("Plakat alias / prepared Hugging Face ID",|ui|{
                     ui.text_edit_singleline(&mut self.generation_ui.custom_model);
                     egui::ComboBox::from_id_salt("custom-family").selected_text(format!("{:?}",self.generation_ui.custom_family)).show_ui(ui,|ui|{ui.selectable_value(&mut self.generation_ui.custom_family,Family::Sdxl,"SDXL");ui.selectable_value(&mut self.generation_ui.custom_family,Family::Sd15,"SD 1.5");});
-                    if ui.add_enabled(!busy && !self.generation_ui.custom_model.trim().is_empty(),egui::Button::new("Use identifier")).clicked(){self.generation_ui.custom_model.trim().clone_into(&mut self.request.model);self.request.family=Some(self.generation_ui.custom_family);self.request.output_size=Some([self.generation_ui.custom_family.size();2]);self.generation_ui.model_name.clear();self.generation_ui.dialog=None;}
+                    if ui.add_enabled(!busy && !self.generation_ui.custom_model.trim().is_empty(),egui::Button::new("Use identifier")).clicked(){self.select_prepared_model(self.generation_ui.custom_model.trim().to_owned(),self.generation_ui.custom_family,String::new(),None);}
                 });}
             }
             ui.separator();ui.add(egui::Label::new(&self.status).wrap());
         });
-        if !open {
+        if !open || context.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             self.generation_ui.dialog = None;
         }
     }
@@ -883,6 +896,27 @@ if ui.add_enabled(!busy,egui::Button::new("Add file…")).clicked(){actions.push
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn switching_checkpoint_drops_only_the_previous_automatic_bundle_vae() {
+        for explicit in [false, true] {
+            let mut e = ImageEditor::default();
+            let previous = PathBuf::from("old-bundle/vae/weights.safetensors");
+            e.request.vae = Some(previous.clone());
+            if !explicit {
+                e.generation_ui.automatic_vae = Some(previous.clone());
+            }
+            e.choose_asset(Asset {
+                path: "next-checkpoint.safetensors".into(),
+                name: "next".into(),
+                kind: Kind::Model,
+                family: Family::Sd15,
+                ready_model: Some("local/next-checkpoint".into()),
+            });
+            assert_eq!(e.request.model, "local/next-checkpoint");
+            assert_eq!(e.request.vae, explicit.then_some(previous));
+            assert!(e.generation_ui.automatic_vae.is_none());
+        }
+    }
     #[test]
     fn edit_prompt_is_visible_and_typing_updates_the_inpaint_request() {
         let ctx = egui::Context::default();

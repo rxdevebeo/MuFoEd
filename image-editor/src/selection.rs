@@ -22,20 +22,20 @@ impl PixelClipboard {
         self.mask
     }
     /// Convert clipboard content for the global editing target. Image-to-mask
-    /// uses grayscale luminance multiplied by alpha; mask-to-image is grayscale.
+    /// uses grayscale luminance retaining alpha; mask-to-image is grayscale.
     #[must_use]
     pub fn for_mask(&self, mask: bool) -> Self {
         let mut copy = self.clone();
         if mask && !copy.mask {
             for p in copy.raster.pixels.chunks_exact_mut(4) {
-                let value = mask_coverage(p.try_into().expect("RGBA"));
-                p.copy_from_slice(&[value, value, value, 255]);
+                let value = mask_coverage([p[0], p[1], p[2], 255]);
+                p.copy_from_slice(&[value, value, value, p[3]]);
             }
         }
         copy.mask = mask;
         copy
     }
-    /// Image pixels use straight alpha; masks use opaque grayscale coverage.
+    /// Image pixels use straight alpha; masks use grayscale with independent clipboard alpha.
     pub fn raster(&self) -> &Raster {
         &self.raster
     }
@@ -173,17 +173,9 @@ impl Document {
                 let src = (y as usize * self.width as usize + x as usize) * 4;
                 let dst = ((y - top) as usize * raster.width as usize + (x - left) as usize) * 4;
                 if mask_only {
-                    let coverage = if self.selection.is_empty() {
-                        mask[src / 4]
-                    } else {
-                        u8::try_from(
-                            (u16::from(mask[src / 4]) * u16::from(self.selection[src / 4]) + 127)
-                                / 255,
-                        )
-                        .expect("coverage")
-                    };
-                    raster.pixels[dst..dst + 4]
-                        .copy_from_slice(&[coverage, coverage, coverage, 255]);
+                    let value = mask[src / 4];
+                    let alpha = self.selection.get(src / 4).copied().unwrap_or(255);
+                    raster.pixels[dst..dst + 4].copy_from_slice(&[value, value, value, alpha]);
                     continue;
                 }
                 raster.pixels[dst..dst + 4].copy_from_slice(&source.pixels[src..src + 4]);
@@ -207,7 +199,8 @@ impl Document {
     /// Paste with source-over compositing at canvas coordinates. A new layer is
     /// full-canvas and unlocked; current-layer insertion respects its pixel lock.
     /// Existing selection is a source selection and does not clip the paste again.
-    /// Mask fragments replace the shared mask; layer targets/locks do not apply.
+    /// Mask fragments replace coverage only within their alpha footprint, preserving
+    /// the surrounding target. Layer masks use the host target adapter and its lock.
     pub fn paste_pixels(
         &mut self,
         clip: &PixelClipboard,
@@ -225,7 +218,7 @@ impl Document {
             return Err(invalid("Фрагмент находится за пределами холста"));
         }
         if clip.mask {
-            let mut mask = vec![0; self.mask.len()];
+            let mut mask = self.mask.clone();
             for y in top..bottom {
                 for x in left..right {
                     let src = (usize::try_from(y - i64::from(at[1])).expect("clipped")
@@ -234,7 +227,14 @@ impl Document {
                         * 4;
                     let dst = usize::try_from(y).expect("clipped") * self.width as usize
                         + usize::try_from(x).expect("clipped");
-                    mask[dst] = clip.raster.pixels[src];
+                    let alpha = u32::from(clip.raster.pixels[src + 3]);
+                    mask[dst] = u8::try_from(
+                        (u32::from(clip.raster.pixels[src]) * alpha
+                            + u32::from(mask[dst]) * (255 - alpha)
+                            + 127)
+                            / 255,
+                    )
+                    .expect("mask coverage");
                 }
             }
             self.mask = mask;

@@ -50,7 +50,9 @@ impl ImageEditor {
         painter: &egui::Painter,
         rect: Rect,
     ) -> bool {
-        if self.document.has_layer_features() && self.transform_preview_active() {
+        if (self.document.has_layer_features() || self.floating_transform())
+            && self.transform_preview_active()
+        {
             return self.paint_exact_transform_preview(ui, painter, rect);
         }
         if let Some((angle, _)) = self.rotation_preview() {
@@ -165,8 +167,14 @@ impl ImageEditor {
         true
     }
     pub(super) fn exact_transform_raster(&self) -> Result<crate::Raster, crate::EditError> {
-        let mut doc = self.document.clone();
-        if let Some((angle, expand)) = self.rotation_preview() {
+        let mut doc = if self.floating_transform() {
+            self.pasted_transform_document(&self.floating_transform_raster()?)?
+        } else {
+            self.document.clone()
+        };
+        if self.floating_transform() {
+            // The fragment has already been transformed and recomposed above.
+        } else if let Some((angle, expand)) = self.rotation_preview() {
             doc.rotate(angle, expand)?;
         } else if let Some((angle, scale, photo, center)) = self.layer_preview() {
             let operation = |d: &mut crate::Document| {

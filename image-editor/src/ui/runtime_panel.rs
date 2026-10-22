@@ -125,6 +125,7 @@ impl ImageEditor {
             ui.weak("Недостаточно памяти: освободите idle-кэш, завершите чужую GPU-задачу либо явно выберите меньший размер/контекст или CPU. Параметры задачи автоматически не меняются.");
             ctx.request_repaint_after(Duration::from_millis(500));
         });
-        self.runtime_ui.open = open;
+        self.runtime_ui.open =
+            open && !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
     }
 }

@@ -106,7 +106,7 @@ fn unselected_copy_uses_whole_active_layer_or_visible_composite() {
 }
 
 #[test]
-fn mask_clipboard_preserves_coverage_and_replaces_mask_without_changing_locked_layers() {
+fn mask_clipboard_preserves_surroundings_without_changing_locked_layers() {
     let mut source = Document::new(4, 3).unwrap();
     source
         .set_mask(vec![0, 0, 0, 0, 0, 64, 0, 255, 0, 128, 0, 0])
@@ -124,7 +124,10 @@ fn mask_clipboard_preserves_coverage_and_replaces_mask_without_changing_locked_l
     let layers = target.layers().to_vec();
     target.paste_pixels(&clip, [-1, 0], true).unwrap();
     assert_eq!(target.layers(), layers);
-    assert_eq!(target.mask(), &[0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(
+        target.mask(),
+        &[0, 255, 255, 255, 0, 0, 255, 255, 255, 255, 255, 255]
+    );
     assert!(!PixelClipboard::from_raster(clip.raster().clone()).is_mask());
     target.clear_mask();
     let before = target.clone();

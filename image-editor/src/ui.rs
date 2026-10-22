@@ -10,6 +10,7 @@ mod hires_panel;
 mod layer_dialog;
 mod layer_masks;
 mod preset_panel;
+mod ribbon_icons;
 mod ribbon_ui;
 mod selection_overlay;
 mod tone_dialog;
@@ -158,6 +159,7 @@ pub struct ImageEditor {
     candidate_texture: Option<TextureHandle>,
     changed: bool,
     unsaved: bool,
+    saved_fingerprint: Option<[u8; 32]>,
     confirm_new: bool,
     manual_ui: manual_panel::ManualUi,
     ribbon_ui: ribbon_ui::RibbonUi,
@@ -220,6 +222,9 @@ impl ImageEditor {
     /// Choose generation from text, source pixels, or a painted mask.
     pub fn set_generation_mode(&mut self, mode: Mode) {
         self.request.mode = mode;
+        if mode != Mode::Inpaint {
+            self.stop_segmentation_points();
+        }
         self.disable_hires_for_source_mode();
         self.active_tab = if mode == Mode::Inpaint {
             StudioTab::Edit
@@ -242,6 +247,7 @@ impl ImageEditor {
         };
         Self {
             runtime,
+            saved_fingerprint: crate::document::recovery::saved_content_fingerprint(&document).ok(),
             document,
             history: History::default(),
             project_epoch: 0,
@@ -307,6 +313,7 @@ impl ImageEditor {
     /// Restore an unsaved draft while retaining host preferences and clearing old history.
     pub fn restore_recovered(&mut self, document: Document) {
         self.replace(document);
+        self.saved_fingerprint = None;
         self.unsaved = true;
     }
     /// Whether an editing operation occurred after the most recent save/import.
@@ -315,7 +322,16 @@ impl ImageEditor {
     }
     /// Mark a successfully persisted project as saved. PNG export does not save layers.
     pub fn mark_saved(&mut self) {
+        self.finish_manual_gesture();
+        self.finish_pasted_object();
+        self.saved_fingerprint =
+            crate::document::recovery::saved_content_fingerprint(&self.document).ok();
         self.unsaved = false;
+    }
+    pub(super) fn refresh_saved_state(&mut self) {
+        self.unsaved = self.saved_fingerprint.is_none_or(|saved| {
+            crate::document::recovery::saved_content_fingerprint(&self.document).ok() != Some(saved)
+        });
     }
     /// Replace the project and discard history/staged inference associated with the previous project.
     pub fn replace(&mut self, document: Document) {
@@ -360,6 +376,7 @@ impl ImageEditor {
         self.status = message.into();
     }
     fn edit(&mut self, operation: impl FnOnce(&mut Document) -> Result<(), EditError>) {
+        self.finish_manual_gesture();
         self.finish_pasted_object();
         if self.layer_dialog_open() {
             self.layer_dialog = layer_dialog::LayerDialog::default();
@@ -384,7 +401,7 @@ impl ImageEditor {
                     }
                     self.changed = true;
                     self.manual_ui.thumbnails.clear();
-                    self.unsaved = true;
+                    self.refresh_saved_state();
                     if self.document.layers() != before.layers() {
                         self.clear_segmentation_points();
                     }
@@ -402,6 +419,18 @@ impl ImageEditor {
             }
         }
     }
+    // Floating dialogs own their keyboard input even when no text field has focus.
+    pub(super) fn canvas_shortcuts_blocked(&self) -> bool {
+        self.tone_dialog.is_some()
+            || self.geometry_dialog_open()
+            || (self.layer_dialog_open() && !self.inline_transform())
+            || self.settings_open
+            || self.preset_ui.open
+            || self.generation_ui.dialog.is_some()
+            || self.runtime_ui.open
+            || self.confirm_new
+            || self.manual_rename_active()
+    }
     /// Render the editor. Call each frame; generation polling never waits for inference.
     // Pixel/UI conversion intentionally rounds bounded canvas coordinates and color channels.
     #[allow(
@@ -412,7 +441,7 @@ impl ImageEditor {
     )]
     pub fn show(&mut self, ui: &mut egui::Ui) -> Vec<FileAction> {
         let mut actions = Vec::new();
-        if self.tone_dialog.is_none() && !ui.ctx().egui_wants_keyboard_input() {
+        if !self.canvas_shortcuts_blocked() && !ui.ctx().egui_wants_keyboard_input() {
             let mods = ui.input(|i| i.modifiers);
             if mods.command && ui.input(|i| i.key_pressed(egui::Key::S)) {
                 actions.push(FileAction::SaveProject);
@@ -517,7 +546,7 @@ impl ImageEditor {
                         .request_repaint_after(std::time::Duration::from_millis(100));
                 }
             });
-        if self.tone_dialog.is_none()
+        if !self.canvas_shortcuts_blocked()
             && !ui.ctx().egui_wants_keyboard_input()
             && ui.input_mut(|i| {
                 i.consume_shortcut(&egui::KeyboardShortcut::new(
@@ -528,7 +557,7 @@ impl ImageEditor {
         {
             self.restore_history(true);
         }
-        if self.tone_dialog.is_none()
+        if !self.canvas_shortcuts_blocked()
             && !ui.ctx().egui_wants_keyboard_input()
             && ui.input_mut(|i| {
                 i.consume_shortcut(&egui::KeyboardShortcut::new(
@@ -661,7 +690,7 @@ impl ImageEditor {
                 });
                 ui.add_space(6.0);
                 if self.changed || self.texture.is_none() {
-                    self.rebuild_selection_outline();
+                    self.rebuild_selection_outline(ui.ctx());
                     self.transform_preview.clear();
                     let raster = self.document.flatten();
                     let mut pixels = raster.pixels().to_vec();
@@ -789,6 +818,11 @@ impl ImageEditor {
                         }
                     });
             });
+        if self.confirm_new
+            && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.confirm_new = false;
+        }
         if self.confirm_new {
             egui::Window::new("Create new canvas?")
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)

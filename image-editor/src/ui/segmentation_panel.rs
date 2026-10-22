@@ -148,16 +148,17 @@ impl ImageEditor {
                     || self.upscale_operation_active();
                 ui.add_enabled_ui(!busy, |ui| {
                     ui.horizontal(|ui| {
-                        ui.selectable_value(
-                            &mut self.segmentation_ui.point_mode,
-                            Some(true),
-                            "+ Объект",
-                        );
-                        ui.selectable_value(
-                            &mut self.segmentation_ui.point_mode,
-                            Some(false),
-                            "− Фон",
-                        );
+                        for (positive, label) in [(true, "+ Объект"), (false, "− Фон")] {
+                            if ui
+                                .selectable_label(
+                                    self.segmentation_ui.point_mode == Some(positive),
+                                    label,
+                                )
+                                .clicked()
+                            {
+                                self.begin_segmentation_points(positive);
+                            }
+                        }
                     });
                     ui.horizontal(|ui| {
                         if ui.button("Убрать точку").clicked() {
@@ -167,7 +168,9 @@ impl ImageEditor {
                             self.segmentation_ui.points.clear();
                         }
                         if ui.button("Кисть маски").clicked() {
-                            self.segmentation_ui.point_mode = None;
+                            self.set_mask_target(crate::MaskTarget::Inpaint)
+                                .expect("AI mask");
+                            self.select_manual_tool(super::ManualTool::Mask);
                         }
                     });
                     ui.small(format!(
@@ -189,7 +192,8 @@ impl ImageEditor {
                     }
                     if ui
                         .add_enabled(
-                            self.document.mask().iter().any(|v| *v > 0),
+                            self.document.mask().iter().any(|v| *v > 0)
+                                && !self.document.layers()[self.document.active()].locked(),
                             egui::Button::new("Вырезать по маске"),
                         )
                         .clicked()
@@ -271,23 +275,43 @@ impl ImageEditor {
                 });
             });
         if accept {
-            let (mask, source) = self
-                .segmentation_ui
-                .candidate
-                .take()
-                .expect("SAM candidate");
-            self.edit(|doc| apply_mask(doc, &mask, &source));
-            self.request.mode = Mode::Inpaint;
-            self.active_tab = super::StudioTab::Edit;
-            self.request.mask_invert = false;
-            self.select_manual_tool(super::ManualTool::Mask);
-            self.segmentation_ui.point_mode = None;
-            self.segmentation_ui.texture = None;
+            self.accept_segmentation();
         }
         if discard {
             self.segmentation_ui.candidate = None;
             self.segmentation_ui.texture = None;
         }
+    }
+    fn accept_segmentation(&mut self) {
+        let (mask, source) = self
+            .segmentation_ui
+            .candidate
+            .take()
+            .expect("SAM candidate");
+        let mut applied = false;
+        self.edit(|doc| {
+            apply_mask(doc, &mask, &source)?;
+            applied = true;
+            Ok(())
+        });
+        self.segmentation_ui.texture = None;
+        if !applied {
+            return;
+        }
+        // SAM always produces the AI mask, independent of the previous mask destination.
+        self.set_mask_target(crate::MaskTarget::Inpaint)
+            .expect("AI mask always exists");
+        self.request.mode = Mode::Inpaint;
+        self.active_tab = super::StudioTab::Edit;
+        self.request.mask_invert = false;
+        self.select_manual_tool(super::ManualTool::Mask);
+        self.segmentation_ui.point_mode = None;
+        self.segmentation_ui.texture = None;
+    }
+    fn begin_segmentation_points(&mut self, positive: bool) {
+        // Leave Hand/Zoom and complete old gestures before reserving clicks for SAM.
+        self.select_manual_tool(super::ManualTool::Brush);
+        self.segmentation_ui.point_mode = Some(positive);
     }
     pub(super) fn segmentation_point_mode(&self) -> bool {
         self.segmentation_ui.point_mode.is_some()
@@ -357,14 +381,100 @@ fn cutout_selection(doc: &mut Document) -> Result<(), EditError> {
             .expect("bounded alpha");
     }
     let raster = Raster::new(doc.width(), doc.height(), pixels)?;
-    doc.set_layer(layer.name().into(), false, layer.opacity());
-    doc.add_layer("Selection · cutout".into(), raster)?;
-    doc.set_layer("Selection · cutout".into(), true, layer.opacity());
-    Ok(())
+    doc.add_layer_result("Selection · cutout".into(), raster)
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sam_points_exit_hand_and_source_modes_release_canvas_input() {
+        let mut e = ImageEditor::default();
+        e.select_tab(super::super::StudioTab::Edit);
+        e.select_manual_tool(super::super::ManualTool::Hand);
+        e.begin_segmentation_points(true);
+        assert_ne!(e.manual_ui.tool, super::super::ManualTool::Hand);
+        assert_eq!(e.segmentation_ui.point_mode, Some(true));
+        e.set_generation_mode(Mode::ImageToImage);
+        assert!(!e.segmentation_point_mode());
+    }
+    #[test]
+    fn stale_sam_result_does_not_change_mode_or_mask_destination() {
+        let mut doc = Document::new(8, 8).unwrap();
+        doc.add_layer_mask(true).unwrap();
+        let mut e = ImageEditor::new(doc);
+        e.set_mask_target(crate::MaskTarget::Layer(0)).unwrap();
+        e.set_generation_mode(Mode::ImageToImage);
+        let before = e.document.clone();
+        e.segmentation_ui.candidate = Some((
+            Raster::solid(8, 8, [90; 4]).unwrap(),
+            Raster::solid(8, 8, [255; 4]).unwrap(),
+        ));
+        e.accept_segmentation();
+        assert_eq!(e.document, before);
+        assert_eq!(e.mask_target(), crate::MaskTarget::Layer(0));
+        assert_eq!(e.request.mode, Mode::ImageToImage);
+    }
+    #[test]
+    fn failed_cutout_at_layer_limit_is_atomic_even_without_ui_rollback() {
+        let mut doc = Document::new(8, 8).unwrap();
+        for _ in 1..16 {
+            doc.add_layer("extra".into(), Raster::solid(8, 8, [0; 4]).unwrap())
+                .unwrap();
+        }
+        doc.set_mask(vec![255; 64]).unwrap();
+        let before = doc.clone();
+        assert!(cutout_selection(&mut doc).is_err());
+        assert_eq!(doc, before);
+    }
+    #[test]
+    fn sam_acceptance_switches_from_layer_mask_to_the_new_ai_mask() {
+        let mut doc = Document::new(8, 8).unwrap();
+        doc.add_layer_mask(true).unwrap();
+        let mut e = ImageEditor::new(doc);
+        e.set_mask_target(crate::MaskTarget::Layer(0)).unwrap();
+        let before = e.document.clone();
+        e.segmentation_ui.candidate =
+            Some((Raster::solid(8, 8, [90; 4]).unwrap(), e.document.flatten()));
+        e.accept_segmentation();
+        assert_eq!(e.mask_target(), crate::MaskTarget::Inpaint);
+        assert_eq!(e.edit_target(), super::super::EditTarget::Mask);
+        assert_eq!(e.document.layers(), before.layers());
+        assert_eq!(e.document.mask(), [90; 64]);
+    }
+    #[test]
+    fn cutout_preserves_stack_position_blending_and_layer_mask() {
+        let mut doc =
+            Document::from_raster(Raster::solid(8, 8, [120, 80, 40, 255]).unwrap()).unwrap();
+        doc.add_layer(
+            "source".into(),
+            Raster::solid(8, 8, [100, 120, 140, 255]).unwrap(),
+        )
+        .unwrap();
+        doc.set_layer_mask(vec![128; 64]).unwrap();
+        doc.set_blend_mode(crate::LayerBlendMode::Multiply).unwrap();
+        doc.set_layer("source".into(), true, 190);
+        doc.add_layer(
+            "above".into(),
+            Raster::solid(8, 8, [60, 40, 80, 90]).unwrap(),
+        )
+        .unwrap();
+        doc.select(1).unwrap();
+        doc.set_mask(vec![255; 64]).unwrap();
+        let before = doc.flatten();
+        cutout_selection(&mut doc).unwrap();
+        assert_eq!(doc.active(), 2);
+        assert_eq!(doc.layers()[3].name(), "above");
+        assert_eq!(
+            doc.layers()[2].blend_mode(),
+            crate::LayerBlendMode::Multiply
+        );
+        assert_eq!(doc.layers()[2].mask(), doc.layers()[1].mask());
+        assert_eq!(
+            doc.flatten(),
+            before,
+            "white cutout must preserve appearance"
+        );
+    }
     #[test]
     fn segmentation_mask_preserves_pixels_and_rejects_stale_canvas() {
         let mut doc = Document::new(8, 8).unwrap();

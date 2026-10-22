@@ -12,8 +12,8 @@ pub mod ui;
 
 pub use document::recovery;
 pub use document::{
-    Adjustment, BrushStyle, CanvasMode, ColorCorrection, Curves, Document, EditError, Histogram,
-    History, Layer, LayerBlendMode, LayerMask, LevelChannel, Levels, MaskTarget, PhotoGeometry,
-    PixelClipboard, Raster, RetouchMode, RetouchStroke, SelectionOp, SelectionRefine, Shape,
-    ToneAdjustment, ToneCurve, Tool,
+    Adjustment, BrushStroke, BrushStyle, CanvasMode, ColorCorrection, Curves, Document, EditError,
+    Histogram, History, Layer, LayerBlendMode, LayerMask, LevelChannel, Levels, MaskTarget,
+    PhotoGeometry, PixelClipboard, Raster, RetouchMode, RetouchStroke, SelectionOp,
+    SelectionRefine, Shape, ToneAdjustment, ToneCurve, Tool,
 };

@@ -145,8 +145,45 @@ async fn first(repo: &str, names: &[&str]) -> Result<PathBuf> {
     let options: Vec<_> = names.iter().map(|name| (repo, *name)).collect();
     plakat::hf::download::get_first_of(&options).await
 }
+async fn resolve_vae(request: &Request, repo: &str) -> Result<PathBuf> {
+    if let Some(path) = &request.vae {
+        return Ok(path.clone());
+    }
+    // Default means this checkpoint's VAE on both CPU and GPU. A global alias
+    // may have been populated by an older converter and is never consulted.
+    let names = [
+        "vae/diffusion_pytorch_model.safetensors",
+        "vae/diffusion_pytorch_model.fp16.safetensors",
+        "vae/weights.safetensors",
+    ];
+    if let Some(path) = cached_vae(&plakat::hf::cache::hf_cache_root(), repo, &names) {
+        return Ok(path);
+    }
+    first(repo, &names).await
+}
+// Check all cached variants before trying a download of the preferred filename.
+fn cached_vae(root: &Path, repo: &str, names: &[&str]) -> Option<PathBuf> {
+    if repo
+        .split('/')
+        .any(|part| part.is_empty() || part == "." || part == ".." || part.contains('\\'))
+    {
+        return None;
+    }
+    let folder = root.join(format!("models--{}", repo.replace('/', "--")));
+    let revision = std::fs::read_to_string(folder.join("refs/main")).ok()?;
+    let revision = revision.trim();
+    if revision.is_empty() || revision.contains(['/', '\\']) || revision == "." || revision == ".."
+    {
+        return None;
+    }
+    let snapshot = folder.join("snapshots").join(revision);
+    names
+        .iter()
+        .map(|name| snapshot.join(name))
+        .find(|path| path.is_file())
+}
 impl Files {
-    async fn resolve(request: &Request, gpu: bool) -> Result<Self> {
+    async fn resolve(request: &Request) -> Result<Self> {
         let repo = if request.model.contains('/') {
             request.model.clone()
         } else {
@@ -196,28 +233,7 @@ impl Files {
             ],
         )
         .await?;
-        let vae = if let Some(path) = &request.vae {
-            path.clone()
-        } else if variant.is_xl() && gpu {
-            first(
-                "madebyollin/sdxl-vae-fp16-fix",
-                &[
-                    "diffusion_pytorch_model.safetensors",
-                    "sdxl_vae.safetensors",
-                    "sdxl.vae.safetensors",
-                ],
-            )
-            .await?
-        } else {
-            first(
-                &repo,
-                &[
-                    "vae/diffusion_pytorch_model.fp16.safetensors",
-                    "vae/diffusion_pytorch_model.safetensors",
-                ],
-            )
-            .await?
-        };
+        let vae = resolve_vae(request, &repo).await?;
         let scheduler = if request.sampler == super::Sampler::Dpmpp2mKarras {
             let path = first(&repo, &["scheduler/scheduler_config.json"]).await?;
             let config: super::dpmpp::Config = serde_json::from_reader(std::fs::File::open(path)?)?;
@@ -1018,7 +1034,7 @@ pub(super) async fn run(
     check(cancel)?;
     let _total = profiling::scope(format!("native.{:?}.{width}x{height}", request.mode));
     let resolve_timing = profiling::scope("native.resolve_and_keys");
-    let files = Files::resolve(request, gpu).await?;
+    let files = Files::resolve(request).await?;
     let cfg = files.variant.config(width as usize, height as usize);
     let mut keys = vec![
         files.key(&files.unet, Some(&MergeTarget::UNET), dtype, &uuid)?,
@@ -1222,6 +1238,24 @@ mod tests {
             key,
             conditioning_key(&files, &request, DType::F16, "gpu-a")?
         );
+        Ok(())
+    }
+    #[test]
+    fn checkpoint_vae_cache_checks_all_variants_without_cross_repo_fallback() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let base = dir.path().join("models--local--one");
+        std::fs::create_dir_all(base.join("refs"))?;
+        std::fs::create_dir_all(base.join("snapshots/abc/vae"))?;
+        std::fs::write(base.join("refs/main"), "abc\n")?;
+        let fp16 = base.join("snapshots/abc/vae/half");
+        std::fs::write(&fp16, b"checkpoint")?;
+        assert_eq!(
+            cached_vae(dir.path(), "local/one", &["vae/full", "vae/half"]),
+            Some(fp16)
+        );
+        assert!(cached_vae(dir.path(), "local/two", &["vae/half"]).is_none());
+        std::fs::write(base.join("refs/main"), "../abc")?;
+        assert!(cached_vae(dir.path(), "local/one", &["vae/half"]).is_none());
         Ok(())
     }
     #[test]

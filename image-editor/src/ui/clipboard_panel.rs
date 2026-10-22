@@ -8,6 +8,7 @@ struct PastedObject {
     pixels: PixelClipboard,
     at: [i32; 2],
     new_layer: bool,
+    bounds: [u32; 4],
     mask_target: crate::MaskTarget,
     drag: Option<([f32; 2], [i32; 2])>,
 }
@@ -23,6 +24,23 @@ pub(super) struct ClipboardUi {
     #[cfg(all(feature = "native-clipboard", not(test)))]
     system: Option<arboard::Clipboard>,
 }
+fn fragment_bounds(pixels: &PixelClipboard) -> [u32; 4] {
+    let r = pixels.raster();
+    let mut b = [r.width(), r.height(), 0, 0];
+    for (i, pixel) in r.pixels().chunks_exact(4).enumerate() {
+        if pixel[3] == 0 {
+            continue;
+        }
+        let x = u32::try_from(i % r.width() as usize).expect("fragment width");
+        let y = u32::try_from(i / r.width() as usize).expect("fragment height");
+        b = [b[0].min(x), b[1].min(y), b[2].max(x + 1), b[3].max(y + 1)];
+    }
+    if b[2] == 0 {
+        [0, 0, r.width(), r.height()]
+    } else {
+        b
+    }
+}
 fn select_pasted_bounds(
     doc: &mut Document,
     pixels: &PixelClipboard,
@@ -37,9 +55,13 @@ fn select_pasted_bounds(
     let mut area = vec![0; doc.mask().len()];
     for row in top..bottom {
         let offset = usize::try_from(row).expect("canvas row") * doc.width() as usize;
-        area[offset + usize::try_from(left).expect("clipped")
-            ..offset + usize::try_from(right).expect("clipped")]
-            .fill(255);
+        for x in left..right {
+            let sx = u32::try_from(x - i64::from(at[0])).expect("clipped");
+            let sy = u32::try_from(row - i64::from(at[1])).expect("clipped");
+            if pixels.raster().pixel(sx, sy).is_some_and(|p| p[3] > 0) {
+                area[offset + usize::try_from(x).expect("clipped")] = 255;
+            }
+        }
     }
     doc.set_selection(area)
 }
@@ -104,7 +126,7 @@ impl ClipboardUi {
 impl ImageEditor {
     /// Copy the selected content type: image pixels (retaining alpha) or mask coverage.
     pub fn copy_pixels(&mut self, merged: bool) -> bool {
-        self.finish_manual_stroke();
+        self.finish_manual_gesture();
         let copied = if self.edit_target() == super::EditTarget::Mask {
             self.document.copy_target_mask(self.mask_target())
         } else {
@@ -165,7 +187,7 @@ impl ImageEditor {
     /// Paste the system/internal fragment and activate Hand for placement.
     /// Insertion and subsequent placement share one undo step.
     pub fn paste_clipboard(&mut self, new_layer: bool) {
-        self.finish_manual_stroke();
+        self.finish_manual_gesture();
         if let Err(e) = self.clipboard_ui.read_external() {
             self.status = e.to_string();
             return;
@@ -205,12 +227,14 @@ impl ImageEditor {
                 self.manual_ui.show_layer_mask = true;
             }
         }
+        let bounds = fragment_bounds(&pixels);
         self.clipboard_ui.floating = Some(PastedObject {
             before,
             expected: self.document.clone(),
             pixels,
             at,
             new_layer,
+            bounds,
             mask_target,
             drag: None,
         });
@@ -219,7 +243,63 @@ impl ImageEditor {
                 .into();
     }
     pub(super) fn finish_pasted_object(&mut self) {
-        self.clipboard_ui.floating = None;
+        if self.clipboard_ui.floating.take().is_some() {
+            if self.floating_transform() {
+                self.cancel_layer_transform();
+            }
+            self.refresh_saved_state();
+        }
+    }
+    pub(super) fn pasted_transform_source(&self) -> Result<Document, EditError> {
+        let p = self
+            .clipboard_ui
+            .floating
+            .as_ref()
+            .filter(|_| self.has_pasted_object())
+            .ok_or_else(|| EditError::Invalid("Вставка больше не активна".into()))?;
+        let mut doc = Document::new(self.document.width(), self.document.height())?;
+        doc.paste_pixels(&p.pixels.for_mask(false), p.at, false)?;
+        doc.set_layer("Вставленный фрагмент".into(), true, 255);
+        Ok(doc)
+    }
+    pub(super) fn pasted_transform_document(
+        &self,
+        raster: &crate::Raster,
+    ) -> Result<Document, EditError> {
+        let p = self
+            .clipboard_ui
+            .floating
+            .as_ref()
+            .filter(|_| self.has_pasted_object())
+            .ok_or_else(|| EditError::Invalid("Вставка больше не активна".into()))?;
+        let pixels = PixelClipboard::from_raster(raster.clone()).for_mask(p.pixels.is_mask());
+        let mut doc = p.before.clone();
+        doc.with_mask_target(p.mask_target, |d| {
+            d.paste_pixels(&pixels, [0; 2], p.new_layer)
+        })?;
+        select_pasted_bounds(&mut doc, &pixels, [0; 2])?;
+        Ok(doc)
+    }
+    pub(super) fn apply_pasted_transform(
+        &mut self,
+        raster: crate::Raster,
+    ) -> Result<(), EditError> {
+        let doc = self.pasted_transform_document(&raster)?;
+        let p = self
+            .clipboard_ui
+            .floating
+            .as_mut()
+            .expect("validated paste");
+        p.pixels = PixelClipboard::from_raster(raster).for_mask(p.pixels.is_mask());
+        p.at = [0; 2];
+        p.bounds = fragment_bounds(&p.pixels);
+        p.drag = None;
+        p.expected = doc.clone();
+        self.document = doc;
+        self.changed = true;
+        self.unsaved = true;
+        self.manual_ui.thumbnails.clear();
+        Ok(())
     }
     pub(super) fn pause_pasted_drag(&mut self) {
         if let Some(p) = self.clipboard_ui.floating.as_mut() {
@@ -278,8 +358,15 @@ impl ImageEditor {
             p.pixels.raster().height() as f32,
         ];
         let rect = egui::Rect::from_min_size(
-            response.rect.min + egui::vec2(p.at[0] as f32, p.at[1] as f32) * self.zoom,
-            egui::vec2(size[0], size[1]) * self.zoom,
+            response.rect.min
+                + egui::vec2(
+                    p.at[0] as f32 + p.bounds[0] as f32,
+                    p.at[1] as f32 + p.bounds[1] as f32,
+                ) * self.zoom,
+            egui::vec2(
+                (p.bounds[2] - p.bounds[0]) as f32,
+                (p.bounds[3] - p.bounds[1]) as f32,
+            ) * self.zoom,
         );
         ui.painter()
             .with_clip_rect(response.rect.intersect(ui.clip_rect()))
@@ -294,7 +381,11 @@ impl ImageEditor {
         if pressed && response.contains_pointer() {
             if let Some(point) = point {
                 let local = [point[0] - p.at[0] as f32, point[1] - p.at[1] as f32];
-                if local[0] >= 0.0 && local[1] >= 0.0 && local[0] < size[0] && local[1] < size[1] {
+                if local[0] >= p.bounds[0] as f32
+                    && local[1] >= p.bounds[1] as f32
+                    && local[0] < p.bounds[2] as f32
+                    && local[1] < p.bounds[3] as f32
+                {
                     p.drag = Some((point, p.at));
                 }
             }
@@ -486,7 +577,11 @@ mod tests {
         editor.paste_clipboard(true);
         editor.move_pasted_object([4, 3]);
         assert_eq!(editor.document.layers(), before.layers());
-        assert_eq!(editor.document.mask()[9], 0);
+        assert_eq!(
+            editor.document.mask()[9],
+            64,
+            "paste retains the original mask outside its destination"
+        );
         assert_eq!(editor.document.mask()[28], 64);
         assert_eq!(editor.document.mask()[29], 255);
         assert!(editor.generation_ui.show_mask);

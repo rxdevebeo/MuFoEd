@@ -36,7 +36,7 @@ impl ImageEditor {
         self.open_tone_dialog(true);
     }
     fn open_tone_dialog(&mut self, curves_mode: bool) {
-        self.finish_manual_stroke();
+        self.finish_manual_gesture();
         self.finish_pasted_object();
         if self.edit_target() == EditTarget::Raster
             && self.document.layers()[self.document.active()].locked()

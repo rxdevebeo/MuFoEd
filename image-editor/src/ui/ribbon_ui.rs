@@ -1,4 +1,5 @@
 //! Compact MuFoEd-style ribbon with one contextual tool page.
+use super::ribbon_icons::{self, Icon};
 use super::{manual_panel::LayerAction, EditTarget, FileAction, ImageEditor, ManualTool, PANEL};
 use crate::{Document, SelectionOp, SelectionRefine};
 use egui::{Ui, Vec2};
@@ -60,6 +61,11 @@ impl ImageEditor {
             .fill(PANEL)
             .inner_margin(egui::Margin::symmetric(12, 5))
             .show(ui, |ui| {
+                ui.spacing_mut().interact_size.y = 24.0;
+                ui.spacing_mut().button_padding = egui::vec2(5.0, 3.0);
+                ui.style_mut()
+                    .text_styles
+                    .insert(egui::TextStyle::Button, egui::FontId::proportional(13.0));
                 ui.horizontal(|ui| {
                     for (tab, label) in [
                         (RibbonTab::Home, "Главная"),
@@ -131,7 +137,8 @@ impl ImageEditor {
     }
     fn ribbon_home(&mut self, ui: &mut Ui, actions: &mut Vec<FileAction>) {
         group(ui, "Файл", 125.0, |ui| {
-            ui.menu_button("Открыть", |ui| {
+            let open = ui.add_sized([ui.available_width(), 24.0], egui::Button::new("Открыть"));
+            egui::Popup::menu(&open).show(|ui| {
                 for (label, action) in [
                     ("Изображение…", FileAction::OpenImage),
                     ("Проект PSD…", FileAction::OpenProject),
@@ -149,52 +156,74 @@ impl ImageEditor {
                 actions.push(FileAction::ExportPng);
             }
         });
-        group(ui, "Буфер обмена", 160.0, |ui| {
+        group(ui, "Буфер обмена", 112.0, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Копировать").clicked() {
+                if ribbon_icons::button(ui, Icon::Copy, "Копировать · Ctrl+C").clicked()
+                {
                     self.copy_pixels(false);
                 }
-                if ui.button("Вырезать").clicked() {
+                if ribbon_icons::button(ui, Icon::Cut, "Вырезать · Ctrl+X").clicked() {
                     self.cut_pixels();
                 }
             });
-            ui.menu_button("Вставить", |ui| {
-                if self.edit_target() == EditTarget::Mask {
-                    if ui.button("В маску · Ctrl+V").clicked() {
-                        self.paste_clipboard(false);
-                        ui.close();
-                    }
-                } else {
-                    if ui.button("Новым слоем · Ctrl+V").clicked() {
+            ui.horizontal(|ui| {
+                if ribbon_icons::button(ui, Icon::Paste, "Вставить · Ctrl+V").clicked() {
+                    self.paste_clipboard(true);
+                }
+                if ribbon_icons::button(ui, Icon::Delete, "Удалить выделенное · Delete").clicked()
+                {
+                    self.delete_selected();
+                }
+                let options = ribbon_icons::button(ui, Icon::More, "Варианты вставки");
+                egui::Popup::menu(&options).show(|ui| {
+                    if ui
+                        .button(if self.edit_target() == EditTarget::Mask {
+                            "В маску · Ctrl+V"
+                        } else {
+                            "Новым слоем · Ctrl+V"
+                        })
+                        .clicked()
+                    {
                         self.paste_clipboard(true);
                         ui.close();
                     }
-                    if ui.button("В текущий · Ctrl+Shift+V").clicked() {
+                    if self.edit_target() == EditTarget::Raster
+                        && ui.button("В текущий слой · Ctrl+Shift+V").clicked()
+                    {
                         self.paste_clipboard(false);
                         ui.close();
                     }
-                }
+                });
             });
-            if command(ui, "Удалить · Delete") {
-                self.delete_selected();
-            }
         });
-        group(ui, "Правка", 105.0, |ui| {
-            if command(ui, "Отменить") {
+        group(ui, "Правка", 50.0, |ui| {
+            if ribbon_icons::button(ui, Icon::Undo, "Отменить · Ctrl+Z").clicked() {
                 self.restore_history(false);
             }
-            if command(ui, "Повторить") {
+            if ribbon_icons::button(ui, Icon::Redo, "Повторить · Ctrl+Shift+Z").clicked()
+            {
                 self.restore_history(true);
             }
         });
-        group(ui, "Слой", 150.0, |ui| {
-            if command(ui, "Из файла…") {
+        group(ui, "Слой", 112.0, |ui| {
+            if ribbon_icons::row(
+                ui,
+                Icon::Import,
+                "Из файла…",
+                "Загрузить изображение новым слоем",
+            ) {
                 actions.push(FileAction::ImportLayer);
             }
-            if command(ui, "Новый") {
+            if ribbon_icons::row(ui, Icon::New, "Новый", "Создать прозрачный слой")
+            {
                 self.layer_action(LayerAction::New);
             }
-            if command(ui, "Дублировать") {
+            if ribbon_icons::row(
+                ui,
+                Icon::Duplicate,
+                "Дублировать",
+                "Дублировать активный слой · Ctrl+J",
+            ) {
                 self.layer_action(LayerAction::Duplicate(self.document.active()));
             }
         });
@@ -203,50 +232,69 @@ impl ImageEditor {
         });
     }
     fn ribbon_image(&mut self, ui: &mut Ui) {
-        group(ui, "Холст", 160.0, |ui| {
-            if command(ui, "Размер холста…") {
+        group(ui, "Холст", 132.0, |ui| {
+            if ribbon_icons::row(ui, Icon::Canvas, "Размер…", "Изменить размер холста")
+            {
                 self.open_canvas_dialog();
             }
-            if command(ui, "Повернуть холст…") {
+            if ribbon_icons::row(ui, Icon::Rotate, "Повернуть…", "Повернуть весь холст")
+            {
                 self.open_rotation_dialog();
             }
-            if command(ui, "Кадрирование") {
+            if ribbon_icons::row(ui, Icon::Crop, "Кадрирование", "Кадрировать холст")
+            {
                 self.select_manual_tool(ManualTool::Crop);
             }
         });
-        group(ui, "Активный объект", 185.0, |ui| {
-            if command(ui, "Трансформация") {
+        group(ui, "Активный объект", 115.0, |ui| {
+            if ribbon_icons::row(
+                ui,
+                Icon::Transform,
+                "Трансформация",
+                "Трансформация · Ctrl+T",
+            ) {
                 self.start_canvas_transform();
             }
-            if command(ui, "Отразить по горизонтали") {
-                self.flip_target(true);
-            }
-            if command(ui, "Отразить по вертикали") {
-                self.flip_target(false);
-            }
-        });
-        group(ui, "Коррекция", 195.0, |ui| {
             ui.horizontal(|ui| {
-                if command(ui, "Уровни…") {
-                    self.open_levels_dialog();
+                if ribbon_icons::button(ui, Icon::FlipH, "Отразить по горизонтали").clicked()
+                {
+                    self.flip_target(true);
                 }
-                if command(ui, "Кривые…") {
-                    self.open_curves_dialog();
+                if ribbon_icons::button(ui, Icon::FlipV, "Отразить по вертикали").clicked()
+                {
+                    self.flip_target(false);
                 }
             });
-            if command(ui, "Цветокоррекция…") {
-                self.open_color_dialog();
-            }
+        });
+        group(ui, "Коррекция", 135.0, |ui| {
+            ui.horizontal(|ui| {
+                if ribbon_icons::button(ui, Icon::Levels, "Уровни…").clicked() {
+                    self.open_levels_dialog();
+                }
+                if ribbon_icons::button(ui, Icon::Curves, "Кривые…").clicked() {
+                    self.open_curves_dialog();
+                }
+                if ribbon_icons::button(ui, Icon::Adjust, "Цветокоррекция…").clicked()
+                {
+                    self.open_color_dialog();
+                }
+            });
             if command(ui, "Размытие…") {
                 self.ribbon_ui.tab = RibbonTab::View;
                 self.manual_properties_open();
             }
         });
-        group(ui, "Документ", 165.0, |ui| {
-            if command(ui, "Очистить холст") {
+        group(ui, "Документ", 142.0, |ui| {
+            if ribbon_icons::row(
+                ui,
+                Icon::Clear,
+                "Очистить холст",
+                "Удалить все слои и создать пустой",
+            ) {
                 self.edit(Document::clear_canvas);
             }
-            if command(ui, "Оставить текущий слой") {
+            if ribbon_icons::row(ui, Icon::Keep, "Оставить слой", "Удалить остальные слои")
+            {
                 self.edit(Document::retain_active_layer);
             }
         });
@@ -354,11 +402,12 @@ impl ImageEditor {
                 .checkbox(&mut self.generation_ui.show_mask, "Показывать маску ИИ")
                 .changed()
             {
-                self.changed = true;
+                self.show_inpaint_mask(self.generation_ui.show_mask);
             }
         });
         group(ui, "Масштаб", 160.0, |ui| {
-            if command(ui, "По размеру окна") {
+            if ribbon_icons::row(ui, Icon::Fit, "По размеру окна", "Вписать холст в окно")
+            {
                 self.manual_ui.fit_once = true;
             }
             if command(ui, "100%") {
@@ -369,10 +418,16 @@ impl ImageEditor {
             }
         });
         group(ui, "Приложение", 180.0, |ui| {
-            if command(ui, "Настройки…") {
+            if ribbon_icons::row(ui, Icon::Settings, "Настройки…", "Общие настройки моделей")
+            {
                 self.open_settings();
             }
-            if command(ui, "Память моделей…") {
+            if ribbon_icons::row(
+                ui,
+                Icon::Memory,
+                "Память моделей…",
+                "Диагностика памяти моделей",
+            ) {
                 self.open_memory_panel();
             }
         });

@@ -9,6 +9,10 @@ pub struct EditorSettings {
     version: u32,
     #[serde(default)]
     pixel_grid: bool,
+    #[serde(default = "default_random_seed")]
+    random_seed: bool,
+    #[serde(default)]
+    automatic_vae: Option<std::path::PathBuf>,
     #[serde(default)]
     presets: Vec<super::GenerationPreset>,
     #[serde(deserialize_with = "generation_preferences")]
@@ -19,6 +23,9 @@ pub struct EditorSettings {
     background: (String, String, bool),
     segmentation: (String, bool),
     upscale: (String, String, String, f32, f32, u32, bool),
+}
+fn default_random_seed() -> bool {
+    true
 }
 // Preferences adopt the new default, while historical document recipes keep DDIM.
 fn generation_preferences<'de, D: serde::Deserializer<'de>>(
@@ -55,9 +62,21 @@ impl ImageEditor {
         request.prompt.clear();
         request.negative.clear();
         request.mode = crate::generation::Mode::TextToImage;
+        request.seed = self
+            .generation_ui
+            .seed_text
+            .trim()
+            .parse()
+            .unwrap_or(request.seed);
         EditorSettings {
             version: 1,
             pixel_grid: self.pixel_grid,
+            random_seed: self.generation_ui.random_seed,
+            automatic_vae: self
+                .generation_ui
+                .automatic_vae
+                .clone()
+                .filter(|p| self.request.vae.as_ref() == Some(p)),
             presets: self.presets.clone(),
             request,
             model_name: self.generation_ui.model_name.clone(),
@@ -100,7 +119,11 @@ impl ImageEditor {
         self.generation_ui.seed_text = self.request.seed.to_string();
         self.request.prompt = prompt;
         self.request.negative = negative;
-        self.request.mode = mode;
+        self.set_generation_mode(mode);
+        self.generation_ui.random_seed = settings.random_seed;
+        self.generation_ui.automatic_vae = settings
+            .automatic_vae
+            .filter(|p| self.request.vae.as_ref() == Some(p));
         self.generation_ui.model_name = settings.model_name;
         self.executable = settings.executable;
         self.use_library = settings.use_library && cfg!(feature = "plakat");
@@ -123,9 +146,19 @@ impl ImageEditor {
     }
     /// Open the common model settings window.
     pub fn open_settings(&mut self) {
+        self.finish_manual_gesture();
         self.settings_open = true;
         if self.active_tab == super::StudioTab::Upscale {
             self.settings_tab = 3;
+        }
+        if std::env::var_os("IMAGE_STUDIO_SHOT").is_some() {
+            if let Some(tab) = std::env::var("IMAGE_STUDIO_SHOT_SETTINGS_TAB")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|&v| v < 4)
+            {
+                self.settings_tab = tab;
+            }
         }
     }
     /// Render preferences inside the host's own settings page; returns native file picker requests.
@@ -140,7 +173,9 @@ impl ImageEditor {
             }
         });
         ui.separator();
-        egui::ScrollArea::vertical()
+        egui::ScrollArea::both()
+            .auto_shrink([false, false])
+            .max_width(ui.available_width())
             .id_salt("common-model-settings")
             .max_height(480.0)
             .min_scrolled_height(480.0)
@@ -187,18 +222,30 @@ impl ImageEditor {
         let mut actions = Vec::new();
         if self.settings_open && self.generation_ui.dialog.is_none() {
             let mut open = true;
-            egui::Window::new("Настройки Image Studio")
+            let response = egui::Window::new("Настройки Image Studio")
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
-                .default_width(620.0)
+                .fixed_size(egui::vec2(
+                    (ctx.content_rect().width() - 64.0).clamp(340.0, 700.0),
+                    (ctx.content_rect().height() - 100.0).clamp(300.0, 560.0),
+                ))
                 .show(ctx, |ui| {
                     ui.push_id("settings-window", |ui| {
                         actions = self.settings_ui(ui);
                     });
                 });
-            self.settings_open = open;
+            #[cfg(test)]
+            if let Some(window) = &response {
+                ctx.data_mut(|d| {
+                    d.insert_temp(egui::Id::new("settings-rect-test"), window.response.rect)
+                });
+            }
+            #[cfg(not(test))]
+            let _ = response;
+            self.settings_open =
+                open && !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         }
         actions
     }
@@ -242,6 +289,23 @@ impl EditorSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn fixed_seed_and_random_mode_roundtrip_with_legacy_default() {
+        let mut e = ImageEditor::default();
+        e.generation_ui.random_seed = false;
+        e.generation_ui.seed_text = u64::MAX.to_string();
+        let saved = e.settings();
+        let mut next = ImageEditor::default();
+        next.apply_settings(saved.clone()).unwrap();
+        assert!(!next.generation_ui.random_seed);
+        assert_eq!(next.generation_ui.seed_text, u64::MAX.to_string());
+        assert_eq!(next.request.seed, u64::MAX);
+        let mut value = serde_json::to_value(saved).unwrap();
+        value.as_object_mut().unwrap().remove("random_seed");
+        let old = serde_json::from_value(value).unwrap();
+        next.apply_settings(old).unwrap();
+        assert!(next.generation_ui.random_seed);
+    }
     #[test]
     fn old_preferences_adopt_dpm_but_old_recipes_remain_ddim() {
         use crate::generation::Sampler;
@@ -291,5 +355,44 @@ mod tests {
         saved.version = 99;
         assert!(editor.apply_settings(saved).is_err());
         assert_eq!(editor.request.vae, Some("missing/vae.safetensors".into()));
+    }
+    #[test]
+    fn settings_outer_size_and_position_do_not_change_across_tabs() {
+        let ctx = egui::Context::default();
+        super::super::apply_studio_style(&ctx);
+        let mut e = ImageEditor {
+            settings_open: true,
+            ..Default::default()
+        };
+        let mut expected = None;
+        for tab in [0, 1, 2, 3, 0] {
+            e.settings_tab = tab;
+            for _ in 0..3 {
+                let _ = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(1100.0, 700.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        e.settings_window(ui.ctx());
+                    },
+                );
+            }
+            let rect = ctx
+                .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("settings-rect-test")))
+                .unwrap();
+            assert!(
+                rect.width() < 800.0 && rect.height() < 650.0,
+                "{tab}: {rect:?}"
+            );
+            if let Some(previous) = expected {
+                assert_eq!(rect, previous, "tab {tab}");
+            } else {
+                expected = Some(rect);
+            }
+        }
     }
 }

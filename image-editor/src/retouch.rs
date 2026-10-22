@@ -23,6 +23,7 @@ pub struct RetouchStroke {
     radius: f32,
     style: BrushStyle,
     correction: [f32; 3],
+    coverage: std::sync::Mutex<Vec<f32>>,
 }
 impl Document {
     /// Capture the active layer and source/destination anchors before painting.
@@ -67,6 +68,7 @@ impl Document {
             radius,
             style,
             correction,
+            coverage: std::sync::Mutex::new(vec![0.0; self.mask.len()]),
         })
     }
     /// Paint an interpolated segment from an immutable gesture sample. Selection,
@@ -89,6 +91,10 @@ impl Document {
             return Err(invalid("Retouch coordinates or dimensions differ"));
         }
         let radius = stroke.radius;
+        let mut coverage = stroke
+            .coverage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let x0 = (from[0].min(to[0]) - radius).floor().max(0.0) as u32;
         let y0 = (from[1].min(to[1]) - radius).floor().max(0.0) as u32;
         let x1 = ((from[0].max(to[0]) + radius).ceil().max(0.0) as u32).min(self.width);
@@ -127,6 +133,12 @@ impl Document {
                 };
                 let i = y as usize * self.width as usize + x as usize;
                 let amount = edge * self.coverage(i, stroke.style);
+                if amount <= coverage[i] {
+                    continue;
+                }
+                coverage[i] = amount;
+                self.layers[self.active].raster.pixels[i * 4..i * 4 + 4]
+                    .copy_from_slice(&stroke.source.pixels[i * 4..i * 4 + 4]);
                 blend(
                     &mut self.layers[self.active].raster.pixels[i * 4..i * 4 + 4],
                     color,

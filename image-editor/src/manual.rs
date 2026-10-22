@@ -59,10 +59,17 @@ impl Raster {
         if !(1..=256).contains(&side) {
             return Err(invalid("Thumbnail side must be in 1..256"));
         }
+        let divisor = u64::from(self.width.max(self.height).max(side));
+        let width = u32::try_from(u64::from(self.width) * u64::from(side) / divisor)
+            .expect("bounded thumbnail")
+            .max(1);
+        let height = u32::try_from(u64::from(self.height) * u64::from(side) / divisor)
+            .expect("bounded thumbnail")
+            .max(1);
         Ok(Self::from_image(image::imageops::thumbnail(
             &self.image(),
-            side,
-            side,
+            width,
+            height,
         )))
     }
 }

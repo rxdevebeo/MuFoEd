@@ -9,6 +9,7 @@ pub(super) struct LayerDialog {
     mask_target: crate::MaskTarget,
     mask_source: Option<Vec<u8>>,
     index: usize,
+    selection: Vec<u8>,
     correction: ColorCorrection,
     angle: f64,
     photo: PhotoGeometry,
@@ -16,6 +17,7 @@ pub(super) struct LayerDialog {
     scale: [f64; 2],
     proportional: bool,
     inline: bool,
+    floating: bool,
     bounds: [f64; 4],
     drag: Option<TransformDrag>,
     preview: Option<(Raster, egui::TextureHandle, egui::TextureHandle)>,
@@ -36,6 +38,7 @@ impl Default for LayerDialog {
             mask_source: None,
             source: None,
             index: 0,
+            selection: Vec::new(),
             correction: ColorCorrection::default(),
             angle: 0.0,
             photo: PhotoGeometry::default(),
@@ -43,6 +46,7 @@ impl Default for LayerDialog {
             scale: [100.0; 2],
             proportional: true,
             inline: false,
+            floating: false,
             bounds: [0.0; 4],
             drag: None,
             preview: None,
@@ -78,17 +82,27 @@ impl ImageEditor {
         self.open_layer_dialog(false);
     }
     pub(super) fn open_layer_dialog(&mut self, color: bool) {
-        self.finish_manual_stroke();
-        self.finish_pasted_object();
+        self.finish_manual_gesture();
+        let floating = !color && self.has_pasted_object();
+        if !floating {
+            self.finish_pasted_object();
+        }
+        let floating_document = floating.then(|| {
+            self.pasted_transform_source()
+                .expect("valid floating paste")
+        });
         let mask = self.edit_target() == EditTarget::Mask;
         let mask_document = mask
             .then(|| crate::Document::from_raster(self.mask_source_raster()).expect("valid mask"));
-        let source = mask_document.as_ref().unwrap_or(&self.document);
+        let source = floating_document
+            .as_ref()
+            .or(mask_document.as_ref())
+            .unwrap_or(&self.document);
         self.changed = true;
         let raster = source.layers()[source.active()].raster();
         let mut bounds = [raster.width(), raster.height(), 0, 0];
         for (i, p) in raster.pixels().chunks_exact(4).enumerate() {
-            if (if mask { p[0] } else { p[3] }) > 0 {
+            if (if mask && !floating { p[0] } else { p[3] }) > 0 {
                 let x = u32::try_from(i % raster.width() as usize).expect("canvas");
                 let y = u32::try_from(i / raster.width() as usize).expect("canvas");
                 bounds[0] = bounds[0].min(x);
@@ -102,6 +116,7 @@ impl ImageEditor {
         }
         self.layer_dialog = LayerDialog {
             kind: Some(color),
+            floating,
             bounds: bounds.map(f64::from),
             target: self.edit_target(),
             mask_target: self.mask_target(),
@@ -112,6 +127,7 @@ impl ImageEditor {
                     .to_vec()
             }),
             index: self.document.active(),
+            selection: self.document.selection().to_vec(),
             center: [
                 f64::from(bounds[0] + bounds[2]) / 2.0,
                 f64::from(bounds[1] + bounds[3]) / 2.0,
@@ -128,12 +144,39 @@ impl ImageEditor {
         self.ribbon_ui.tab = super::ribbon_ui::RibbonTab::Tool;
         self.ribbon_ui.collapsed = false;
     }
+    pub(super) fn floating_transform(&self) -> bool {
+        self.layer_dialog.kind == Some(false) && self.layer_dialog.floating
+    }
+    pub(super) fn cancel_layer_transform(&mut self) {
+        self.layer_dialog = LayerDialog::default();
+        self.changed = true;
+    }
+    pub(super) fn floating_transform_raster(&self) -> Result<Raster, EditError> {
+        let g = &self.layer_dialog;
+        let mut source = crate::Document::from_raster(
+            g.source
+                .as_ref()
+                .expect("transform source")
+                .raster()
+                .clone(),
+        )?;
+        source.transform_photo_layer_about(
+            g.angle,
+            g.scale.map(|v| v / 100.0),
+            g.photo,
+            g.center,
+        )?;
+        Ok(source.layers()[0].raster().clone())
+    }
     pub(super) fn layer_dialog_open(&self) -> bool {
         self.layer_dialog.kind.is_some()
     }
     pub(super) fn inline_transform_shortcuts(&mut self, ui: &egui::Ui) {
+        if self.canvas_shortcuts_blocked() {
+            return;
+        }
         if self.inline_transform() && self.ribbon_ui.tab != super::ribbon_ui::RibbonTab::Tool {
-            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
                 self.layer_dialog = LayerDialog::default();
                 self.changed = true;
             } else if !ui.ctx().egui_wants_keyboard_input()
@@ -195,8 +238,11 @@ impl ImageEditor {
         if !g.error.is_empty() {
             ui.colored_label(egui::Color32::LIGHT_RED, &g.error);
         }
-        apply |= ui.input(|i| i.key_pressed(egui::Key::Enter));
-        cancel |= ui.input(|i| i.key_pressed(egui::Key::Escape));
+        apply |= !self.canvas_shortcuts_blocked()
+            && !ui.ctx().egui_wants_keyboard_input()
+            && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        cancel |=
+            !self.canvas_shortcuts_blocked() && ui.input(|i| i.key_pressed(egui::Key::Escape));
         if cancel {
             self.layer_dialog = LayerDialog::default();
             self.changed = true;
@@ -342,7 +388,9 @@ impl ImageEditor {
         }
     }
     pub(super) fn mask_transform_preview(&self) -> bool {
-        self.layer_dialog.kind == Some(false) && self.layer_dialog.target == EditTarget::Mask
+        self.layer_dialog.kind == Some(false)
+            && self.layer_dialog.target == EditTarget::Mask
+            && !self.layer_dialog.floating
     }
     pub(super) fn layer_preview(&self) -> Option<(f64, [f64; 2], PhotoGeometry, [f64; 2])> {
         let g = &self.layer_dialog;
@@ -417,8 +465,19 @@ impl ImageEditor {
     }
     fn commit_layer_dialog(&mut self) {
         let g = &self.layer_dialog;
+        if g.floating {
+            let result = self
+                .floating_transform_raster()
+                .and_then(|r| self.apply_pasted_transform(r));
+            match result {
+                Ok(()) => self.cancel_layer_transform(),
+                Err(e) => self.layer_dialog.error = e.to_string(),
+            }
+            return;
+        }
         let mask = g.target == EditTarget::Mask;
         let stale = self.edit_target() != g.target
+            || self.document.selection() != g.selection
             || if mask {
                 g.mask_target != self.mask_target()
                     || g.mask_source.as_deref() != self.document.target_mask(g.mask_target).ok()
@@ -525,6 +584,16 @@ impl LayerDialog {
             self.scale = [100.0; 2];
         }
     }
+    fn color_preview(&self) -> Result<(Raster, Raster), EditError> {
+        let source = self.source.as_ref().expect("open color dialog").raster();
+        let mut doc = crate::Document::from_raster(source.clone())?;
+        doc.set_selection(self.selection.clone())?;
+        doc.correct_color(self.correction)?;
+        Ok((
+            source.thumbnail(220)?,
+            doc.layers()[0].raster().thumbnail(220)?,
+        ))
+    }
     fn color_controls(&mut self, ui: &mut egui::Ui) {
         let before = self.correction;
         let c = &mut self.correction;
@@ -538,27 +607,18 @@ impl LayerDialog {
         if ui.button("Сбросить").clicked() {
             self.correction = ColorCorrection::default();
         }
-        if self.preview.is_none() {
-            if let Some(source) = &self.source {
-                match source.raster().thumbnail(220) {
-                    Ok(raster) => {
-                        let original = preview_texture(ui.ctx(), "color-original", &raster);
-                        let corrected = preview_texture(ui.ctx(), "color-corrected", &raster);
-                        self.preview = Some((raster, original, corrected));
-                    }
-                    Err(e) => self.error = e.to_string(),
+        if self.preview.is_none() || before != self.correction {
+            match self.color_preview() {
+                Ok((original, corrected)) => {
+                    let original_texture = preview_texture(ui.ctx(), "color-original", &original);
+                    let corrected_texture =
+                        preview_texture(ui.ctx(), "color-corrected", &corrected);
+                    self.preview = Some((original, original_texture, corrected_texture));
                 }
+                Err(e) => self.error = e.to_string(),
             }
         }
-        if let Some((raster, original, corrected)) = &mut self.preview {
-            if before != self.correction {
-                match self.correction.apply(raster) {
-                    Ok(result) => {
-                        *corrected = preview_texture(ui.ctx(), "color-corrected", &result);
-                    }
-                    Err(e) => self.error = e.to_string(),
-                }
-            }
+        if let Some((_, original, corrected)) = &mut self.preview {
             ui.horizontal(|ui| {
                 for (label, texture) in [("До", original), ("После", corrected)] {
                     ui.vertical(|ui| {
@@ -601,6 +661,170 @@ mod tests {
                 }
             })
             .expect("warped mesh")
+    }
+    #[test]
+    fn transforming_pasted_mask_preserves_both_destinations_outside_the_fragment() {
+        for target in [crate::MaskTarget::Inpaint, crate::MaskTarget::Layer(0)] {
+            let mut doc = crate::Document::new(4, 2).unwrap();
+            doc.set_mask(vec![200; 8]).unwrap();
+            let mut e = ImageEditor::new(doc);
+            e.set_mask_target(crate::MaskTarget::Inpaint).unwrap();
+            assert!(e.copy_pixels(false));
+            let mut doc =
+                crate::Document::from_raster(Raster::solid(32, 32, [20, 40, 80, 255]).unwrap())
+                    .unwrap();
+            doc.set_mask(vec![30; 1024]).unwrap();
+            doc.set_layer_mask(vec![50; 1024]).unwrap();
+            e.replace(doc.clone());
+            e.set_mask_target(target).unwrap();
+            e.paste_clipboard(false);
+            e.move_pasted_object([10, 10]);
+            e.start_canvas_transform();
+            e.layer_dialog.angle = 90.0;
+            e.layer_dialog.scale = [200.0; 2];
+            e.commit_layer_dialog();
+            assert_eq!(
+                e.document.target_mask(target).unwrap()[0],
+                doc.target_mask(target).unwrap()[0]
+            );
+            assert_eq!(e.document.layers()[0].raster(), doc.layers()[0].raster());
+            let other = if target == crate::MaskTarget::Inpaint {
+                crate::MaskTarget::Layer(0)
+            } else {
+                crate::MaskTarget::Inpaint
+            };
+            assert_eq!(
+                e.document.target_mask(other).unwrap(),
+                doc.target_mask(other).unwrap()
+            );
+            e.restore_history(false);
+            assert_eq!(e.document, doc);
+        }
+    }
+    #[test]
+    fn pasted_fragment_transform_keeps_background_and_paste_placement_one_undo() {
+        for new_layer in [false, true] {
+            let mut e = ImageEditor::new(
+                crate::Document::from_raster(Raster::solid(4, 2, [220, 20, 40, 255]).unwrap())
+                    .unwrap(),
+            );
+            assert!(e.copy_pixels(false));
+            let source =
+                crate::Document::from_raster(Raster::solid(32, 32, [20, 80, 180, 255]).unwrap())
+                    .unwrap();
+            e.replace(source.clone());
+            e.paste_clipboard(new_layer);
+            e.move_pasted_object([10, 10]);
+            let placed = e.document.clone();
+            e.start_canvas_transform();
+            assert!(e.floating_transform());
+            assert!(e.has_pasted_object());
+            e.layer_dialog.angle = 90.0;
+            e.layer_dialog.scale = [200.0; 2];
+            let preview = e.exact_transform_raster().unwrap();
+            assert_eq!(e.document, placed, "preview is non-destructive");
+            e.commit_layer_dialog();
+            assert!(
+                e.has_pasted_object(),
+                "placement stays active until Enter/tool switch"
+            );
+            assert_eq!(e.document.flatten(), preview);
+            assert_eq!(e.document.flatten().pixel(0, 0), Some([20, 80, 180, 255]));
+            e.move_pasted_object([2, 3]);
+            assert_eq!(e.document.layers().len(), 1 + usize::from(new_layer));
+            e.restore_history(false);
+            assert_eq!(e.document, source);
+            assert!(
+                !e.history.undo(&mut e.document),
+                "paste+move+transform is one action"
+            );
+        }
+    }
+    #[test]
+    fn cancelling_fragment_transform_preserves_floating_paste_and_its_cancel() {
+        let mut e = ImageEditor::new(
+            crate::Document::from_raster(Raster::solid(4, 2, [80, 90, 100, 255]).unwrap()).unwrap(),
+        );
+        e.copy_pixels(false);
+        let source = crate::Document::new(16, 16).unwrap();
+        e.replace(source.clone());
+        e.paste_clipboard(false);
+        let placed = e.document.clone();
+        e.start_canvas_transform();
+        e.layer_dialog.angle = 17.0;
+        e.cancel_layer_transform();
+        assert_eq!(e.document, placed);
+        assert!(e.has_pasted_object());
+        e.restore_history(false);
+        assert_eq!(e.document, source);
+    }
+    #[test]
+    fn settings_owns_escape_before_a_background_inline_transform() {
+        for (tool_tab, key) in [
+            (false, egui::Key::Escape),
+            (true, egui::Key::Escape),
+            (false, egui::Key::Enter),
+            (true, egui::Key::Enter),
+        ] {
+            let ctx = egui::Context::default();
+            let mut e = ImageEditor::new(crate::Document::new(64, 64).unwrap());
+            e.start_canvas_transform();
+            if !tool_tab {
+                e.ribbon_ui.tab = super::super::ribbon_ui::RibbonTab::View;
+            }
+            e.open_settings();
+            let before = e.document.clone();
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1100.0, 700.0),
+                    )),
+                    events: vec![egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                    ..Default::default()
+                },
+                |ui| {
+                    e.show(ui);
+                },
+            );
+            assert_eq!(e.settings_open, key == egui::Key::Enter);
+            assert!(
+                e.inline_transform(),
+                "settings must own Escape before the background transform"
+            );
+            assert_eq!(e.document, before);
+        }
+    }
+    #[test]
+    fn color_preview_matches_commit_through_soft_selection_for_raster_and_mask() {
+        for target in [EditTarget::Raster, EditTarget::Mask] {
+            let mut doc =
+                crate::Document::from_raster(Raster::solid(8, 8, [70, 80, 90, 190]).unwrap())
+                    .unwrap();
+            doc.set_mask(vec![80; 64]).unwrap();
+            let mut selected = vec![0; 64];
+            selected[..16].fill(128);
+            selected[16..32].fill(255);
+            doc.set_selection(selected).unwrap();
+            let mut e = ImageEditor::new(doc);
+            e.set_edit_target(target);
+            e.open_color_dialog();
+            e.layer_dialog.correction.brightness = 0.25;
+            let (_, preview) = e.layer_dialog.color_preview().unwrap();
+            e.commit_layer_dialog();
+            let actual = if target == EditTarget::Mask {
+                e.mask_source_raster()
+            } else {
+                e.document.layers()[0].raster().clone()
+            };
+            assert_eq!(preview, actual);
+        }
     }
     #[test]
     fn small_rotation_updates_mesh_without_mutation_and_commits_from_original_once() {
