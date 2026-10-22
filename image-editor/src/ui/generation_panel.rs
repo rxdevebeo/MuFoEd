@@ -88,6 +88,15 @@ impl Default for GenerationUi {
         }
     }
 }
+impl GenerationUi {
+    pub(super) fn cancel_operations(&mut self) {
+        self.worker = None;
+        self.prepare = None;
+        self.progress = None;
+        self.dialog = None;
+        self.hf.cancel();
+    }
+}
 impl ImageEditor {
     /// Register a local resource selected by the embedding host's file dialog.
     pub fn add_asset(&mut self, path: &std::path::Path) -> Result<(), EditError> {

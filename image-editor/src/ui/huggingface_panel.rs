@@ -56,6 +56,10 @@ impl Default for HuggingFaceUi {
     }
 }
 impl HuggingFaceUi {
+    pub(super) fn cancel(&mut self) {
+        self.worker = None;
+        self.progress = None;
+    }
     pub(super) fn busy(&self) -> bool {
         self.worker.is_some()
     }

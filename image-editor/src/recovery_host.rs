@@ -105,8 +105,19 @@ pub(super) fn path(preferences: &Path) -> PathBuf {
 }
 impl RecoveryHost {
     pub(super) fn new(directory: &Path, epoch: u64, source: Option<PathBuf>) -> Self {
+        Self::create(directory, epoch, source, true)
+    }
+    /// A document tab gets its own writer but must not rediscover startup copies.
+    pub(super) fn new_tab(directory: &Path, epoch: u64, source: Option<PathBuf>) -> Self {
+        Self::create(directory, epoch, source, false)
+    }
+    fn create(directory: &Path, epoch: u64, source: Option<PathBuf>, discover: bool) -> Self {
         let mut notice = None;
-        let pending = match recovery::discover(directory) {
+        let pending = match if discover {
+            recovery::discover(directory)
+        } else {
+            Ok(Vec::new())
+        } {
             Ok(c) => c.into(),
             Err(e) => {
                 notice = Some(format!("Поиск копий восстановления: {e}"));
@@ -135,6 +146,10 @@ impl RecoveryHost {
             loaded: None,
             backup: None,
         }
+    }
+    /// After restoring one copy, let a fresh prompt own the remaining copies.
+    pub(super) fn transfer_pending_to(&mut self, next: &mut Self) {
+        next.pending = std::mem::take(&mut self.pending);
     }
     pub(super) fn bind_source(&mut self, epoch: u64, source: Option<PathBuf>) {
         if self.epoch != epoch {
@@ -343,7 +358,6 @@ impl RecoveryHost {
                 editor.restore_recovered(draft.document);
                 self.bind_source(editor.project_epoch(), draft.source);
                 self.backup = Some((editor.project_epoch(), loaded.candidate));
-                self.pending.clear();
                 self.next = Instant::now();
                 editor.set_status(
                     "Проект восстановлен. Сохраните его как PSD; исходный файл не изменён",
@@ -726,5 +740,87 @@ mod tests {
         assert_eq!(snapshots(root.path()).len(), 1);
         host.close();
         pump(&mut host, &mut e, RecoveryHost::ready_to_close);
+    }
+}
+
+#[cfg(test)]
+mod tab_tests {
+    use super::*;
+    fn pump(
+        host: &mut RecoveryHost,
+        editor: &mut ImageEditor,
+        ready: impl Fn(&RecoveryHost) -> bool,
+    ) {
+        let start = Instant::now();
+        loop {
+            host.poll(editor);
+            if ready(host) {
+                break;
+            }
+            assert!(start.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    #[test]
+    fn independent_tab_writers_preserve_other_drafts_when_one_tab_is_saved_or_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut a = ImageEditor::new(Document::new(3, 4).unwrap());
+        let mut b = ImageEditor::new(Document::new(5, 6).unwrap());
+        a.restore_recovered(a.document().clone());
+        b.restore_recovered(b.document().clone());
+        let mut first = RecoveryHost::new_tab(dir.path(), a.project_epoch(), Some("a.psd".into()));
+        let mut second = RecoveryHost::new_tab(dir.path(), b.project_epoch(), Some("b.psd".into()));
+        first.next = Instant::now();
+        second.next = Instant::now();
+        pump(&mut first, &mut a, |h| {
+            h.writer.as_ref().is_some_and(|w| w.has_file && !w.busy)
+        });
+        pump(&mut second, &mut b, |h| {
+            h.writer.as_ref().is_some_and(|w| w.has_file && !w.busy)
+        });
+        assert!(
+            !second.prompt_pending(),
+            "new tabs never rediscover startup drafts"
+        );
+        a.mark_saved();
+        first.next = Instant::now();
+        pump(&mut first, &mut a, |h| {
+            h.writer.as_ref().is_some_and(|w| !w.has_file && !w.busy)
+        });
+        assert!(second.writer.as_ref().unwrap().has_file);
+        first.close();
+        pump(&mut first, &mut a, RecoveryHost::ready_to_close);
+        assert!(second.writer.as_ref().unwrap().has_file);
+        second.close();
+        pump(&mut second, &mut b, RecoveryHost::ready_to_close);
+    }
+    #[test]
+    fn multiple_startup_copies_are_handed_to_new_tabs_without_overwriting_the_first_restore() {
+        let dir = tempfile::tempdir().unwrap();
+        for size in [3, 5] {
+            let session = Session::new(dir.path()).unwrap();
+            session
+                .checkpoint(&Document::new(size, 4).unwrap(), None)
+                .unwrap();
+            drop(session);
+        }
+        let mut editor = ImageEditor::new(Document::new(1, 1).unwrap());
+        let mut first = RecoveryHost::new(dir.path(), editor.project_epoch(), None);
+        pump(&mut first, &mut editor, |h| h.loaded.is_some());
+        first.restore(&mut editor);
+        let restored = editor.document().clone();
+        let mut other = ImageEditor::new(Document::new(1, 1).unwrap());
+        let mut second = RecoveryHost::new_tab(dir.path(), other.project_epoch(), None);
+        first.transfer_pending_to(&mut second);
+        assert!(!first.prompt_pending());
+        assert!(second.prompt_pending());
+        pump(&mut second, &mut other, |h| h.loaded.is_some());
+        second.restore(&mut other);
+        assert_ne!(other.document().width(), restored.width());
+        assert_eq!(editor.document(), &restored);
+        first.close();
+        second.close();
+        pump(&mut first, &mut editor, RecoveryHost::ready_to_close);
+        pump(&mut second, &mut other, RecoveryHost::ready_to_close);
     }
 }

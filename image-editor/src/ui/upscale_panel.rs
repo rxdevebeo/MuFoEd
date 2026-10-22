@@ -77,6 +77,9 @@ fn normalized_weights(a: f32, b: f32) -> Result<[f32; 2], EditError> {
     Ok([a / (a + b), b / (a + b)])
 }
 impl UpscaleUi {
+    pub(super) fn has_result(&self) -> bool {
+        self.candidate.is_some()
+    }
     pub(super) fn reset_project(&mut self) {
         self.job = None;
         self.source = None;

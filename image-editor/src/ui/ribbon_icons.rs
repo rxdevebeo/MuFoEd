@@ -28,14 +28,20 @@ pub(super) enum Icon {
     More,
 }
 pub(super) fn button(ui: &mut Ui, icon: Icon, tip: &str) -> Response {
+    sized_button(ui, icon, tip, 32.0)
+}
+pub(super) fn compact_button(ui: &mut Ui, icon: Icon, tip: &str) -> Response {
+    sized_button(ui, icon, tip, 24.0)
+}
+fn sized_button(ui: &mut Ui, icon: Icon, tip: &str, size: f32) -> Response {
     let response = ui
-        .add_sized([32.0, 32.0], egui::Button::new(""))
+        .add_sized([size, size], egui::Button::new(""))
         .on_hover_text(tip);
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), tip));
     paint(
         ui.painter(),
-        response.rect.shrink(7.0),
+        response.rect.shrink(size * 7.0 / 32.0),
         icon,
         ui.visuals().text_color(),
     );

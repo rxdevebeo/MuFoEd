@@ -35,6 +35,9 @@ impl Default for SegmentationUi {
     }
 }
 impl SegmentationUi {
+    pub(super) fn has_result(&self) -> bool {
+        self.candidate.is_some()
+    }
     pub(super) fn reset_project(&mut self) {
         self.job = None;
         self.source = None;

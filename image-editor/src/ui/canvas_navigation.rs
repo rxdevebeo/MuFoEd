@@ -11,6 +11,11 @@ pub(super) struct Navigation {
     pub interacting: bool,
 }
 impl ImageEditor {
+    pub(super) fn pause_canvas_navigation(&mut self) {
+        self.navigation.button = None;
+        self.navigation.last = None;
+        self.navigation.interacting = false;
+    }
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,

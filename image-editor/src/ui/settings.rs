@@ -105,9 +105,9 @@ impl ImageEditor {
     /// Restore preferences before inference. Missing model files remain selected and can be repaired in settings.
     pub fn apply_settings(&mut self, settings: EditorSettings) -> Result<(), EditError> {
         settings.validate()?;
-        if self.settings_busy() {
+        if self.background_active() {
             return Err(EditError::Invalid(
-                "Wait for active model operations before restoring settings".into(),
+                "Wait for this document's model operations before restoring settings".into(),
             ));
         }
         let prompt = self.request.prompt.clone();

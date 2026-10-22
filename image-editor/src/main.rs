@@ -1,10 +1,13 @@
-//! Standalone review host for the image-editor crate.
+//! Standalone tabbed host for the embeddable image editor.
+mod document_tabs;
 mod preferences;
 mod recovery_host;
+use document_tabs::{TabAction, TabId, Workspace};
 use image_editor::{
     ui::{FileAction, ImageEditor},
-    Document, EditError, Raster,
+    EditError, Raster,
 };
+use std::path::{Path, PathBuf};
 
 fn main() -> eframe::Result {
     let preferences_path = preferences::path();
@@ -16,7 +19,6 @@ fn main() -> eframe::Result {
             std::env::set_var("PLAKAT_CACHE_DIR", cache);
         }
     }
-    // Configure Plakat once, before eframe or any inference worker starts threads.
     #[cfg(windows)]
     std::env::set_var("PLAKAT_NO_SDPA", "1");
     if std::env::var_os("PLAKAT_CACHE_DIR").is_none() {
@@ -50,53 +52,47 @@ fn main() -> eframe::Result {
             let mut editor = ImageEditor::default();
             match loaded_settings {
                 Ok(Some(settings)) => {
-                    if let Err(e) = editor.apply_settings(settings) {
-                        editor.set_status(format!("Настройки: {e}"));
+                    if let Err(error) = editor.apply_settings(settings) {
+                        editor.set_status(format!("Настройки: {error}"));
                     }
                 }
-                Err(e) => editor.set_status(format!("Не удалось прочитать настройки: {e}")),
+                Err(error) => editor.set_status(format!("Не удалось прочитать настройки: {error}")),
                 Ok(None) => {}
             }
-
-            let mut source = None;
-            if let Some(path) = std::env::args_os().nth(1) {
-                let path = std::path::Path::new(&path);
-                let result = if path.extension().is_some_and(|e| {
-                    e.eq_ignore_ascii_case("json") || e.eq_ignore_ascii_case("psd")
-                }) {
-                    Document::open_project(path)
-                } else {
-                    Raster::open(path).and_then(Document::from_raster)
-                };
-                match result {
-                    Ok(doc) => {
-                        editor.replace(doc);
-                        source = Some(path.to_path_buf());
-                    }
-                    Err(e) => editor.set_status(e.to_string()),
+            let preferences = preferences::Preferences::new(preferences_path, editor.settings());
+            let mut workspace = Workspace::new(recovery_directory.clone(), editor);
+            for path in std::env::args_os().skip(1) {
+                if let Err(error) = workspace.open(Path::new(&path)) {
+                    workspace.active_mut().editor.set_status(error.to_string());
                 }
             }
-            open_shot_dialog(&mut editor);
-            let preferences = preferences::Preferences::new(preferences_path, editor.settings());
-            let mut recovery = recovery_host::RecoveryHost::new(
-                &recovery_directory,
-                editor.project_epoch(),
-                source,
-            );
-            // Isolated crash QA only: makes the command-line project dirty without altering pixels.
+            open_shot_dialog(&mut workspace.active_mut().editor);
             if std::env::var("IMAGE_STUDIO_RECOVERY_PROBE").as_deref() == Ok("draft") {
-                editor.restore_recovered(editor.document().clone());
-                let source = recovery.source().map(std::path::Path::to_path_buf);
-                recovery.bind_source(editor.project_epoch(), source);
+                let tab = workspace.active_mut();
+                tab.editor.restore_recovered(tab.editor.document().clone());
+                let source = tab.recovery.source().map(Path::to_path_buf);
+                tab.recovery.bind_source(tab.editor.project_epoch(), source);
             }
+            let prompt_editor = workspace.fresh_editor();
+            let recovery = recovery_host::RecoveryHost::new(
+                &recovery_directory,
+                prompt_editor.project_epoch(),
+                None,
+            );
+            let startup = recovery.prompt_pending().then_some(RecoveryPrompt {
+                editor: prompt_editor,
+                recovery,
+            });
             Ok(Box::new(Demo {
                 preferences,
-                recovery,
-                editor,
+                workspace,
+                startup,
+                recovery_directory,
                 frames: 0,
                 shot: std::env::var_os("IMAGE_STUDIO_SHOT").map(Into::into),
-                pending_open: None,
-                confirm_close: false,
+                shot_started: std::time::Instant::now(),
+                dropped: Vec::new(),
+                close_error: String::new(),
                 releasing: None,
                 close_ready: false,
                 models_released: false,
@@ -104,6 +100,7 @@ fn main() -> eframe::Result {
         }),
     )
 }
+
 fn open_shot_dialog(editor: &mut ImageEditor) {
     if std::env::var_os("IMAGE_STUDIO_SHOT").is_some() {
         if std::env::var("IMAGE_STUDIO_SHOT_TARGET").as_deref() == Ok("mask") {
@@ -179,30 +176,44 @@ fn open_shot_dialog(editor: &mut ImageEditor) {
     }
 }
 
-struct Demo {
-    recovery: recovery_host::RecoveryHost,
-    models_released: bool,
-    preferences: preferences::Preferences,
+struct RecoveryPrompt {
     editor: ImageEditor,
+    recovery: recovery_host::RecoveryHost,
+}
+struct Demo {
+    preferences: preferences::Preferences,
+    workspace: Workspace,
+    startup: Option<RecoveryPrompt>,
+    recovery_directory: PathBuf,
     frames: u32,
-    shot: Option<std::path::PathBuf>,
-    pending_open: Option<FileAction>,
-    confirm_close: bool,
+    shot: Option<PathBuf>,
+    shot_started: std::time::Instant,
+    dropped: Vec<PathBuf>,
+    close_error: String,
     releasing: Option<std::sync::mpsc::Receiver<Result<(), String>>>,
     close_ready: bool,
+    models_released: bool,
 }
 impl Demo {
+    fn editor_mut(&mut self) -> &mut ImageEditor {
+        &mut self.workspace.active_mut().editor
+    }
     fn begin_shutdown(&mut self) {
-        self.recovery.close();
-        if let Err(e) = self
+        self.workspace.synchronize_settings();
+        let settings = self.workspace.settings.clone();
+        if let Err(error) = self
             .preferences
-            .poll(self.editor.settings())
+            .poll(settings)
             .and_then(|()| self.preferences.flush())
         {
-            self.editor
-                .set_status(format!("Не удалось сохранить настройки: {e}"));
+            self.editor_mut()
+                .set_status(format!("Не удалось сохранить настройки: {error}"));
         }
-        drop(self.editor.shutdown_models());
+        self.workspace.begin_shutdown();
+        if let Some(prompt) = &mut self.startup {
+            prompt.recovery.close();
+            prompt.editor.cancel_background();
+        }
         self.releasing = Some(mufoed_model_runtime::Runtime::global().shutdown_async());
     }
     fn poll_shutdown(&mut self, ctx: &egui::Context) {
@@ -213,25 +224,204 @@ impl Demo {
                     self.releasing = None;
                 }
                 Ok(Err(error)) => {
-                    self.editor.set_status(format!("Model shutdown: {error}"));
+                    self.editor_mut()
+                        .set_status(format!("Завершение моделей: {error}"));
                     self.releasing = None;
-                    self.recovery.cancel_close();
+                    self.workspace.cancel_shutdown();
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.editor.set_status("Model shutdown worker stopped");
+                    self.editor_mut()
+                        .set_status("Поток завершения моделей остановился");
                     self.releasing = None;
-                    self.recovery.cancel_close();
+                    self.workspace.cancel_shutdown();
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    self.editor
-                        .set_status("Завершение вычислений и освобождение моделей…");
                     ctx.request_repaint_after(std::time::Duration::from_millis(100));
                 }
             }
         }
-        if self.models_released && self.recovery.ready_to_close() {
+        if self.models_released
+            && self.workspace.ready_to_close()
+            && self
+                .startup
+                .as_ref()
+                .is_none_or(|p| p.recovery.ready_to_close())
+        {
             self.close_ready = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+    fn poll_startup(&mut self, ctx: &egui::Context) {
+        let Some(mut prompt) = self.startup.take() else {
+            return;
+        };
+        prompt.recovery.poll(&mut prompt.editor);
+        let epoch = prompt.editor.project_epoch();
+        if prompt.recovery.prompt_pending() {
+            prompt.recovery.show_prompt(ctx, &mut prompt.editor);
+        }
+        if prompt.editor.project_epoch() != epoch {
+            let editor = self.workspace.fresh_editor();
+            let mut recovery = recovery_host::RecoveryHost::new_tab(
+                &self.recovery_directory,
+                editor.project_epoch(),
+                None,
+            );
+            prompt.recovery.transfer_pending_to(&mut recovery);
+            self.workspace
+                .insert_recovered(prompt.editor, prompt.recovery);
+            if recovery.prompt_pending() {
+                self.startup = Some(RecoveryPrompt { editor, recovery });
+            }
+        } else if prompt.recovery.prompt_pending() {
+            self.startup = Some(prompt);
+        }
+    }
+    fn open_paths(&mut self, paths: Vec<PathBuf>) {
+        let mut errors = Vec::new();
+        for path in paths {
+            if let Err(error) = self.workspace.open(&path) {
+                errors.push(format!("{}: {error}", path.display()));
+            }
+        }
+        if !errors.is_empty() {
+            self.editor_mut().set_status(errors.join("; "));
+        }
+    }
+    fn save_tab(
+        &mut self,
+        id: TabId,
+        save_as: bool,
+        frame: &eframe::Frame,
+    ) -> Result<bool, EditError> {
+        let Some(tab) = self.workspace.tab(id) else {
+            return Ok(false);
+        };
+        let existing = (!save_as)
+            .then(|| tab.project().map(Path::to_path_buf))
+            .flatten();
+        let path = if let Some(path) = existing {
+            Some(path)
+        } else {
+            let name = PathBuf::from(tab.name()).with_extension("psd");
+            let mut dialog = rfd::FileDialog::new()
+                .set_parent(frame)
+                .set_title(format!("Сохранить {}", tab.name()))
+                .set_file_name(name.to_string_lossy())
+                .add_filter("Photoshop PSD", &["psd"]);
+            if let Some(parent) = tab.source().and_then(Path::parent) {
+                dialog = dialog.set_directory(parent);
+            }
+            dialog.save_file().map(|p| {
+                if p.extension().is_none() {
+                    p.with_extension("psd")
+                } else {
+                    p
+                }
+            })
+        };
+        let Some(path) = path else {
+            return Ok(false);
+        };
+        self.workspace.save_to(id, &path)?;
+        Ok(true)
+    }
+    fn save_all(&mut self, frame: &eframe::Frame) -> Result<(), EditError> {
+        for id in self.workspace.ids() {
+            if self
+                .workspace
+                .tab(id)
+                .is_some_and(|t| t.editor.has_unsaved_changes())
+                && !self.save_tab(id, false, frame)?
+            {
+                break;
+            }
+        }
+        Ok(())
+    }
+    fn tab_action(&mut self, action: TabAction, frame: &eframe::Frame) -> Result<(), EditError> {
+        match action {
+            TabAction::Select(id) => self.workspace.select(id),
+            TabAction::New => self.workspace.new_document(),
+            TabAction::Close(id) => self.workspace.request_close(vec![id], false),
+            TabAction::CloseOthers(id) => {
+                let ids = self
+                    .workspace
+                    .ids()
+                    .into_iter()
+                    .filter(|&i| i != id)
+                    .collect();
+                self.workspace.request_close(ids, false);
+            }
+            TabAction::CloseAll => self.workspace.request_close(self.workspace.ids(), false),
+            TabAction::Save(id) | TabAction::SaveAs(id) => {
+                self.save_tab(id, matches!(action, TabAction::SaveAs(_)), frame)?;
+            }
+            TabAction::SaveAll => self.save_all(frame)?,
+        }
+        Ok(())
+    }
+    fn close_dialog(&mut self, ctx: &egui::Context, frame: &eframe::Frame) {
+        if self.workspace.advance_close() {
+            self.begin_shutdown();
+            return;
+        }
+        let Some(id) = self.workspace.pending_tab() else {
+            return;
+        };
+        let Some(tab) = self.workspace.tab(id) else {
+            return;
+        };
+        let mut choice = 0;
+        let response = egui::Modal::new(egui::Id::new("close-document-prompt")).show(ctx, |ui| {
+            ui.set_width(440.0);
+            ui.heading(format!("Закрыть «{}»?", tab.name()));
+            if tab.editor.has_unsaved_changes() {
+                ui.label("Сохранить изменения перед закрытием?");
+            }
+            if tab.editor.background_active() {
+                ui.label("Фоновые операции этой вкладки будут отменены.");
+            }
+            if tab.editor.has_staged_result() {
+                ui.label("Есть неприменённый результат обработки. Нажмите «Отмена», чтобы вернуться и принять его; при закрытии он будет потерян.");
+            }
+            if !self.close_error.is_empty() {
+                ui.colored_label(egui::Color32::LIGHT_RED, &self.close_error);
+            }
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.add_enabled(!tab.editor.has_staged_result(),egui::Button::new("Сохранить")).clicked() {
+                    choice = 1;
+                }
+                if ui.button("Не сохранять").clicked() {
+                    choice = 2;
+                }
+                if ui.button("Отмена").clicked() {
+                    choice = 3;
+                }
+            });
+        });
+        if choice == 0 && response.should_close() {
+            choice = 3;
+        }
+        match choice {
+            1 => match self.save_tab(id, false, frame) {
+                Ok(true) => {
+                    self.workspace.close_confirmed(id);
+                    self.close_error.clear();
+                }
+                Ok(false) => {}
+                Err(error) => self.close_error = error.to_string(),
+            },
+            2 => {
+                self.workspace.close_confirmed(id);
+                self.close_error.clear();
+            }
+            3 => {
+                self.workspace.cancel_close();
+                self.close_error.clear();
+            }
+            _ => {}
         }
     }
     fn preset_file_dialog(&mut self, import: bool, frame: &eframe::Frame) -> Result<(), EditError> {
@@ -247,12 +437,12 @@ impl Demo {
         };
         if let Some(path) = path {
             if import {
-                let count = self.editor.import_presets(path)?;
-                self.editor
+                let count = self.editor_mut().import_presets(path)?;
+                self.editor_mut()
                     .set_status(format!("Импортировано пресетов: {count}"));
             } else {
-                self.editor.export_presets(path)?;
-                self.editor.set_status("Пресеты экспортированы");
+                self.editor_mut().export_presets(path)?;
+                self.editor_mut().set_status("Пресеты экспортированы");
             }
         }
         Ok(())
@@ -269,17 +459,17 @@ impl Demo {
                     .add_filter("Upscaler weights", &["safetensors", "pth", "pt"])
                     .pick_file()
                 {
-                    self.editor.set_ultrasharp_model(&path);
+                    self.editor_mut().set_ultrasharp_model(&path);
                 }
             }
             FileAction::AuraSrModel => {
                 if let Some(path) = rfd::FileDialog::new().set_parent(frame).pick_folder() {
-                    self.editor.set_aurasr_model(&path);
+                    self.editor_mut().set_aurasr_model(&path);
                 }
             }
             FileAction::SegmentationModel => {
                 if let Some(path) = rfd::FileDialog::new().set_parent(frame).pick_folder() {
-                    self.editor.set_segmentation_model(&path)?;
+                    self.editor_mut().set_segmentation_model(&path)?;
                 }
             }
             FileAction::BackgroundModel => {
@@ -288,7 +478,7 @@ impl Demo {
                     .add_filter("BiRefNet ONNX", &["onnx"])
                     .pick_file()
                 {
-                    self.editor.set_background_model(&path);
+                    self.editor_mut().set_background_model(&path);
                 }
             }
             FileAction::AddAsset => {
@@ -298,135 +488,75 @@ impl Demo {
                     .add_filter("Safetensors", &["safetensors"])
                     .pick_file()
                 {
-                    self.editor.add_asset(&path)?;
+                    self.editor_mut().add_asset(&path)?;
                 }
             }
-            FileAction::OpenImage | FileAction::ImportLayer => {
+            FileAction::OpenImage | FileAction::OpenProject => {
+                if let Some(paths) = rfd::FileDialog::new()
+                    .set_parent(frame)
+                    .add_filter(
+                        "Изображения и проекты",
+                        &[
+                            "psd", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "json",
+                        ],
+                    )
+                    .pick_files()
+                {
+                    self.open_paths(paths);
+                }
+            }
+            FileAction::ImportLayer => {
                 if let Some(path) = rfd::FileDialog::new()
                     .set_parent(frame)
                     .add_filter(
-                        "Raster image",
+                        "Растровое изображение",
                         &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"],
                     )
                     .pick_file()
                 {
-                    if matches!(action, FileAction::ImportLayer) {
-                        self.editor.import_layer_file(&path)?;
-                    } else {
-                        self.editor
-                            .replace(Document::from_raster(Raster::open(&path)?)?);
-                        self.recovery
-                            .bind_source(self.editor.project_epoch(), Some(path));
-                    }
+                    self.editor_mut().import_layer_file(&path)?;
                 }
             }
-            FileAction::OpenProject => {
-                if let Some(path) = rfd::FileDialog::new()
-                    .set_parent(frame)
-                    .add_filter("Photoshop PSD / legacy project", &["psd", "json"])
-                    .pick_file()
-                {
-                    self.editor.replace(Document::open_project(&path)?);
-                    self.recovery
-                        .bind_source(self.editor.project_epoch(), Some(path));
-                }
+            FileAction::NewDocument => self.workspace.new_document(),
+            FileAction::CloseDocument => self
+                .workspace
+                .request_close(vec![self.workspace.active().id], false),
+            FileAction::SaveProject | FileAction::SaveProjectAs => {
+                self.save_tab(
+                    self.workspace.active().id,
+                    action == FileAction::SaveProjectAs,
+                    frame,
+                )?;
             }
-            FileAction::SaveProject => {
-                if let Some(path) = rfd::FileDialog::new()
-                    .set_parent(frame)
-                    .set_file_name("image-project.psd")
-                    .add_filter("Photoshop PSD", &["psd"])
-                    .save_file()
-                {
-                    self.editor.document().save_project(&path)?;
-                    self.editor.mark_saved();
-                    self.recovery
-                        .bind_source(self.editor.project_epoch(), Some(path));
-                    self.editor.set_status("PSD-проект сохранён");
-                }
-            }
+            FileAction::SaveAll => self.save_all(frame)?,
             FileAction::ExportPng => {
+                let name = self.workspace.active().name();
+                let name = std::path::Path::new(&name).with_extension("png");
                 if let Some(path) = rfd::FileDialog::new()
                     .set_parent(frame)
-                    .set_file_name("image.png")
+                    .set_file_name(name.to_string_lossy())
                     .add_filter("PNG", &["png"])
                     .save_file()
                 {
-                    self.editor.document().flatten().save_png(path)?;
-                    self.editor.set_status("PNG exported");
+                    self.editor_mut().prepare_for_host_action();
+                    self.editor_mut().document().flatten().save_png(path)?;
+                    self.editor_mut()
+                        .set_status("PNG экспортирован; PSD-проект сохраняется отдельно");
                 }
             }
         }
         Ok(())
     }
-}
-impl eframe::App for Demo {
-    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.recovery.poll(&mut self.editor);
-        if self.releasing.is_some() || self.models_released {
-            // Once close is accepted, no new edit can race the final recovery cleanup.
-            ui.centered_and_justified(|ui| {
-                ui.label("Завершение фоновых операций…");
-            });
-        } else if self.recovery.prompt_pending() {
-            self.recovery.show_prompt(ui.ctx(), &mut self.editor);
-        } else {
-            for action in self.editor.show(ui) {
-                if matches!(action, FileAction::OpenImage | FileAction::OpenProject)
-                    && self.editor.has_unsaved_changes()
-                {
-                    self.pending_open = Some(action);
-                    continue;
-                }
-                if let Err(e) = self.file_action(action, frame) {
-                    self.editor.set_status(e.to_string());
-                }
-            }
-        }
-        if let Err(e) = self.preferences.poll(self.editor.settings()) {
-            self.editor
-                .set_status(format!("Не удалось сохранить настройки: {e}"));
-        }
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_millis(500));
-        if ui.input(|i| i.viewport().close_requested()) && !self.close_ready {
-            ui.ctx()
-                .send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            if self.editor.has_unsaved_changes() {
-                self.confirm_close = true;
-            } else if self.releasing.is_none() {
-                self.begin_shutdown();
-            }
-        }
-        self.poll_shutdown(ui.ctx());
-        if self.pending_open.is_some() || self.confirm_close {
-            let mut discard = false;
-            let mut cancel = false;
-            egui::Window::new("Unsaved project").anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).collapsible(false).show(ui.ctx(), |ui| {
-                ui.label("This project contains unsaved changes. Save it before continuing, or discard the changes.");
-                discard = ui.button("Discard changes and continue").clicked(); cancel = ui.button("Cancel").clicked();
-            });
-            if cancel {
-                self.pending_open = None;
-                self.confirm_close = false;
-            }
-            if discard {
-                if self.confirm_close {
-                    self.editor.mark_saved();
-                    self.confirm_close = false;
-                    self.begin_shutdown();
-                } else if let Some(action) = self.pending_open.take() {
-                    if let Err(e) = self.file_action(action, frame) {
-                        self.editor.set_status(e.to_string());
-                    }
-                }
-            }
-        }
-        if let Some(path) = &self.shot {
+    fn screenshot(&mut self, ui: &mut egui::Ui) {
+        if let Some(path) = self.shot.clone() {
             self.frames += 1;
             if self.frames >= 12
-                && !self.editor.resource_operation_active()
-                && self.recovery.screenshot_ready()
+                && self.shot_started.elapsed() >= std::time::Duration::from_millis(350)
+                && !self.workspace.active().editor.resource_operation_active()
+                && self
+                    .startup
+                    .as_ref()
+                    .is_none_or(|p| p.recovery.screenshot_ready())
             {
                 ui.ctx()
                     .send_viewport_cmd(
@@ -453,14 +583,94 @@ impl eframe::App for Demo {
                     .zip(u32::try_from(image.size[1]).ok())
                     .ok_or_else(|| EditError::Invalid("Screenshot dimensions overflow".into()))
                     .and_then(|(w, h)| Raster::new(w, h, bytes))
-                    .and_then(|raster| raster.save_png(path));
+                    .and_then(|raster| raster.save_png(&path));
                 if let Err(e) = result {
-                    self.editor.set_status(e.to_string());
+                    self.editor_mut().set_status(e.to_string());
                 }
                 self.shot = None;
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             }
             ui.ctx().request_repaint();
         }
+    }
+}
+
+impl eframe::App for Demo {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        self.workspace.poll(&ctx);
+        if self.releasing.is_some() || self.models_released {
+            if let Some(prompt) = &mut self.startup {
+                prompt.recovery.poll(&mut prompt.editor);
+            }
+            ui.centered_and_justified(|ui| {
+                ui.label("Завершение фоновых операций…");
+            });
+        } else {
+            self.dropped.extend(
+                ui.input_mut(|i| std::mem::take(&mut i.raw.dropped_files))
+                    .into_iter()
+                    .filter_map(|f| f.path),
+            );
+            let enabled = self.startup.is_none()
+                && !self.workspace.close_pending()
+                && self.workspace.active().editor.document_commands_enabled();
+            if let Some(action) = self.workspace.tab_bar(ui, enabled) {
+                if let Err(error) = self.tab_action(action, frame) {
+                    self.editor_mut().set_status(error.to_string());
+                }
+                ui.memory_mut(|m| {
+                    if let Some(id) = m.focused() {
+                        m.surrender_focus(id);
+                    }
+                });
+            }
+            if enabled {
+                self.workspace.keyboard_navigation(ui);
+            }
+            if self.startup.is_some() {
+                self.poll_startup(&ctx);
+            } else if !self.workspace.close_pending() {
+                if enabled && !self.dropped.is_empty() {
+                    let paths = std::mem::take(&mut self.dropped);
+                    self.open_paths(paths);
+                }
+                let id = self.workspace.active().id;
+                let actions = ui.push_id(id, |ui| self.editor_mut().show(ui)).inner;
+                for action in actions {
+                    if let Err(error) = self.file_action(action, frame) {
+                        self.editor_mut().set_status(error.to_string());
+                    }
+                }
+            }
+            if self.workspace.close_pending() {
+                self.close_dialog(&ctx, frame);
+            }
+        }
+        self.workspace.synchronize_settings();
+        if let Err(error) = self.preferences.poll(self.workspace.settings.clone()) {
+            self.editor_mut().set_status(format!("Настройки: {error}"));
+        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
+            "{}{} — Image Studio",
+            if self.workspace.active().editor.has_unsaved_changes() {
+                "● "
+            } else {
+                ""
+            },
+            self.workspace.active().name()
+        )));
+        ctx.request_repaint_after(std::time::Duration::from_millis(250));
+        if ui.input(|i| i.viewport().close_requested()) && !self.close_ready {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            if self.releasing.is_none() && !self.models_released {
+                self.workspace.request_close(self.workspace.ids(), true);
+                if self.workspace.advance_close() {
+                    self.begin_shutdown();
+                }
+            }
+        }
+        self.poll_shutdown(&ctx);
+        self.screenshot(ui);
     }
 }

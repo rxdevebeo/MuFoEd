@@ -55,6 +55,9 @@ impl Default for LayerDialog {
     }
 }
 impl ImageEditor {
+    pub(super) fn pause_layer_drag(&mut self) {
+        self.layer_dialog.drag = None;
+    }
     /// Import a centered raster layer without replacing the document; one undo step.
     pub fn import_layer_file(&mut self, path: &std::path::Path) -> Result<(), EditError> {
         self.finish_manual_stroke();

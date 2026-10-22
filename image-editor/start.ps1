@@ -1,4 +1,10 @@
-param([string]$Image,[switch]$Cli,[switch]$LegacyCuda,[switch]$Release)
+param(
+    [Parameter(Position=0)][string]$Image,
+    [switch]$Cli,
+    [switch]$LegacyCuda,
+    [switch]$Release,
+    [Parameter(ValueFromRemainingArguments=$true)][string[]]$AdditionalImages
+)
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = Split-Path $PSScriptRoot -Parent
 $plakatRoot = Join-Path (Split-Path $workspaceRoot -Parent) 'plakat'
@@ -32,5 +38,8 @@ try {
     & cargo @buildArguments
     if ($LASTEXITCODE) { throw 'Editor build failed' }
 } finally { Pop-Location }
-if ($Image) { & $executable $Image } else { & $executable }
+$documentPaths = @()
+if ($Image) { $documentPaths += $Image }
+if ($AdditionalImages) { $documentPaths += $AdditionalImages }
+& $executable @documentPaths
 exit $LASTEXITCODE

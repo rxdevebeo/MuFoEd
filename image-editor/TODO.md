@@ -40,6 +40,7 @@ checkpoint; возможное удержание device-моделей при �
   - [x] E03.1: уровни/кривые с гистограммой, до/после, сбросом и одним Undo. [Приёмка](E03-TONE-VALIDATION.md).
   - [x] E03.2: маски слоёв и Multiply/Screen/Overlay с отдельной приёмкой PSD. [Приёмка](E03-LAYERS-VALIDATION.md).
 - [x] E04: атомарное автовосстановление отдельной копии, несколько окон, restore/discard/defer, crash/corrupt/settings acceptance. [Приёмка](E04-VALIDATION.md).
+- [x] UI03: вкладки документов, multi-open/drag-and-drop, Save/Save As/Save All, безопасное закрытие и независимое recovery. [Приёмка](DOCUMENT-TABS-VALIDATION.md).
 - [ ] Текстовый инструмент: отдельный следующий пункт, сначала определить PSD-семантику.
 
 ## После аудита 2026-10-22

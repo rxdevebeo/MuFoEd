@@ -40,11 +40,17 @@ impl ImageEditor {
     /// Cancel owned image jobs and queue idle resource release. The host must keep
     /// polling the receiver before exiting; active compute retains its lease meanwhile.
     pub fn shutdown_models(&mut self) -> mpsc::Receiver<Result<(), String>> {
+        self.cancel_background();
+        self.runtime.release_idle_async()
+    }
+    /// Cancel only this document's jobs. Other tabs retain the shared model cache.
+    pub fn cancel_background(&mut self) {
         self.job = None;
         self.model_ui.reset_project();
         self.segmentation_ui.reset_project();
         self.upscale_ui.reset_project();
-        self.runtime.release_idle_async()
+        self.generation_ui.cancel_operations();
+        self.runtime_ui.pending = None;
     }
     fn refresh_model_memory(&mut self) {
         if self.runtime_ui.pending.is_some() {
@@ -73,7 +79,7 @@ impl ImageEditor {
             });
         self.runtime_ui.pending = Some(receiver);
     }
-    pub(super) fn runtime_panel(&mut self, ctx: &egui::Context) {
+    pub(super) fn poll_runtime(&mut self, ctx: &egui::Context) {
         if let Some(receiver) = &self.runtime_ui.pending {
             match receiver.try_recv() {
                 Ok(result) => {
@@ -90,6 +96,9 @@ impl ImageEditor {
                 }
             }
         }
+    }
+    pub(super) fn runtime_panel(&mut self, ctx: &egui::Context) {
+        self.poll_runtime(ctx);
         let mut open = self.runtime_ui.open;
         egui::Window::new("Модели и память").anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).open(&mut open).default_width(610.0).default_height(610.0).max_height(650.0).vscroll(true).show(ctx,|ui|{
             ui.label("Общий менеджер MuFoEd: текст · OCR · изображения");

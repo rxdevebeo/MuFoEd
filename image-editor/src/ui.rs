@@ -119,9 +119,13 @@ fn panel_header(ui: &mut egui::Ui, title: &str, subtitle: &str) {
 type RunningJob = crate::generation::PipelineJob;
 
 /// File operation requested by the editor, to be handled by its host.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileAction {
-    /// Import a raster as a new document.
+    /// Create a new document tab in the host.
+    NewDocument,
+    /// Close the active document with host save confirmation.
+    CloseDocument,
+    /// Import files as new documents.
     OpenImage,
     /// Import a raster as a new layer in the current document.
     ImportLayer,
@@ -129,6 +133,10 @@ pub enum FileAction {
     OpenProject,
     /// Persist layers and mask.
     SaveProject,
+    /// Persist the active document to a new PSD path.
+    SaveProjectAs,
+    /// Save all modified documents in the host.
+    SaveAll,
     /// Export the flattened canvas as PNG.
     ExportPng,
     /// Add a local safetensors resource to the asset dialog.
@@ -431,36 +439,44 @@ impl ImageEditor {
             || self.confirm_new
             || self.manual_rename_active()
     }
-    /// Render the editor. Call each frame; generation polling never waits for inference.
-    // Pixel/UI conversion intentionally rounds bounded canvas coordinates and color channels.
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss,
-        clippy::too_many_lines
-    )]
-    pub fn show(&mut self, ui: &mut egui::Ui) -> Vec<FileAction> {
-        let mut actions = Vec::new();
-        if !self.canvas_shortcuts_blocked() && !ui.ctx().egui_wants_keyboard_input() {
-            let mods = ui.input(|i| i.modifiers);
-            if mods.command && ui.input(|i| i.key_pressed(egui::Key::S)) {
-                actions.push(FileAction::SaveProject);
-            }
-            if mods.command && ui.input(|i| i.key_pressed(egui::Key::O)) {
-                actions.push(FileAction::OpenImage);
-            }
-        }
-        self.inline_transform_shortcuts(ui);
-        self.manual_shortcuts(ui);
-        let context = ui.ctx().clone();
+    /// Finish transient gestures before a host switches, saves, or closes a document.
+    pub fn prepare_for_host_action(&mut self) {
+        self.finish_host_gestures();
+        self.finish_pasted_object();
+        self.pause_canvas_navigation();
+        self.pause_layer_drag();
+    }
+    /// Whether a floating editor dialog currently owns document commands.
+    pub fn document_commands_enabled(&self) -> bool {
+        !self.canvas_shortcuts_blocked()
+    }
+    /// Whether owned inference, downloads or model maintenance are still active.
+    pub fn background_active(&self) -> bool {
+        self.job.is_some()
+            || self.resource_operation_active()
+            || self.model_operation_active()
+            || self.segmentation_operation_active()
+            || self.upscale_operation_active()
+    }
+    /// Whether generated/processed pixels still await acceptance in this document.
+    pub fn has_staged_result(&self) -> bool {
+        self.candidate.is_some()
+            || self.model_ui.has_result()
+            || self.segmentation_ui.has_result()
+            || self.upscale_ui.has_result()
+    }
+    /// Poll owned jobs without drawing. Hosts call this for inactive document tabs.
+    /// Results remain staged in their original editor and never replace another tab.
+    pub fn poll_background(&mut self, context: &egui::Context) {
+        self.poll_runtime(context);
         if self.job.is_none() && self.plakat_active() {
-            self.status="Plakat завершает отменённую задачу; модели будут доступны после освобождения runtime".into();
+            self.status = "Менеджер моделей занят; фоновое выполнение продолжается".into();
             context.request_repaint_after(std::time::Duration::from_millis(100));
         }
-        self.poll_assets(&context);
-        self.poll_model_tools(&context);
-        self.poll_segmentation(&context);
-        self.poll_upscale(&context);
+        self.poll_assets(context);
+        self.poll_model_tools(context);
+        self.poll_segmentation(context);
+        self.poll_upscale(context);
         if let Some(job) = &mut self.job {
             match job.poll() {
                 Ok(Some(candidate)) => {
@@ -479,6 +495,41 @@ impl ImageEditor {
                 }
             }
         }
+    }
+    /// Render the editor. Call each frame; generation polling never waits for inference.
+    // Pixel/UI conversion intentionally rounds bounded canvas coordinates and color channels.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss,
+        clippy::too_many_lines
+    )]
+    pub fn show(&mut self, ui: &mut egui::Ui) -> Vec<FileAction> {
+        let mut actions = Vec::new();
+        if !self.canvas_shortcuts_blocked() {
+            let mods = ui.input(|i| i.modifiers);
+            for (key, action) in [
+                (
+                    egui::Key::S,
+                    if mods.shift {
+                        FileAction::SaveProjectAs
+                    } else {
+                        FileAction::SaveProject
+                    },
+                ),
+                (egui::Key::O, FileAction::OpenImage),
+                (egui::Key::N, FileAction::NewDocument),
+                (egui::Key::W, FileAction::CloseDocument),
+            ] {
+                if mods.command && ui.input_mut(|i| i.consume_key(mods, key)) {
+                    actions.push(action);
+                }
+            }
+        }
+        self.inline_transform_shortcuts(ui);
+        self.manual_shortcuts(ui);
+        let context = ui.ctx().clone();
+        self.poll_background(&context);
         egui::Panel::bottom("image-status")
             .resizable(false)
             .frame(
@@ -929,3 +980,7 @@ impl ImageEditor {
         actions
     }
 }
+
+#[cfg(test)]
+#[path = "ui/document_host_tests.rs"]
+mod document_host_tests;

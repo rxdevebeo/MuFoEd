@@ -55,6 +55,43 @@ pub(super) fn group(ui: &mut Ui, label: &str, width: f32, body: impl FnOnce(&mut
         egui::Stroke::new(1.0, super::BORDER),
     );
 }
+fn file_commands(ui: &mut Ui, actions: &mut Vec<FileAction>) {
+    group(ui, "Файл", 125.0, |ui| {
+        if ui
+            .add_sized([ui.available_width(), 24.0], egui::Button::new("Открыть"))
+            .on_hover_text("Открыть изображения и PSD во вкладках · Ctrl+O")
+            .clicked()
+        {
+            actions.push(FileAction::OpenImage);
+        }
+        ui.horizontal(|ui| {
+            let width = (ui.available_width() - 24.0 - ui.spacing().item_spacing.x).max(30.0);
+            if ui
+                .add_sized([width, 24.0], egui::Button::new("Сохранить"))
+                .on_hover_text("Сохранить PSD · Ctrl+S")
+                .clicked()
+            {
+                actions.push(FileAction::SaveProject);
+            }
+            let options = ribbon_icons::compact_button(ui, Icon::More, "Варианты сохранения");
+            egui::Popup::menu(&options).show(|ui| {
+                for (label, action) in [
+                    ("Сохранить как… · Ctrl+Shift+S", FileAction::SaveProjectAs),
+                    ("Сохранить все", FileAction::SaveAll),
+                    ("Закрыть вкладку · Ctrl+W", FileAction::CloseDocument),
+                ] {
+                    if ui.button(label).clicked() {
+                        actions.push(action);
+                        ui.close();
+                    }
+                }
+            });
+        });
+        if command(ui, "Экспорт PNG") {
+            actions.push(FileAction::ExportPng);
+        }
+    });
+}
 impl ImageEditor {
     pub(super) fn ribbon(&mut self, ui: &mut Ui, actions: &mut Vec<FileAction>) {
         egui::Frame::new()
@@ -136,26 +173,7 @@ impl ImageEditor {
             });
     }
     fn ribbon_home(&mut self, ui: &mut Ui, actions: &mut Vec<FileAction>) {
-        group(ui, "Файл", 125.0, |ui| {
-            let open = ui.add_sized([ui.available_width(), 24.0], egui::Button::new("Открыть"));
-            egui::Popup::menu(&open).show(|ui| {
-                for (label, action) in [
-                    ("Изображение…", FileAction::OpenImage),
-                    ("Проект PSD…", FileAction::OpenProject),
-                ] {
-                    if ui.button(label).clicked() {
-                        actions.push(action);
-                        ui.close();
-                    }
-                }
-            });
-            if command(ui, "Сохранить PSD") {
-                actions.push(FileAction::SaveProject);
-            }
-            if command(ui, "Экспорт PNG") {
-                actions.push(FileAction::ExportPng);
-            }
-        });
+        file_commands(ui, actions);
         group(ui, "Буфер обмена", 112.0, |ui| {
             ui.horizontal(|ui| {
                 if ribbon_icons::button(ui, Icon::Copy, "Копировать · Ctrl+C").clicked()

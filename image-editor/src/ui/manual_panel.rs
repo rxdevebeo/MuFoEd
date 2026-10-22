@@ -332,6 +332,10 @@ impl ImageEditor {
             respect_mask: self.edit_target() == EditTarget::Raster && self.manual_ui.respect_mask,
         }
     }
+    pub(super) fn finish_host_gestures(&mut self) {
+        self.finish_manual_gesture();
+        self.finish_layer_property();
+    }
     pub(super) fn finish_manual_gesture(&mut self) {
         let gesture = self.manual_ui.stroke_before.is_some()
             || self.manual_ui.start.is_some()

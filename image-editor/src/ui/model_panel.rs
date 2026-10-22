@@ -46,6 +46,9 @@ impl Default for ModelUi {
     }
 }
 impl ModelUi {
+    pub(super) fn has_result(&self) -> bool {
+        self.candidate.is_some()
+    }
     pub(super) fn reset_project(&mut self) {
         self.job = None;
         self.operation = None;
