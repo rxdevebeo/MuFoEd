@@ -84,7 +84,9 @@ See `strict-ooxml-djvu/PROVENANCE.md` for derivation.
 `D:\projects\UnRAR\unrar-rs`), used by `file-manager` to list and extract RAR
 archives. Licence: the UnRAR freeware licence in `vendor/unrar-rs/LICENSE`
 (use to handle RAR archives is free; it may not be used to create a RAR
-compressor). Only the manifest differs from the source: the licence is named
-`LicenseRef-UnRAR` for cargo-deny, and the example and dev-dependencies are
-dropped. The directory is excluded from the workspace, so it is built as a
+compressor). The code is unchanged except for layout: the sources are rustfmt-formatted
+with LF line ends (the workspace `cargo fmt --all` checks local path
+dependencies). The manifest names the licence `LicenseRef-UnRAR` for
+cargo-deny, drops the example and dev-dependencies and declares its own
+`[workspace]`. The directory is excluded from the workspace, so it is built as a
 dependency and not linted with the workspace rules.

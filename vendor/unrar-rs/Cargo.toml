@@ -1,6 +1,7 @@
 # Vendored from the owner's unrar-rs (D:\projects\UnRAR\unrar-rs): a pure
 # Rust port of UnRAR. MuFoEd patch: the manifest names the UnRAR licence as a
-# LicenseRef (for cargo-deny) and drops the example and dev-dependencies.
+# LicenseRef (for cargo-deny), drops the example and dev-dependencies, and
+# declares its own workspace; the sources are rustfmt-formatted with LF ends.
 [package]
 name = "unrar-rs"
 version = "0.1.0"
@@ -12,6 +13,9 @@ readme = "README.md"
 keywords = ["rar", "unrar", "archive", "extract"]
 categories = ["compression"]
 publish = false
+
+# Its own workspace: never part of the one around it.
+[workspace]
 
 [dependencies]
 aes = "0.8"

@@ -451,6 +451,7 @@ fn chosen(member: &str, selected: Option<&[String]>) -> Option<String> {
 /// contents) into `destination`, keeping paths relative to the selected
 /// items' folder. Existing files are replaced only when `overwrite`.
 /// Returns the files written.
+#[allow(clippy::too_many_lines)]
 pub fn extract(
     archive: &Path,
     selected: Option<&[String]>,
