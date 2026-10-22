@@ -36,15 +36,28 @@ mod clipboard;
 mod context_window;
 mod dialog;
 mod docfonts;
+mod file_tabs;
 mod formats;
 mod formula;
 mod i18n;
+mod image_studio;
+// Shared host state: tabs, atomic preferences and recovery are identical in both applications.
+// Standalone-only tab-strip helpers are replaced by the shared MuFoEd strip.
+#[allow(dead_code)]
+#[path = "../../image-editor/src/document_tabs.rs"]
+mod document_tabs;
 mod icons;
 mod model_runtime;
 mod nav;
 mod paragraph;
+#[path = "../../image-editor/src/preferences.rs"]
+mod preferences;
 mod print;
 mod raster;
+// Screenshot-only helpers are used by the standalone host.
+#[allow(dead_code)]
+#[path = "../../image-editor/src/recovery_host.rs"]
+mod recovery_host;
 mod ribbon;
 mod ruler;
 mod settings;
@@ -59,6 +72,8 @@ mod worker;
 use std::path::PathBuf;
 
 fn main() -> eframe::Result {
+    #[cfg(windows)]
+    std::env::set_var("PLAKAT_NO_SDPA", "1");
     let files: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
     let mut options = eframe::NativeOptions {
         viewport: window_viewport(),

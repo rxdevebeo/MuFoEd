@@ -22,9 +22,14 @@ doc = false
 [features]
 # Recognition of scanned PDF/DjVu pages through a local Ollama vision model.
 default = ["ocr"]
+image-cuda = ["image-editor/plakat-cuda"]
+image-cudnn = ["image-cuda", "image-editor/plakat-cudnn"]
 ocr = ["strict-ooxml/ocr-ollama", "strict-ooxml/pdf-raster", "dep:strict-ooxml-pdf", "dep:strict-ooxml-ocr"]
 
 [dependencies]
+image-editor = { path = "../image-editor", features = ["demo", "ollama"] }
+egui = "0.35"
+tempfile = "3"
 mufoed-model-runtime = { path = "../model-runtime", features = ["ollama"] }
 strict-ooxml-ocr = { path = "../strict-ooxml-ocr", optional = true, features = ["ocr-ollama"] }
 diagram-editor = { path = "../diagram-editor", features = ["docx"] }

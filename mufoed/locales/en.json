@@ -3,6 +3,7 @@
     "name": "English"
   },
   "strings": {
+    "file.new_image": "New image",
     "recognition": {
       "title": "Recognized formula",
       "explanation": "Review the OCR result before replacing the picture. MathML is converted to an editable Word equation (OMML). Undo restores the picture.",

@@ -17,6 +17,7 @@ mod settings_ui;
 pub(crate) use settings_ui::SettingsPage;
 
 use crate::canvas;
+use crate::file_tabs::{FileTab, FileTabs, TabCommand};
 use crate::formats::{self, ImportOptions, Kind, OcrSettings, Source};
 use crate::i18n::I18n;
 use crate::icons::{self, Icon};
@@ -54,6 +55,10 @@ pub(crate) enum Action {
     ChemistryDialog,
     AiLanguage(String),
     New,
+    NewImage,
+    SelectFile(FileTab),
+    CloseFile(FileTab),
+    SaveFile(FileTab, bool),
     OpenDialog,
     OpenPath(PathBuf),
     ImportDialog {
@@ -372,6 +377,10 @@ pub(crate) struct App {
     i18n: I18n,
     settings: Settings,
     tabs: Vec<DocTab>,
+    file_tabs: FileTabs,
+    image_studio: Option<Box<crate::image_studio::ImageStudio>>,
+    images_active: bool,
+    image_exit_pending: bool,
     /// `None` is the start page.
     active: Option<usize>,
     ribbon_tab: RibbonTab,
@@ -472,6 +481,10 @@ impl App {
             i18n,
             settings,
             tabs: Vec::new(),
+            file_tabs: FileTabs::default(),
+            image_studio: None,
+            images_active: false,
+            image_exit_pending: false,
             active: None,
             ribbon_tab: RibbonTab::Home,
             backstage: false,
@@ -568,8 +581,8 @@ impl App {
         tab.view.pages_across = self.settings.pages_across;
         tab.set_speller(self.speller_for_tabs());
         self.tabs.push(tab);
-        self.active = Some(self.tabs.len() - 1);
-        self.backstage = false;
+        self.file_tabs.open(FileTab::Document(id));
+        self.activate_file(ctx, Some(FileTab::Document(id)));
     }
 
     fn new_document(&mut self, ctx: &egui::Context) {
@@ -583,13 +596,33 @@ impl App {
     }
 
     fn open_path(&mut self, ctx: &egui::Context, path: PathBuf, now: f64) {
+        if crate::image_studio::supports(&path) {
+            self.ensure_images();
+            let result = self
+                .image_studio
+                .as_mut()
+                .expect("Image host initialized")
+                .open(&path);
+            match result {
+                Ok(id) => {
+                    if let Some(studio) = &mut self.image_studio {
+                        studio.take_focus_request();
+                    }
+                    self.file_tabs.open(FileTab::Image(id));
+                    self.activate_file(ctx, Some(FileTab::Image(id)));
+                    self.settings.remember(&path);
+                    self.settings.save();
+                }
+                Err(error) => self.say(error.to_string(), true, now),
+            }
+            return;
+        }
         if let Some(index) = self
             .tabs
             .iter()
             .position(|tab| tab.source.as_ref() == Some(&path) || tab.path.as_ref() == Some(&path))
         {
-            self.active = Some(index);
-            self.backstage = false;
+            self.activate_file(ctx, Some(FileTab::Document(self.tabs[index].id)));
             return;
         }
         match formats::detect(&path) {
@@ -626,7 +659,11 @@ impl App {
     fn open_dialog(&mut self, ctx: &egui::Context, now: f64) {
         let dialog = rfd::FileDialog::new()
             .set_title(self.t("dialog.open_title"))
-            .add_filter(self.t("filter.all_supported"), formats::OPEN_EXTENSIONS)
+            .add_filter(
+                self.t("filter.all_supported"),
+                &crate::image_studio::open_extensions(),
+            )
+            .add_filter("Images / PSD", crate::image_studio::IMAGE_EXTENSIONS)
             .add_filter("Word (DOCX)", &["docx", "docm", "dotx"])
             .add_filter("RTF", &["rtf"])
             .add_filter("HTML", &["html", "htm"])
@@ -771,11 +808,16 @@ impl App {
             return;
         };
         if !force && tab.ready() && tab.modified() {
+            self.file_tabs.select(Some(FileTab::Document(tab.id)));
+            self.images_active = false;
+            self.applied_dark = None;
             self.active = Some(index);
             self.dialog = Some(Dialog::ConfirmClose { tab: tab.id });
             return;
         }
+        let id = self.tabs[index].id;
         self.tabs.remove(index);
+        self.file_tabs.remove(FileTab::Document(id));
         self.active = match self.active {
             _ if self.tabs.is_empty() => None,
             Some(active) if active > index => Some(active - 1),
@@ -805,6 +847,47 @@ impl App {
                 }
             }
             Action::New => self.new_document(ctx),
+            Action::NewImage => {
+                self.ensure_images();
+                let id = self
+                    .image_studio
+                    .as_mut()
+                    .expect("Image host initialized")
+                    .new_document();
+                if let Some(studio) = &mut self.image_studio {
+                    studio.take_focus_request();
+                }
+                self.file_tabs.open(FileTab::Image(id));
+                self.activate_file(ctx, Some(FileTab::Image(id)));
+            }
+            Action::SelectFile(key) => self.activate_file(ctx, Some(key)),
+            Action::CloseFile(key) => match key {
+                FileTab::Document(id) => {
+                    if let Some(index) = self.tabs.iter().position(|t| t.id == id) {
+                        self.close_tab(index, false);
+                    }
+                }
+                FileTab::Image(id) => {
+                    if self
+                        .image_studio
+                        .as_mut()
+                        .is_some_and(|studio| studio.close_tab(id))
+                    {
+                        self.activate_file(ctx, Some(key));
+                    }
+                }
+            },
+            Action::SaveFile(key, save_as) => {
+                self.activate_file(ctx, Some(key));
+                match key {
+                    FileTab::Document(_) => self.save(save_as, now),
+                    FileTab::Image(id) => {
+                        if let Some(studio) = &mut self.image_studio {
+                            studio.request_save(id, save_as);
+                        }
+                    }
+                }
+            }
             Action::OpenDialog => self.open_dialog(ctx, now),
             Action::OpenPath(path) => self.open_path(ctx, path, now),
             Action::ImportDialog { ocr } => self.import_dialog(ctx, ocr, now),
@@ -1089,8 +1172,10 @@ impl App {
             Action::FontColor(rgb) => self.font_color = rgb,
             Action::Backstage(open) => self.backstage = open,
             Action::Activate(index) => {
-                self.active = index;
-                self.backstage = false;
+                let key = index
+                    .and_then(|i| self.tabs.get(i))
+                    .map(|tab| FileTab::Document(tab.id));
+                self.activate_file(ctx, key);
             }
         }
     }
@@ -1593,23 +1678,9 @@ impl App {
                             Key::O => Some(Action::OpenDialog),
                             Key::S if shift => Some(Action::SaveAs),
                             Key::S => Some(Action::Save),
-                            Key::W | Key::F4 => self.active.map(Action::CloseTab),
                             Key::P => Some(Action::PrintDialog),
                             Key::F => Some(Action::Open(Dialog::Find { replace: false })),
                             Key::H => Some(Action::Open(Dialog::Find { replace: true })),
-                            Key::Tab => {
-                                let count = self.tabs.len();
-                                (count > 0).then(|| {
-                                    let next = self.active.map_or(0, |index| {
-                                        if shift {
-                                            (index + count - 1) % count
-                                        } else {
-                                            (index + 1) % count
-                                        }
-                                    });
-                                    Action::Activate(Some(next))
-                                })
-                            }
                             _ => None,
                         };
                         if let Some(action) = global {
@@ -1743,12 +1814,10 @@ impl App {
     }
 
     fn handle_drops(&mut self, ctx: &egui::Context, now: f64) {
-        let dropped: Vec<PathBuf> = ctx.input(|input| {
-            input
-                .raw
-                .dropped_files
-                .iter()
-                .filter_map(|file| file.path.clone())
+        let dropped: Vec<PathBuf> = ctx.input_mut(|input| {
+            std::mem::take(&mut input.raw.dropped_files)
+                .into_iter()
+                .filter_map(|file| file.path)
                 .collect()
         });
         for path in dropped {
@@ -1766,17 +1835,36 @@ impl App {
                 }
                 Ok(Err(error)) => {
                     self.model_shutdown = None;
+                    if let Some(studio) = &mut self.image_studio {
+                        studio.resume_after_shutdown_error(&error);
+                    }
+                    self.image_exit_pending = false;
+                    self.exit_confirmed = false;
                     self.say(error, true, ctx.input(|i| i.time));
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.model_shutdown = None;
+                    if let Some(studio) = &mut self.image_studio {
+                        studio.resume_after_shutdown_error("Model shutdown worker disconnected");
+                    }
+                    self.image_exit_pending = false;
+                    self.exit_confirmed = false;
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    ctx.request_repaint_after(std::time::Duration::from_millis(100))
+                    ctx.request_repaint_after(std::time::Duration::from_millis(100));
                 }
             }
         }
-        if !ctx.input(|input| input.viewport().close_requested()) {
+        if self
+            .image_studio
+            .as_mut()
+            .is_some_and(|studio| studio.take_exit_cancelled())
+        {
+            self.image_exit_pending = false;
+            self.exit_confirmed = false;
+            return;
+        }
+        if !ctx.input(|input| input.viewport().close_requested()) && !self.image_exit_pending {
             return;
         }
         if self.models_released {
@@ -1789,6 +1877,22 @@ impl App {
             return;
         }
         self.exit_confirmed = true;
+        if let Some(studio) = &mut self.image_studio {
+            if !self.image_exit_pending {
+                self.image_exit_pending = true;
+                studio.request_exit();
+                if let Some(id) = studio.closing_id() {
+                    self.file_tabs.select(Some(FileTab::Image(id)));
+                }
+                self.active = None;
+                self.images_active = true;
+                image_editor::ui::apply_studio_style(ctx);
+            }
+            if !studio.exit_ready() {
+                ctx.request_repaint();
+                return;
+            }
+        }
         if self.model_shutdown.is_none() {
             self.ai_cancel_for_shutdown();
             self.model_shutdown = Some(mufoed_model_runtime::Runtime::global().shutdown_async());
@@ -2070,14 +2174,14 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let input = input_summary(&ctx);
         crate::trace::frame(&input);
         if !input.is_empty() {
             crate::trace::log(|| format!("input {input}"));
         }
-        if self.applied_dark != Some(self.settings.dark) {
+        if !self.images_active && self.applied_dark != Some(self.settings.dark) {
             theme::apply(&ctx, self.settings.dark);
             self.applied_dark = Some(self.settings.dark);
         }
@@ -2093,22 +2197,58 @@ impl eframe::App for App {
         self.poll_spelling(&ctx, now);
         self.ai_poll(&ctx);
         self.handle_drops(&ctx, now);
+        if let Some(studio) = &mut self.image_studio {
+            studio.poll(&ctx);
+        }
+        self.synchronize_file_tabs(&ctx);
         self.handle_close_request(&ctx);
         let mut actions = Vec::new();
-        if let Some(name) = startup_dialog {
-            self.open_named_dialog(&name, &mut actions);
-        }
-        self.keyboard(&ctx, &mut actions);
+        self.file_tab_keys(&ctx, &mut actions);
         let palette = self.palette();
-
         egui::Panel::top("title-strip")
-            .exact_size(36.0)
+            .exact_size(38.0)
             .frame(
                 egui::Frame::new()
                     .fill(palette.title_bar)
                     .inner_margin(egui::Margin::symmetric(6, 0)),
             )
-            .show(ui, |ui| self.title_strip(ui, palette, &mut actions));
+            .show(ui, |ui| {
+                ui.add_enabled_ui(self.file_commands_enabled(), |ui| {
+                    self.title_strip(ui, palette, &mut actions);
+                });
+            });
+        for action in std::mem::take(&mut actions) {
+            self.run(&ctx, action, now);
+        }
+        self.synchronize_file_tabs(&ctx);
+        if self.images_active {
+            if let Some(studio) = &mut self.image_studio {
+                studio.show(ui, frame);
+                let title = studio.title();
+                if title != self.window_title {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+                    self.window_title = title;
+                }
+                let paths = studio.take_open_requests();
+                for path in paths {
+                    self.open_path(&ctx, path, now);
+                }
+            }
+            // Dialogs owned by a background text document wait until its tab is selected.
+            if matches!(self.dialog, Some(Dialog::ConfirmExit)) {
+                self.dialogs(&ctx, &mut actions);
+            }
+            for action in actions {
+                self.run(&ctx, action, now);
+            }
+            self.note_window(&ctx);
+            return;
+        }
+        if let Some(name) = startup_dialog {
+            self.open_named_dialog(&name, &mut actions);
+        }
+        self.keyboard(&ctx, &mut actions);
+        let palette = self.palette();
 
         if self.backstage {
             egui::CentralPanel::no_frame()
@@ -2238,10 +2378,10 @@ impl eframe::App for App {
     /// press that button. Unless a text field has focus, Tab is taken out
     /// of egui's input here and handled with the other keys.
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
-        if ctx.egui_wants_keyboard_input() || self.dialog.is_some() {
+        if self.images_active || ctx.egui_wants_keyboard_input() || self.dialog.is_some() {
             return;
         }
-        let is_tab = |event: &egui::Event| matches!(event, egui::Event::Key { key: Key::Tab, .. });
+        let is_tab = |event: &egui::Event| matches!(event, egui::Event::Key { key: Key::Tab, modifiers, .. } if !modifiers.command);
         if !raw_input.events.iter().any(is_tab) {
             return;
         }
@@ -2298,157 +2438,223 @@ impl App {
 
 impl App {
     fn title_strip(&mut self, ui: &mut egui::Ui, palette: Palette, actions: &mut Vec<Action>) {
-        ui.horizontal_centered(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
-            // The start page tab, with the application's mark.
-            let home_selected = self.active.is_none();
-            let (rect, response) = ui.allocate_exact_size(vec2(118.0, 30.0), Sense::click());
-            if home_selected {
-                ui.painter().rect_filled(
-                    rect,
-                    egui::CornerRadius {
-                        nw: 6,
-                        ne: 6,
-                        sw: 0,
-                        se: 0,
-                    },
-                    palette.tab_active,
-                );
-            } else if response.hovered() {
-                ui.painter().rect_filled(rect, 6.0, palette.hover);
-            }
-            let mark =
-                egui::Rect::from_min_size(rect.left_center() + vec2(8.0, -10.0), vec2(20.0, 20.0));
-            ui.painter().rect_filled(mark, 4.0, theme::ACCENT);
-            ui.painter().text(
-                mark.center(),
-                egui::Align2::CENTER_CENTER,
-                "M",
-                FontId::new(13.0, FontFamily::Name(theme::BOLD.into())),
-                Color32::WHITE,
-            );
-            ui.painter().text(
-                mark.right_center() + vec2(6.0, 0.0),
-                egui::Align2::LEFT_CENTER,
-                "MuFoEd",
-                FontId::new(14.0, FontFamily::Name(theme::BOLD.into())),
-                palette.tab_text,
-            );
-            if response.on_hover_text(self.t("tip.start_page")).clicked() {
-                actions.push(Action::Activate(None));
-            }
-            ui.add_space(4.0);
-            let mut close = None;
-            for (index, tab) in self.tabs.iter().enumerate() {
-                let selected = self.active == Some(index);
-                let title = if tab.title.chars().count() > 26 {
-                    format!("{}…", tab.title.chars().take(25).collect::<String>())
-                } else {
-                    tab.title.clone()
-                };
-                let galley = ui.painter().layout_no_wrap(
-                    title,
-                    FontId::proportional(13.0),
-                    palette.tab_text,
-                );
-                let width = (galley.size().x + 70.0).clamp(120.0, 260.0);
-                let (rect, response) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
-                if selected {
-                    ui.painter().rect_filled(
-                        rect,
-                        egui::CornerRadius {
-                            nw: 6,
-                            ne: 6,
-                            sw: 0,
-                            se: 0,
-                        },
-                        palette.tab_active,
-                    );
-                    ui.painter().line_segment(
-                        [
-                            rect.left_top() + vec2(6.0, 0.0),
-                            rect.right_top() - vec2(6.0, 0.0),
-                        ],
-                        Stroke::new(2.0, theme::ACCENT),
-                    );
-                } else if response.hovered() {
-                    ui.painter().rect_filled(rect, 6.0, palette.hover);
-                }
-                let kind = tab.kind.unwrap_or(Kind::Docx);
-                let badge = egui::Rect::from_min_size(
-                    rect.left_center() + vec2(8.0, -8.0),
-                    vec2(16.0, 16.0),
-                );
-                let badge_color = match kind {
-                    Kind::Pdf => Color32::from_rgb(200, 40, 40),
-                    Kind::Djvu => Color32::from_rgb(120, 80, 160),
-                    Kind::Rtf => Color32::from_rgb(40, 140, 120),
-                    Kind::Latex => Color32::from_rgb(180, 90, 20),
-                    _ => theme::ACCENT,
-                };
-                ui.painter().rect_filled(badge, 3.0, badge_color);
-                ui.painter().text(
-                    badge.center(),
-                    egui::Align2::CENTER_CENTER,
-                    kind.badge(),
-                    FontId::new(11.0, FontFamily::Name(theme::BOLD.into())),
-                    Color32::WHITE,
-                );
-                ui.painter().galley(
-                    rect.left_center() + vec2(30.0, -galley.size().y / 2.0),
-                    galley,
-                    palette.tab_text,
-                );
-                let close_rect = egui::Rect::from_center_size(
-                    rect.right_center() - vec2(14.0, 0.0),
-                    vec2(18.0, 18.0),
-                );
-                let close_response =
-                    ui.interact(close_rect, ui.id().with(("close", tab.id)), Sense::click());
-                if tab.modified() && !close_response.hovered() {
-                    ui.painter()
-                        .circle_filled(close_rect.center(), 3.5, palette.tab_text);
-                } else {
-                    if close_response.hovered() {
+        egui::ScrollArea::horizontal()
+            .id_salt("file-tab-scroll")
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    // The start page tab, with the application's mark.
+                    let home_selected = self.file_tabs.active().is_none();
+                    let (rect, response) =
+                        ui.allocate_exact_size(vec2(118.0, 30.0), Sense::click());
+                    if home_selected {
                         ui.painter().rect_filled(
-                            close_rect,
-                            3.0,
-                            Color32::from_rgba_unmultiplied(200, 60, 60, 60),
+                            rect,
+                            egui::CornerRadius {
+                                nw: 6,
+                                ne: 6,
+                                sw: 0,
+                                se: 0,
+                            },
+                            palette.tab_active,
                         );
+                    } else if response.hovered() {
+                        ui.painter().rect_filled(rect, 6.0, palette.hover);
                     }
-                    icons::paint(
-                        ui.painter(),
-                        close_rect.shrink(2.0),
-                        Icon::Close,
-                        palette.tab_text,
-                        theme::ACCENT,
+                    let mark = egui::Rect::from_min_size(
+                        rect.left_center() + vec2(8.0, -10.0),
+                        vec2(20.0, 20.0),
                     );
-                }
-                if close_response.clicked() {
-                    close = Some(index);
-                } else if response.clicked() {
-                    actions.push(Action::Activate(Some(index)));
-                } else if response.middle_clicked() {
-                    close = Some(index);
-                }
-                let tip = tab
-                    .source
-                    .as_ref()
-                    .map_or_else(|| tab.title.clone(), |path| path.display().to_string());
-                response.on_hover_text(tip);
-            }
-            if let Some(index) = close {
-                actions.push(Action::CloseTab(index));
-            }
-            let plus = ui.add(
-                egui::Button::new(RichText::new("+").size(18.0))
-                    .frame(false)
-                    .min_size(vec2(28.0, 28.0)),
-            );
-            if plus.on_hover_text(self.t("tip.new_tab")).clicked() {
-                actions.push(Action::New);
-            }
-        });
+                    ui.painter().rect_filled(mark, 4.0, theme::ACCENT);
+                    ui.painter().text(
+                        mark.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "M",
+                        FontId::new(13.0, FontFamily::Name(theme::BOLD.into())),
+                        Color32::WHITE,
+                    );
+                    ui.painter().text(
+                        mark.right_center() + vec2(6.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        "MuFoEd",
+                        FontId::new(14.0, FontFamily::Name(theme::BOLD.into())),
+                        palette.tab_text,
+                    );
+                    if response.on_hover_text(self.t("tip.start_page")).clicked() {
+                        actions.push(Action::Activate(None));
+                    }
+                    ui.add_space(4.0);
+                    let image_tabs = self
+                        .image_studio
+                        .as_ref()
+                        .map_or_else(Vec::new, |studio| studio.tabs());
+                    let mut close = None;
+                    for &key in self.file_tabs.order() {
+                        let (name, tip, modified, badge_text, badge_color, state) = match key {
+                            FileTab::Document(id) => {
+                                let Some(tab) = self.tabs.iter().find(|t| t.id == id) else {
+                                    continue;
+                                };
+                                let kind = tab.kind.unwrap_or(Kind::Docx);
+                                let color = match kind {
+                                    Kind::Pdf => Color32::from_rgb(200, 40, 40),
+                                    Kind::Djvu => Color32::from_rgb(120, 80, 160),
+                                    Kind::Rtf => Color32::from_rgb(40, 140, 120),
+                                    Kind::Latex => Color32::from_rgb(180, 90, 20),
+                                    _ => theme::ACCENT,
+                                };
+                                (
+                                    tab.title.clone(),
+                                    tab.source.as_ref().map_or_else(
+                                        || tab.title.clone(),
+                                        |p| p.display().to_string(),
+                                    ),
+                                    tab.modified(),
+                                    kind.badge(),
+                                    color,
+                                    "",
+                                )
+                            }
+                            FileTab::Image(id) => {
+                                let Some(tab) = image_tabs.iter().find(|t| t.id == id) else {
+                                    continue;
+                                };
+                                (
+                                    tab.name.clone(),
+                                    tab.source.as_ref().map_or_else(
+                                        || tab.name.clone(),
+                                        |p| p.display().to_string(),
+                                    ),
+                                    tab.modified,
+                                    "I",
+                                    theme::ACCENT,
+                                    if tab.busy {
+                                        " …"
+                                    } else if tab.staged {
+                                        " ✓"
+                                    } else {
+                                        ""
+                                    },
+                                )
+                            }
+                        };
+                        let selected = self.file_tabs.active() == Some(key);
+                        let title = if name.chars().count() > 26 {
+                            format!("{}…{state}", name.chars().take(25).collect::<String>())
+                        } else {
+                            format!("{name}{state}")
+                        };
+                        let galley = ui.painter().layout_no_wrap(
+                            title,
+                            FontId::proportional(13.0),
+                            palette.tab_text,
+                        );
+                        let width = (galley.size().x + 70.0).clamp(120.0, 260.0);
+                        let (rect, response) =
+                            ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
+                        if selected {
+                            ui.painter().rect_filled(
+                                rect,
+                                egui::CornerRadius {
+                                    nw: 6,
+                                    ne: 6,
+                                    sw: 0,
+                                    se: 0,
+                                },
+                                palette.tab_active,
+                            );
+                            ui.painter().line_segment(
+                                [
+                                    rect.left_top() + vec2(6.0, 0.0),
+                                    rect.right_top() - vec2(6.0, 0.0),
+                                ],
+                                Stroke::new(2.0, theme::ACCENT),
+                            );
+                        } else if response.hovered() {
+                            ui.painter().rect_filled(rect, 6.0, palette.hover);
+                        }
+                        let badge = egui::Rect::from_min_size(
+                            rect.left_center() + vec2(8.0, -8.0),
+                            vec2(16.0, 16.0),
+                        );
+                        ui.painter().rect_filled(badge, 3.0, badge_color);
+                        ui.painter().text(
+                            badge.center(),
+                            egui::Align2::CENTER_CENTER,
+                            badge_text,
+                            FontId::new(11.0, FontFamily::Name(theme::BOLD.into())),
+                            Color32::WHITE,
+                        );
+                        ui.painter().galley(
+                            rect.left_center() + vec2(30.0, -galley.size().y / 2.0),
+                            galley,
+                            palette.tab_text,
+                        );
+                        let close_rect = egui::Rect::from_center_size(
+                            rect.right_center() - vec2(14.0, 0.0),
+                            vec2(18.0, 18.0),
+                        );
+                        let close_response =
+                            ui.interact(close_rect, ui.id().with(("close", key)), Sense::click());
+                        if modified && !close_response.hovered() {
+                            ui.painter()
+                                .circle_filled(close_rect.center(), 3.5, palette.tab_text);
+                        } else {
+                            if close_response.hovered() {
+                                ui.painter().rect_filled(
+                                    close_rect,
+                                    3.0,
+                                    Color32::from_rgba_unmultiplied(200, 60, 60, 60),
+                                );
+                            }
+                            icons::paint(
+                                ui.painter(),
+                                close_rect.shrink(2.0),
+                                Icon::Close,
+                                palette.tab_text,
+                                theme::ACCENT,
+                            );
+                        }
+                        if close_response.clicked() {
+                            close = Some(key);
+                        } else if response.clicked() {
+                            actions.push(Action::SelectFile(key));
+                        } else if response.middle_clicked() {
+                            close = Some(key);
+                        }
+                        response.context_menu(|ui| {
+                            if ui.button(self.t("file.save")).clicked() {
+                                actions.push(Action::SaveFile(key, false));
+                                ui.close();
+                            }
+                            if ui.button(self.t("file.save_as")).clicked() {
+                                actions.push(Action::SaveFile(key, true));
+                                ui.close();
+                            }
+                            ui.separator();
+                            if ui.button(self.t("file.close")).clicked() {
+                                actions.push(Action::CloseFile(key));
+                                ui.close();
+                            }
+                        });
+                        response.on_hover_text(tip);
+                    }
+                    if let Some(key) = close {
+                        actions.push(Action::CloseFile(key));
+                    }
+                    ui.menu_button(RichText::new("+").size(18.0), |ui| {
+                        if ui.button(self.t("start.new")).clicked() {
+                            actions.push(Action::New);
+                            ui.close();
+                        }
+                        if ui.button(self.t("file.new_image")).clicked() {
+                            actions.push(Action::NewImage);
+                            ui.close();
+                        }
+                    });
+                });
+            });
     }
 
     fn ribbon_ui(&mut self, ui: &mut egui::Ui, palette: Palette, actions: &mut Vec<Action>) {
@@ -4832,6 +5038,106 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let month = u32::try_from(if mp < 10 { mp + 3 } else { mp - 9 }).unwrap_or(1);
     let year = yoe + era * 400 + i64::from(month <= 2);
     (year, month, day)
+}
+
+impl App {
+    fn ensure_images(&mut self) {
+        if self.image_studio.is_none() {
+            self.image_studio = Some(Box::new(crate::image_studio::ImageStudio::new()));
+        }
+    }
+    fn activate_file(&mut self, ctx: &egui::Context, key: Option<FileTab>) {
+        let was_image = self.images_active;
+        if was_image {
+            if let Some(studio) = &mut self.image_studio {
+                studio.prepare_switch();
+            }
+        }
+        self.file_tabs.select(key);
+        if let Some(FileTab::Image(id)) = key {
+            self.active = None;
+            if let Some(studio) = &mut self.image_studio {
+                studio.select(id);
+            }
+            self.images_active = true;
+            if !was_image {
+                image_editor::ui::apply_studio_style(ctx);
+                ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(vec2(1100.0, 700.0)));
+            }
+        } else {
+            self.active = key.and_then(|key| {
+                if let FileTab::Document(id) = key {
+                    self.tabs.iter().position(|t| t.id == id)
+                } else {
+                    None
+                }
+            });
+            self.images_active = false;
+            if was_image || self.applied_dark != Some(self.settings.dark) {
+                theme::apply(ctx, self.settings.dark);
+                self.applied_dark = Some(self.settings.dark);
+                ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(vec2(720.0, 480.0)));
+            }
+        }
+        self.backstage = false;
+        {
+            self.frame_events = None;
+            ctx.memory_mut(|m| {
+                if let Some(id) = m.focused() {
+                    m.surrender_focus(id);
+                }
+            });
+        }
+    }
+    fn synchronize_file_tabs(&mut self, ctx: &egui::Context) {
+        let mut live: Vec<_> = self.tabs.iter().map(|t| FileTab::Document(t.id)).collect();
+        let focus = self.image_studio.as_mut().and_then(|studio| {
+            live.extend(studio.tabs().iter().map(|t| FileTab::Image(t.id)));
+            studio.take_focus_request()
+        });
+        self.file_tabs.synchronize(&live);
+        let target = focus
+            .map(FileTab::Image)
+            .filter(|key| live.contains(key))
+            .or(self.file_tabs.active());
+        if self.image_exit_pending {
+            return;
+        }
+        let expected_index = target.and_then(|key| {
+            if let FileTab::Document(id) = key {
+                self.tabs.iter().position(|t| t.id == id)
+            } else {
+                None
+            }
+        });
+        if target != self.file_tabs.active()
+            || self.images_active != matches!(target, Some(FileTab::Image(_)))
+            || self.active != expected_index
+        {
+            self.activate_file(ctx, target);
+        }
+    }
+    fn file_commands_enabled(&self) -> bool {
+        (self.dialog.is_none()
+            || (self.images_active && !matches!(self.dialog, Some(Dialog::ConfirmExit))))
+            && !self.image_exit_pending
+            && self.model_shutdown.is_none()
+            && (!self.images_active
+                || self
+                    .image_studio
+                    .as_ref()
+                    .is_none_or(|studio| studio.commands_enabled()))
+    }
+    fn file_tab_keys(&self, ctx: &egui::Context, actions: &mut Vec<Action>) {
+        if !self.file_commands_enabled() {
+            return;
+        }
+        match self.file_tabs.shortcut(ctx) {
+            Some(TabCommand::Select(key)) => actions.push(Action::SelectFile(key)),
+            Some(TabCommand::Close(key)) => actions.push(Action::CloseFile(key)),
+            None => {}
+        }
+    }
 }
 
 #[cfg(test)]

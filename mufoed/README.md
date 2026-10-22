@@ -146,3 +146,22 @@ DOCX связи восстанавливаются по однозначному
 повороты и обход препятствий соединителями. Группы выравниваются и распределяются
 как единые объекты. Настройки и ограничения поиска маршрута описаны в
 `diagram-editor/README.md`; неудача обхода отображается предупреждением.
+
+## Documents and Image Studio in one application
+
+Run `mufoed/start.bat` on this Windows workstation. It uses the built release,
+sets up CUDA/cuDNN, and accepts multiple file paths. `-Build` rebuilds the application.
+The release is built with `cargo +1.92.0 build -p mufoed --release --features image-cudnn
+--config image-editor/cargo-performance.toml --locked`.
+
+Documents and images share one ordered tab strip in the same window and process.
+Every image has its own tab, layers, selections, history, view and generation results.
+Ctrl+Tab / Ctrl+Shift+Tab cycle through all files in the displayed order; Ctrl+W closes
+the selected file. The + menu creates either a document or an image. The ribbon and
+canvas follow the selected tab; no Documents / Images workspace switch is required.
+Text documents retain their own workers. PSD, PNG, JPEG, WebP, BMP and TIFF
+open from the application file dialog, CLI and drag-and-drop. Image Save writes PSD;
+PNG export remains separate. Image tabs use the same preferences and recovery
+format as the standalone host, and the same process-wide model runtime as text/vision AI.
+Image jobs and recovery continue polling while a text tab is visible. Exiting
+checks every file before shutting down the common runtime.
