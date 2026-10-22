@@ -15,10 +15,16 @@
 //! The core modules have no egui dependency and can be used alone.
 
 pub mod archive;
+pub mod documents;
 pub mod drives;
 pub mod entry;
 pub mod locale;
 pub mod mask;
+#[cfg(not(feature = "oxideav"))]
+pub mod media;
+#[cfg(feature = "oxideav")]
+#[path = "media_oxideav.rs"]
+pub mod media;
 pub mod ops;
 pub mod preview;
 pub mod progress;
@@ -26,6 +32,10 @@ pub mod search;
 pub mod terminal;
 
 mod app;
+#[cfg(all(windows, not(feature = "oxideav")))]
+mod native_audio;
 
-pub use app::{Event, FileManager, Settings, EDITOR_EXTENSIONS};
+pub use app::{
+    Event, FileManager, FolderTabSettings, PanelTabSettings, Settings, EDITOR_EXTENSIONS,
+};
 pub use locale::Locale;

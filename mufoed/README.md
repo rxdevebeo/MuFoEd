@@ -4,9 +4,26 @@ A desktop demonstrator of the strict-ooxml toolkit: one window, one tab per
 document (as in WPS Office), a Word-style ribbon. Windows, Linux and macOS
 (egui/eframe, native file dialogs through `rfd`).
 
+For a built application, launch `target/release/mufoed.exe` directly (or make a
+shortcut to it). No BAT, PowerShell, Visual Studio or CUDA build tools are needed
+at launch. The EXE discovers CUDA 12 and cuDNN 9 before starting model workers;
+Windows GPU imports are delay-loaded; an early CRT initializer prepares their
+search paths before CUDA registers its compiled kernels and before Rust `main`.
+It checks runtime folders beside the EXE, explicit environment overrides, the
+installed CUDA toolkit, Python's PyTorch/cuDNN packages and existing PATH.
+The installed runtime DLLs and model weights remain external dependencies.
+`mufoed.exe --check-runtime` prints the discovery report and loaded DLL paths.
+`IMAGE_STUDIO_CUDA_DIR`, `IMAGE_STUDIO_CUDNN_DIR`, `IMAGE_STUDIO_PYTHON` can override
+the automatic selection. Optional bundled tools live in `tools/` beside the EXE.
+
+Development build:
+
 ```text
 cargo +1.92.0 run -p mufoed --release -- [FILE...]
 ```
+
+`start.bat`/`start.ps1` remain development conveniences; compiler setup only runs
+when a build is explicitly requested or the EXE is missing.
 
 What it shows:
 
@@ -16,6 +33,13 @@ What it shows:
   `Ctrl+W` closes them. Navigation and settings are retained; archive members
   opened in the editor remain available after closing the file manager tab.
   Image files open in Image Studio; documents open in the document editor.
+  Both tabs offer a settings gear opening the shared settings, including theme. The file manager includes
+  file-type icons, formatted Markdown, read-only paged document previews
+  (DOCX/DOCM/DOTX, RTF, HTML, LaTeX, PDF and DjVu), and in-panel audio/video playback
+  via the cross-platform OxideAV decoder and CPAL audio output (F3 or Ctrl+Q),
+  without external media programs. This backend is experimental; unsupported
+  codecs or layouts report an error.
+  Media pauses on tab switches and stops when the quick-view selection changes.
   Background jobs continue while another tab is active. Finish or cancel
   file operations before closing their tab or exiting the application.
 

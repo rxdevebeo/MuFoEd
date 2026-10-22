@@ -880,6 +880,15 @@ impl App {
                     FileTab::Files
                 };
                 self.browsers.open(key, self.i18n.language());
+                // Screenshot fixtures can exercise viewer layouts without synthetic native input.
+                if key == FileTab::Files && self.shot.is_some() {
+                    if let Some(path) = std::env::var_os("MUFOED_FILES_PREVIEW") {
+                        self.browsers.preview_file(
+                            std::path::Path::new(&path),
+                            std::env::var("MUFOED_FILES_QUICK").is_ok_and(|v| v == "1"),
+                        );
+                    }
+                }
                 self.file_tabs.open(key);
                 self.activate_file(ctx, Some(key));
             }
@@ -2273,6 +2282,36 @@ impl eframe::App for App {
         }
         self.synchronize_file_tabs(&ctx);
         if let Some(key @ (FileTab::Gallery | FileTab::Files)) = self.file_tabs.active() {
+            egui::Panel::top("browser-appearance").show(ui, |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let (rect, response) = ui.allocate_exact_size(vec2(26.0, 24.0), Sense::click());
+                    ui.painter().rect_filled(
+                        rect,
+                        3.0,
+                        if response.hovered() {
+                            palette.hover
+                        } else {
+                            palette.button
+                        },
+                    );
+                    icons::paint(
+                        ui.painter(),
+                        rect.shrink2(vec2(5.0, 4.0)),
+                        Icon::Settings,
+                        ui.visuals().text_color(),
+                        theme::ACCENT,
+                    );
+                    if response.on_hover_text(self.t("tip.settings")).clicked()
+                        && self.dialog.is_none()
+                    {
+                        self.run(
+                            &ctx,
+                            Action::Open(Dialog::settings(SettingsPage::View)),
+                            now,
+                        );
+                    }
+                });
+            });
             let events = self.browsers.show(ui, key, self.i18n.language());
             let title = format!(
                 "{} — MultiFormatEditor",
@@ -2312,7 +2351,7 @@ impl eframe::App for App {
                     }
                 }
             }
-            if matches!(self.dialog, Some(Dialog::ConfirmExit)) {
+            if matches!(self.dialog, Some(Dialog::ConfirmExit | Dialog::Settings(_))) {
                 self.dialogs(&ctx, &mut actions);
             }
             for action in actions {
@@ -2573,14 +2612,7 @@ impl App {
                         rect.left_center() + vec2(8.0, -10.0),
                         vec2(20.0, 20.0),
                     );
-                    ui.painter().rect_filled(mark, 4.0, theme::ACCENT);
-                    ui.painter().text(
-                        mark.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "M",
-                        FontId::new(13.0, FontFamily::Name(theme::BOLD.into())),
-                        Color32::WHITE,
-                    );
+                    crate::branding::paint(ui, mark);
                     ui.painter().text(
                         mark.right_center() + vec2(6.0, 0.0),
                         egui::Align2::LEFT_CENTER,
@@ -5211,6 +5243,9 @@ impl App {
         }
     }
     fn activate_file(&mut self, ctx: &egui::Context, key: Option<FileTab>) {
+        if key != Some(FileTab::Files) {
+            self.browsers.pause_media();
+        }
         let was_image = self.images_active;
         if was_image {
             if let Some(studio) = &mut self.image_studio {
@@ -5290,6 +5325,7 @@ impl App {
                     Some(FileTab::Gallery | FileTab::Files)
                 ))
                 && !matches!(self.dialog, Some(Dialog::ConfirmExit))))
+            && !matches!(self.dialog, Some(Dialog::Settings(_)))
             && !self.image_exit_pending
             && self.model_shutdown.is_none()
             && (!self.images_active

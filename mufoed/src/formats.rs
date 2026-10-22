@@ -391,14 +391,15 @@ fn open_pdf(path: &Path, import: &ImportOptions) -> Result<Loaded, String> {
     finish_conversion(&converted.document, &bag, path, Kind::Pdf, log)
 }
 
-fn open_djvu(path: &Path, import: &ImportOptions) -> Result<Loaded, String> {
+/// Shared native reader, including bounded indirect-component resolution.
+pub(crate) fn read_djvu(path: &Path) -> Result<strict_ooxml::DjvuDocument, String> {
     let limits = strict_ooxml::DjvuLimits::default();
     let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
     let base = path
         .canonicalize()
         .ok()
         .and_then(|canonical| canonical.parent().map(Path::to_path_buf));
-    let mut reader = strict_ooxml::DjvuDocument::open_with_resolver(&bytes, limits, |id| {
+    let reader = strict_ooxml::DjvuDocument::open_with_resolver(&bytes, limits, |id| {
         // An indirect document names its pages as files beside it; nothing
         // outside that directory is read.
         let base = base
@@ -417,6 +418,11 @@ fn open_djvu(path: &Path, import: &ImportOptions) -> Result<Loaded, String> {
             .map_err(|error| strict_ooxml::DjvuError::Component(format!("{id}: {error}")))
     })
     .map_err(|error| error.to_string())?;
+    Ok(reader)
+}
+
+fn open_djvu(path: &Path, import: &ImportOptions) -> Result<Loaded, String> {
+    let mut reader = read_djvu(path)?;
     let mut options = strict_ooxml::DjvuOptions::default()
         .mode(import.mode)
         .embed_images(import.images);

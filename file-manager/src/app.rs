@@ -14,13 +14,19 @@ use crate::terminal::Shell;
 use crate::Locale;
 
 mod dialogs;
+mod document_view;
+mod icons;
+mod markdown;
 mod panel;
 mod search_ui;
+mod tabs;
 mod terminal_ui;
 mod view;
 
 use dialogs::Dialog;
 use panel::{Location, Panel, PanelAction};
+use tabs::PanelTabs;
+pub use tabs::{FolderTabSettings, PanelTabSettings};
 
 /// The extensions the host's editor (`MuFoEd`) opens: F4 and Enter send
 /// these as [`Event::OpenInEditor`].
@@ -49,6 +55,10 @@ pub struct Settings {
     pub left: Option<PathBuf>,
     /// The right panel's folder.
     pub right: Option<PathBuf>,
+    /// Folder tabs and selected tab, separately for the left and right panels.
+    pub folder_tabs: [PanelTabSettings; 2],
+    /// The active panel (0: left, 1: right).
+    pub active_panel: usize,
     /// Show hidden and system files.
     pub show_hidden: bool,
     /// The shell of the command line.
@@ -72,6 +82,8 @@ impl Default for Settings {
         Self {
             left: None,
             right: None,
+            folder_tabs: Default::default(),
+            active_panel: 0,
             show_hidden: false,
             shell: Shell::System,
             terminal_open: false,
@@ -88,7 +100,7 @@ impl Default for Settings {
 pub struct FileManager {
     locale: Locale,
     settings: Settings,
-    panels: [Panel; 2],
+    panels: [PanelTabs; 2],
     active: usize,
     drives: Vec<Drive>,
     drives_read: std::time::Instant,
@@ -181,12 +193,14 @@ impl FileManager {
     pub fn new(locale: Locale, settings: Settings) -> Self {
         let wake = Waker::default();
         let function = wake.function();
-        let left = Panel::new(
+        let left = PanelTabs::new(
+            &settings.folder_tabs[0],
             start_folder(settings.left.as_ref()),
             settings.show_hidden,
             &function,
         );
-        let right = Panel::new(
+        let right = PanelTabs::new(
+            &settings.folder_tabs[1],
             start_folder(settings.right.as_ref()),
             settings.show_hidden,
             &function,
@@ -195,7 +209,7 @@ impl FileManager {
         Self {
             locale,
             panels: [left, right],
-            active: 0,
+            active: settings.active_panel.min(1),
             drives: drives::drives(),
             drives_read: std::time::Instant::now(),
             task: None,
@@ -212,11 +226,23 @@ impl FileManager {
         }
     }
 
+    /// Supply the host's document decoders for F3 and Ctrl+Q.
+    pub fn set_document_provider(
+        &mut self,
+        provider: std::sync::Arc<dyn crate::documents::Provider>,
+    ) {
+        self.view.provider = Some(provider);
+        self.view.clear_quick();
+        self.view.viewer = None;
+    }
+
     /// The settings, with the panels' current folders.
     pub fn settings(&self) -> Settings {
         let mut settings = self.settings.clone();
         settings.left = self.panels[0].location.folder().map(Path::to_path_buf);
         settings.right = self.panels[1].location.folder().map(Path::to_path_buf);
+        settings.folder_tabs = self.panels.each_ref().map(PanelTabs::settings);
+        settings.active_panel = self.active;
         settings.terminal_open = self.terminal.open;
         settings.terminal_height = self.terminal.height;
         settings.quick_view = self.view.quick;
@@ -255,6 +281,18 @@ impl FileManager {
         self.task.is_some() || self.terminal.is_running()
     }
 
+    /// Stops media when the host switches away or closes the tab.
+    pub fn pause_media(&mut self) {
+        self.view.pause_media();
+    }
+
+    fn toggle_quick_view(&mut self) {
+        self.view.quick = !self.view.quick;
+        if !self.view.quick {
+            self.view.clear_quick();
+        }
+    }
+
     /// Draws the manager filling `ui`; returns the events for the host.
     pub fn show(&mut self, ui: &mut egui::Ui) -> Vec<Event> {
         let ctx = ui.ctx().clone();
@@ -288,8 +326,7 @@ impl FileManager {
     /// Once per frame: listings, the task, the drive list.
     fn update(&mut self) {
         for panel in &mut self.panels {
-            panel.poll();
-            panel.set_show_hidden(self.settings.show_hidden);
+            panel.poll_tabs(self.settings.show_hidden);
         }
         if self.drives_read.elapsed() > std::time::Duration::from_secs(5) {
             self.drives = drives::drives();
@@ -301,6 +338,7 @@ impl FileManager {
             }
         }
         self.terminal_poll();
+        self.sync_quick_preview();
     }
 
     fn finish_task(&mut self, task: &Task) {
@@ -339,7 +377,7 @@ impl FileManager {
         self.task = Some(Task::start(operation, self.wake.function()));
     }
 
-    fn active_panel(&mut self) -> &mut Panel {
+    fn active_panel(&mut self) -> &mut PanelTabs {
         &mut self.panels[self.active]
     }
 
@@ -353,12 +391,28 @@ impl FileManager {
 
     #[allow(clippy::too_many_lines)]
     fn keyboard(&mut self, ctx: &egui::Context) {
+        if self.view.viewer.is_some() {
+            return;
+        }
         let function = self.wake.function();
         let page = self.panels[self.active].page();
         // Most specific combinations first.
         let pressed = |key, ctrl, shift, alt| take(ctx, key, ctrl, shift, alt);
         if pressed(Key::Tab, false, false, false) {
             self.active = 1 - self.active;
+        } else if pressed(Key::T, true, false, false) {
+            self.folder_tab_action(self.active, tabs::TabAction::New);
+        } else if pressed(Key::W, true, false, false) {
+            let id = self.panels[self.active].selected_id();
+            self.folder_tab_action(self.active, tabs::TabAction::Close(id));
+        } else if pressed(Key::Tab, true, false, false) {
+            self.panels[self.active].cycle(1);
+            self.panels[self.active].refresh(&function);
+            self.view.clear_quick();
+        } else if pressed(Key::Tab, true, true, false) {
+            self.panels[self.active].cycle(-1);
+            self.panels[self.active].refresh(&function);
+            self.view.clear_quick();
         } else if pressed(Key::F7, false, false, true) {
             self.open_search();
         } else if pressed(Key::F5, false, false, true) {
@@ -385,7 +439,7 @@ impl FileManager {
         {
             self.delete_dialog(false);
         } else if pressed(Key::Q, true, false, false) {
-            self.view.quick = !self.view.quick;
+            self.toggle_quick_view();
         } else if pressed(Key::R, true, false, false) {
             self.active_panel().refresh(&function);
         } else if pressed(Key::A, true, false, false) {
@@ -834,6 +888,7 @@ impl FileManager {
         let quick = self.view.quick;
         let active = self.active;
         let mut all_actions: [Vec<PanelAction>; 2] = [Vec::new(), Vec::new()];
+        let mut tab_actions = Vec::new();
         let stroke_active = ui.visuals().selection.bg_fill;
         let stroke_idle = ui.visuals().widgets.noninteractive.bg_stroke.color;
         ui.columns(2, |columns| {
@@ -849,36 +904,46 @@ impl FileManager {
                 ));
                 frame.show(column, |ui| {
                     ui.set_min_height(ui.available_height());
+                    if let Some(action) = self.panels[side].tabs_ui(ui, locale, side) {
+                        tab_actions.push((side, action));
+                    }
                     if quick && !is_active {
                         self.quick_view_ui(ui, locale);
                         return;
                     }
                     let id = if side == 0 { "left" } else { "right" };
                     let panel = &mut self.panels[side];
-                    if panel.top_ui(ui, &self.drives, locale, id, &function) {
-                        all_actions[side].push(PanelAction::Activate);
-                    }
-                    let status_height = 22.0;
-                    let rows_height = (ui.available_height() - status_height).max(40.0);
-                    ui.allocate_ui(egui::vec2(ui.available_width(), rows_height), |ui| {
-                        all_actions[side].extend(panel.ui(ui, is_active, locale, id));
+                    let tab_id = panel.selected_id();
+                    ui.push_id(tab_id, |ui| {
+                        if panel.top_ui(ui, &self.drives, locale, id, &function) {
+                            all_actions[side].push(PanelAction::Activate);
+                        }
+                        let status_height = 22.0;
+                        let rows_height = (ui.available_height() - status_height).max(40.0);
+                        ui.allocate_ui(egui::vec2(ui.available_width(), rows_height), |ui| {
+                            all_actions[side].extend(panel.ui(ui, is_active, locale, id));
+                        });
+                        let (selected_files, selected_bytes, files, bytes) = panel.summary();
+                        ui.small(locale.format(
+                            "{} of {} selected, {} of {}",
+                            &[
+                                selected_files.to_string(),
+                                files.to_string(),
+                                crate::entry::human_size(selected_bytes),
+                                crate::entry::human_size(bytes),
+                            ],
+                        ));
                     });
-                    let (selected_files, selected_bytes, files, bytes) = panel.summary();
-                    ui.small(locale.format(
-                        "{} of {} selected, {} of {}",
-                        &[
-                            selected_files.to_string(),
-                            files.to_string(),
-                            crate::entry::human_size(selected_bytes),
-                            crate::entry::human_size(bytes),
-                        ],
-                    ));
                 });
             }
         });
         for (side, actions) in all_actions.into_iter().enumerate() {
             self.apply_panel_actions(side, actions);
         }
+        for (side, action) in tab_actions {
+            self.folder_tab_action(side, action);
+        }
+        self.sync_quick_preview();
     }
 
     fn function_bar(&mut self, ui: &mut egui::Ui, locale: &Locale) {
@@ -921,7 +986,7 @@ impl FileManager {
                 .selectable_label(quick, format!("Ctrl+Q {}", locale.text("Quick view")))
                 .clicked()
             {
-                self.view.quick = !quick;
+                self.toggle_quick_view();
             }
             ui.checkbox(&mut self.settings.show_hidden, locale.text("Hidden"));
             if let Some(message) = &self.message {

@@ -80,10 +80,14 @@ impl Browsers {
             }
             FileTab::Files => {
                 self.files.get_or_insert_with(|| {
-                    file_manager::FileManager::new(
+                    let mut files = file_manager::FileManager::new(
                         file_manager::Locale::new(language),
                         load("files.json"),
-                    )
+                    );
+                    files.set_document_provider(std::sync::Arc::new(
+                        crate::document_preview::Documents,
+                    ));
+                    files
                 });
                 self.files_open = true;
             }
@@ -114,13 +118,30 @@ impl Browsers {
         }
     }
 
+    pub(crate) fn preview_file(&mut self, path: &Path, quick: bool) {
+        if let Some(files) = &mut self.files {
+            if let Err(error) = files.view_file(path, quick) {
+                self.notice = Some(error);
+            }
+        }
+    }
+
+    pub(crate) fn pause_media(&mut self) {
+        if let Some(files) = &mut self.files {
+            files.pause_media();
+        }
+    }
+
     pub(crate) fn close(&mut self, key: FileTab) -> bool {
         if self.busy(key) {
             return false;
         }
         match key {
             FileTab::Gallery => self.gallery_open = false,
-            FileTab::Files => self.files_open = false,
+            FileTab::Files => {
+                self.pause_media();
+                self.files_open = false;
+            }
             _ => return false,
         }
         true

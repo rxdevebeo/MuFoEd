@@ -174,7 +174,11 @@ impl FileManager {
             .auto_shrink([false, false])
             .stick_to_bottom(true);
         if scroll {
-            area = area.vertical_scroll_offset(f32::MAX);
+            // show_rows calculates row indices before clamping the offset.
+            // Keep it within the actual log instead of overflowing usize.
+            #[allow(clippy::cast_precision_loss)] // At most LOG_LIMIT (20,000) rows.
+            let bottom = (height + ui.spacing().item_spacing.y) * log.len() as f32;
+            area = area.vertical_scroll_offset(bottom);
         }
         area.show_rows(ui, height, log.len(), |ui, range| {
             for line in &log[range] {
@@ -265,5 +269,46 @@ fn shell_name(shell: Shell) -> &'static str {
         (Shell::System, true) => "cmd",
         (Shell::System, false) => "sh",
         (Shell::PowerShell, _) => "PowerShell",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cd_from_pinned_tab_keeps_its_folder_and_opens_a_new_tab() {
+        let folder = std::env::current_dir().unwrap();
+        let parent = folder.parent().unwrap().to_path_buf();
+        let mut settings = Settings::default();
+        settings.folder_tabs[0].tabs.push(crate::FolderTabSettings {
+            folder: folder.clone(),
+            pinned: true,
+            ..Default::default()
+        });
+        let mut manager = FileManager::new(Locale::default(), settings);
+        manager.terminal.input = format!("cd \"{}\"", parent.display());
+        manager.execute_line();
+        assert_eq!(manager.current_folder(), Some(parent.as_path()));
+        let saved = manager.settings();
+        assert_eq!(saved.folder_tabs[0].tabs.len(), 2);
+        assert_eq!(saved.folder_tabs[0].tabs[0].folder, folder);
+        assert!(saved.folder_tabs[0].tabs[0].pinned);
+        assert!(!saved.folder_tabs[0].tabs[1].pinned);
+    }
+
+    #[test]
+    fn command_log_autoscroll_survives_append_and_clear() {
+        let mut manager = FileManager::new(Locale::default(), Settings::default());
+        let ctx = egui::Context::default();
+        for count in [1, 200, 0, 1] {
+            manager.terminal.log.clear();
+            for index in 0..count {
+                manager.terminal.push(Line::Out(format!("output {index}")));
+            }
+            let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+                manager.log_ui(ui, &Locale::default());
+            });
+        }
     }
 }

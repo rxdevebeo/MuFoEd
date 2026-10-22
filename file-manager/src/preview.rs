@@ -18,6 +18,8 @@ pub const TEXT_LIMIT: usize = 4 << 20;
 /// The content of a preview.
 #[derive(Clone, Debug)]
 pub enum Content {
+    /// A local audio/video file, played inside the preview panel.
+    Media(crate::media::Info),
     /// Decoded text.
     Text {
         /// The text.
@@ -91,6 +93,12 @@ pub fn load(path: &Path, side: u32) -> Content {
     };
     if metadata.is_dir() {
         return Content::Folder(crate::entry::usage(path, &AtomicBool::new(false)));
+    }
+    if crate::media::kind(path).is_some() {
+        return match crate::media::probe(path) {
+            Ok(info) => Content::Media(info),
+            Err(error) => Content::Failed(error),
+        };
     }
     match Format::from_path(path) {
         Some(Format::Model) => return Content::Model(path.to_path_buf()),

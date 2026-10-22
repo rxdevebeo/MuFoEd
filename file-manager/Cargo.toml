@@ -14,12 +14,20 @@ keywords = ["file-manager", "commander", "egui", "archive"]
 categories = ["gui", "filesystem"]
 
 [features]
-default = []
+default = ["oxideav"]
+oxideav = ["dep:oxideav-core", "dep:oxideav-meta", "dep:cpal", "dep:oxideav-pixfmt"]
 # Standalone demo window.
 demo = ["dep:eframe"]
 
 [dependencies]
+oxideav-pixfmt = { version = "=0.1.11", optional = true }
+oxideav-core = { version = "=0.1.41", optional = true }
+oxideav-meta = { version = "=0.0.3", default-features = false, features = ["h264", "h265", "av1", "vp8", "vp9", "mpeg4video", "mpeg12video", "mjpeg", "ffv1", "aac", "mp3", "flac", "vorbis", "opus", "wma", "basic", "mkv", "mp4", "mov", "avi", "ogg", "riff", "mpegts", "flv"], optional = true }
+cpal = { version = "=0.18.2", optional = true }
+
 egui = "0.35"
+pulldown-cmark = { version = "0.13", default-features = false }
+url = "2.5"
 image-gallery = { path = "../image-gallery" }
 image = { version = "0.25.10", default-features = false }
 encoding_rs.workspace = true
@@ -46,5 +54,15 @@ name = "file-manager-demo"
 path = "src/main.rs"
 required-features = ["demo"]
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = ["Foundation", "Media_Core", "Media_Playback", "Media", "Win32_System_WinRT"] }
+
+[dev-dependencies]
+tempfile = "3"
+
 [lints]
 workspace = true
+
+[[example]]
+name = "oxideav_probe"
+required-features = ["oxideav"]

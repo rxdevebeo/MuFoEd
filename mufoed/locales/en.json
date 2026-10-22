@@ -978,6 +978,8 @@
     "file.open_files": "Open file manager",
     "tab.gallery": "Gallery",
     "tab.files": "File manager",
-    "browser.busy": "Wait for the operation to finish or cancel it before closing."
+    "browser.busy": "Wait for the operation to finish or cancel it before closing.",
+    "browser.light": "Light theme",
+    "browser.dark": "Dark theme"
   }
 }

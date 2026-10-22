@@ -29,6 +29,8 @@
 
 mod ai;
 mod app;
+mod bootstrap;
+mod branding;
 mod browsers;
 mod canvas;
 mod chat;
@@ -37,6 +39,7 @@ mod clipboard;
 mod context_window;
 mod dialog;
 mod docfonts;
+mod document_preview;
 mod file_tabs;
 mod formats;
 mod formula;
@@ -73,9 +76,12 @@ mod worker;
 use std::path::PathBuf;
 
 fn main() -> eframe::Result {
-    #[cfg(windows)]
-    std::env::set_var("PLAKAT_NO_SDPA", "1");
+    bootstrap::initialize();
     let files: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
+    if files.first().is_some_and(|arg| arg == "--check-runtime") {
+        println!("{}", bootstrap::diagnostics());
+        return Ok(());
+    }
     let mut options = eframe::NativeOptions {
         viewport: window_viewport(),
         // The size lives in the settings file, so the options window can turn
@@ -100,7 +106,7 @@ fn window_viewport() -> eframe::egui::ViewportBuilder {
         .with_inner_size([settings::DEFAULT_WIDTH, settings::DEFAULT_HEIGHT])
         .with_min_inner_size([720.0, 480.0])
         .with_drag_and_drop(true)
-        .with_icon(window_icon());
+        .with_icon(branding::window_icon());
     let remembered = settings::Settings::load();
     if !remembered.remember_window {
         return viewport;
@@ -142,43 +148,4 @@ fn restrict_backends(options: &mut eframe::NativeOptions) {
     }
     #[cfg(not(windows))]
     let _ = options;
-}
-
-/// A blue rounded square with a white page, drawn at start-up.
-fn window_icon() -> eframe::egui::IconData {
-    const SIZE: usize = 64;
-    let mut rgba = vec![0u8; SIZE * SIZE * 4];
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let corner = |cx: usize, cy: usize| {
-                let dx = x as f32 - cx as f32;
-                let dy = y as f32 - cy as f32;
-                dx * dx + dy * dy > 100.0
-            };
-            let outside = (x < 10 && y < 10 && corner(10, 10))
-                || (x > 53 && y < 10 && corner(53, 10))
-                || (x < 10 && y > 53 && corner(10, 53))
-                || (x > 53 && y > 53 && corner(53, 53));
-            let page = (18..46).contains(&x) && (12..52).contains(&y);
-            let line = page && (20..44).contains(&x) && [22, 28, 34, 40].contains(&y);
-            let pixel = if outside {
-                [0, 0, 0, 0]
-            } else if line {
-                [43, 87, 154, 255]
-            } else if page {
-                [255, 255, 255, 255]
-            } else {
-                [43, 87, 154, 255]
-            };
-            let offset = (y * SIZE + x) * 4;
-            if let Some(slot) = rgba.get_mut(offset..offset + 4) {
-                slot.copy_from_slice(&pixel);
-            }
-        }
-    }
-    eframe::egui::IconData {
-        rgba,
-        width: SIZE as u32,
-        height: SIZE as u32,
-    }
 }

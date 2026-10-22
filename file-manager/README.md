@@ -85,3 +85,67 @@ cargo +1.92.0 run -p file-manager --features demo --bin file-manager-demo -- D:\
 
 Переменные: `FILE_MANAGER_LANGUAGE=ru`, `FILE_MANAGER_SETTINGS=<файл.json>`,
 `FILE_MANAGER_SHOT=<файл.png>`.
+
+
+Files and folders have vector icons for directories, images, archives, documents,
+source code and media. Markdown (`.md`, `.markdown`, `.mdown`, `.mkd`) opens in
+formatted mode in F3 and Ctrl+Q, with GFM tables, lists, code, links and local
+images. The full viewer also offers source text and Hex modes.
+
+Audio and video play inside both viewers, with pause, seek, stop and mute.
+The default `oxideav` feature uses pinned OxideAV codec/container crates for
+metadata and decoding, and CPAL for the system audio device on Windows, Linux
+and macOS. It launches no FFmpeg, FFprobe, FFplay or other media subprocesses.
+Decode, seek and device setup run on a cancellable worker; replacing a preview
+joins that worker and closes its audio stream. Video is fitted to 1280 x 720;
+frame/sample queues and decoder allocations have explicit limits.
+
+This is an experimental backend, not a claim of FFmpeg format parity. Regression
+fixtures cover H.264 + AAC-LC in MP4, MPEG-4 Part 2, VP8/VP9 in WebM, WAV, MP3 and
+FLAC. Current audio output supports mono/stereo at 8-192 kHz. Unsupported codecs,
+layouts and damaged files show a diagnostic; there is no automatic external-tool
+fallback. Hardware acceleration, HDR tone mapping, surround downmix and complete
+container/codec compatibility remain future work. CPAL uses the platform audio
+APIs (Linux builds need ALSA development libraries).
+
+A legacy standalone build is available with `--no-default-features`; it retains
+the previous Windows MediaPlayer / FFmpeg implementation. MuFoEd uses OxideAV by
+default. `cargo run -p file-manager --example oxideav_probe -- FILE...` reports
+actual decoded frame/sample counts and saves a first-frame preview.
+
+Media pauses when changing MuFoEd tabs and stops when closing its preview or
+selecting another entry, including the parent folder or an empty listing.
+
+MuFoEd supplies a read-only document provider for DOCX/DOCM/DOTX, RTF, HTML/HTM,
+LaTeX (TEX/LTX), PDF and DjVu/DJV. Both F3 and Ctrl+Q show page images with
+previous/next page, page number, fit-to-width and zoom controls. PgUp/PgDn work
+in the full viewer. The existing Markdown, text/hex, raster/vector, 3D and media
+viewers remain available. PDF and DjVu use native page rendering, without OCR
+or editable conversion. Other documents use the editor's import/layout pipeline.
+
+Hosts register `documents::Provider` through `set_document_provider`. Opening,
+layout and rasterization happen on cancellable workers (at most two concurrent
+loads); stale page requests are discarded and extracted members remain alive
+until their worker finishes. Only the current page bitmap is retained by the UI.
+The standalone component offers the host-independent viewers unless a document
+provider is supplied. Supported documents retain the importers' format limits.
+
+Each panel has its own folder tabs. `+` / Ctrl+T duplicates the current location;
+Ctrl+Tab and Ctrl+Shift+Tab cycle the active panel's tabs. Close with `×`, middle
+click or Ctrl+W. The last tab stays open. The tab context menu offers duplication,
+pinning, moving left/right and moving to the other panel. Pinned tabs stay first
+and must be unpinned before closing. Their location is locked: navigating to a
+different folder/archive or search results opens a new unpinned tab, leaving the
+pinned tab and its history intact. This applies to path/drive buttons, Back/Forward,
+parent-folder navigation, terminal `cd` and locations opened by the host.
+Drag tabs to reorder within the pinned or
+unpinned group, or onto a tab of the other panel to transfer them (a panel keeps
+at least one tab). Tabs retain independent navigation history and selection in
+the current session. Switching tabs stops the previous quick preview.
+
+The host settings persist tab order, pin state, selected tab and active panel,
+folder/archive location, sort column/direction and filter for every tab. Old
+settings containing only `left` / `right` migrate automatically. Missing folders
+are retained with the normal folder error, allowing removable drives to return.
+Only selected tabs read their listings at startup; other tabs load when selected.
+MuFoEd saves this state through its existing `files.json` preferences mechanism.

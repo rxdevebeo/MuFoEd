@@ -105,8 +105,18 @@ pub(crate) enum PanelAction {
 /// An archive listing being read: the archive and the answer to come.
 type MemberLoading = (PathBuf, Receiver<Result<Vec<Member>, String>>);
 
+enum Navigation {
+    Go(Location, Option<String>),
+    Back,
+    Forward,
+}
+
 /// A file panel.
+// Location locking, sort direction, scroll and visibility are independent options.
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct Panel {
+    locked: bool,
+    pending_navigation: Option<Navigation>,
     pub(crate) location: Location,
     all: Vec<Entry>,
     /// Sorted and filtered rows; `..` first when there is a parent.
@@ -141,13 +151,25 @@ const UP: &str = "..";
 pub(crate) const ROW: f32 = 18.0;
 
 impl Panel {
-    pub(crate) fn new(
-        folder: PathBuf,
-        show_hidden: bool,
-        wake: &(impl Fn() + Clone + Send + 'static),
-    ) -> Self {
-        let mut panel = Self {
-            location: Location::Folder(folder.clone()),
+    /// Persist a real location even when this tab temporarily shows search results.
+    pub(super) fn saved_location(&self) -> &Location {
+        if matches!(self.location, Location::Results { .. }) {
+            self.back
+                .iter()
+                .rev()
+                .find(|location| !matches!(location, Location::Results { .. }))
+                .unwrap_or(&self.location)
+        } else {
+            &self.location
+        }
+    }
+
+    /// Restored background tabs start reading only when first shown.
+    pub(super) fn new(folder: PathBuf, show_hidden: bool) -> Self {
+        Self {
+            locked: false,
+            pending_navigation: None,
+            location: Location::Folder(folder),
             all: Vec::new(),
             rows: Vec::new(),
             listing: None,
@@ -168,9 +190,7 @@ impl Panel {
             viewport: (0.0, 0.0),
             focus_name: None,
             show_hidden,
-        };
-        panel.load(Location::Folder(folder), wake);
-        panel
+        }
     }
 
     /// Whether a listing is being read.
@@ -185,6 +205,10 @@ impl Panel {
         focus: Option<String>,
         wake: &(impl Fn() + Clone + Send + 'static),
     ) {
+        if self.locked && location != self.location {
+            self.pending_navigation = Some(Navigation::Go(location, focus));
+            return;
+        }
         if location != self.location {
             let previous = std::mem::replace(&mut self.location, location.clone());
             self.back.push(previous);
@@ -201,6 +225,16 @@ impl Panel {
 
     /// Back in history.
     pub(crate) fn back(&mut self, wake: &(impl Fn() + Clone + Send + 'static)) {
+        if self.locked {
+            if self
+                .back
+                .last()
+                .is_some_and(|location| *location != self.location)
+            {
+                self.pending_navigation = Some(Navigation::Back);
+            }
+            return;
+        }
         if let Some(location) = self.back.pop() {
             let current = std::mem::replace(&mut self.location, location.clone());
             self.forward.push(current);
@@ -211,6 +245,16 @@ impl Panel {
 
     /// Forward in history.
     pub(crate) fn forward(&mut self, wake: &(impl Fn() + Clone + Send + 'static)) {
+        if self.locked {
+            if self
+                .forward
+                .last()
+                .is_some_and(|location| *location != self.location)
+            {
+                self.pending_navigation = Some(Navigation::Forward);
+            }
+            return;
+        }
         if let Some(location) = self.forward.pop() {
             let current = std::mem::replace(&mut self.location, location.clone());
             self.back.push(current);
@@ -224,6 +268,31 @@ impl Panel {
         if let Some((parent, name)) = self.location.parent() {
             self.go(parent, Some(name), wake);
         }
+    }
+
+    pub(super) fn set_locked(&mut self, locked: bool) {
+        self.locked = locked;
+    }
+
+    /// Navigate a new, unlocked panel while keeping this panel and its history intact.
+    pub(super) fn fork_navigation(
+        &mut self,
+        wake: &(impl Fn() + Clone + Send + 'static),
+    ) -> Option<Self> {
+        let navigation = self.pending_navigation.take()?;
+        let mut panel = Self::new(PathBuf::new(), self.show_hidden);
+        panel.location = self.location.clone();
+        panel.sort = self.sort;
+        panel.descending = self.descending;
+        panel.filter.clone_from(&self.filter);
+        panel.back.clone_from(&self.back);
+        panel.forward.clone_from(&self.forward);
+        match navigation {
+            Navigation::Go(location, focus) => panel.go(location, focus, wake),
+            Navigation::Back => panel.back(wake),
+            Navigation::Forward => panel.forward(wake),
+        }
+        Some(panel)
     }
 
     /// Puts the cursor on `name` once the next listing arrives.
@@ -637,9 +706,16 @@ impl Panel {
                 } else {
                     entry.stem().to_owned()
                 };
+                super::icons::paint(
+                    &painter,
+                    Rect::from_min_size(pos2(x, rect.center().y - 8.0), vec2(16.0, 16.0)),
+                    entry,
+                    Self::is_up(entry),
+                    colour,
+                );
                 clipped_text(
                     &painter,
-                    cell(x, name_width),
+                    cell(x + 22.0, name_width - 22.0),
                     &name,
                     proportional.clone(),
                     colour,

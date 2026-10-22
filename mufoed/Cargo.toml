@@ -24,7 +24,7 @@ doc = false
 default = ["ocr"]
 image-cuda = ["image-editor/plakat-cuda"]
 image-cudnn = ["image-cuda", "image-editor/plakat-cudnn"]
-ocr = ["strict-ooxml/ocr-ollama", "strict-ooxml/pdf-raster", "dep:strict-ooxml-pdf", "dep:strict-ooxml-ocr"]
+ocr = ["strict-ooxml/ocr-ollama", "strict-ooxml/pdf-raster", "dep:strict-ooxml-ocr"]
 
 [dependencies]
 image-gallery = { path = "../image-gallery" }
@@ -38,7 +38,7 @@ diagram-editor = { path = "../diagram-editor", features = ["docx"] }
 chem-editor = { path = "../chem-editor", features = ["docx"] }
 encoding_rs.workspace = true
 strict-ooxml = { version = "0.1.0", path = "../strict-ooxml", features = ["report", "svg", "write", "pdf", "convert", "rtf", "html", "latex", "djvu-image", "edit", "system-fonts", "font-download"] }
-strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf", optional = true, features = ["raster"] }
+strict-ooxml-pdf = { version = "0.1.0", path = "../strict-ooxml-pdf", features = ["raster"] }
 strict-ooxml-core = { version = "0.1.0", path = "../strict-ooxml-core" }
 strict-ooxml-render-svg = { version = "0.1.0", path = "../strict-ooxml-render-svg" }
 eframe = "0.35"
@@ -62,3 +62,6 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Syste
 
 [lints]
 workspace = true
+
+[build-dependencies]
+winresource = { version = "=0.1.34", default-features = false }

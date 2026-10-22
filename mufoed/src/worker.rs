@@ -1463,7 +1463,7 @@ fn used_font_families(document: &Document) -> Vec<String> {
 }
 
 /// Named system faces when enabled, plus script fallbacks and downloaded packs.
-fn installed_fonts(
+pub(crate) fn installed_fonts(
     document: &Document,
     named: bool,
 ) -> (Option<Arc<strict_ooxml::FontAssets>>, Vec<&'static str>) {
