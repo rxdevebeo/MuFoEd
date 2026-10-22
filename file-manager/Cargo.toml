@@ -1,0 +1,50 @@
+[package]
+name = "file-manager"
+description = "Two-panel file manager for egui in the manner of Total Commander: operations, archives, search, quick view, terminal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+# An application component, not a library: never published.
+publish = false
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["file-manager", "commander", "egui", "archive"]
+categories = ["gui", "filesystem"]
+
+[features]
+default = []
+# Standalone demo window.
+demo = ["dep:eframe"]
+
+[dependencies]
+egui = "0.35"
+image-gallery = { path = "../image-gallery" }
+image = { version = "0.25.10", default-features = false }
+encoding_rs.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# Archives: all pure Rust.
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+tar = { version = "0.4.46", default-features = false }
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+bzip2-rs = "0.1.2"
+lzma-rs = "0.3"
+ruzstd = "0.9"
+# The newest release whose minimum Rust is the workspace's 1.92.
+sevenz-rust2 = { version = "=0.20.2", default-features = false, features = ["compress", "util", "aes256", "deflate"] }
+trash = "5.2"
+# RAR reading: the owner's pure-Rust UnRAR port (vendor/README.md).
+unrar-rs = { path = "../vendor/unrar-rs" }
+eframe = { version = "0.35", optional = true }
+
+[[bin]]
+name = "file-manager-demo"
+path = "src/main.rs"
+required-features = ["demo"]
+
+[lints]
+workspace = true

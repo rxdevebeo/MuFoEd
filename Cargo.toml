@@ -9,6 +9,8 @@
 
 [workspace]
 resolver = "2"
+# A vendored dependency, not ours to lint (see vendor/README.md).
+exclude = ["vendor/unrar-rs"]
 members = [
     "strict-ooxml-core",
     "strict-ooxml-wml",
@@ -34,6 +36,8 @@ members = [
     "chem-editor",
     "image-editor",
     "model-runtime",
+    "image-gallery",
+    "file-manager",
     "strict-ooxml-testkit",
     "xtool",
 ]

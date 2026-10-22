@@ -18,6 +18,8 @@ ignore = [
     { id = "RUSTSEC-2026-0370", reason = "GUI-only (accesskit AT-SPI on Linux); zbus has no safe upgrade yet" },
     { id = "RUSTSEC-2026-0371", reason = "GUI-only (accesskit AT-SPI on Linux); zbus has no safe upgrade yet" },
     { id = "RUSTSEC-2026-0372", reason = "GUI-only (accesskit AT-SPI on Linux); zbus has no safe upgrade yet" },
+    # paste: a compile-time macro under exr's pulp (OpenEXR in image-gallery); unmaintained, no vulnerability.
+    { id = "RUSTSEC-2024-0436", reason = "proc-macro only (exr -> pulp); no maintained successor upstream yet" },
 ]
 
 [licenses]
@@ -64,6 +66,12 @@ allow = [
 exceptions = [
     { crate = "epaint_default_fonts", allow = ["OFL-1.1", "Ubuntu-font-1.0"] },
     { crate = "hexf-parse", allow = ["CC0-1.0"] },
+    # unrar-rs: the UnRAR freeware licence (vendor/unrar-rs/LICENSE) allows
+    # use to read RAR archives, which is all the file manager does with it.
+    { crate = "unrar-rs", allow = ["LicenseRef-UnRAR"] },
+    # libfuzzer-sys: rav1e's dependency for cfg(fuzzing) builds only (AVIF
+    # writing in image-gallery); never compiled into the gallery.
+    { crate = "libfuzzer-sys", allow = ["NCSA"] },
 ]
 
 [bans]

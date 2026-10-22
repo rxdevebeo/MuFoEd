@@ -77,3 +77,16 @@ canvases and record tables. Existing public APIs remain available.
 These patches are wired in both the root and separate fuzz workspaces;
 `strict-ooxml-djvu/tests/read.rs` and `tests/image.rs` exercise their guards.
 See `strict-ooxml-djvu/PROVENANCE.md` for derivation.
+
+### unrar-rs (RAR reading)
+
+`vendor/unrar-rs` is the owner's pure-Rust port of UnRAR (from
+`D:\projects\UnRAR\unrar-rs`), used by `file-manager` to list and extract RAR
+archives. Licence: the UnRAR freeware licence in `vendor/unrar-rs/LICENSE`
+(use to handle RAR archives is free; it may not be used to create a RAR
+compressor). The code is unchanged except for layout: the sources are rustfmt-formatted
+with LF line ends (the workspace `cargo fmt --all` checks local path
+dependencies). The manifest names the licence `LicenseRef-UnRAR` for
+cargo-deny, drops the example and dev-dependencies and declares its own
+`[workspace]`. The directory is excluded from the workspace, so it is built as a
+dependency and not linted with the workspace rules.
