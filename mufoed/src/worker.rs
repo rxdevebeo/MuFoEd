@@ -6007,7 +6007,7 @@ impl<'a, 's> Worker<'a, 's> {
         let mut config = strict_ooxml::OllamaConfig::from_env();
         endpoint.clone_into(&mut config.endpoint);
         model.clone_into(&mut config.model);
-        let vision = strict_ooxml::OllamaVision::new(config);
+        let vision = crate::model_runtime::ManagedVision::new(config);
         self.send(Reply::Busy(Some(Busy::Recognize)));
         let answer = if formula {
             vision.recover_formula(&image)
@@ -9525,7 +9525,6 @@ mod tests {
     #[test]
     #[cfg(feature = "ocr")]
     fn ole_formula_recognition_waits_for_confirmation_and_replaces_with_one_undo() {
-        use std::io::{Read as _, Write as _};
         with_ole_worker(|worker, rx| {
             let before = worker.session.document().body.clone();
             let depth = worker.undo_depth;
@@ -9533,44 +9532,14 @@ mod tests {
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
             let endpoint = format!("http://{}", listener.local_addr().unwrap());
             let expected_image = crate::raster::base64(&worker.object_bytes().unwrap());
-            let server = std::thread::spawn(move || {
-                for path in ["/api/show", "/api/chat"] {
-                    let (mut stream, _) = listener.accept().unwrap();
-                    stream
-                        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
-                        .unwrap();
-                    let mut request = Vec::new();
-                    let body = loop {
-                        let mut buffer = [0; 4096];
-                        let read = stream.read(&mut buffer).unwrap();
-                        assert_ne!(read, 0);
-                        request.extend_from_slice(&buffer[..read]);
-                        if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
-                            let headers = String::from_utf8_lossy(&request[..end]).to_lowercase();
-                            assert!(headers.starts_with(&format!("post {path} ")));
-                            let length: usize = headers
-                                .lines()
-                                .find_map(|line| line.strip_prefix("content-length:"))
-                                .unwrap()
-                                .trim()
-                                .parse()
-                                .unwrap();
-                            if request.len() >= end + 4 + length {
-                                break request[end + 4..end + 4 + length].to_vec();
-                            }
-                        }
-                    };
-                    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-                    assert_eq!(json["model"], "test-vision");
-                    let response = if path == "/api/show" {
-                        serde_json::json!({"details": {"digest": "test"}})
-                    } else {
-                        assert_eq!(json["messages"][0]["images"][0], expected_image);
-                        serde_json::json!({"message": {"content": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><msup><mi>x</mi><mn>2</mn></msup></math>"}})
-                    }.to_string();
-                    write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.len(),response).unwrap();
-                }
-            });
+            let server = crate::model_runtime::test_support::server(
+                listener,
+                "test-vision",
+                move |json| {
+                    assert_eq!(json["messages"][0]["images"][0], expected_image);
+                    serde_json::json!({"done": true, "message": {"content": "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><msup><mi>x</mi><mn>2</mn></msup></math>"}})
+                },
+            );
             worker.recognize_object(true, &endpoint, "test-vision");
             server.join().unwrap();
             let plan = rx

@@ -350,11 +350,11 @@ fn html_text(bytes: &[u8]) -> Result<String, String> {
 
 /// Installs recognition on a converter's options.
 #[cfg(feature = "ocr")]
-fn vision(settings: &OcrSettings) -> Arc<strict_ooxml::OllamaVision> {
+fn vision(settings: &OcrSettings) -> Arc<crate::model_runtime::ManagedVision> {
     let mut config = strict_ooxml::OllamaConfig::from_env();
     config.endpoint.clone_from(&settings.endpoint);
     config.model.clone_from(&settings.model);
-    Arc::new(strict_ooxml::OllamaVision::new(config))
+    Arc::new(crate::model_runtime::ManagedVision::new(config))
 }
 
 fn open_pdf(path: &Path, import: &ImportOptions) -> Result<Loaded, String> {

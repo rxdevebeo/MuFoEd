@@ -40,6 +40,7 @@ mod formats;
 mod formula;
 mod i18n;
 mod icons;
+mod model_runtime;
 mod nav;
 mod paragraph;
 mod print;

@@ -110,6 +110,14 @@ pub(crate) enum Stop {
 pub(crate) trait Model {
     /// The next reply.
     fn complete(&mut self, history: &[Turn]) -> Result<ModelReply, String>;
+    /// Cancellable queue admission; scripted implementations need no transport handling.
+    fn complete_cancellable(
+        &mut self,
+        history: &[Turn],
+        _cancel: &AtomicBool,
+    ) -> Result<ModelReply, String> {
+        self.complete(history)
+    }
 }
 
 /// A queue of replies, for a test turn that must not touch the network.
@@ -210,6 +218,7 @@ pub(crate) fn request_body(model: &str, history: &[Turn], num_ctx: u32) -> Value
     json!({
         "model": model,
         "stream": false,
+        "keep_alive": 300,
         "messages": history.iter().map(message_json).collect::<Vec<_>>(),
         "tools": tool_schema(),
         "options": {"temperature": 0.2, "num_ctx": num_ctx},
@@ -250,7 +259,29 @@ fn agent() -> ureq::Agent {
 }
 
 /// Posts one chat request and returns Ollama's JSON.
+#[cfg(test)]
 pub(crate) fn post(
+    endpoint: &str,
+    model: &str,
+    history: &[Turn],
+    num_ctx: u32,
+) -> Result<Value, String> {
+    post_cancellable(endpoint, model, history, num_ctx, &AtomicBool::new(false))
+}
+
+fn post_cancellable(
+    endpoint: &str,
+    model: &str,
+    history: &[Turn],
+    num_ctx: u32,
+    cancel: &AtomicBool,
+) -> Result<Value, String> {
+    crate::model_runtime::run(endpoint, model, "text", cancel, num_ctx, || {
+        post_unmanaged(endpoint, model, history, num_ctx)
+    })
+}
+
+fn post_unmanaged(
     endpoint: &str,
     model: &str,
     history: &[Turn],
@@ -305,6 +336,13 @@ pub(crate) struct Remote {
 
 impl Model for Remote {
     fn complete(&mut self, history: &[Turn]) -> Result<ModelReply, String> {
+        self.complete_cancellable(history, &AtomicBool::new(false))
+    }
+    fn complete_cancellable(
+        &mut self,
+        history: &[Turn],
+        cancel: &AtomicBool,
+    ) -> Result<ModelReply, String> {
         let num_ctx = if let Some(num_ctx) = self.num_ctx {
             num_ctx
         } else {
@@ -312,7 +350,13 @@ impl Model for Remote {
             self.num_ctx = Some(num_ctx);
             num_ctx
         };
-        interpret(&post(&self.endpoint, &self.model, history, num_ctx)?)
+        interpret(&post_cancellable(
+            &self.endpoint,
+            &self.model,
+            history,
+            num_ctx,
+            cancel,
+        )?)
     }
 }
 
@@ -418,7 +462,7 @@ where
         if cancel.load(Ordering::Relaxed) {
             return Stop::Cancelled;
         }
-        match model.complete(history) {
+        match model.complete_cancellable(history, cancel) {
             Ok(ModelReply::Text(text)) => {
                 history.push(Turn::assistant(text));
                 return Stop::Answer;
@@ -441,6 +485,9 @@ where
                 }
             }
             Err(error) => {
+                if cancel.load(Ordering::Acquire) {
+                    return Stop::Cancelled;
+                }
                 history.push(Turn::assistant(error.clone()));
                 return Stop::Failed(error);
             }
@@ -1743,47 +1790,15 @@ mod tests {
 
     #[test]
     fn the_chat_request_carries_tools_and_the_previous_result() {
-        use std::io::{Read as _, Write as _};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
-                .unwrap();
-            let mut request = Vec::new();
-            let body = loop {
-                let mut buffer = [0; 4096];
-                let read = stream.read(&mut buffer).unwrap();
-                assert_ne!(read, 0);
-                request.extend_from_slice(&buffer[..read]);
-                if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
-                    let headers = String::from_utf8_lossy(&request[..end]).to_lowercase();
-                    let length: usize = headers
-                        .lines()
-                        .find_map(|line| line.strip_prefix("content-length:"))
-                        .unwrap()
-                        .trim()
-                        .parse()
-                        .unwrap();
-                    if request.len() >= end + 4 + length {
-                        break request[end + 4..end + 4 + length].to_vec();
-                    }
-                }
-            };
-            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let server = crate::model_runtime::test_support::server(listener, "test-model", |json| {
             assert!(json.get("tools").is_some());
+            assert_eq!(json["keep_alive"], 300);
             let messages = json["messages"].as_array().unwrap();
-            assert!(messages.iter().any(|message| {
-                message["role"] == "tool" && message["content"] == "previous-result-token"
-            }));
-            let response = serde_json::json!({"message": {"content": "ok"}}).to_string();
-            write!(
-                stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}",
-                response.len()
-            )
-            .unwrap();
+            assert!(messages.iter().any(|message| message["role"] == "tool"
+                && message["content"] == "previous-result-token"));
+            serde_json::json!({"done": true, "message": {"content": "ok"}})
         });
         let history = vec![
             Turn::user("look"),

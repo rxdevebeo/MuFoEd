@@ -693,7 +693,7 @@ mod live {
         let mut config = strict_ooxml::OllamaConfig::from_env();
         config.model = std::env::var("MUFOED_LIVE_MODEL")
             .unwrap_or_else(|_| "qwen3-vl:8b-instruct".to_owned());
-        let vision = strict_ooxml::OllamaVision::new(config);
+        let vision = crate::model_runtime::ManagedVision::new(config);
         let answer = vision
             .recover_formula(&strict_ooxml::OcrImage::png(png))
             .expect("an answer")

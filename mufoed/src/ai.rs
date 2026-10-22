@@ -117,6 +117,34 @@ fn chat_with(
     prompt: &str,
     images: &[String],
 ) -> Result<String, String> {
+    chat_with_cancel(config, system, prompt, images, &AtomicBool::new(false))
+}
+
+fn chat_with_cancel(
+    config: &Config,
+    system: &str,
+    prompt: &str,
+    images: &[String],
+    cancel: &AtomicBool,
+) -> Result<String, String> {
+    let context = crate::context_window::num_ctx(&config.endpoint, &config.model);
+    crate::model_runtime::run(
+        &config.endpoint,
+        &config.model,
+        if images.is_empty() { "text" } else { "vision" },
+        cancel,
+        context,
+        || chat_unmanaged(config, system, prompt, images, context),
+    )
+}
+
+fn chat_unmanaged(
+    config: &Config,
+    system: &str,
+    prompt: &str,
+    images: &[String],
+    num_ctx: u32,
+) -> Result<String, String> {
     let body = |think: bool| {
         let mut user = json!({"role": "user", "content": prompt});
         if !images.is_empty() {
@@ -129,10 +157,10 @@ fn chat_with(
             messages.push(json!({"role": "system", "content": system}));
         }
         messages.push(user);
-        let num_ctx = crate::context_window::num_ctx(&config.endpoint, &config.model);
         let mut body = json!({
             "model": config.model,
             "stream": false,
+            "keep_alive": 300,
             "messages": messages,
             "options": {"temperature": 0.2, "num_ctx": num_ctx},
         });
@@ -490,6 +518,9 @@ fn run(
     cancel: &AtomicBool,
     send: &dyn Fn(Event),
 ) -> Result<(), String> {
+    let chat = |config: &Config, system: &str, prompt: &str| {
+        chat_with_cancel(config, system, prompt, &[], cancel)
+    };
     let whole = || paragraphs.join("\n\n");
     let cancelled = || cancel.load(Ordering::Relaxed);
     match task {
@@ -562,7 +593,7 @@ fn run(
                 "Translate the user's text into {language}. Keep names, numbers and formulas. \
                  Answer with the translation only, no comments or quotes.{KEEP_FRAGMENTS}"
             );
-            per_paragraph(config, &system, paragraphs, cancelled, send)?;
+            per_paragraph(config, &system, paragraphs, cancel, send)?;
         }
         Task::Unify => {
             let sample = clip(&whole(), CHUNK);
@@ -577,7 +608,7 @@ fn run(
                  little as possible and keeping its language and meaning:\n{guide}\n\
                  Answer with the edited paragraph only.{KEEP_FRAGMENTS}"
             );
-            per_paragraph(config, &system, paragraphs, cancelled, send)?;
+            per_paragraph(config, &system, paragraphs, cancel, send)?;
         }
         Task::Styles => {
             let mut kinds = Vec::new();
@@ -627,15 +658,15 @@ fn per_paragraph(
     config: &Config,
     system: &str,
     paragraphs: &[String],
-    cancelled: impl Fn() -> bool,
+    cancel: &AtomicBool,
     send: &dyn Fn(Event),
 ) -> Result<(), String> {
     for (index, text) in paragraphs.iter().enumerate() {
-        if cancelled() {
+        if cancel.load(Ordering::Acquire) {
             return Err("cancelled".to_owned());
         }
         if text.trim().chars().any(char::is_alphabetic) {
-            let out = chat(config, system, text)?;
+            let out = chat_with_cancel(config, system, text, &[], cancel)?;
             send(Event::Paragraph(index, out));
         }
         send(Event::Progress(index + 1, paragraphs.len()));
@@ -845,69 +876,18 @@ mod cleanup_tests {
 
     #[test]
     fn cleanup_sends_real_boundary_context_to_the_model_and_never_rewrites_text() {
-        use std::io::{Read as _, Write as _};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
-        let server = std::thread::spawn(move || {
-            let read_http = |stream: &mut std::net::TcpStream| -> (String, Vec<u8>) {
-                stream
-                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
-                    .unwrap();
-                let mut request = Vec::new();
-                loop {
-                    let mut buffer = [0; 4096];
-                    let read = stream.read(&mut buffer).unwrap();
-                    assert_ne!(read, 0);
-                    request.extend_from_slice(&buffer[..read]);
-                    let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") else {
-                        continue;
-                    };
-                    let headers = String::from_utf8_lossy(&request[..end]).to_string();
-                    let length = headers
-                        .lines()
-                        .find_map(|line| {
-                            let lower = line.to_ascii_lowercase();
-                            let value = lower.strip_prefix("content-length:")?;
-                            value.trim().parse::<usize>().ok()
-                        })
-                        .unwrap_or(0);
-                    if request.len() >= end + 4 + length {
-                        let body = request[end + 4..end + 4 + length].to_vec();
-                        let path = headers.lines().next().unwrap_or("").to_owned();
-                        return (path, body);
-                    }
-                }
-            };
-            let reply = |stream: &mut std::net::TcpStream, response: &str| {
-                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
-            };
-            loop {
-                let (mut stream, _) = listener.accept().unwrap();
-                let (path, body) = read_http(&mut stream);
-                if path.contains("/api/chat") {
-                    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-                    assert_eq!(json["model"], "test-model");
-                    let data: serde_json::Value =
-                        serde_json::from_str(json["messages"][1]["content"].as_str().unwrap())
-                            .unwrap();
-                    assert!(data[0]["left_tail"]
-                        .as_str()
-                        .unwrap()
-                        .ends_with("the actual end"));
-                    assert_eq!(data[0]["right_head"], "continues here");
-                    reply(
-                        &mut stream,
-                        &serde_json::json!({"message": {"content": "[0,999]"}}).to_string(),
-                    );
-                    break;
-                }
-                let response = if path.contains("/api/tags") {
-                    r#"{"models":[]}"#
-                } else {
-                    "{}"
-                };
-                reply(&mut stream, response);
-            }
+        let server = crate::model_runtime::test_support::server(listener, "test-model", |json| {
+            assert_eq!(json["keep_alive"], 300);
+            let data: serde_json::Value =
+                serde_json::from_str(json["messages"][1]["content"].as_str().unwrap()).unwrap();
+            assert!(data[0]["left_tail"]
+                .as_str()
+                .unwrap()
+                .ends_with("the actual end"));
+            assert_eq!(data[0]["right_head"], "continues here");
+            serde_json::json!({"done": true, "message": {"content": "[0,999]"}})
         });
         let events = std::cell::RefCell::new(Vec::new());
         run(

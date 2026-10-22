@@ -1,0 +1,19 @@
+{
+  "upstream": "https://github.com/vulogov/plakat",
+  "revision": "ce0d67a45bc9b5f742c3772aef85afe0d15890f6",
+  "license": "Unlicense; see LICENSE",
+  "files": [
+    {
+      "file": "attention.rs",
+      "upstream_sha256": "fbf8370b74a811d44b916e5ce20181248d87d2fdfad81470bc78999398fa7e1c"
+    },
+    {
+      "file": "blocks.rs",
+      "upstream_sha256": "e1c1a1004664ee447f17396d3e815786cf74aa8304d3344b1338060cd3b61f5a"
+    },
+    {
+      "file": "unet.rs",
+      "upstream_sha256": "2df342eddc7234b0de78d22c5f5d7eb000a8e8d1e8fdfd42d4074e0e580e678c"
+    }
+  ]
+}

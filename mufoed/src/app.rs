@@ -400,6 +400,8 @@ pub(crate) struct App {
     status: Option<StatusLine>,
     next_id: u64,
     exit_confirmed: bool,
+    model_shutdown: Option<std::sync::mpsc::Receiver<Result<(), String>>>,
+    models_released: bool,
     /// Files named on the command line, opened on the first frame.
     startup: Vec<PathBuf>,
     /// `MUFOED_SHOT`: the window saved as a picture, then closed.
@@ -490,6 +492,8 @@ impl App {
             status: None,
             next_id: 1,
             exit_confirmed: false,
+            model_shutdown: None,
+            models_released: false,
             startup: files,
             shot: crate::shot::Shot::from_env(),
             startup_dialog: crate::shot::dialog(),
@@ -1753,18 +1757,42 @@ impl App {
     }
 
     fn handle_close_request(&mut self, ctx: &egui::Context) {
+        if let Some(receiver) = &self.model_shutdown {
+            match receiver.try_recv() {
+                Ok(Ok(())) => {
+                    self.model_shutdown = None;
+                    self.models_released = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                Ok(Err(error)) => {
+                    self.model_shutdown = None;
+                    self.say(error, true, ctx.input(|i| i.time));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.model_shutdown = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(100))
+                }
+            }
+        }
         if !ctx.input(|input| input.viewport().close_requested()) {
             return;
         }
-        if self.exit_confirmed {
+        if self.models_released {
             self.settings.save();
             return;
         }
-        if self.tabs.iter().any(|tab| tab.ready() && tab.modified()) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        if !self.exit_confirmed && self.tabs.iter().any(|tab| tab.ready() && tab.modified()) {
             self.dialog = Some(Dialog::ConfirmExit);
-        } else {
-            self.settings.save();
+            return;
+        }
+        self.exit_confirmed = true;
+        if self.model_shutdown.is_none() {
+            self.ai_cancel_for_shutdown();
+            self.model_shutdown = Some(mufoed_model_runtime::Runtime::global().shutdown_async());
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
     }
 }
@@ -2654,6 +2682,19 @@ impl App {
                         self.status = None;
                     }
                 }
+            }
+            let models = mufoed_model_runtime::Runtime::global().snapshot();
+            if let Some(task) = models.active {
+                let key = match models.phase {
+                    Some(mufoed_model_runtime::Phase::Unknown) => "status.model_unknown",
+                    Some(mufoed_model_runtime::Phase::Releasing) => "status.model_releasing",
+                    _ => "status.model_running",
+                };
+                ui.separator();
+                ui.label(text(self.t(key).to_owned()))
+                    .on_hover_text(format!("{} · {}", task.model, models.queued.len()));
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(100));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let Some(index) = self.active else {
