@@ -3283,12 +3283,18 @@ impl App {
                     );
                     ui.label(RichText::new(self.t("start.subtitle")).size(14.0));
                     ui.add_space(24.0);
-                    ui.horizontal(|ui| {
-                        let width = 4.0 * 150.0 + 3.0 * 14.0;
+                    ui.horizontal_wrapped(|ui| {
+                        let width = 5.0 * 150.0 + 4.0 * 14.0;
                         ui.add_space(((ui.available_width() - width) / 2.0).max(0.0));
                         ui.spacing_mut().item_spacing.x = 14.0;
                         for (icon, key, tip, action) in [
                             (Icon::New, "start.new", "tip.new", Action::New),
+                            (
+                                Icon::Picture,
+                                "file.new_image",
+                                "tip.new_image",
+                                Action::NewImage,
+                            ),
                             (Icon::Open, "start.open", "tip.open", Action::OpenDialog),
                             (
                                 Icon::Import,
@@ -3394,6 +3400,9 @@ impl App {
                 ui.add_space(8.0);
                 if item(ui, Icon::New, self.i18n.t("cmd.new"), true) {
                     actions.push(Action::New);
+                }
+                if item(ui, Icon::Picture, self.i18n.t("file.new_image"), true) {
+                    actions.push(Action::NewImage);
                 }
                 if item(ui, Icon::Open, self.i18n.t("cmd.open"), true) {
                     actions.push(Action::OpenDialog);

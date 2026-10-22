@@ -3,6 +3,7 @@
     "name": "English"
   },
   "strings": {
+    "tip.new_image": "Create a blank image in a new tab",
     "file.new_image": "New image",
     "recognition": {
       "title": "Recognized formula",
