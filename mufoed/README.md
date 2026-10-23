@@ -1,8 +1,42 @@
 # MultiFormatEditor (MuFoEd)
 
-A desktop demonstrator of the strict-ooxml toolkit: one window, one tab per
-document (as in WPS Office), a Word-style ribbon. Windows, Linux and macOS
-(egui/eframe, native file dialogs through `rfd`).
+A modular desktop application constructor: assemble reusable Rust libraries
+into one application tailored to a user's workflow. The current host combines
+document editing, Image Studio, an image gallery, a two-panel file manager and
+local AI tools. Documents and images have individual tabs; the ribbon follows
+the active editor. The UI uses egui/eframe and native file dialogs through `rfd`,
+with platform-specific integrations where needed.
+
+## Building an application from components
+
+Choose the functions the user needs, select the libraries that provide them,
+and connect their APIs and UI to the host. For example, a document-oriented
+edition can combine StrictLib with equation and diagram editing; a visual
+workspace can combine Image Studio, the gallery and image models. The current
+MuFoEd host brings these workflows together in one application.
+
+| Component | Responsibility |
+|---|---|
+| [StrictLib / strict-ooxml](../README.md#document-toolkit-strictlib--strict-ooxml) | Document model, import, transactional editing, rendering and export. |
+| `mathml-editor`, `diagram-editor`, `chem-editor` | Specialized visual editors for formulas, diagrams and chemistry. |
+| [Image Studio](../image-editor/README.md) | Layered raster documents, manual editing, image generation and processing. |
+| [Image gallery](../image-gallery/README.md) | Browsing visual assets, previews, metadata and batch operations. |
+| [File manager](../file-manager/README.md) | Two-panel navigation, folder tabs, file operations, archives and previews. |
+| [Model runtime](../model-runtime/README.md) | Shared scheduling and memory budgets for participating AI adapters. |
+
+Composition is currently a development workflow: change Cargo dependencies and
+available features, wire the chosen components into the host, and build the
+resulting application. The current host links its editor, gallery and file
+manager dependencies directly; they are not independently selectable runtime
+plug-ins. Integrating another library includes adapting its UI, file actions,
+settings, background jobs and shutdown behavior to the host's contracts.
+
+The host owns the common application shell and connects the libraries without
+changing their data models to suit the interface. AI integrations share a
+host-owned runtime so text, vision and image tasks can coordinate resource use.
+Model weights and backend requirements depend on the selected composition.
+
+## Launch and development
 
 For a built application, launch `target/release/mufoed.exe` directly (or make a
 shortcut to it). No BAT, PowerShell, Visual Studio or CUDA build tools are needed
@@ -25,7 +59,7 @@ cargo +1.92.0 run -p mufoed --release -- [FILE...]
 `start.bat`/`start.ps1` remain development conveniences; compiler setup only runs
 when a build is explicitly requested or the EXE is missing.
 
-What it shows:
+## What the current composition includes
 
 - **Gallery and file manager**: open on demand from the start page, File menu
   or the tab strip's `+` menu. Each has its own tab alongside documents and
@@ -105,13 +139,24 @@ Interface strings are JSON (`locales/en.json`, `locales/ru.json`, compiled in).
 Drop `xx.json` into `locales/` beside the executable or into
 `<config>/MuFoEd/locales/` to add a language or override strings; nested
 objects flatten to dotted keys, missing keys fall back to English.
+Image Studio also has compiled Russian and English catalogs in
+`image-editor/locales/`; its interface follows the language selected in MuFoEd,
+with English used for other languages. User-authored content is not translated.
 
 ## Architecture
 
+- `Cargo.toml` - the current component dependencies and optional OCR/CUDA/cuDNN features.
+- The application host connects document workers, the embedded image editor,
+  gallery and file manager to the common tab strip, file actions and settings.
+- `image_studio.rs` - integration of the reusable image editor into the host.
+- `mufoed-model-runtime` - the shared model service used by participating text,
+  vision/OCR and image adapters; backends remain responsible for inference and
+  reporting resource lifetimes.
 - `worker.rs` - one thread per document: owns `StrictDocument` and the editing
   session, the visual map, caret and selection; answers with SVG pages, caret
   rectangles and state.
-- `formats.rs` - every input becomes an opened Strict package.
+- `formats.rs` - document inputs become opened Strict packages; images and
+  browser tabs use their own components.
 - `canvas.rs` - pages on the desk, rasterized lazily on the rayon pool.
 - `app.rs`, `ribbon.rs`, `tab.rs`, `icons.rs`, `theme.rs` - the interface.
 
@@ -182,10 +227,17 @@ DOCX связи восстанавливаются по однозначному
 
 ## Documents and Image Studio in one application
 
-Run `mufoed/start.bat` on this Windows workstation. It uses the built release,
-sets up CUDA/cuDNN, and accepts multiple file paths. `-Build` rebuilds the application.
-The release is built with `cargo +1.92.0 build -p mufoed --release --features image-cudnn
---config image-editor/cargo-performance.toml --locked`.
+Launch `target/release/mufoed.exe` directly on Windows; it accepts multiple file
+paths. To build the composition with embedded Plakat inference on CUDA and
+cuDNN, run from the workspace root with the required GPU build dependencies:
+
+```text
+cargo +1.92.0 build -p mufoed --release --features image-cudnn --config image-editor/cargo-performance.toml --locked
+```
+
+The default build keeps the manual image editor available without enabling
+the embedded CUDA backend. See the [Image Studio guide](../image-editor/README.md)
+for its backend options and model requirements.
 
 Documents and images share one ordered tab strip in the same window and process.
 Every image has its own tab, layers, selections, history, view and generation results.

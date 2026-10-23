@@ -1,9 +1,48 @@
-# strict-ooxml
+# MuFoEd — a modular desktop application constructor
 
-Rust toolkit for reading, editing, rendering and writing **WordprocessingML
-Strict** documents (ISO/IEC 29500-1:2008), with controlled normalization of
-Transitional (ISO/IEC 29500-4:2008) input, import from PDF, DjVu, RTF, LaTeX
-and HTML, and **MuFoEd**, a desktop editor built on it.
+**MuFoEd (MultiFormatEditor)** brings reusable Rust libraries together in one
+desktop application. Its purpose is to let developers assemble the tools a
+particular user needs: document editing, image creation, galleries, file
+management and local AI, in a shared interface.
+
+Start with the user's workflow, choose the libraries that cover it, and connect
+them through the application host. A writer, an illustrator and someone managing
+a document archive can use different compositions of the same building blocks.
+The current MuFoEd application is an integrated composition of these components,
+with documents, images, the gallery and the file manager sharing one window.
+
+## Assemble an application for the user
+
+| User workflow | Building blocks |
+|---|---|
+| Writing and working with documents | StrictLib document toolkit, formula, diagram and chemistry editors. |
+| Creating and editing images | Image Studio, layers and manual tools, optional image generation and processing models. |
+| Organizing visual assets | Image gallery, previews, metadata and batch image operations. |
+| Managing files and archives | Two-panel file manager, search, document previews and media playback. |
+| Combining these workflows | The MuFoEd host, shared tabs, settings, localization and model runtime. |
+
+Composition currently happens in source and at build time: choose Cargo
+dependencies and available features, then integrate component APIs and UI into
+the host. The checked-in host includes the components listed below; creating a
+smaller or different edition requires changes to its dependencies and integration.
+A graphical module installer or runtime plug-in marketplace is not implemented.
+
+Components keep their own responsibilities and APIs. The host connects them to
+file opening and saving, tabs, settings and background work. For AI adapters,
+the shared model runtime coordinates tasks and memory budgets across text,
+vision and image workloads.
+
+See the [MuFoEd application guide](mufoed/README.md) for launch instructions,
+the current composition and integration details.
+
+## Document toolkit: StrictLib / strict-ooxml
+
+The document subsystem is a Rust toolkit for reading, editing, rendering and
+writing **WordprocessingML Strict** documents (ISO/IEC 29500-1:2008), with
+controlled normalization of Transitional (ISO/IEC 29500-4:2008) input and import
+from PDF, DjVu, RTF, LaTeX and HTML. Import support and fidelity depend on the
+format and supported features; conversion and support reports describe losses
+and limitations.
 
 The design documents, gates and decision records are indexed in
 [`docs/README.md`](docs/README.md); the specification is
@@ -31,12 +70,16 @@ The design documents, gates and decision records are indexed in
 | `strict-ooxml-fidelity` | The pixel gate's arithmetic: SSIM, ink profiles and the policy they are held to. |
 | `strict-ooxml-testkit` | Test-only builders for synthetic and hostile inputs. |
 
-### Applications
+### Application components and tools
 
 | Crate | Purpose |
 |---|---|
-| `mufoed` | MuFoEd (MultiFormatEditor): a desktop editor (egui) for DOCX, with PDF/DjVu/RTF/LaTeX/HTML open and import, spelling, printing and an optional local AI assistant. |
+| [`mufoed`](mufoed/README.md) | Application host (egui): shared tabs for documents, images, gallery and file manager, settings and integration of the component libraries. |
 | `chem-editor`, `diagram-editor`, `mathml-editor` | Visual editors for chemistry, shapes and diagrams, and MathML, embedded in MuFoEd. |
+| [`image-editor`](image-editor/README.md) | Image Studio: reusable layered raster editor, manual tools, PSD saving and optional Plakat generation and image-processing pipelines. |
+| [`image-gallery`](image-gallery/README.md) | Embeddable image gallery with previews, metadata and batch operations. |
+| [`file-manager`](file-manager/README.md) | Embeddable two-panel file manager with folder tabs, file operations, archives and previews. |
+| [`mufoed-model-runtime`](model-runtime/README.md) | Shared task and memory manager for participating text, vision/OCR and image model adapters. |
 | `strict-ooxml-cli` | The `strict-ooxml` command-line tool. |
 | `strict-ooxml-view` | Local HTTP viewer for rendered documents. |
 | `xtool` | Development utility: XSD inventory, coverage gate, corpus fetch, `.docx` generator. |
@@ -93,14 +136,21 @@ line the CLI prints escapes control characters from document text.
 
 ## MuFoEd
 
+On Windows, launch a built `target/release/mufoed.exe` directly or through a
+shortcut. For development:
+
 ```text
-cargo run -p mufoed --release
+cargo +1.92.0 run -p mufoed --release
 ```
 
-Opens DOCX, and converts PDF, DjVu, RTF, LaTeX and HTML into the editing model on
-open (a PDF opens set as the original laid it out; *Import* offers the re-flowed
-and per-line modes, a page range and recognition). The optional AI assistant and
-scan recognition talk to a local Ollama server only.
+The current composition opens documents and images in individual tabs, with
+gallery and file manager tabs available on demand. It edits Strict DOCX and
+imports PDF, DjVu, RTF, LaTeX and HTML into the document model. Image Studio adds
+manual raster editing and optional model-based generation and processing.
+The text assistant and scan recognition use a local Ollama server; image
+generation can use an embedded Plakat backend when enabled at build time.
+AI features require their model weights and applicable runtimes. See the
+[application guide](mufoed/README.md) for GPU build and runtime details.
 
 ## Build and test
 
